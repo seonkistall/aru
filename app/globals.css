@@ -38,6 +38,9 @@
   --font-sans: "Pretendard", -apple-system, sans-serif;
 }
 
+@keyframes gyeol-scan { 0% { top: 6%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 94%; opacity: 0; } }
+@keyframes gyeol-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
 html, body { background: var(--paper); color: var(--ink); }
 body {
   font-family: "Pretendard", -apple-system, sans-serif;

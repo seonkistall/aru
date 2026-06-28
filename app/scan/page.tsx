@@ -19,6 +19,7 @@ export default function Scan() {
   const [phase, setPhase] = useState<Phase>("init");
   const [reads, setReads] = useState<SkinReads | null>(null);
   const [err, setErr] = useState<string>("");
+  const [consent, setConsent] = useState(false); // opt-in to send a face crop for sharper AI analysis
 
   const startCamera = useCallback(async () => {
     setErr("");
@@ -84,12 +85,38 @@ export default function Scan() {
       }
       const imageData = ctx.getImageData(0, 0, w, h);
       const out = analyzeSkin(imageData, faces[0]);
-      // canvas/imageData are local; the selfie is never uploaded or stored (D3).
       if (!out) {
         setPhase("noface");
         return;
       }
-      setReads(out);
+      // On-device heuristic by default. With consent, send only a FACE CROP to the
+      // vision model for a sharper read; the crop is a local data URL, not stored.
+      let final = out;
+      if (consent) {
+        try {
+          const crop = cropFace(canvas, faces[0]);
+          const resp = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: crop }),
+          });
+          if (resp.ok) {
+            const v = await resp.json();
+            if (v?.ok) {
+              final = {
+                ...out,
+                oil: { value: v.oil, calm: v.oil === "거의 없음" },
+                redness: { value: v.redness, calm: v.redness === "거의 없음" },
+                pores: { value: v.pores, calm: v.pores === "매끈한 편" },
+                narrative: v.narrative || out.narrative,
+              };
+            }
+          }
+        } catch {
+          /* keep heuristic */
+        }
+      }
+      setReads(final);
       stopCamera();
       setPhase("result");
     } catch (e) {
@@ -149,9 +176,7 @@ export default function Scan() {
                 </button>
               </Center>
             )}
-            {phase === "analyzing" && (
-              <Overlay>분석 중…</Overlay>
-            )}
+            {phase === "analyzing" && <Scanning />}
             {phase === "denied" && (
               <Center>
                 <p style={fallbackText}>카메라 권한이 막혔어요.</p>
@@ -174,8 +199,14 @@ export default function Scan() {
           </div>
         )}
 
+        {phase === "ready" && (
+          <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 16, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ accentColor: "var(--plum)", width: 16, height: 16 }} />
+            <span>더 정확한 AI 분석 받기 <span style={{ color: "var(--faint)" }}>· 사진은 분석에만 쓰고 저장 안 함</span></span>
+          </label>
+        )}
         {(phase === "ready" || phase === "analyzing") && (
-          <button onClick={capture} disabled={phase === "analyzing"} style={{ ...primaryBtn, width: "100%", marginTop: 16, opacity: phase === "analyzing" ? 0.6 : 1 }}>
+          <button onClick={capture} disabled={phase === "analyzing"} style={{ ...primaryBtn, width: "100%", marginTop: 12, opacity: phase === "analyzing" ? 0.6 : 1 }}>
             {phase === "analyzing" ? "읽는 중…" : "지금 찍기"}
           </button>
         )}
@@ -202,7 +233,7 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
               <button onClick={reset} style={{ ...outlineBtn, flex: 1 }}>다시 찍기</button>
               <a
                 href="/survey"
-                onClick={() =>
+                onClick={() => {
                   sessionStorage.setItem(
                     "gyeol_scan",
                     JSON.stringify({
@@ -210,8 +241,9 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
                       redness: toOrdinal("redness", reads.redness.value),
                       pores: toOrdinal("pores", reads.pores.value),
                     })
-                  )
-                }
+                  );
+                  sessionStorage.setItem("gyeol_reads", JSON.stringify(reads));
+                }}
                 style={{ ...primaryBtn, flex: 1, textAlign: "center", textDecoration: "none" }}
               >
                 추천 받기 →
@@ -240,13 +272,17 @@ function ResultCard({ reads }: { reads: SkinReads }) {
         borderRadius: 16,
         padding: "30px 26px",
         boxShadow: "0 8px 24px rgba(40,30,20,.10)",
+        animation: "gyeol-fade-up .5s ease-out both",
       }}
     >
       <p style={eyebrow}>오늘의 피부 무드</p>
-      <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 38, lineHeight: 1.2, color: "var(--ink)", margin: "10px 0 4px", whiteSpace: "pre-line" }}>
+      <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 38, lineHeight: 1.2, color: "var(--ink)", margin: "10px 0 8px", whiteSpace: "pre-line" }}>
         {reads.headline}
       </h2>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 22 }}>정직하게, 보이는 것만 읽었어요</p>
+      {reads.narrative && (
+        <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{reads.narrative}</p>
+      )}
+      <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 22 }}>정직하게, 보이는 것만 읽었어요</p>
       <div style={{ borderTop: "1px solid var(--line)" }}>
         {rows.map((r, i) => (
           <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "13px 0", borderBottom: "1px solid var(--line)" }}>
@@ -388,10 +424,49 @@ function Center({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-function Overlay({ children }: { children: React.ReactNode }) {
+function Scanning() {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(247,243,236,.55)", color: "var(--ink)", fontFamily: "var(--font-ko-serif)", fontSize: 18 }}>
-      {children}
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+      <div
+        style={{
+          position: "absolute",
+          left: "8%",
+          right: "8%",
+          height: 2,
+          background: "linear-gradient(90deg, transparent, var(--plum), transparent)",
+          boxShadow: "0 0 14px var(--plum)",
+          animation: "gyeol-scan 1.8s ease-in-out infinite",
+        }}
+      />
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 18 }}>
+        <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)", background: "rgba(247,243,236,.72)", padding: "5px 14px", borderRadius: 9999 }}>
+          피부 결을 읽는 중…
+        </span>
+      </div>
     </div>
   );
+}
+
+// On-device face crop (data URL) — only sent to the vision model with consent, never stored.
+function cropFace(src: HTMLCanvasElement, landmarks: { x: number; y: number }[]): string {
+  const w = src.width;
+  const h = src.height;
+  let minX = 1, minY = 1, maxX = 0, maxY = 0;
+  for (const p of landmarks) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const pad = 0.12;
+  const x0 = Math.max(0, (minX - pad) * w);
+  const y0 = Math.max(0, (minY - pad) * h);
+  const cw = Math.min(w, (maxX + pad) * w) - x0;
+  const ch = Math.min(h, (maxY + pad) * h) - y0;
+  const scale = Math.min(1, 384 / Math.max(cw, ch));
+  const out = document.createElement("canvas");
+  out.width = Math.round(cw * scale);
+  out.height = Math.round(ch * scale);
+  out.getContext("2d")!.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);
+  return out.toDataURL("image/jpeg", 0.82);
 }

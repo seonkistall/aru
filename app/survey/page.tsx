@@ -34,7 +34,7 @@ export default function Survey() {
     if (!ready) return;
     const survey: SurveyT = { type: type!, concerns, category: category!, budget: budget!, avoid };
     sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
-    router.push("/reco");
+    router.push("/report");
   }
 
   return (

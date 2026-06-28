@@ -23,6 +23,8 @@ export type SkinReads = {
   redness: Bucket; // 홍조
   overall: Bucket; // 전반
   headline: string;
+  /** 1-2 sentence personal narrative (heuristic templated, or vision-generated). */
+  narrative: string;
   /** Self-calibrated raw signals (relative, lighting-robust) — shown in debug. */
   raw: { shine: number; relRedness: number; cov: number; tzoneL: number; cheekL: number };
 };
@@ -148,12 +150,26 @@ export function analyzeSkin(
       ? "윤기 도는\n결"
       : "조금은\n목마른 결";
 
+  // personal narrative (templated, fit/observation only — no efficacy)
+  const tzonePhrase =
+    oil.value === "있는 편" ? "T존엔 윤기가 도는 편이고" : oil.value === "살짝 있음" ? "T존엔 윤기가 살짝 돌고" : "유분기는 차분하고";
+  const cheekPhrase =
+    redness.value === "붉은기 있음"
+      ? "볼엔 붉은기가 보여요"
+      : pores.value === "도드라짐"
+      ? "볼은 결이 조금 도드라져요"
+      : redness.value === "약간 보임"
+      ? "볼은 옅은 붉은기가 있어요"
+      : "볼은 잔잔한 편이에요";
+  const narrative = `${tzonePhrase}, ${cheekPhrase}.`;
+
   return {
     oil,
     pores,
     redness,
     overall,
     headline,
+    narrative,
     raw: { shine, relRedness, cov, tzoneL, cheekL },
   };
 }
