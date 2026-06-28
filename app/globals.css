@@ -1,0 +1,45 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import "tailwindcss";
+
+/* ── DESIGN.md tokens (kbeauty-luxe-editorial) ─────────────────────────── */
+:root {
+  --ink: #221e1a;
+  --ink-soft: #4a443c;
+  --text-muted: #6f665d;   /* a11y: small-text muted (≥4.5:1 on paper) */
+  --muted: #8b8178;        /* decorative / large only */
+  --faint: #b3a795;
+  --paper: #f7f3ec;
+  --surface: #fcfaf6;
+  --surface-tint: #efe6de;
+  --plum: #6b2d4a;
+  --plum-press: #54203a;
+  --plum-soft: #ebdce3;
+  --bronze: #a8865a;
+  --line: #e7dfd4;
+  --on-plum: #ffffff;
+  --success: #4f6b52;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-text-muted: var(--text-muted);
+  --color-muted: var(--muted);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-tint: var(--surface-tint);
+  --color-plum: var(--plum);
+  --color-plum-soft: var(--plum-soft);
+  --color-bronze: var(--bronze);
+  --color-line: var(--line);
+  --color-success: var(--success);
+  --font-serif: var(--font-fraunces), var(--font-gowun), serif;
+  --font-ko-serif: var(--font-gowun), var(--font-fraunces), serif;
+  --font-sans: "Pretendard", -apple-system, sans-serif;
+}
+
+html, body { background: var(--paper); color: var(--ink); }
+body {
+  font-family: "Pretendard", -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
