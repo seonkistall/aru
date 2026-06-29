@@ -1,24 +1,16 @@
 /**
- * The data flywheel (the real moat).
+ * Local feedback storage for calibration.
  *
- * Every scan + user feedback ("정확해요 / 조금 달라요") becomes a LABELED sample:
- * the self-calibrated heuristic features + the user-confirmed/corrected buckets.
- * Accumulate these and you own a proprietary Korean-selfie skin dataset nobody
- * else has — which `ml/calibrate.py` turns into LEARNED thresholds (and later a
- * trained model). The generic ACNE04 model is commodity; THIS data is the moat.
- *
- * v1 stores feature vectors only (no images) in localStorage — privacy-max, no
- * consent needed for biometric storage. Image-crop collection is the opt-in
- * Tier-2 path (design decision D3, path B) wired to Supabase later.
+ * Each confirmed or corrected scan stores only numeric features and user labels.
+ * No image is stored in this v1 path.
  */
 
 export type Attr = "oil" | "redness" | "pores";
 
-// Ordinal label scales (0 = least, 2 = most), matching lib/skin.ts buckets.
 export const SCALES: Record<Attr, [string, string, string]> = {
-  oil: ["거의 없음", "살짝 있음", "있는 편"],
+  oil: ["거의 없음", "조금 있음", "많은 편"],
   redness: ["거의 없음", "약간 보임", "붉은기 있음"],
-  pores: ["매끈한 편", "신경 쓰이는 정도", "도드라짐"],
+  pores: ["매끈한 편", "조금 도드라짐", "도드라진 편"],
 };
 
 export function toOrdinal(attr: Attr, value: string): number {
@@ -27,18 +19,23 @@ export function toOrdinal(attr: Attr, value: string): number {
 }
 
 export type LabeledSample = {
+  id?: string;
   ts: number;
   features: { shine: number; relRedness: number; cov: number; tzoneL: number; cheekL: number };
-  labels: { oil: number; redness: number; pores: number }; // user-confirmed ordinals
+  labels: { oil: number; redness: number; pores: number };
   source: "confirmed" | "corrected";
 };
 
 const KEY = "gyeol_labels_v1";
 
-export function saveLabel(s: LabeledSample) {
+function uid() {
+  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
+}
+
+export function saveLabel(sample: LabeledSample) {
   if (typeof window === "undefined") return;
   const all = getLabels();
-  all.push(s);
+  all.push({ ...sample, id: sample.id ?? uid() });
   localStorage.setItem(KEY, JSON.stringify(all));
 }
 
@@ -55,9 +52,8 @@ export function labelCount(): number {
   return getLabels().length;
 }
 
-/** Download accumulated labels as JSONL — feed this to ml/calibrate.py. */
 export function exportLabels() {
-  const lines = getLabels().map((s) => JSON.stringify(s)).join("\n");
+  const lines = getLabels().map((sample) => JSON.stringify(sample)).join("\n");
   const blob = new Blob([lines], { type: "application/x-ndjson" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -65,4 +61,9 @@ export function exportLabels() {
   a.download = `gyeol-labels-${getLabels().length}.jsonl`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export function clearLabels() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(KEY);
 }

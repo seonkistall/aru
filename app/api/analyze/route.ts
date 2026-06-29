@@ -1,35 +1,27 @@
 import { NextResponse } from "next/server";
 import { efficacyClean } from "@/lib/recommend";
 
-/**
- * Vision skin analysis. Provider-swappable via VISION_PROVIDER:
- *   "gemini" (free tier, AI Studio key) — test/deploy. ⚠ free tier may use uploads
- *            to improve Google's models; fine for a throwaway test, not real users.
- *   "openai" (gpt-4o-mini) — ~0.3원/scan, does NOT train on data. The production path (B).
- *
- * Takes a FACE CROP (consent-gated, processed then discarded — never stored, D3).
- * Qualitative only (no fabricated 수분%); narrative passes the efficacy guardrail.
- */
-
-const OIL = ["거의 없음", "살짝 있음", "있는 편"];
-const REDNESS = ["거의 없음", "약간 보임", "붉은기 있음"];
-const PORES = ["매끈한 편", "신경 쓰이는 정도", "도드라짐"];
+const OIL = ["거의 없음", "조금 있음", "많은 편"] as const;
+const REDNESS = ["거의 없음", "약간 보임", "붉은기 있음"] as const;
+const PORES = ["매끈한 편", "조금 도드라짐", "도드라진 편"] as const;
 
 const SYS =
-  "너는 피부 미용(비의료) 관찰자다. 셀피 크롭을 보고 보이는 것만 정성으로 판독한다. " +
-  "정량 수치(수분%, 나이) 금지. 효능/의학 표현(미백·개선·완화·치료·재생) 금지. " +
-  "각 항목은 주어진 보기 중에서만 고른다. 마지막에 1~2문장 한국어 내러티브(따뜻·정직, 보이는 특징만). " +
-  'JSON으로만: {"oil":"...","redness":"...","pores":"...","narrative":"..."}';
+  "너는 피부 미용 관찰 보조자다. 사진에서 보이는 특징만 정성적으로 고른다. " +
+  "진단, 치료, 효능, 개선, 수치 표현은 금지한다. " +
+  'JSON으로만 {"oil":"...","redness":"...","pores":"...","narrative":"..."} 형태로 답한다.';
+
 const USER =
-  `유분 보기: ${OIL.join(" / ")}\n붉은기 보기: ${REDNESS.join(" / ")}\n모공/결 보기: ${PORES.join(" / ")}\n` +
-  "이 셀피를 보고 위 보기에서 각각 하나씩 고르고 내러티브를 써라.";
+  `유분 선택지: ${OIL.join(" / ")}\n` +
+  `붉은기 선택지: ${REDNESS.join(" / ")}\n` +
+  `모공/결 선택지: ${PORES.join(" / ")}\n` +
+  "각 항목에서 하나씩 고르고, 마지막에 한국어로 1문장 관찰 설명을 쓴다.";
 
 async function callGemini(image: string): Promise<Record<string, unknown> | null> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   const b64 = image.split(",")[1] ?? "";
   const model = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -37,15 +29,15 @@ async function callGemini(image: string): Promise<Record<string, unknown> | null
       generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
     }),
   });
-  if (!r.ok) throw new Error(`gemini ${r.status}`);
-  const j = await r.json();
-  return JSON.parse(j.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
+  if (!response.ok) throw new Error(`gemini ${response.status}`);
+  const json = await response.json();
+  return JSON.parse(json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
 }
 
 async function callOpenAI(image: string): Promise<Record<string, unknown> | null> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -58,9 +50,9 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
       ],
     }),
   });
-  if (!r.ok) throw new Error(`openai ${r.status}`);
-  const j = await r.json();
-  return JSON.parse(j.choices?.[0]?.message?.content ?? "{}");
+  if (!response.ok) throw new Error(`openai ${response.status}`);
+  const json = await response.json();
+  return JSON.parse(json.choices?.[0]?.message?.content ?? "{}");
 }
 
 export async function POST(req: Request) {
@@ -69,15 +61,20 @@ export async function POST(req: Request) {
 
   const provider = process.env.VISION_PROVIDER ?? "gemini";
   try {
-    const p = provider === "openai" ? await callOpenAI(image) : await callGemini(image);
-    if (!p) return NextResponse.json({ ok: false, reason: "no key" }, { status: 503 });
+    const payload = provider === "openai" ? await callOpenAI(image) : await callGemini(image);
+    if (!payload) return NextResponse.json({ ok: false, reason: "no key" }, { status: 503 });
 
-    const pick = (v: unknown, opts: string[]) => (typeof v === "string" && opts.includes(v) ? v : null);
-    const oil = pick(p.oil, OIL);
-    const redness = pick(p.redness, REDNESS);
-    const pores = pick(p.pores, PORES);
+    const pick = <T extends readonly string[]>(value: unknown, opts: T) =>
+      typeof value === "string" && opts.includes(value) ? value : null;
+
+    const oil = pick(payload.oil, OIL);
+    const redness = pick(payload.redness, REDNESS);
+    const pores = pick(payload.pores, PORES);
     if (!oil || !redness || !pores) throw new Error("bad shape");
-    const narrative = typeof p.narrative === "string" && efficacyClean(p.narrative).ok ? p.narrative : "";
+
+    const narrative =
+      typeof payload.narrative === "string" && efficacyClean(payload.narrative).ok ? payload.narrative : "";
+
     return NextResponse.json({ ok: true, oil, redness, pores, narrative, source: provider });
   } catch {
     return NextResponse.json({ ok: false, reason: "vision failed" }, { status: 502 });

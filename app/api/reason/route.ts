@@ -1,49 +1,37 @@
 import { NextResponse } from "next/server";
 import { efficacyClean } from "@/lib/recommend";
 
-/**
- * ① LLM reason naturalization (D4-A): natural FIT copy, grounded in match tags,
- * with the efficacy guardrail applied to the OUTPUT. Falls back to the caller's
- * deterministic template when no key / error / a banned word slips through.
- *
- * Provider-agnostic via OPENAI_API_KEY (Anthropic works the same with a swap).
- * No SDK — plain fetch keeps deps light.
- */
-
 type Item = {
   brand: string;
   name: string;
   category: string;
-  type: string; // 피부 타입
-  matched: string[]; // matched concerns
+  type: string;
+  matched: string[];
   budgetText: string;
   freeOf: string[];
-  fallback: string; // the template reason to return if LLM unavailable
+  fallback: string;
 };
 
 export async function POST(req: Request) {
   const { items } = (await req.json()) as { items: Item[] };
   const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    // graceful fallback — the product still works without an LLM
-    return NextResponse.json({ reasons: items.map((i) => i.fallback), source: "template" });
-  }
+  if (!key) return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
 
   const sys =
-    "너는 한국 화장품 추천 카피라이터다. 각 제품마다 '왜 이 사람에게 맞는지'를 1문장(40자 내외) 한국어로 써라. " +
-    "반드시 적합성만 말한다: 피부 타입·고민·예산·성분 매칭. " +
-    "효능/의학 표현은 절대 금지: 미백, 개선, 완화, 치료, 재생, 항노화, 흉터/트러블 제거 등. " +
-    "광고가 아니라 솔직한 큐레이터 톤. JSON 배열(문자열들)로만 답하라.";
+    "너는 한국어 화장품 추천 카피라이터다. 제품이 왜 사용자 조건에 맞는지 1문장으로 쓴다. " +
+    "진단, 치료, 개선, 완화, 효능, 효과, 보장 표현은 금지한다. JSON 배열 형태로만 답한다.";
 
   const user = items
     .map(
-      (i, n) =>
-        `${n + 1}. ${i.brand} ${i.name} (${i.category}) — 타깃: ${i.type} 피부, 고민 ${i.matched.join("·") || "없음"}, 예산 ${i.budgetText}, 무첨가 ${i.freeOf.join("·") || "없음"}`
+      (item, i) =>
+        `${i + 1}. ${item.brand} ${item.name} (${item.category}) / 피부 ${item.type} / 고민 ${
+          item.matched.join("·") || "없음"
+        } / 예산 ${item.budgetText} / 피하고 싶은 조건 반영 ${item.freeOf.join("·") || "없음"}`
     )
     .join("\n");
 
   try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
@@ -52,21 +40,20 @@ export async function POST(req: Request) {
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: sys },
-          { role: "user", content: `${user}\n\n{"reasons": [...]} 형태로.` },
+          { role: "user", content: `${user}\n\n{"reasons": ["..."]} 형태로 답해.` },
         ],
       }),
     });
-    if (!r.ok) throw new Error(`openai ${r.status}`);
-    const j = await r.json();
-    const parsed = JSON.parse(j.choices?.[0]?.message?.content ?? "{}");
+    if (!response.ok) throw new Error(`openai ${response.status}`);
+    const json = await response.json();
+    const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? "{}");
     const out: string[] = Array.isArray(parsed.reasons) ? parsed.reasons : [];
-    // guardrail per item: any efficacy slip → use the template fallback.
-    const reasons = items.map((it, n) => {
-      const cand = typeof out[n] === "string" ? out[n].trim() : "";
-      return cand && efficacyClean(cand).ok ? cand : it.fallback;
+    const reasons = items.map((item, i) => {
+      const candidate = typeof out[i] === "string" ? out[i].trim() : "";
+      return candidate && efficacyClean(candidate).ok ? candidate : item.fallback;
     });
     return NextResponse.json({ reasons, source: "llm" });
   } catch {
-    return NextResponse.json({ reasons: items.map((i) => i.fallback), source: "template" });
+    return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
   }
 }

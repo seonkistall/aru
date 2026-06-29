@@ -1,107 +1,109 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { recommend, type Survey, type ScanReads, type RecoResult } from "@/lib/recommend";
+import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 
-// Plain-language explanation per read (heuristic, qualitative).
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
-  const M: Record<string, string> = {
-    "oil:거의 없음": "유분기가 거의 안 보여요.",
-    "oil:살짝 있음": "T존에 윤기가 살짝 도네요.",
-    "oil:있는 편": "T존 유분이 도드라지는 편이에요.",
-    "pores:매끈한 편": "결이 비교적 매끈해요.",
-    "pores:신경 쓰이는 정도": "모공·결이 조금 신경 쓰여요.",
-    "pores:도드라짐": "모공·결이 도드라져 보여요.",
-    "redness:거의 없음": "붉은기는 거의 없어요.",
+  const messages: Record<string, string> = {
+    "oil:거의 없음": "T존의 번들거림은 차분한 편이에요.",
+    "oil:조금 있음": "T존에 은은한 유분감이 보여요.",
+    "oil:많은 편": "T존의 윤기가 비교적 도드라져 보여요.",
+    "pores:매끈한 편": "볼 쪽 결은 비교적 매끈해 보여요.",
+    "pores:조금 도드라짐": "볼 쪽 결이 조금 보이는 편이에요.",
+    "pores:도드라진 편": "볼 쪽 모공과 결이 도드라져 보여요.",
+    "redness:거의 없음": "붉은기는 거의 보이지 않아요.",
     "redness:약간 보임": "볼 쪽에 옅은 붉은기가 있어요.",
-    "redness:붉은기 있음": "볼 붉은기가 보이는 편이에요.",
+    "redness:붉은기 있음": "볼 쪽 붉은기가 눈에 띄는 편이에요.",
   };
-  return M[`${attr}:${value}`] ?? "";
+  return messages[`${attr}:${value}`] ?? "";
+}
+
+type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
+
+function loadInitialView(): InitialView | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem("gyeol_survey");
+  if (!raw) return null;
+
+  const survey: Survey = JSON.parse(raw);
+  let scan: ScanReads = null;
+  let reads: SkinReads | null = null;
+  try {
+    const scanRaw = sessionStorage.getItem("gyeol_scan");
+    if (scanRaw) scan = JSON.parse(scanRaw);
+  } catch {}
+  try {
+    const readsRaw = sessionStorage.getItem("gyeol_reads");
+    if (readsRaw) reads = JSON.parse(readsRaw);
+  } catch {}
+
+  return { survey, reads, result: recommend(survey, scan) };
 }
 
 export default function Report() {
   const router = useRouter();
-  const [survey, setSurvey] = useState<Survey | null>(null);
-  const [reads, setReads] = useState<SkinReads | null>(null);
-  const [result, setResult] = useState<RecoResult | null>(null);
+  const [initial] = useState<InitialView | null>(() => loadInitialView());
+  const [result, setResult] = useState<RecoResult | null>(() => initial?.result ?? null);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gyeol_survey");
-    if (!raw) {
+    if (!initial) {
       router.replace("/survey");
       return;
     }
-    const s: Survey = JSON.parse(raw);
-    let scan: ScanReads = null;
-    let full: SkinReads | null = null;
-    try {
-      const sr = sessionStorage.getItem("gyeol_scan");
-      if (sr) scan = JSON.parse(sr);
-    } catch {}
-    try {
-      const fr = sessionStorage.getItem("gyeol_reads");
-      if (fr) full = JSON.parse(fr);
-    } catch {}
-    const res = recommend(s, scan);
-    setSurvey(s);
-    setReads(full);
-    setResult(res);
 
-    // natural-language reasons (falls back to templates if no LLM key)
     let cancelled = false;
-    const items = res.picks.map((p) => ({
-      brand: p.sku.brand,
-      name: p.sku.name,
-      category: p.sku.category,
-      type: s.type,
-      matched: s.concerns.filter((c) => p.sku.concerns.includes(c)),
-      budgetText: `${Math.round(s.budget / 10000)}만원대`,
-      freeOf: p.sku.freeOf,
-      fallback: p.reason,
+    const items = initial.result.picks.map((pick) => ({
+      brand: pick.sku.brand,
+      name: pick.sku.name,
+      category: pick.sku.category,
+      type: initial.survey.type,
+      matched: initial.survey.concerns.filter((concern) => pick.sku.concerns.includes(concern)),
+      budgetText: `${Math.round(initial.survey.budget / 10000)}만원대`,
+      freeOf: pick.sku.freeOf,
+      fallback: pick.reason,
     }));
+
     fetch("/api/reason", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) })
-      .then((r) => r.json())
-      .then((d: { reasons?: string[] }) => {
-        if (cancelled || !d?.reasons) return;
-        setResult((prev) => (prev ? { ...prev, picks: prev.picks.map((p, i) => ({ ...p, reason: d.reasons![i] ?? p.reason })) } : prev));
+      .then((response) => response.json())
+      .then((data: { reasons?: string[] }) => {
+        if (cancelled || !data?.reasons) return;
+        setResult((prev) =>
+          prev ? { ...prev, picks: prev.picks.map((pick, i) => ({ ...pick, reason: data.reasons?.[i] ?? pick.reason })) } : prev
+        );
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [initial, router]);
 
-  if (!survey || !result) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
+  if (!initial || !result) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
 
+  const { survey, reads } = initial;
   const top = result.picks[0];
   const concernText = survey.concerns.slice(0, 2).join("·") || `${survey.type} 피부`;
   const analysisRows = reads
     ? ([
         ["유분", reads.oil, explain("oil", reads.oil.value)],
-        ["모공", reads.pores, explain("pores", reads.pores.value)],
-        ["홍조", reads.redness, explain("redness", reads.redness.value)],
+        ["모공/결", reads.pores, explain("pores", reads.pores.value)],
+        ["붉은기", reads.redness, explain("redness", reads.redness.value)],
         ["전반", reads.overall, ""],
       ] as const)
     : [];
 
   return (
-    <main className="min-h-screen px-5 pt-9" style={{ background: "var(--paper)", paddingBottom: 96 }}>
-      <div className="mx-auto" style={{ maxWidth: 400 }}>
-        <p style={eyebrow}>당신의 피부 리포트</p>
-        <h1 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 30, lineHeight: 1.18, color: "var(--ink)", margin: "8px 0 6px", whiteSpace: "pre-line" }}>
-          {reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}
-        </h1>
-        <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginBottom: reads?.narrative ? 14 : 28 }}>
-          {reads ? "사진과 답변을 함께 읽었어요" : "답변을 바탕으로 정리했어요"}
-        </p>
-        {reads?.narrative && (
-          <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 28 }}>{reads.narrative}</p>
-        )}
+    <main className="min-h-screen px-5 pt-9" style={{ background: "var(--paper)", paddingBottom: 112 }}>
+      <div className="mx-auto" style={{ maxWidth: 420 }}>
+        <p style={eyebrow}>피부 리포트</p>
+        <h1 style={headlineStyle}>{reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}</h1>
+        <p style={subStyle}>{reads ? "사진과 설문을 함께 읽었어요." : "설문 답변을 바탕으로 정리했어요."}</p>
+        {reads?.narrative && <p style={narrativeStyle}>{reads.narrative}</p>}
 
-        {/* ── 1. 피부 분석 ── */}
         {reads && (
           <section style={card}>
             <p style={sectionLabel}>피부 분석</p>
@@ -116,70 +118,85 @@ export default function Report() {
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>
-              * 사진 분석은 지금 대략적 신호예요(조명·화장에 흔들림). 더 정확한 분석으로 업그레이드 예정.
-            </p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>참고용 분석이며 조명과 각도에 따라 달라질 수 있어요.</p>
           </section>
         )}
 
-        {/* ── 2. 그래서 골랐어요 (bridge) ── */}
         <section style={{ margin: "30px 0 24px" }}>
-          <p style={sectionLabel}>그래서 골랐어요</p>
+          <p style={sectionLabel}>추천 기준</p>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
-            {survey.type} 피부 · {concernText} 고민에 맞춰, {Math.round(survey.budget / 10000)}만원대에서
-            {survey.avoid.length ? ` ${survey.avoid.join("·")} 없이 ` : " "}
-            실패 없을 {survey.category} 셋을 골랐어요.
+            {survey.type} 피부, {concernText} 고민, {Math.round(survey.budget / 10000)}만원대 예산에 맞춰 {survey.category}를 골랐어요.
           </p>
         </section>
 
-        {result.note && (
-          <p style={{ fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 }}>{result.note}</p>
-        )}
+        <section style={careCard}>
+          <p style={sectionLabel}>후속 연결</p>
+          <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 6px" }}>
+            구매와 상담까지 이어볼까요?
+          </h2>
+          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: 14 }}>
+            추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.
+          </p>
+          <Link href="/care" style={careBtn}>구매/상담 연결 보기</Link>
+        </section>
 
-        {/* ── 3. 추천 ── */}
-        {result.picks.map((p, i) => (
-          <div key={p.sku.id}>
-            <div style={{ width: "100%", height: 150, borderRadius: 12, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-              <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 13, color: "var(--faint)" }}>{p.sku.category} 이미지</span>
-            </div>
-            <div style={tag}>{p.toneLabel} · {p.sku.category}</div>
-            <div style={{ fontFamily: "var(--font-serif, serif)", fontSize: 21, fontWeight: 500, color: "var(--ink)", margin: "8px 0 9px" }}>
-              <span style={{ color: "var(--muted)", fontSize: 14, fontWeight: 400 }}>{p.sku.brand} </span>
-              {p.sku.name}
-            </div>
-            <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12, lineHeight: 1.55 }}>{p.reason}</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center", marginBottom: 14 }}>
-              {p.matchedIngredients.map((ing) => (
-                <span key={ing} style={{ background: "var(--plum-soft)", color: "var(--plum)", fontSize: 12, borderRadius: 9999, padding: "4px 11px" }}>{ing} 함유</span>
-              ))}
-              {p.avoidedClear && survey.avoid.length > 0 && <span style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 600 }}>회피 성분 없음 ✓</span>}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{p.sku.price.toLocaleString()}원</span>
-              <a href={p.sku.buyUrl} onClick={() => recordPurchase({ sku_id: p.sku.id, name: p.sku.name, price: p.sku.price })} style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none" }}>보러가기 →</a>
-            </div>
-            {i < result.picks.length - 1 && <div style={{ height: 1, background: "var(--line)", margin: "34px 0" }} />}
-          </div>
+        {result.note && <p style={noteStyle}>{result.note}</p>}
+        {result.picks.map((pick, i) => (
+          <ProductBlock key={pick.sku.id} pick={pick} last={i === result.picks.length - 1} />
         ))}
       </div>
 
-      {/* sticky buy bar */}
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px", boxShadow: "0 -8px 24px rgba(40,30,20,.06)" }}>
-        <div className="mx-auto" style={{ maxWidth: 400, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontFeatureSettings: '"tnum"', fontWeight: 700, fontSize: 16, color: "var(--ink)" }}>
-            {top.sku.price.toLocaleString()}원
-            <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>{top.sku.name}</span>
+      {top && (
+        <div style={stickyBar}>
+          <div className="mx-auto" style={{ maxWidth: 420, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <a href={top.sku.buyUrl} onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })} style={buyBtn}>
+              바로 검색
+            </a>
+            <Link href="/care" style={stickyCareBtn}>구매/상담 연결</Link>
           </div>
-          <a href={top.sku.buyUrl} onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })} style={{ background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "14px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none" }}>
-            구매하러 가기
-          </a>
         </div>
-      </div>
+      )}
     </main>
   );
 }
 
-const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 600 };
-const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 600 };
-const tag: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 600 };
-const card: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: "20px 20px 18px" };
+function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last: boolean }) {
+  return (
+    <div>
+      <div style={imageBox}><span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 13, color: "var(--faint)" }}>{pick.sku.category}</span></div>
+      <div style={tag}>{pick.toneLabel} · {pick.sku.category}</div>
+      <div style={{ fontFamily: "var(--font-serif, serif)", fontSize: 21, fontWeight: 600, color: "var(--ink)", margin: "8px 0 9px" }}>
+        <span style={{ color: "var(--muted)", fontSize: 14, fontWeight: 500 }}>{pick.sku.brand} </span>
+        {pick.sku.name}
+      </div>
+      <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12, lineHeight: 1.55 }}>{pick.reason}</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center", marginBottom: 14 }}>
+        {pick.matchedIngredients.map((ingredient) => (
+          <span key={ingredient} style={pill}>{ingredient}</span>
+        ))}
+        {pick.avoidedClear && <span style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 700 }}>피하고 싶은 성분 반영</span>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{pick.sku.price.toLocaleString()}원</span>
+        <a href={pick.sku.buyUrl} onClick={() => recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price })} style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none", fontWeight: 700 }}>보러가기</a>
+      </div>
+      {!last && <div style={{ height: 1, background: "var(--line)", margin: "34px 0" }} />}
+    </div>
+  );
+}
+
+const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
+const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
+const tag: React.CSSProperties = { fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
+const headlineStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 30, lineHeight: 1.18, color: "var(--ink)", margin: "8px 0 6px", whiteSpace: "pre-line" };
+const subStyle: React.CSSProperties = { fontSize: 13.5, color: "var(--text-muted)", marginBottom: 14 };
+const narrativeStyle: React.CSSProperties = { fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 28 };
+const card: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px" };
+const careCard: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px", marginBottom: 28 };
+const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
+const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
+const imageBox: React.CSSProperties = { width: "100%", height: 150, borderRadius: 8, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 };
+const pill: React.CSSProperties = { background: "var(--plum-soft)", color: "var(--plum)", fontSize: 12, borderRadius: 8, padding: "4px 10px", fontWeight: 700 };
+const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px", boxShadow: "0 -8px 24px rgba(40,30,20,.06)" };
+const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
+const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
