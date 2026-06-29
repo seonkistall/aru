@@ -1,19 +1,15 @@
 import type { Metadata } from "next";
-import { Fraunces, Gowun_Batang } from "next/font/google";
+import { Nanum_Pen_Script } from "next/font/google";
 import "./globals.css";
+import { SketchDefs } from "./components/sketch";
 
-const fraunces = Fraunces({
+// Hand-drawn pen handwriting — the xiaohei "spontaneous sketch on white paper" voice.
+const hand = Nanum_Pen_Script({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-fraunces",
+  weight: ["400"],
+  variable: "--font-hand",
   display: "swap",
-});
-
-const gowun = Gowun_Batang({
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  variable: "--font-gowun",
-  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -25,8 +21,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className={`${fraunces.variable} ${gowun.variable} h-full antialiased`}>
-      <body className="min-h-full">{children}</body>
+    <html lang="ko" className={`${hand.variable} h-full antialiased`}>
+      <body className="min-h-full">
+        <SketchDefs />
+        {children}
+      </body>
     </html>
   );
 }

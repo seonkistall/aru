@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyzeSkin, type SkinReads } from "@/lib/skin";
 import { saveLabel, toOrdinal, SCALES, exportLabels, labelCount, type Attr } from "@/lib/labels";
+import { Xiaohei } from "../components/sketch";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 
@@ -132,7 +133,7 @@ export default function Scan() {
   }
 
   return (
-    <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
+    <main className="min-h-screen px-5 py-9" style={{ background: "#fff", color: "var(--ink)" }}>
       <div className="mx-auto" style={{ maxWidth: 400 }}>
         <p style={eyebrow}>결 · 피부 무드 체크</p>
         <h1 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 4px" }}>
@@ -149,9 +150,10 @@ export default function Scan() {
               position: "relative",
               width: "100%",
               aspectRatio: "3 / 4",
-              borderRadius: 16,
+              borderRadius: 8,
               overflow: "hidden",
-              background: "var(--surface-tint)",
+              border: "2px solid var(--ink)",
+              background: "#f6f6f6",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -171,9 +173,8 @@ export default function Scan() {
             />
             {phase === "init" && (
               <Center>
-                <button onClick={startCamera} style={primaryBtn}>
-                  카메라 켜기
-                </button>
+                <Xiaohei size={118} pose="magnify" bob />
+                <button onClick={startCamera} style={{ ...primaryBtn, marginTop: 8 }}>카메라 켜기</button>
               </Center>
             )}
             {phase === "analyzing" && <Scanning />}
@@ -269,9 +270,9 @@ function ResultCard({ reads }: { reads: SkinReads }) {
       style={{
         width: "100%",
         background: "var(--surface)",
-        borderRadius: 16,
+        border: "1px solid var(--line)",
+        borderRadius: 8,
         padding: "30px 26px",
-        boxShadow: "0 8px 24px rgba(40,30,20,.10)",
         animation: "gyeol-fade-up .5s ease-out both",
       }}
     >
@@ -369,11 +370,11 @@ const feedBtn: React.CSSProperties = {
   flex: 1,
   background: "transparent",
   color: "var(--ink)",
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  padding: "12px 16px",
-  fontSize: 14,
-  fontWeight: 600,
+  border: "2px solid var(--ink)",
+  borderRadius: 4,
+  padding: "9px 16px",
+  fontFamily: "var(--font-hand)",
+  fontSize: 20,
   cursor: "pointer",
 };
 const stepBtn: React.CSSProperties = {
@@ -388,30 +389,28 @@ const stepBtn: React.CSSProperties = {
 };
 
 const eyebrow: React.CSSProperties = {
-  fontSize: 11,
-  letterSpacing: "0.16em",
-  textTransform: "uppercase",
-  color: "var(--bronze)",
-  fontWeight: 600,
+  fontFamily: "var(--font-hand)",
+  fontSize: 20,
+  color: "var(--muted)",
 };
 const primaryBtn: React.CSSProperties = {
-  background: "var(--plum)",
-  color: "var(--on-plum)",
+  background: "var(--ink)",
+  color: "#fff",
   border: "none",
-  borderRadius: 8,
-  padding: "14px 22px",
-  fontSize: 15,
-  fontWeight: 600,
+  borderRadius: 4,
+  padding: "12px 24px",
+  fontFamily: "var(--font-hand)",
+  fontSize: 23,
   cursor: "pointer",
 };
 const outlineBtn: React.CSSProperties = {
   background: "transparent",
   color: "var(--ink)",
-  border: "1px solid var(--ink)",
-  borderRadius: 8,
-  padding: "13px 22px",
-  fontSize: 15,
-  fontWeight: 600,
+  border: "2px solid var(--ink)",
+  borderRadius: 4,
+  padding: "11px 22px",
+  fontFamily: "var(--font-hand)",
+  fontSize: 23,
   cursor: "pointer",
 };
 const ghostLink: React.CSSProperties = { color: "var(--text-muted)", fontSize: 13, marginTop: 12, textDecoration: "underline" };
@@ -439,7 +438,7 @@ function Scanning() {
         }}
       />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 18 }}>
-        <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)", background: "rgba(247,243,236,.72)", padding: "5px 14px", borderRadius: 9999 }}>
+        <span style={{ fontFamily: "var(--font-hand)", fontSize: 22, color: "var(--ink)", background: "rgba(255,255,255,.85)", padding: "3px 16px", borderRadius: 9999 }}>
           피부 결을 읽는 중…
         </span>
       </div>

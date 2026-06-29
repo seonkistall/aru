@@ -12,10 +12,10 @@ export default function Checkin() {
     getPurchases().then(setPurchases);
   }, []);
 
-  if (purchases === null) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
+  if (purchases === null) return <main style={{ minHeight: "100vh", background: "transparent" }} />;
 
   return (
-    <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
+    <main className="min-h-screen px-5 py-9" style={{ background: "transparent" }}>
       <div className="mx-auto" style={{ maxWidth: 400 }}>
         <p style={eyebrow}>결 · 그 뒤 어땠어요</p>
         <h1 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 6px" }}>

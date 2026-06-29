@@ -53,14 +53,14 @@ export default function Reco() {
   }, [router]);
 
   if (!result || !survey) {
-    return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
+    return <main style={{ minHeight: "100vh", background: "transparent" }} />;
   }
 
   const top = result.picks[0];
   const criteria = [survey.type, ...survey.concerns.slice(0, 2), `${Math.round(survey.budget / 10000)}만원대`].join(" · ");
 
   return (
-    <main className="min-h-screen px-5 pt-9" style={{ background: "var(--paper)", paddingBottom: 92 }}>
+    <main className="min-h-screen px-5 pt-9" style={{ background: "transparent", paddingBottom: 92 }}>
       <div className="mx-auto" style={{ maxWidth: 400 }}>
         <p style={eyebrow}>당신을 위해 고른 셋</p>
         <h1 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 29, lineHeight: 1.2, color: "var(--ink)", margin: "8px 0 6px" }}>

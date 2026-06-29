@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { recommend, type Survey, type ScanReads, type RecoResult } from "@/lib/recommend";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
+import { Xiaohei, SketchBox } from "../components/sketch";
 
 // Plain-language explanation per read (heuristic, qualitative).
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
@@ -74,7 +75,7 @@ export default function Report() {
     };
   }, [router]);
 
-  if (!survey || !result) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
+  if (!survey || !result) return <main style={{ minHeight: "100vh", background: "#fff" }} />;
 
   const top = result.picks[0];
   const concernText = survey.concerns.slice(0, 2).join("·") || `${survey.type} 피부`;
@@ -88,7 +89,7 @@ export default function Report() {
     : [];
 
   return (
-    <main className="min-h-screen px-5 pt-9" style={{ background: "var(--paper)", paddingBottom: 96 }}>
+    <main className="min-h-screen px-5 pt-9" style={{ background: "#fff", color: "var(--ink)", paddingBottom: 96 }}>
       <div className="mx-auto" style={{ maxWidth: 400 }}>
         <p style={eyebrow}>당신의 피부 리포트</p>
         <h1 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 30, lineHeight: 1.18, color: "var(--ink)", margin: "8px 0 6px", whiteSpace: "pre-line" }}>
@@ -103,7 +104,7 @@ export default function Report() {
 
         {/* ── 1. 피부 분석 ── */}
         {reads && (
-          <section style={card}>
+          <SketchBox style={{ padding: "20px 20px 18px", marginBottom: 30 }}>
             <p style={sectionLabel}>피부 분석</p>
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 10 }}>
               {analysisRows.map(([label, read, note]) => (
@@ -119,12 +120,15 @@ export default function Report() {
             <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>
               * 사진 분석은 지금 대략적 신호예요(조명·화장에 흔들림). 더 정확한 분석으로 업그레이드 예정.
             </p>
-          </section>
+          </SketchBox>
         )}
 
         {/* ── 2. 그래서 골랐어요 (bridge) ── */}
         <section style={{ margin: "30px 0 24px" }}>
-          <p style={sectionLabel}>그래서 골랐어요</p>
+          <div className="flex items-center justify-between">
+            <p style={sectionLabel}>그래서 골랐어요</p>
+            <Xiaohei size={58} pose="funnel" />
+          </div>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
             {survey.type} 피부 · {concernText} 고민에 맞춰, {Math.round(survey.budget / 10000)}만원대에서
             {survey.avoid.length ? ` ${survey.avoid.join("·")} 없이 ` : " "}
@@ -139,24 +143,27 @@ export default function Report() {
         {/* ── 3. 추천 ── */}
         {result.picks.map((p, i) => (
           <div key={p.sku.id}>
-            <div style={{ width: "100%", height: 150, borderRadius: 12, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-              <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 13, color: "var(--faint)" }}>{p.sku.category} 이미지</span>
-            </div>
+            <SketchBox style={{ height: 178, marginBottom: 16 }}>
+              <div className="flex flex-col items-center justify-center" style={{ height: 178 }}>
+                <Xiaohei size={98} pose="carry" />
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 18, color: "var(--muted)", marginTop: 2 }}>{p.sku.brand}</span>
+              </div>
+            </SketchBox>
             <div style={tag}>{p.toneLabel} · {p.sku.category}</div>
-            <div style={{ fontFamily: "var(--font-serif, serif)", fontSize: 21, fontWeight: 500, color: "var(--ink)", margin: "8px 0 9px" }}>
-              <span style={{ color: "var(--muted)", fontSize: 14, fontWeight: 400 }}>{p.sku.brand} </span>
+            <div style={{ fontFamily: "var(--font-ko-serif)", fontSize: 25, color: "var(--ink)", margin: "4px 0 9px", lineHeight: 1.15 }}>
+              <span style={{ color: "var(--muted)", fontSize: 18 }}>{p.sku.brand} </span>
               {p.sku.name}
             </div>
             <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12, lineHeight: 1.55 }}>{p.reason}</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center", marginBottom: 14 }}>
               {p.matchedIngredients.map((ing) => (
-                <span key={ing} style={{ background: "var(--plum-soft)", color: "var(--plum)", fontSize: 12, borderRadius: 9999, padding: "4px 11px" }}>{ing} 함유</span>
+                <span key={ing} style={{ fontFamily: "var(--font-hand)", fontSize: 17, lineHeight: 1.1, color: "var(--ink)", border: "1.6px solid var(--ink)", borderRadius: 4, padding: "2px 11px" }}>{ing} 함유</span>
               ))}
-              {p.avoidedClear && survey.avoid.length > 0 && <span style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 600 }}>회피 성분 없음 ✓</span>}
+              {p.avoidedClear && survey.avoid.length > 0 && <span style={{ fontFamily: "var(--font-hand)", fontSize: 18, color: "var(--success)" }}>회피 성분 없음 ✓</span>}
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{p.sku.price.toLocaleString()}원</span>
-              <a href={p.sku.buyUrl} onClick={() => recordPurchase({ sku_id: p.sku.id, name: p.sku.name, price: p.sku.price })} style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none" }}>보러가기 →</a>
+              <span style={{ fontFamily: "var(--font-hand)", fontSize: 25, color: "var(--ink)" }}>{p.sku.price.toLocaleString()}원</span>
+              <a href={p.sku.buyUrl} onClick={() => recordPurchase({ sku_id: p.sku.id, name: p.sku.name, price: p.sku.price })} style={{ fontFamily: "var(--font-hand)", fontSize: 21, color: "var(--ink)", textDecoration: "none" }}>보러가기 <span style={{ color: "var(--orange)" }}>→</span></a>
             </div>
             {i < result.picks.length - 1 && <div style={{ height: 1, background: "var(--line)", margin: "34px 0" }} />}
           </div>
@@ -164,14 +171,19 @@ export default function Report() {
       </div>
 
       {/* sticky buy bar */}
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px", boxShadow: "0 -8px 24px rgba(40,30,20,.06)" }}>
+      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, background: "#fff", borderTop: "1.5px solid var(--ink)", padding: "11px 16px" }}>
         <div className="mx-auto" style={{ maxWidth: 400, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontFeatureSettings: '"tnum"', fontWeight: 700, fontSize: 16, color: "var(--ink)" }}>
+          <div style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)", lineHeight: 1 }}>
             {top.sku.price.toLocaleString()}원
-            <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>{top.sku.name}</span>
+            <span style={{ display: "block", fontSize: 16, color: "var(--muted)" }}>{top.sku.name}</span>
           </div>
-          <a href={top.sku.buyUrl} onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })} style={{ background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "14px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none" }}>
-            구매하러 가기
+          <a href={top.sku.buyUrl} onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })} style={{ textDecoration: "none" }}>
+            <SketchBox filled color="var(--ink)" style={{ padding: "11px 22px" }}>
+              <span className="flex items-center" style={{ gap: 8 }}>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 23, color: "#fff" }}>구매하러 가기</span>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 23, color: "var(--orange)" }}>→</span>
+              </span>
+            </SketchBox>
           </a>
         </div>
       </div>
@@ -179,7 +191,6 @@ export default function Report() {
   );
 }
 
-const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 600 };
-const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 600 };
-const tag: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 600 };
-const card: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: "20px 20px 18px" };
+const eyebrow: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--muted)" };
+const sectionLabel: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 23, color: "var(--ink)" };
+const tag: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 18, color: "var(--plum)" };

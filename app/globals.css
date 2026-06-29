@@ -1,23 +1,29 @@
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
 @import "tailwindcss";
 
-/* ── DESIGN.md tokens (kbeauty-luxe-editorial) ─────────────────────────── */
+/* ── DESIGN.md tokens (xiaohei — 순백 손그림 + 절제된 주석색) ──────────────── */
 :root {
-  --ink: #221e1a;
-  --ink-soft: #4a443c;
-  --text-muted: #6f665d;   /* a11y: small-text muted (≥4.5:1 on paper) */
-  --muted: #8b8178;        /* decorative / large only */
-  --faint: #b3a795;
-  --paper: #f7f3ec;
-  --surface: #fcfaf6;
-  --surface-tint: #efe6de;
-  --plum: #6b2d4a;
-  --plum-press: #54203a;
-  --plum-soft: #ebdce3;
-  --bronze: #a8865a;
-  --line: #e7dfd4;
+  --ink: #1a1a1a;          /* black line art / main */
+  --ink-soft: #3d3d3d;
+  --text-muted: #6e6e6e;
+  --muted: #8e8e8e;        /* quiet labels */
+  --faint: #b4b4b4;
+  --paper: #ffffff;        /* pure white — NO texture/gradient/shadow */
+  --surface: #ffffff;
+  --surface-tint: #f5f5f5; /* used sparingly */
+  --stroke: #1a1a1a;       /* hand-drawn black strokes (SVG) */
+  --line: #dcdcdc;         /* quiet structure (recedes) */
+  /* annotation colors — restrained, prefer less */
+  --plum: #e0382c;         /* RED: key / problem / result (name kept for compat) */
+  --plum-press: #c22e23;
+  --plum-soft: #fbe6e4;
+  --orange: #ef8a1f;       /* flow / arrows / A→B */
+  --blue: #2f6de0;         /* AI / system / 2nd-layer notes */
+  --bronze: #8e8e8e;       /* labels = quiet */
+  --rose: #f5f5f5;
+  --peach: #f5f5f5;
   --on-plum: #ffffff;
-  --success: #4f6b52;
+  --success: #2f7d4f;
 }
 
 @theme inline {
@@ -30,16 +36,20 @@
   --color-surface-tint: var(--surface-tint);
   --color-plum: var(--plum);
   --color-plum-soft: var(--plum-soft);
-  --color-bronze: var(--bronze);
+  --color-orange: var(--orange);
+  --color-blue: var(--blue);
   --color-line: var(--line);
   --color-success: var(--success);
-  --font-serif: var(--font-fraunces), var(--font-gowun), serif;
-  --font-ko-serif: var(--font-gowun), var(--font-fraunces), serif;
+  /* repoint all display roles to the hand font; body stays Pretendard */
+  --font-serif: var(--font-hand), cursive;
+  --font-ko-serif: var(--font-hand), cursive;
+  --font-mono: var(--font-hand), cursive;
   --font-sans: "Pretendard", -apple-system, sans-serif;
 }
 
 @keyframes gyeol-scan { 0% { top: 6%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 94%; opacity: 0; } }
 @keyframes gyeol-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes gyeol-bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
 
 html, body { background: var(--paper); color: var(--ink); }
 body {
