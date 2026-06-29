@@ -78,13 +78,28 @@ def main() -> None:
         image_path.write_bytes(parse_data_url(row["image"]))
         labels = row["labels"]
         features = row.get("features", {})
+        meta = row.get("meta") or {}
+        quality = meta.get("quality") or {}
         rows.append({
+            "id": image_id,
             "image": str(image_path.relative_to(args.out)),
             "oil": labels["oil"],
             "redness": labels["redness"],
             "pores": labels["pores"],
             "source": row.get("source", "unknown"),
             "ts": row.get("ts", ""),
+            "participant_id": meta.get("participantId", ""),
+            "session_id": meta.get("sessionId", ""),
+            "round": meta.get("round", ""),
+            "device_id": meta.get("deviceId", ""),
+            "reviewer_id": meta.get("reviewerId", ""),
+            "capture_mode": meta.get("captureMode", ""),
+            "quality_score": quality.get("score", ""),
+            "quality_reject": quality.get("rejectReason", ""),
+            "face_size": quality.get("faceSize", ""),
+            "brightness_mean": quality.get("brightnessMean", ""),
+            "hot_ratio": quality.get("hotRatio", ""),
+            "dark_ratio": quality.get("darkRatio", ""),
             "ita": f"{ita_from_image(image_path):.3f}",
             "shine": features.get("shine", ""),
             "relRedness": features.get("relRedness", ""),

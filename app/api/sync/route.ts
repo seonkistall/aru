@@ -86,6 +86,9 @@ export async function POST(request: Request) {
         granted: event.granted,
         version: event.version,
         consent_text: event.text,
+        participant_id: event.participantId ?? null,
+        session_id: event.sessionId ?? null,
+        metadata: { source: "ops-local" },
         ts: event.ts,
       })),
       { onConflict: "id" }
@@ -98,15 +101,25 @@ export async function POST(request: Request) {
       payload.pilotNotes.map((note) => ({
         id: note.id,
         participant: note.participant,
+        participant_id: note.participantId ?? note.participant,
+        session_id: note.sessionId ?? null,
+        round: note.round ?? null,
+        device_id: note.deviceId ?? null,
+        reviewer_id: note.reviewerId ?? null,
+        status: note.status ?? null,
         browser: note.browser,
         lighting: note.lighting,
         makeup: note.makeup,
         glasses: note.glasses,
         hair_cover: note.hairCover,
         scan_completed: note.scanCompleted,
+        label_complete: note.labelComplete ?? false,
+        second_review_needed: note.secondReviewNeeded ?? false,
+        excluded_reason: note.excludedReason ?? null,
         consent_ai: note.consentAi,
         consent_crop: note.consentCrop,
         notes: note.notes,
+        metadata: { source: "ops-local" },
         ts: note.ts,
       })),
       { onConflict: "id" }
@@ -121,6 +134,11 @@ export async function POST(request: Request) {
         features: sample.features,
         labels: sample.labels,
         source: sample.source,
+        participant_id: sample.meta?.participantId ?? null,
+        session_id: sample.meta?.sessionId ?? null,
+        capture_mode: sample.meta?.captureMode ?? null,
+        quality: sample.meta?.quality ?? null,
+        metadata: sample.meta ?? null,
         ts: sample.ts,
       })),
       { onConflict: "client_id" }
@@ -129,10 +147,7 @@ export async function POST(request: Request) {
   }
 
   const bucket = process.env.SUPABASE_CROP_BUCKET;
-  const cropConsent = latestConsentGranted(payload, "learning_crop");
-  if (payload.cropSamples.length && !cropConsent) {
-    warnings.push("Crop samples were not uploaded because latest learning_crop consent is not granted.");
-  } else if (payload.cropSamples.length && !bucket) {
+  if (payload.cropSamples.length && !bucket) {
     warnings.push("Crop samples were not uploaded because SUPABASE_CROP_BUCKET is not configured.");
   } else if (payload.cropSamples.length && bucket) {
     const uploaded = await uploadCropSamples(supabase, bucket, payload);
@@ -155,8 +170,9 @@ function validatePayload(payload: GyeolSyncPayload) {
   const warnings: string[] = [];
   if (payload.labels.length < 30) warnings.push("Fewer than 30 labels: use threshold calibration only.");
   if (payload.cropSamples.length < 30) warnings.push("Fewer than 30 crop samples: skip CNN training.");
-  if (payload.cropSamples.length && !latestConsentGranted(payload, "learning_crop")) {
-    warnings.push("Latest learning_crop consent is not granted; crop upload will be blocked.");
+  const missingConsent = payload.cropSamples.filter((sample) => !hasCropConsent(payload, sample)).length;
+  if (missingConsent) {
+    warnings.push(`${missingConsent} crop samples do not have matching learning_crop consent and will be skipped.`);
   }
   if (!payload.pilotNotes.length) warnings.push("No pilot notes included; subgroup/device analysis will be weak.");
   return warnings;
@@ -204,6 +220,11 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
   if (!supabase) return { count, warnings, errors: ["Supabase admin client unavailable."] };
 
   for (const sample of payload.cropSamples) {
+    if (!hasCropConsent(payload, sample)) {
+      warnings.push(`Skipping crop ${sample.id}: no matching learning_crop consent.`);
+      continue;
+    }
+
     const parsed = parseImageDataUrl(sample.image);
     if (!parsed) {
       warnings.push(`Skipping crop ${sample.id}: unsupported image data URL.`);
@@ -211,7 +232,7 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
     }
 
     const objectPath = `pilot-crops/${new Date(sample.ts).toISOString().slice(0, 10)}/${sample.id}.${parsed.ext}`;
-    const consentEvent = latestConsentEvent(payload, "learning_crop");
+    const consentEvent = latestConsentEvent(payload, "learning_crop", sample);
     const upload = await supabase.storage.from(bucket).upload(objectPath, parsed.buffer, {
       contentType: parsed.contentType,
       upsert: false,
@@ -230,6 +251,11 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
         features: sample.features,
         labels: sample.labels,
         source: sample.source,
+        participant_id: sample.meta?.participantId ?? null,
+        session_id: sample.meta?.sessionId ?? null,
+        capture_mode: sample.meta?.captureMode ?? null,
+        quality: sample.meta?.quality ?? null,
+        metadata: sample.meta ?? null,
         consent_event_id: consentEvent?.id ?? null,
         consent_version: consentEvent?.version ?? null,
         retention_until: retentionUntil(sample.ts),
@@ -249,9 +275,22 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
   return { count, warnings, errors };
 }
 
-function latestConsentEvent(payload: GyeolSyncPayload, kind: "ai_analysis" | "learning_crop") {
-  const events = payload.consentEvents.filter((event) => event.kind === kind);
+function latestConsentEvent(payload: GyeolSyncPayload, kind: "ai_analysis" | "learning_crop", sample?: GyeolSyncPayload["cropSamples"][number]) {
+  const events = payload.consentEvents.filter((event) => {
+    if (event.kind !== kind) return false;
+    if (sample?.meta?.participantId && event.participantId !== sample.meta.participantId) return false;
+    if (sample?.meta?.sessionId && event.sessionId !== sample.meta.sessionId) return false;
+    return true;
+  });
   return events.length ? events[events.length - 1] : null;
+}
+
+function hasCropConsent(payload: GyeolSyncPayload, sample: GyeolSyncPayload["cropSamples"][number]) {
+  const scope = {
+    participantId: sample.meta?.participantId,
+    sessionId: sample.meta?.sessionId,
+  };
+  return latestConsentGranted(payload, "learning_crop", scope);
 }
 
 function retentionUntil(ts: number) {

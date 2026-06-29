@@ -27,6 +27,9 @@ Collect:
 
 - `gyeol-labels` from all users who confirm/correct results.
 - `gyeol-crop-samples` only from users who opted into learning crop storage.
+- Participant/session IDs from `/pilot` before scanning (`P001` through `P030`).
+- Capture quality metadata: mode, score, center offset, face size, brightness,
+  glare ratio, dark ratio, and rejection reason when present.
 - Device type, browser, lighting condition, makeup state, glasses/hair obstruction notes.
 - Pilot metadata through `/pilot`, then export `gyeol-pilot-notes`.
 - Consent event history through `/privacy` or `/ops`, then export `gyeol-consent-events`.
@@ -61,6 +64,14 @@ python ml/evaluate_dataset.py ml/data/crops/manifest.csv
 - 100-299 crop samples: dry-run MobileNetV3-small and inspect confusion by label.
 - 300-500 crop samples: first meaningful MobileNetV3-small training and ONNX export.
 - 500+ crop samples: start subgroup analysis by skin tone proxy, lighting, device, and makeup state.
+
+Do not evaluate by random image rows when participants have multiple scans.
+`train_visible_attributes.py` uses participant-grouped validation when
+`participant_id` exists in the crop manifest, then falls back to random row split
+only for legacy manifests.
+
+Local browser crop storage keeps the latest 120 opted-in crops. For larger pilots,
+sync to the private Supabase bucket after deletion/withdrawal procedures are ready.
 
 The `/ops` dashboard mirrors these bands so the product team can see the next
 ML action without opening a terminal.

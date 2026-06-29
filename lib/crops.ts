@@ -6,11 +6,12 @@ export type CropSample = {
   labels: LabeledSample["labels"];
   features: LabeledSample["features"];
   source: LabeledSample["source"];
+  meta?: LabeledSample["meta"];
   ts: number;
 };
 
 const KEY = "gyeol_crop_samples_v1";
-const MAX_LOCAL_CROPS = 25;
+const MAX_LOCAL_CROPS = 120;
 
 function uid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);

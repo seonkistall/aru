@@ -70,11 +70,27 @@ responsive mode.
 ## Pilot logging
 
 - Open `/pilot` after each participant session.
-- Record participant code, browser/device, lighting, makeup, glasses, hair obstruction, consent state, and notes.
+- Use roster IDs `P001` through `P030`.
+- Save the participant session before opening `/scan`; labels, crops, consent
+  events, and sync payloads use this participant/session link.
+- Record browser/device, lighting, makeup, glasses, hair obstruction, consent
+  state, reviewer ID, label completion, second-review status, exclusion reason,
+  and notes.
 - Export `gyeol-pilot-notes` at the end of the session.
 - Keep pilot notes separate from image crops unless the participant opted into learning crop storage.
 - Open `/ops` during and after the session to check label count, crop count,
   pilot completion rate, consent event count, and ML readiness band.
+
+## Mobile permission checklist
+
+- Test on HTTPS or localhost; real mobile browsers block camera APIs on insecure origins.
+- On iPhone Safari, test first permission grant, permission denial, page reload,
+  tab background/foreground, and Settings reset.
+- On Android Chrome, test first permission grant, permission denial, camera
+  already in use, and browser site-settings reset.
+- Record whether `facingMode: user` selected the expected front camera.
+- Capture should be blocked if the real captured frame fails center, distance,
+  brightness, glare, or required steadiness checks.
 
 ## Known non-goals for v1
 

@@ -6,6 +6,46 @@
  */
 
 export type Attr = "oil" | "redness" | "pores";
+export type LabelConfidence = "low" | "medium" | "high";
+
+export type CaptureQualityMeta = {
+  version: "2026-06-29.quality.v1";
+  score: number;
+  face: boolean;
+  centered: boolean;
+  distance: boolean;
+  brightness: boolean;
+  noGlare: boolean;
+  steady: boolean;
+  centerOffsetX?: number;
+  centerOffsetY?: number;
+  faceSize?: number;
+  brightnessMean?: number;
+  darkRatio?: number;
+  hotRatio?: number;
+  movement?: number;
+  rejectReason?: string;
+};
+
+export type SampleMeta = {
+  schemaVersion: "2026-06-29.label.v2";
+  participantId?: string;
+  sessionId?: string;
+  round?: string;
+  deviceId?: string;
+  reviewerId?: string;
+  scanIndex?: number;
+  captureMode?: string;
+  quality?: CaptureQualityMeta;
+  consentVersion?: string;
+  consentEventIds?: {
+    aiAnalysis?: string;
+    learningCrop?: string;
+  };
+  labelConfidence?: LabelConfidence;
+  correctionFlags?: Partial<Record<Attr, boolean>>;
+  ungradable?: boolean;
+};
 
 export const SCALES: Record<Attr, [string, string, string]> = {
   oil: ["거의 없음", "조금 있음", "많은 편"],
@@ -24,6 +64,7 @@ export type LabeledSample = {
   features: { shine: number; relRedness: number; cov: number; tzoneL: number; cheekL: number };
   labels: { oil: number; redness: number; pores: number };
   source: "confirmed" | "corrected";
+  meta?: SampleMeta;
 };
 
 const KEY = "gyeol_labels_v1";

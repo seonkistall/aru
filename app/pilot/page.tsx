@@ -1,100 +1,208 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { clearPilotNotes, exportPilotNotes, getPilotNotes, savePilotNote, type PilotBrowser, type PilotLighting } from "@/lib/pilot";
+import { useMemo, useState } from "react";
+import {
+  PILOT_PARTICIPANT_IDS,
+  clearPilotNotes,
+  exportPilotNotes,
+  getCurrentPilotSession,
+  getPilotNotes,
+  isPilotParticipantId,
+  normalizeParticipantId,
+  savePilotNote,
+  type PilotBrowser,
+  type PilotLighting,
+  type PilotStatus,
+} from "@/lib/pilot";
 
 export default function PilotPage() {
-  const [participant, setParticipant] = useState("");
+  const current = getCurrentPilotSession();
+  const [participant, setParticipant] = useState(current?.participantId || "P001");
+  const [round, setRound] = useState(current?.round || "pilot-1");
+  const [deviceId, setDeviceId] = useState(current?.deviceId || "");
+  const [reviewerId, setReviewerId] = useState(current?.reviewerId || "");
+  const [status, setStatus] = useState<PilotStatus>("planned");
   const [browser, setBrowser] = useState<PilotBrowser>("ios-safari");
   const [lighting, setLighting] = useState<PilotLighting>("window");
   const [makeup, setMakeup] = useState<"none" | "light" | "heavy">("none");
   const [glasses, setGlasses] = useState(false);
   const [hairCover, setHairCover] = useState(false);
-  const [scanCompleted, setScanCompleted] = useState(true);
+  const [scanCompleted, setScanCompleted] = useState(false);
+  const [labelComplete, setLabelComplete] = useState(false);
+  const [secondReviewNeeded, setSecondReviewNeeded] = useState(false);
   const [consentAi, setConsentAi] = useState(false);
   const [consentCrop, setConsentCrop] = useState(false);
+  const [excludedReason, setExcludedReason] = useState("");
   const [notes, setNotes] = useState("");
-  const [count, setCount] = useState(() => getPilotNotes().length);
+  const [rows, setRows] = useState(() => getPilotNotes());
+
+  const participantId = normalizeParticipantId(participant);
+  const validParticipant = isPilotParticipantId(participantId);
+  const duplicateCount = rows.filter((row) => (row.participantId || normalizeParticipantId(row.participant)) === participantId).length;
+  const roster = useMemo(
+    () =>
+      PILOT_PARTICIPANT_IDS.map((id) => ({
+        id,
+        latest: [...rows].reverse().find((row) => (row.participantId || normalizeParticipantId(row.participant)) === id),
+      })),
+    [rows]
+  );
+
+  function refresh() {
+    setRows(getPilotNotes());
+  }
 
   function save() {
-    savePilotNote({ participant, browser, lighting, makeup, glasses, hairCover, scanCompleted, consentAi, consentCrop, notes });
-    setParticipant("");
+    if (!validParticipant) return;
+
+    savePilotNote({
+      participant: participantId,
+      participantId,
+      round,
+      deviceId,
+      reviewerId,
+      status: excludedReason.trim() ? "excluded" : status,
+      browser,
+      lighting,
+      makeup,
+      glasses,
+      hairCover,
+      scanCompleted,
+      labelComplete,
+      secondReviewNeeded,
+      excludedReason,
+      consentAi,
+      consentCrop,
+      notes,
+    });
+
+    setStatus(scanCompleted ? "scanned" : consentAi || consentCrop ? "consented" : "planned");
     setNotes("");
-    setGlasses(false);
-    setHairCover(false);
-    setConsentAi(false);
-    setConsentCrop(false);
-    setCount(getPilotNotes().length);
+    setExcludedReason("");
+    refresh();
   }
 
   function clear() {
     clearPilotNotes();
-    setCount(0);
+    setRows([]);
   }
 
   return (
-    <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
-      <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>pilot qa</p>
-        <h1 style={titleStyle}>30명 파일럿 기록</h1>
-        <p style={leadStyle}>스캔 결과와 별도로 디바이스, 조명, 메이크업 상태를 남겨 카메라 품질과 ML 편차를 볼 수 있게 합니다.</p>
+    <main className="min-h-screen px-5 py-8" style={{ background: "var(--paper)" }}>
+      <div className="mx-auto" style={{ maxWidth: 980 }}>
+        <div style={headerStyle}>
+          <div>
+            <p style={eyebrow}>pilot lab</p>
+            <h1 style={titleStyle}>30-person capture roster</h1>
+            <p style={leadStyle}>
+              Create a participant/session link before scanning. Labels, crops, consent, and ML reports will use this ID.
+            </p>
+          </div>
+          <Link href="/ops" style={outlineLink}>Ops</Link>
+        </div>
+
+        <section style={gridStyle}>
+          <div style={sectionStyle}>
+            <p style={sectionLabel}>session</p>
+            <label style={labelStyle}>Participant ID</label>
+            <input value={participant} onChange={(event) => setParticipant(event.target.value)} placeholder="P001" style={inputStyle} />
+            {!validParticipant && <p style={errorText}>Use P001 through P030.</p>}
+            {validParticipant && duplicateCount > 0 && <p style={mutedText}>Existing records for this participant: {duplicateCount}</p>}
+
+            <label style={labelStyle}>Round</label>
+            <input value={round} onChange={(event) => setRound(event.target.value)} placeholder="pilot-1" style={inputStyle} />
+
+            <label style={labelStyle}>Device ID</label>
+            <input value={deviceId} onChange={(event) => setDeviceId(event.target.value)} placeholder="iphone15pro-01" style={inputStyle} />
+
+            <label style={labelStyle}>Reviewer ID</label>
+            <input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} placeholder="reviewer-a" style={inputStyle} />
+
+            <label style={labelStyle}>Status</label>
+            <Select value={status} onChange={(value) => setStatus(value as PilotStatus)} options={[
+              ["planned", "planned"],
+              ["consented", "consented"],
+              ["scanned", "scanned"],
+              ["labeled", "labeled"],
+              ["excluded", "excluded"],
+            ]} />
+          </div>
+
+          <div style={sectionStyle}>
+            <p style={sectionLabel}>capture context</p>
+            <label style={labelStyle}>Browser/device</label>
+            <Select value={browser} onChange={(value) => setBrowser(value as PilotBrowser)} options={[
+              ["ios-safari", "iPhone Safari"],
+              ["android-chrome", "Android Chrome"],
+              ["desktop", "Desktop check"],
+              ["other", "Other"],
+            ]} />
+
+            <label style={labelStyle}>Lighting</label>
+            <Select value={lighting} onChange={(value) => setLighting(value as PilotLighting)} options={[
+              ["window", "window soft light"],
+              ["ceiling", "ceiling light"],
+              ["dim", "dim indoor"],
+              ["backlight", "backlight"],
+              ["direct", "direct strong light"],
+            ]} />
+
+            <label style={labelStyle}>Makeup</label>
+            <Select value={makeup} onChange={(value) => setMakeup(value as "none" | "light" | "heavy")} options={[
+              ["none", "none"],
+              ["light", "light"],
+              ["heavy", "heavy"],
+            ]} />
+
+            <Check label="Glasses" checked={glasses} onChange={setGlasses} />
+            <Check label="Hair covers forehead or cheeks" checked={hairCover} onChange={setHairCover} />
+            <Check label="Scan completed" checked={scanCompleted} onChange={setScanCompleted} />
+            <Check label="Label review complete" checked={labelComplete} onChange={setLabelComplete} />
+            <Check label="Second review needed" checked={secondReviewNeeded} onChange={setSecondReviewNeeded} />
+            <Check label="AI analysis consent" checked={consentAi} onChange={setConsentAi} />
+            <Check label="Learning crop consent" checked={consentCrop} onChange={setConsentCrop} />
+          </div>
+        </section>
 
         <section style={sectionStyle}>
-          <label style={labelStyle}>참가자 코드</label>
-          <input value={participant} onChange={(e) => setParticipant(e.target.value)} placeholder="P001" style={inputStyle} />
+          <p style={sectionLabel}>review notes</p>
+          <label style={labelStyle}>Exclude reason</label>
+          <input value={excludedReason} onChange={(event) => setExcludedReason(event.target.value)} placeholder="optional: glare, occlusion, withdrawal, duplicate" style={inputStyle} />
 
-          <label style={labelStyle}>브라우저/기기</label>
-          <Select value={browser} onChange={(v) => setBrowser(v as PilotBrowser)} options={[
-            ["ios-safari", "iPhone Safari"],
-            ["android-chrome", "Android Chrome"],
-            ["desktop", "Desktop check"],
-            ["other", "Other"],
-          ]} />
+          <label style={labelStyle}>Notes</label>
+          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="Face guide fit, glare, crop eligibility, label uncertainty..." style={textareaStyle} />
 
-          <label style={labelStyle}>조명</label>
-          <Select value={lighting} onChange={(v) => setLighting(v as PilotLighting)} options={[
-            ["window", "창가 부드러운 빛"],
-            ["ceiling", "천장 조명"],
-            ["dim", "어두운 실내"],
-            ["backlight", "역광"],
-            ["direct", "직접/강한 조명"],
-          ]} />
-
-          <label style={labelStyle}>메이크업</label>
-          <Select value={makeup} onChange={(v) => setMakeup(v as "none" | "light" | "heavy")} options={[
-            ["none", "없음"],
-            ["light", "가벼움"],
-            ["heavy", "진함"],
-          ]} />
-
-          <Check label="안경 착용" checked={glasses} onChange={setGlasses} />
-          <Check label="머리카락이 이마/볼을 가림" checked={hairCover} onChange={setHairCover} />
-          <Check label="스캔 완료" checked={scanCompleted} onChange={setScanCompleted} />
-          <Check label="AI 분석 전송 동의" checked={consentAi} onChange={setConsentAi} />
-          <Check label="학습용 크롭 저장 동의" checked={consentCrop} onChange={setConsentCrop} />
-
-          <label style={labelStyle}>메모</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="윤곽선 위치, 반사 판단, 촬영 버튼 조건 등을 적어주세요." style={textareaStyle} />
-
-          <button onClick={save} disabled={!participant.trim()} style={{ ...primaryBtn, width: "100%", opacity: participant.trim() ? 1 : 0.55 }}>
-            기록 저장
+          <button onClick={save} disabled={!validParticipant} style={{ ...primaryBtn, opacity: validParticipant ? 1 : 0.55 }}>
+            Save session and set active participant
           </button>
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>현재 기록 {count}개</p>
-          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-            <button onClick={exportPilotNotes} style={outlineBtn}>파일럿 CSV 내보내기</button>
-            <button onClick={clear} style={dangerBtn}>파일럿 기록 삭제</button>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <p style={sectionLabel}>roster</p>
+              <h2 style={sectionTitle}>{rows.length} records across {new Set(rows.map((row) => row.participantId || normalizeParticipantId(row.participant))).size} participants</h2>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={exportPilotNotes} disabled={rows.length === 0} style={smallButton}>Export CSV</button>
+              <button onClick={clear} disabled={rows.length === 0} style={dangerBtn}>Clear local</button>
+            </div>
+          </div>
+
+          <div style={rosterGridStyle}>
+            {roster.map(({ id, latest }) => (
+              <button key={id} onClick={() => setParticipant(id)} style={rosterButtonStyle(Boolean(latest), latest?.status)}>
+                <b>{id}</b>
+                <span>{latest?.status || "open"}</span>
+              </button>
+            ))}
           </div>
         </section>
 
-        <Link href="/ops" style={{ ...outlineLink, display: "block", textAlign: "center", marginBottom: 10 }}>운영 대시보드 보기</Link>
-
         <div style={{ display: "flex", gap: 10 }}>
-          <Link href="/scan" style={{ ...outlineLink, flex: 1, textAlign: "center" }}>스캔 테스트</Link>
-          <Link href="/privacy" style={{ ...outlineLink, flex: 1, textAlign: "center" }}>동의 문구 확인</Link>
+          <Link href="/scan" style={{ ...outlineLink, flex: 1, textAlign: "center" }}>Open scan</Link>
+          <Link href="/privacy" style={{ ...outlineLink, flex: 1, textAlign: "center" }}>Consent copy</Link>
         </div>
       </div>
     </main>
@@ -103,30 +211,56 @@ export default function PilotPage() {
 
 function Select({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: [string, string][] }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
-      {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+    <select value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+      {options.map(([optionValue, label]) => <option key={optionValue} value={optionValue}>{label}</option>)}
     </select>
   );
 }
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, color: "var(--ink-soft)", margin: "10px 0", cursor: "pointer" }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: "var(--plum)", width: 16, height: 16 }} />
+    <label style={checkStyle}>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} style={{ accentColor: "var(--plum)", width: 18, height: 18 }} />
       {label}
     </label>
   );
 }
 
+function rosterButtonStyle(active: boolean, status?: PilotStatus): React.CSSProperties {
+  const color = status === "excluded" ? "#8f3f3b" : active ? "var(--plum)" : "var(--ink-soft)";
+  return {
+    minHeight: 48,
+    border: "1px solid var(--line)",
+    borderRadius: 8,
+    background: active ? "var(--plum-soft)" : "var(--paper)",
+    color,
+    padding: "8px 10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    alignItems: "flex-start",
+    cursor: "pointer",
+    fontSize: 12,
+  };
+}
+
+const headerStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", marginBottom: 18 };
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
-const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 29, lineHeight: 1.2, color: "var(--ink)", margin: "8px 0" };
-const leadStyle: React.CSSProperties = { fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 22 };
+const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 30, lineHeight: 1.18, color: "var(--ink)", margin: "7px 0" };
+const leadStyle: React.CSSProperties = { fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.55, maxWidth: 640 };
+const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 };
 const sectionStyle: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 18, marginBottom: 14 };
-const sectionLabel: React.CSSProperties = { fontSize: 12, color: "var(--ink)", fontWeight: 800 };
+const sectionHeaderStyle: React.CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 };
+const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 800 };
+const sectionTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 20, color: "var(--ink)", margin: "7px 0" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 12, color: "var(--text-muted)", fontWeight: 700, margin: "12px 0 6px" };
 const inputStyle: React.CSSProperties = { width: "100%", border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "11px 12px", fontSize: 14 };
 const textareaStyle: React.CSSProperties = { ...inputStyle, resize: "vertical", lineHeight: 1.5 };
-const primaryBtn: React.CSSProperties = { background: "var(--plum)", color: "var(--on-plum)", border: "none", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 10 };
-const outlineBtn: React.CSSProperties = { background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "left" };
-const dangerBtn: React.CSSProperties = { background: "transparent", color: "#8f3f3b", border: "1px solid #d8b8b3", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "left" };
+const checkStyle: React.CSSProperties = { minHeight: 44, display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "var(--ink-soft)", cursor: "pointer" };
+const primaryBtn: React.CSSProperties = { width: "100%", background: "var(--plum)", color: "var(--on-plum)", border: "none", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 12 };
+const smallButton: React.CSSProperties = { background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 800, cursor: "pointer" };
+const dangerBtn: React.CSSProperties = { background: "transparent", color: "#8f3f3b", border: "1px solid #d8b8b3", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 800, cursor: "pointer" };
 const outlineLink: React.CSSProperties = { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
+const mutedText: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 7 };
+const errorText: React.CSSProperties = { fontSize: 12.5, color: "#8f3f3b", lineHeight: 1.5, marginTop: 7 };
+const rosterGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(86px, 1fr))", gap: 8 };

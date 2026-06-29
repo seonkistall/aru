@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { recordConsentEvent } from "@/lib/consent";
+import { CONSENT_VERSION, latestConsent, recordConsentEvent } from "@/lib/consent";
 import { saveCropSample, cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { analyzeSkin, type SkinReads } from "@/lib/skin";
-import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr } from "@/lib/labels";
+import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type CaptureQualityMeta, type SampleMeta } from "@/lib/labels";
+import { getCurrentPilotSession } from "@/lib/pilot";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type Landmark = { x: number; y: number; z?: number };
@@ -32,6 +33,14 @@ type Quality = {
   steady: boolean;
   score: number;
   message: string;
+  centerOffsetX?: number;
+  centerOffsetY?: number;
+  faceSize?: number;
+  brightnessMean?: number;
+  darkRatio?: number;
+  hotRatio?: number;
+  movement?: number;
+  rejectReason?: string;
 };
 
 const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
@@ -107,6 +116,7 @@ export default function Scan() {
   const [captureMode, setCaptureMode] = useState<CaptureMode>("balanced");
   const [quality, setQuality] = useState<Quality>(initialQuality);
   const [cropDataUrl, setCropDataUrl] = useState<string | null>(null);
+  const [captureMeta, setCaptureMeta] = useState<SampleMeta | null>(null);
   const captureProfile = CAPTURE_PROFILES[captureMode];
 
   const canCapture =
@@ -122,6 +132,7 @@ export default function Scan() {
     setErr("");
     setReads(null);
     setCropDataUrl(null);
+    setCaptureMeta(null);
     setQuality(initialQuality);
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("unsupported");
@@ -276,10 +287,18 @@ export default function Scan() {
         return;
       }
 
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const verifiedQuality = evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], quality.steady);
+      setQuality(verifiedQuality);
+      if (!qualityPassed(verifiedQuality, CAPTURE_PROFILES[captureMode])) {
+        setErr("Capture quality changed. Please align your face and try again.");
+        setPhase("ready");
+        return;
+      }
+
       const faceCrop = consent || datasetConsent ? cropFace(canvas, faces[0]) : null;
       setCropDataUrl(datasetConsent ? faceCrop : null);
 
-      const imageData = ctx.getImageData(0, 0, w, h);
       const out = analyzeSkin(imageData, faces[0]);
       if (!out) {
         setPhase("noface");
@@ -311,6 +330,27 @@ export default function Scan() {
         }
       }
 
+      const session = getCurrentPilotSession();
+      const scope = session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined;
+      const aiEvent = latestConsent("ai_analysis", scope);
+      const cropEvent = latestConsent("learning_crop", scope);
+      setCaptureMeta({
+        schemaVersion: "2026-06-29.label.v2",
+        participantId: session?.participantId,
+        sessionId: session?.sessionId,
+        round: session?.round,
+        deviceId: session?.deviceId,
+        reviewerId: session?.reviewerId,
+        scanIndex: labelCount() + 1,
+        captureMode,
+        quality: qualityMeta(verifiedQuality),
+        consentVersion: CONSENT_VERSION,
+        consentEventIds: {
+          aiAnalysis: aiEvent?.id,
+          learningCrop: cropEvent?.id,
+        },
+      });
+
       setReads(final);
       stopCamera();
       setPhase("result");
@@ -328,12 +368,14 @@ export default function Scan() {
 
   function toggleAiConsent(next: boolean) {
     setConsent(next);
-    recordConsentEvent("ai_analysis", next);
+    const session = getCurrentPilotSession();
+    recordConsentEvent("ai_analysis", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
   }
 
   function toggleDatasetConsent(next: boolean) {
     setDatasetConsent(next);
-    recordConsentEvent("learning_crop", next);
+    const session = getCurrentPilotSession();
+    recordConsentEvent("learning_crop", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
   }
 
   return (
@@ -457,7 +499,7 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
                 추천 받기
               </a>
             </div>
-            <Feedback reads={reads} cropDataUrl={cropDataUrl} />
+            <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />
           </>
         )}
       </div>
@@ -593,7 +635,7 @@ function ResultCard({ reads }: { reads: SkinReads }) {
   );
 }
 
-function Feedback({ reads, cropDataUrl }: { reads: SkinReads; cropDataUrl: string | null }) {
+function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads; cropDataUrl: string | null; captureMeta: SampleMeta | null }) {
   const init = {
     oil: toOrdinal("oil", reads.oil.value),
     redness: toOrdinal("redness", reads.redness.value),
@@ -605,10 +647,23 @@ function Feedback({ reads, cropDataUrl }: { reads: SkinReads; cropDataUrl: strin
   const [cropCount, setCropCount] = useState(() => cropSampleCount());
 
   function commit(source: "confirmed" | "corrected", finalLabels: typeof init) {
-    const sample = { ts: Date.now(), features: reads.raw, labels: finalLabels, source };
+    const meta: SampleMeta | undefined = captureMeta
+      ? {
+          ...captureMeta,
+          labelConfidence: source === "confirmed" ? "medium" : "high",
+          correctionFlags: source === "corrected"
+            ? {
+                oil: finalLabels.oil !== init.oil,
+                redness: finalLabels.redness !== init.redness,
+                pores: finalLabels.pores !== init.pores,
+              }
+            : undefined,
+        }
+      : undefined;
+    const sample = { ts: Date.now(), features: reads.raw, labels: finalLabels, source, meta };
     saveLabel(sample);
     if (cropDataUrl) {
-      saveCropSample({ image: cropDataUrl, features: reads.raw, labels: finalLabels, source, ts: sample.ts });
+      saveCropSample({ image: cropDataUrl, features: reads.raw, labels: finalLabels, source, meta, ts: sample.ts });
       setCropCount(cropSampleCount());
     }
     setCount(labelCount());
@@ -691,18 +746,95 @@ function faceBox(landmarks: Landmark[]) {
   );
 }
 
-function exposureStats(imageData: ImageData) {
-  const { data } = imageData;
+function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], profile: CaptureProfile, previousSteady: boolean): Quality {
+  const box = faceBox(landmarks);
+  const centerX = (box.minX + box.maxX) / 2;
+  const centerY = (box.minY + box.maxY) / 2;
+  const centerOffsetX = centerX - 0.5;
+  const centerOffsetY = centerY - 0.48;
+  const faceSize = Math.max(box.maxX - box.minX, box.maxY - box.minY);
+  const exposure = exposureStats(imageData, box);
+  const centered = Math.abs(centerOffsetX) < profile.centerToleranceX && Math.abs(centerOffsetY) < profile.centerToleranceY;
+  const distance = faceSize > profile.minFaceSize && faceSize < profile.maxFaceSize;
+  const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
+  const noGlare = exposure.hotRatio < profile.maxHotRatio;
+  const steady = profile.requiresSteady ? previousSteady : true;
+  const rejectReason = !centered
+    ? "center"
+    : !distance
+      ? "distance"
+      : !brightness
+        ? "brightness"
+        : !noGlare
+          ? "glare"
+          : !steady
+            ? "movement"
+            : undefined;
+  const checks = [true, centered, distance, brightness, noGlare, steady];
+
+  return {
+    face: true,
+    centered,
+    distance,
+    brightness,
+    noGlare,
+    steady,
+    score: checks.filter(Boolean).length,
+    message: rejectReason ? "Capture quality changed. Please align your face and try again." : "Capture quality verified.",
+    centerOffsetX,
+    centerOffsetY,
+    faceSize,
+    brightnessMean: exposure.mean,
+    darkRatio: exposure.darkRatio,
+    hotRatio: exposure.hotRatio,
+    rejectReason,
+  };
+}
+
+function qualityPassed(quality: Quality, profile: CaptureProfile) {
+  return quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && (!profile.requiresSteady || quality.steady);
+}
+
+function qualityMeta(quality: Quality): CaptureQualityMeta {
+  return {
+    version: "2026-06-29.quality.v1",
+    score: quality.score,
+    face: quality.face,
+    centered: quality.centered,
+    distance: quality.distance,
+    brightness: quality.brightness,
+    noGlare: quality.noGlare,
+    steady: quality.steady,
+    centerOffsetX: quality.centerOffsetX,
+    centerOffsetY: quality.centerOffsetY,
+    faceSize: quality.faceSize,
+    brightnessMean: quality.brightnessMean,
+    darkRatio: quality.darkRatio,
+    hotRatio: quality.hotRatio,
+    movement: quality.movement,
+    rejectReason: quality.rejectReason,
+  };
+}
+
+function exposureStats(imageData: ImageData, box?: ReturnType<typeof faceBox>) {
+  const { data, width, height } = imageData;
+  const xStart = box ? Math.max(0, Math.floor(box.minX * width)) : 0;
+  const xEnd = box ? Math.min(width, Math.ceil(box.maxX * width)) : width;
+  const yStart = box ? Math.max(0, Math.floor(box.minY * height)) : 0;
+  const yEnd = box ? Math.min(height, Math.ceil(box.maxY * height)) : height;
   let total = 0;
   let count = 0;
   let hot = 0;
   let dark = 0;
-  for (let i = 0; i < data.length; i += 16) {
-    const L = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    total += L;
-    if (L > 232) hot++;
-    if (L < 42) dark++;
-    count++;
+  for (let y = yStart; y < yEnd; y += 2) {
+    for (let x = xStart; x < xEnd; x += 2) {
+      const i = (y * width + x) * 4;
+      const L = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      total += L;
+      if (L > 232) hot++;
+      if (L < 42) dark++;
+      count++;
+    }
   }
   return { mean: total / Math.max(1, count), hotRatio: hot / Math.max(1, count), darkRatio: dark / Math.max(1, count) };
 }

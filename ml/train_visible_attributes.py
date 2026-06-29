@@ -192,7 +192,8 @@ def export_onnx(model: nn.Module, out_path: Path, device: torch.device) -> None:
 
 def write_split(path: Path, rows: list[Row]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
-        fieldnames = ["id", "image", *ATTRS]
+        meta_keys = sorted({key for row in rows for key in row.meta.keys()})
+        fieldnames = ["id", "image", *ATTRS, *meta_keys]
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
@@ -200,6 +201,7 @@ def write_split(path: Path, rows: list[Row]) -> None:
                 "id": row.row_id,
                 "image": row.image_rel,
                 **row.labels,
+                **row.meta,
             })
 
 
@@ -219,6 +221,32 @@ def label_distribution(rows: list[Row]) -> dict[str, dict[str, int]]:
     return dist
 
 
+def split_rows(rows: list[Row], seed: int) -> tuple[list[Row], list[Row], dict[str, object]]:
+    participants = sorted({row.meta.get("participant_id", "").strip() for row in rows if row.meta.get("participant_id", "").strip()})
+    if len(participants) >= 5:
+        rng = random.Random(seed)
+        shuffled = participants[:]
+        rng.shuffle(shuffled)
+        val_n = max(1, round(len(shuffled) * 0.2))
+        val_participants = set(shuffled[:val_n])
+        train_rows = [row for row in rows if row.meta.get("participant_id", "").strip() not in val_participants]
+        val_rows = [row for row in rows if row.meta.get("participant_id", "").strip() in val_participants]
+        if train_rows and val_rows:
+            return train_rows, val_rows, {
+                "strategy": "grouped_by_participant",
+                "participant_count": len(participants),
+                "val_participant_count": len(val_participants),
+                "val_participants": sorted(val_participants),
+            }
+
+    train_rows, val_rows = train_test_split(rows, test_size=0.2, random_state=seed)
+    return train_rows, val_rows, {
+        "strategy": "random_row_split",
+        "participant_count": len(participants),
+        "warning": "participant_id missing or insufficient; validation may leak person/session identity",
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("ml/data/crops"))
@@ -236,7 +264,7 @@ def main() -> None:
     if len(rows) < 30:
         raise SystemExit("Need at least ~30 opt-in crop samples to start. Collect more scans first.")
 
-    train_rows, val_rows = train_test_split(rows, test_size=0.2, random_state=args.seed)
+    train_rows, val_rows, split_info = split_rows(rows, args.seed)
     train_tf = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(),
@@ -317,6 +345,7 @@ def main() -> None:
             "train": label_distribution(train_rows),
             "val": label_distribution(val_rows),
         },
+        "split": split_info,
         "best_epoch": best_epoch,
         "best_mean_val_accuracy": best,
         "final_val_confusion": last_val_confusion,

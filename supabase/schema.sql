@@ -88,6 +88,34 @@ create table if not exists crop_samples (
   user_id uuid references auth.users (id) default auth.uid()
 );
 
+-- Pilot v2 traceability fields. These are safe to rerun on existing projects.
+alter table labels add column if not exists participant_id text;
+alter table labels add column if not exists session_id text;
+alter table labels add column if not exists capture_mode text;
+alter table labels add column if not exists quality jsonb;
+alter table labels add column if not exists metadata jsonb;
+
+alter table consent_events add column if not exists participant_id text;
+alter table consent_events add column if not exists session_id text;
+alter table consent_events add column if not exists metadata jsonb;
+
+alter table pilot_notes add column if not exists participant_id text;
+alter table pilot_notes add column if not exists session_id text;
+alter table pilot_notes add column if not exists round text;
+alter table pilot_notes add column if not exists device_id text;
+alter table pilot_notes add column if not exists reviewer_id text;
+alter table pilot_notes add column if not exists status text;
+alter table pilot_notes add column if not exists label_complete boolean default false;
+alter table pilot_notes add column if not exists second_review_needed boolean default false;
+alter table pilot_notes add column if not exists excluded_reason text;
+alter table pilot_notes add column if not exists metadata jsonb;
+
+alter table crop_samples add column if not exists participant_id text;
+alter table crop_samples add column if not exists session_id text;
+alter table crop_samples add column if not exists capture_mode text;
+alter table crop_samples add column if not exists quality jsonb;
+alter table crop_samples add column if not exists metadata jsonb;
+
 -- Create a private bucket for crops in Supabase Storage before enabling upload:
 -- insert into storage.buckets (id, name, public)
 -- values ('gyeol-crop-samples', 'gyeol-crop-samples', false)

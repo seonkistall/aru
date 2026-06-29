@@ -51,6 +51,10 @@ def main() -> None:
         rows = list(csv.DictReader(handle))
 
     print(f"samples: {len(rows)}")
+    participants = {row.get("participant_id", "").strip() for row in rows if row.get("participant_id", "").strip()}
+    sessions = {row.get("session_id", "").strip() for row in rows if row.get("session_id", "").strip()}
+    print(f"participants: {len(participants)}")
+    print(f"sessions: {len(sessions)}")
     print(f"next: {next_action(len(rows))}\n")
 
     for attr in ATTRS:
@@ -66,6 +70,16 @@ def main() -> None:
     print("\nSources:")
     for source, count in by_source.most_common():
         print(f"  {source}: {count}")
+
+    by_device = Counter(row.get("device_id", "unknown") or "unknown" for row in rows)
+    print("\nDevices:")
+    for device, count in by_device.most_common():
+        print(f"  {device}: {count}")
+
+    by_mode = Counter(row.get("capture_mode", "unknown") or "unknown" for row in rows)
+    print("\nCapture modes:")
+    for mode, count in by_mode.most_common():
+        print(f"  {mode}: {count}")
 
     missing = defaultdict(int)
     for attr in ATTRS:

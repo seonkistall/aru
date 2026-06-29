@@ -47,7 +47,16 @@ export function buildLocalSyncPayload(): GyeolSyncPayload {
   };
 }
 
-export function latestConsentGranted(payload: GyeolSyncPayload, kind: ConsentEvent["kind"]) {
-  const events = payload.consentEvents.filter((event) => event.kind === kind);
+export function latestConsentGranted(
+  payload: GyeolSyncPayload,
+  kind: ConsentEvent["kind"],
+  scope?: { participantId?: string; sessionId?: string }
+) {
+  const events = payload.consentEvents.filter((event) => {
+    if (event.kind !== kind) return false;
+    if (scope?.participantId && event.participantId !== scope.participantId) return false;
+    if (scope?.sessionId && event.sessionId !== scope.sessionId) return false;
+    return true;
+  });
   return events.length ? events[events.length - 1]?.granted === true : false;
 }

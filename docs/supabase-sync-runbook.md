@@ -40,6 +40,15 @@ SUPABASE_SYNC_ALLOWED_ORIGINS=https://your-domain.com
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Never prefix it with
 `NEXT_PUBLIC_`.
 
+Then verify the connection:
+
+```bash
+npm run supabase:check
+```
+
+The check confirms that the server-only Supabase key can reach every pilot table
+and that the crop bucket exists and is private.
+
 ## 4. Dry-run from `/ops`
 
 1. Open `/ops`.

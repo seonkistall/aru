@@ -8,6 +8,8 @@ export type ConsentEvent = {
   granted: boolean;
   version: string;
   text: string;
+  participantId?: string;
+  sessionId?: string;
   ts: number;
 };
 
@@ -37,14 +39,19 @@ export function consentEventCount(): number {
   return getConsentEvents().length;
 }
 
-export function latestConsent(kind: ConsentKind): ConsentEvent | null {
-  const events = getConsentEvents().filter((event) => event.kind === kind);
+export function latestConsent(kind: ConsentKind, scope?: { participantId?: string; sessionId?: string }): ConsentEvent | null {
+  const events = getConsentEvents().filter((event) => {
+    if (event.kind !== kind) return false;
+    if (scope?.participantId && event.participantId !== scope.participantId) return false;
+    if (scope?.sessionId && event.sessionId !== scope.sessionId) return false;
+    return true;
+  });
   return events.length ? events[events.length - 1] : null;
 }
 
-export function recordConsentEvent(kind: ConsentKind, granted: boolean): ConsentEvent | null {
+export function recordConsentEvent(kind: ConsentKind, granted: boolean, scope?: { participantId?: string; sessionId?: string }): ConsentEvent | null {
   if (typeof window === "undefined") return null;
-  const last = latestConsent(kind);
+  const last = latestConsent(kind, scope);
   if (last?.granted === granted && last.version === CONSENT_VERSION) return last;
 
   const event: ConsentEvent = {
@@ -53,6 +60,8 @@ export function recordConsentEvent(kind: ConsentKind, granted: boolean): Consent
     granted,
     version: CONSENT_VERSION,
     text: CONSENT_TEXT[kind],
+    participantId: scope?.participantId,
+    sessionId: scope?.sessionId,
     ts: Date.now(),
   };
   const all = getConsentEvents();
@@ -63,7 +72,7 @@ export function recordConsentEvent(kind: ConsentKind, granted: boolean): Consent
 
 export function exportConsentEvents() {
   const rows = getConsentEvents();
-  const header = ["id", "kind", "granted", "version", "text", "ts"];
+  const header = ["id", "kind", "granted", "version", "participantId", "sessionId", "text", "ts"];
   const esc = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const csv = [header.join(","), ...rows.map((row) => header.map((key) => esc(row[key as keyof ConsentEvent])).join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });

@@ -11,10 +11,22 @@ export type MlReadiness = {
 export function getMlReadiness({
   labels,
   crops,
+  participants = 0,
 }: {
   labels: number;
   crops: number;
+  participants?: number;
 }): MlReadiness {
+  if (participants > 0 && participants < 5) {
+    return {
+      band: "calibrate",
+      title: "Pilot coverage gate",
+      detail: `Only ${participants} participant(s) are linked. Keep collecting before trusting ML metrics.`,
+      nextAction: "Use /pilot to link P001-P030 sessions before relying on crop counts or validation scores.",
+      minCropsForNextBand: 30,
+    };
+  }
+
   if (crops < 30) {
     return {
       band: "calibrate",
