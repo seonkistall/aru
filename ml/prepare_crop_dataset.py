@@ -100,10 +100,23 @@ def main() -> None:
             "brightness_mean": quality.get("brightnessMean", ""),
             "hot_ratio": quality.get("hotRatio", ""),
             "dark_ratio": quality.get("darkRatio", ""),
+            "prediction_source": meta.get("predictionSource", ""),
+            "model_version": meta.get("modelVersion", ""),
+            "input_schema_version": meta.get("inputSchemaVersion", ""),
+            "analysis_confidence": meta.get("analysisConfidence", ""),
+            "retake_recommended": meta.get("retakeRecommended", ""),
+            "label_confidence": meta.get("labelConfidence", ""),
+            "ungradable": meta.get("ungradable", ""),
             "ita": f"{ita_from_image(image_path):.3f}",
             "shine": features.get("shine", ""),
             "relRedness": features.get("relRedness", ""),
             "cov": features.get("cov", ""),
+            "tzoneL": features.get("tzoneL", ""),
+            "cheekL": features.get("cheekL", ""),
+            "cheekTexture": features.get("cheekTexture", ""),
+            "tzoneSpecular": features.get("tzoneSpecular", ""),
+            "cheekSamples": features.get("cheekSamples", ""),
+            "tzoneSamples": features.get("tzoneSamples", ""),
         })
 
     with manifest_path.open("w", newline="", encoding="utf-8") as handle:

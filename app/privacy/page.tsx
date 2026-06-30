@@ -27,64 +27,64 @@ export default function PrivacyPage() {
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 430 }}>
         <p style={eyebrow}>privacy & consent</p>
-        <h1 style={titleStyle}>Camera data stays separated by purpose</h1>
+        <h1 style={titleStyle}>사진 데이터는 목적별로 나눠서 다룹니다</h1>
         <p style={leadStyle}>
-          The default scan runs on this device. AI analysis transfer and learning-crop storage are separate choices and can be exported or cleared locally.
+          기본 스캔은 이 기기에서 먼저 처리돼요. AI 분석용 전송과 학습용 크롭 저장은 서로 다른 선택이며, 언제든 이 기기에서 내보내거나 지울 수 있어요.
         </p>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>default scan</p>
-          <h2 style={sectionTitle}>On-device first</h2>
-          <p style={bodyText}>The browser reads camera frames and face landmarks for visible-signal cosmetic guidance. Original full photos are not stored in this path.</p>
+          <p style={sectionLabel}>기본 스캔</p>
+          <h2 style={sectionTitle}>기기 안에서 먼저 분석</h2>
+          <p style={bodyText}>카메라 프레임과 얼굴 랜드마크로 보이는 피부 신호를 읽습니다. 이 기본 경로에서는 원본 전체 사진을 저장하지 않아요.</p>
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>AI analysis transfer</p>
-          <h2 style={sectionTitle}>Optional face crop analysis</h2>
-          <p style={bodyText}>When enabled, a face crop is sent to the analysis API. This is separate from training-use crop storage.</p>
+          <p style={sectionLabel}>AI 분석용 전송</p>
+          <h2 style={sectionTitle}>선택한 경우에만 얼굴 크롭 전송</h2>
+          <p style={bodyText}>체크하면 얼굴 크롭을 분석 API로 보내 보조 설명을 받아요. 이 선택은 학습용 저장 동의와 분리됩니다.</p>
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>learning crop storage</p>
-          <h2 style={sectionTitle}>Opt-in local training sample</h2>
+          <p style={sectionLabel}>학습용 크롭 저장</p>
+          <h2 style={sectionTitle}>연구 동의 샘플만 로컬 보관</h2>
           <p style={bodyText}>
-            When enabled, the face crop, visible-signal labels, and capture quality metadata are stored in this browser. Local storage keeps the latest 120 opt-in crops until export or deletion.
+            동의한 경우 얼굴 크롭, 라벨, 촬영 품질 메타데이터를 이 브라우저에 저장합니다. 최근 120개까지만 보관되며, 내보내기 전에는 서버로 자동 업로드되지 않아요.
           </p>
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>export & delete</p>
-          <h2 style={sectionTitle}>Current local data</h2>
-          <p style={bodyText}>This device has {labelTotal} labels and {cropTotal} learning crops.</p>
+          <p style={sectionLabel}>내보내기와 삭제</p>
+          <h2 style={sectionTitle}>이 기기에 저장된 데이터</h2>
+          <p style={bodyText}>현재 라벨 {labelTotal}개, 학습용 크롭 {cropTotal}개가 이 브라우저에 있어요.</p>
           <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
-            <button onClick={exportLabels} style={outlineBtn}>Export labels JSONL</button>
-            <button onClick={exportCropSamples} disabled={cropTotal === 0} style={{ ...outlineBtn, opacity: cropTotal === 0 ? 0.5 : 1 }}>Export crop JSONL</button>
-            <button onClick={clearLearningData} style={dangerBtn}>Delete local learning data</button>
+            <button onClick={exportLabels} style={outlineBtn}>라벨 JSONL 내보내기</button>
+            <button onClick={exportCropSamples} disabled={cropTotal === 0} style={{ ...outlineBtn, opacity: cropTotal === 0 ? 0.5 : 1 }}>크롭 JSONL 내보내기</button>
+            <button onClick={clearLearningData} style={dangerBtn}>로컬 학습 데이터 삭제</button>
           </div>
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>consent audit log</p>
-          <h2 style={sectionTitle}>Separated consent history</h2>
+          <p style={sectionLabel}>동의 기록</p>
+          <h2 style={sectionTitle}>분리된 동의 이력</h2>
           <p style={bodyText}>
-            Current consent copy version is {CONSENT_VERSION}. This device has {consentTotal} consent events. Events include the choice, text version, time, and pilot session when available.
+            현재 동의 문구 버전은 {CONSENT_VERSION}입니다. 이 기기에 동의 이벤트 {consentTotal}개가 저장되어 있어요. 이벤트에는 선택, 문구 버전, 시각, 파일럿 세션 정보가 포함됩니다.
           </p>
           <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
-            <button onClick={exportConsentEvents} disabled={consentTotal === 0} style={{ ...outlineBtn, opacity: consentTotal === 0 ? 0.5 : 1 }}>Export consent CSV</button>
-            <button onClick={clearConsentLog} disabled={consentTotal === 0} style={{ ...dangerBtn, opacity: consentTotal === 0 ? 0.5 : 1 }}>Clear consent log</button>
+            <button onClick={exportConsentEvents} disabled={consentTotal === 0} style={{ ...outlineBtn, opacity: consentTotal === 0 ? 0.5 : 1 }}>동의 기록 CSV 내보내기</button>
+            <button onClick={clearConsentLog} disabled={consentTotal === 0} style={{ ...dangerBtn, opacity: consentTotal === 0 ? 0.5 : 1 }}>동의 기록 삭제</button>
           </div>
         </section>
 
         <section style={noticeStyle}>
-          <p style={sectionLabel}>medical boundary</p>
+          <p style={sectionLabel}>의료적 경계</p>
           <p style={bodyText}>
-            This app does not diagnose, treat, cure, or prescribe. It recommends cosmetics from visible skin signals. Pain, sudden changes, severe inflammation, or persistent symptoms should route to professional consultation.
+            이 앱은 진단, 치료, 처방을 하지 않습니다. 사진에서 보이는 피부 신호를 바탕으로 화장품 선택을 돕는 서비스예요. 통증, 급격한 변화, 심한 염증, 오래 지속되는 증상은 전문 상담을 우선해 주세요.
           </p>
         </section>
 
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <Link href="/scan" style={{ ...primaryBtn, flex: 1, textAlign: "center" }}>Back to scan</Link>
-          <Link href="/care" style={{ ...outlineLink, flex: 1, textAlign: "center" }}>Care links</Link>
+          <Link href="/scan" style={{ ...primaryBtn, flex: 1, textAlign: "center" }}>스캔으로 돌아가기</Link>
+          <Link href="/care" style={{ ...outlineLink, flex: 1, textAlign: "center" }}>구매/상담 연결</Link>
         </div>
       </div>
     </main>

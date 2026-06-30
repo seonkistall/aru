@@ -326,6 +326,8 @@ def main() -> None:
     }
     if args.export_onnx:
         onnx_path = out_dir / "visible_attr_mobilenetv3.onnx"
+        checkpoint = torch.load(best_path, map_location=device)
+        model.load_state_dict(checkpoint["model"])
         export_onnx(model, onnx_path, device)
         artifacts["onnx"] = {"path": str(onnx_path), "sha256": sha256(onnx_path)}
         print(f"onnx: {onnx_path}")

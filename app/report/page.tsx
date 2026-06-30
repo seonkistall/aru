@@ -9,15 +9,15 @@ import type { SkinReads } from "@/lib/skin";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
-    "oil:거의 없음": "T존의 번들거림은 차분한 편이에요.",
-    "oil:조금 있음": "T존에 은은한 유분감이 보여요.",
-    "oil:많은 편": "T존의 윤기가 비교적 도드라져 보여요.",
-    "pores:매끈한 편": "볼 쪽 결은 비교적 매끈해 보여요.",
-    "pores:조금 도드라짐": "볼 쪽 결이 조금 보이는 편이에요.",
-    "pores:도드라진 편": "볼 쪽 모공과 결이 도드라져 보여요.",
-    "redness:거의 없음": "붉은기는 거의 보이지 않아요.",
-    "redness:약간 보임": "볼 쪽에 옅은 붉은기가 있어요.",
-    "redness:붉은기 있음": "볼 쪽 붉은기가 눈에 띄는 편이에요.",
+    "oil:유분 적음": "T존의 번들거림은 차분한 편이에요.",
+    "oil:유분 약간": "T존에 은은한 유분감이 보여요.",
+    "oil:유분 많음": "T존의 윤기가 비교적 도드라져 보여요.",
+    "pores:결 매끈": "볼 쪽 결은 비교적 매끈해 보여요.",
+    "pores:결 약간 보임": "볼 쪽 결이 조금 보이는 편이에요.",
+    "pores:결 뚜렷": "볼 쪽 모공과 결이 도드라져 보여요.",
+    "redness:붉은기 낮음": "붉은기는 낮게 보여요.",
+    "redness:붉은기 약간": "볼 쪽에 옅은 붉은기가 있어요.",
+    "redness:붉은기 뚜렷": "볼 쪽 붉은기가 눈에 띄는 편이에요.",
   };
   return messages[`${attr}:${value}`] ?? "";
 }
@@ -103,6 +103,7 @@ export default function Report() {
         <h1 style={headlineStyle}>{reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}</h1>
         <p style={subStyle}>{reads ? "사진과 설문을 함께 읽었어요." : "설문 답변을 바탕으로 정리했어요."}</p>
         {reads?.narrative && <p style={narrativeStyle}>{reads.narrative}</p>}
+        {reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
 
         {reads && (
           <section style={card}>
@@ -129,6 +130,22 @@ export default function Report() {
           </p>
         </section>
 
+        <section style={card}>
+          <p style={sectionLabel}>오늘의 루틴</p>
+          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            {result.routine.map((step, index) => (
+              <div key={step.id} style={routineStep}>
+                <span style={routineIndex}>{index + 1}</span>
+                <div>
+                  <h2 style={routineTitle}>{step.title}</h2>
+                  <p style={routineBody}>{step.body}</p>
+                  {step.heroSku && <p style={routineProduct}>{step.heroSku.brand} {step.heroSku.name}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section style={careCard}>
           <p style={sectionLabel}>후속 연결</p>
           <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 6px" }}>
@@ -141,6 +158,7 @@ export default function Report() {
         </section>
 
         {result.note && <p style={noteStyle}>{result.note}</p>}
+        <p style={{ ...sectionLabel, marginBottom: 14 }}>추천 제품</p>
         {result.picks.map((pick, i) => (
           <ProductBlock key={pick.sku.id} pick={pick} last={i === result.picks.length - 1} />
         ))}
@@ -176,12 +194,43 @@ function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last:
         ))}
         {pick.avoidedClear && <span style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 700 }}>피하고 싶은 성분 반영</span>}
       </div>
+      {pick.watchOut && <p style={watchOutStyle}>{pick.watchOut}</p>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{pick.sku.price.toLocaleString()}원</span>
         <a href={pick.sku.buyUrl} onClick={() => recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price })} style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none", fontWeight: 700 }}>보러가기</a>
       </div>
       {!last && <div style={{ height: 1, background: "var(--line)", margin: "34px 0" }} />}
     </div>
+  );
+}
+
+function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplied: boolean }) {
+  const pct = Math.round(reads.confidence * 100);
+  return (
+    <section style={confidenceCard(reads.retakeRecommended)}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <p style={sectionLabel}>분석 신뢰도</p>
+        <strong style={{ fontFeatureSettings: '"tnum"', fontSize: 20, color: "var(--ink)" }}>{pct}%</strong>
+      </div>
+      <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 20, color: "var(--ink)", margin: "6px 0" }}>
+        {scanApplied ? "스캔 신호를 추천에 반영했어요" : "이번 추천은 설문을 더 크게 반영했어요"}
+      </h2>
+      <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+        {scanApplied
+          ? "조명과 얼굴 위치가 충분해서 유분, 붉은기, 피부결 신호를 제품 선택에 함께 사용했어요."
+          : "촬영 조건이 애매한 부분이 있어 스캔 결과는 참고만 하고, 사용자가 답한 고민과 예산을 우선했어요."}
+      </p>
+      {reads.retakeReasons.length > 0 && (
+        <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
+          {reads.retakeReasons.map((reason) => (
+            <span key={reason} style={{ fontSize: 12.5, color: "#8f3f3b" }}>{reason}</span>
+          ))}
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 10 }}>
+        의료 진단이 아니라 사진에서 보이는 피부 신호 기반의 화장품 추천입니다.
+      </p>
+    </section>
   );
 }
 
@@ -192,11 +241,27 @@ const headlineStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)",
 const subStyle: React.CSSProperties = { fontSize: 13.5, color: "var(--text-muted)", marginBottom: 14 };
 const narrativeStyle: React.CSSProperties = { fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 28 };
 const card: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px" };
-const careCard: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px", marginBottom: 28 };
+const careCard: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px", margin: "24px 0 28px" };
 const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
 const imageBox: React.CSSProperties = { width: "100%", height: 150, borderRadius: 8, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 };
 const pill: React.CSSProperties = { background: "var(--plum-soft)", color: "var(--plum)", fontSize: 12, borderRadius: 8, padding: "4px 10px", fontWeight: 700 };
+const watchOutStyle: React.CSSProperties = { fontSize: 12.5, color: "#8f3f3b", background: "#fbf4f1", border: "1px solid #ead2cc", borderRadius: 8, padding: "9px 10px", lineHeight: 1.45, marginBottom: 12 };
+const routineStep: React.CSSProperties = { display: "grid", gridTemplateColumns: "30px 1fr", gap: 12, alignItems: "start", borderTop: "1px solid var(--line)", paddingTop: 12 };
+const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--plum)", color: "var(--on-plum)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };
+const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 17, color: "var(--ink)", marginBottom: 4 };
+const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };
+const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--plum)", fontWeight: 800, marginTop: 6 };
 const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px", boxShadow: "0 -8px 24px rgba(40,30,20,.06)" };
 const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
+
+function confidenceCard(retake: boolean): React.CSSProperties {
+  return {
+    background: retake ? "#fbf4f1" : "var(--plum-soft)",
+    border: retake ? "1px solid #ead2cc" : "1px solid rgba(79,107,82,.22)",
+    borderRadius: 8,
+    padding: "18px 18px 16px",
+    marginBottom: 18,
+  };
+}

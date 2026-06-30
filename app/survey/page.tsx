@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
-import type { Survey as SurveyT } from "@/lib/recommend";
+import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 
 const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성"];
 const CONCERNS: Concern[] = ["모공", "붉은기", "건조", "트러블", "유분", "탄력"];
@@ -16,10 +16,34 @@ const BUDGETS = [
   { label: "4만원 이상", won: 60000 },
 ];
 
+type ScanHint = { concerns: Concern[]; text: string } | null;
+
+function loadScanHint(): ScanHint {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("gyeol_scan");
+    if (!raw) return null;
+    const scan = JSON.parse(raw) as ScanReads;
+    if (!scan || scan.retakeRecommended || (scan.confidence ?? 0) < 0.58) {
+      return { concerns: [], text: "촬영 조건이 애매해서 설문 답변을 중심으로 추천할게요." };
+    }
+    const concerns: Concern[] = [];
+    if (scan.oil >= 2) concerns.push("유분");
+    if (scan.redness >= 1) concerns.push("붉은기");
+    if (scan.pores >= 1) concerns.push("모공");
+    return concerns.length
+      ? { concerns, text: `스캔에서 ${concerns.join("·")} 신호가 보여 고민에 미리 담았어요.` }
+      : { concerns: [], text: "스캔에서는 크게 도드라진 신호가 적어 기본 설문을 중심으로 볼게요." };
+  } catch {
+    return null;
+  }
+}
+
 export default function Survey() {
   const router = useRouter();
+  const [scanHint] = useState<ScanHint>(() => loadScanHint());
   const [type, setType] = useState<SkinType | null>(null);
-  const [concerns, setConcerns] = useState<Concern[]>([]);
+  const [concerns, setConcerns] = useState<Concern[]>(() => scanHint?.concerns ?? []);
   const [category, setCategory] = useState<Category | null>(null);
   const [budget, setBudget] = useState<number | null>(null);
   const [avoid, setAvoid] = useState<Avoid[]>([]);
@@ -40,7 +64,8 @@ export default function Survey() {
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <p style={eyebrow}>몇 가지만 더 알려주세요</p>
-        <h1 style={titleStyle}>어떤 제품을 찾고 있나요?</h1>
+        <h1 style={titleStyle}>추천을 더 정확하게 맞춰볼게요</h1>
+        {scanHint && <p style={scanHintStyle}>{scanHint.text}</p>}
 
         <Section title="제품 종류" required>
           <Chips options={CATEGORIES} selected={category ? [category] : []} onPick={setCategory} />
@@ -62,7 +87,7 @@ export default function Survey() {
           <Chips options={AVOIDS} selected={avoid} onPick={(v) => toggle(avoid, v, setAvoid)} />
         </Section>
 
-        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>추천 받기</button>
+        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>리포트 보기</button>
       </div>
     </main>
   );
@@ -95,7 +120,8 @@ function Chips<T extends string>({ options, selected, onPick }: { options: T[]; 
 }
 
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
-const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 22px" };
+const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 12px" };
+const scanHintStyle: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 12px", lineHeight: 1.5, marginBottom: 22 };
 
 function chipStyle(on: boolean): React.CSSProperties {
   return {

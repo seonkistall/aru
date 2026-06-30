@@ -1,8 +1,7 @@
 /**
- * Hand-curated demo SKU set.
+ * Demo product set.
  *
- * Tags describe fit and preferences only. Recommendation copy should avoid
- * medical or guaranteed efficacy claims.
+ * Copy describes cosmetic fit only. Avoid medical/guaranteed efficacy claims.
  */
 
 export type SkinType = "지성" | "건성" | "복합성" | "민감성";
@@ -46,7 +45,7 @@ export const SKUS: Sku[] = [
   {
     id: "cl2",
     brand: "이즈앤트리",
-    name: "약산성 히알루론산 클렌저",
+    name: "히알루론산 약산성 클렌저",
     category: "클렌저",
     price: 12000,
     forTypes: ["민감성", "건성"],
@@ -54,7 +53,7 @@ export const SKUS: Sku[] = [
     keyIngredients: ["히알루론산", "판테놀"],
     freeOf: ["향료", "알코올", "에센셜오일"],
     tone: "gentle",
-    buyUrl: shoppingSearch("이즈앤트리", "약산성 히알루론산 클렌저"),
+    buyUrl: shoppingSearch("이즈앤트리", "히알루론산 약산성 클렌저"),
   },
   {
     id: "tn1",

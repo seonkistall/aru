@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CONSENT_VERSION, latestConsent, recordConsentEvent } from "@/lib/consent";
 import { saveCropSample, cropSampleCount, exportCropSamples } from "@/lib/crops";
-import { analyzeSkin, type SkinReads } from "@/lib/skin";
+import {
+  analyzeSkin,
+  classifyVisibleAttributes,
+  SKIN_LABELS,
+  VISIBLE_MODEL_CONTRACT,
+  type AnalysisSource,
+  type SkinAttr,
+  type SkinLevel,
+  type SkinReads,
+} from "@/lib/skin";
 import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type CaptureQualityMeta, type SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
 
@@ -42,6 +51,15 @@ type Quality = {
   movement?: number;
   rejectReason?: string;
 };
+
+type VisionAnalysis = {
+  labels?: Partial<Record<SkinAttr, SkinLevel>>;
+  confidence?: Partial<Record<SkinAttr, number>>;
+  narrative?: string;
+  source?: string;
+};
+
+const ATTRS: SkinAttr[] = ["oil", "redness", "pores"];
 
 const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
 const MODEL =
@@ -118,6 +136,10 @@ export default function Scan() {
   const [cropDataUrl, setCropDataUrl] = useState<string | null>(null);
   const [captureMeta, setCaptureMeta] = useState<SampleMeta | null>(null);
   const captureProfile = CAPTURE_PROFILES[captureMode];
+  const staffMode = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("staff") === "1";
+  }, []);
 
   const canCapture =
     phase === "ready" &&
@@ -291,15 +313,17 @@ export default function Scan() {
       const verifiedQuality = evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], quality.steady);
       setQuality(verifiedQuality);
       if (!qualityPassed(verifiedQuality, CAPTURE_PROFILES[captureMode])) {
-        setErr("Capture quality changed. Please align your face and try again.");
+        setErr("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요.");
         setPhase("ready");
         return;
       }
 
       const faceCrop = consent || datasetConsent ? cropFace(canvas, faces[0]) : null;
-      setCropDataUrl(datasetConsent ? faceCrop : null);
+      const modelCrop = cropFaceImageData(canvas, faces[0]);
+      setCropDataUrl(staffMode && datasetConsent ? faceCrop : null);
 
-      const out = analyzeSkin(imageData, faces[0]);
+      const mlPrediction = modelCrop ? await classifyVisibleAttributes(modelCrop) : null;
+      const out = analyzeSkin(imageData, faces[0], mlPrediction);
       if (!out) {
         setPhase("noface");
         return;
@@ -315,15 +339,7 @@ export default function Scan() {
           });
           if (resp.ok) {
             const v = await resp.json();
-            if (v?.ok) {
-              final = {
-                ...out,
-                oil: { value: v.oil, calm: v.oil === "거의 없음" },
-                redness: { value: v.redness, calm: v.redness === "거의 없음" },
-                pores: { value: v.pores, calm: v.pores === "매끈한 편" },
-                narrative: v.narrative || out.narrative,
-              };
-            }
+            if (v?.ok) final = mergeVisionAnalysis(out, v);
           }
         } catch {
           /* Keep on-device result. */
@@ -349,6 +365,13 @@ export default function Scan() {
           aiAnalysis: aiEvent?.id,
           learningCrop: cropEvent?.id,
         },
+        predictionSource: final.source,
+        modelVersion: final.source === "ml-model" && mlPrediction?.modelVersion ? mlPrediction.modelVersion : VISIBLE_MODEL_CONTRACT.fallbackVersion,
+        inputSchemaVersion: mlPrediction?.inputSchemaVersion ?? VISIBLE_MODEL_CONTRACT.inputSchemaVersion,
+        analysisConfidence: final.confidence,
+        retakeRecommended: final.retakeRecommended,
+        initialPrediction: predictionSnapshot(out),
+        finalPrediction: predictionSnapshot(final),
       });
 
       setReads(final);
@@ -421,7 +444,7 @@ export default function Scan() {
 
         {phase === "ready" && (
           <>
-            <ScanModePicker mode={captureMode} onChange={setCaptureMode} />
+            {staffMode && <ScanModePicker mode={captureMode} onChange={setCaptureMode} />}
             <QualityPanel quality={quality} />
             <CaptureTips />
             <PrivacyNotice />
@@ -432,17 +455,19 @@ export default function Scan() {
                 onChange={(e) => toggleAiConsent(e.target.checked)}
                 style={{ accentColor: "var(--plum)", width: 16, height: 16 }}
               />
-              <span>더 정교한 AI 분석 받기 <span style={{ color: "var(--faint)" }}>얼굴 크롭만 전송돼요</span></span>
+              <span>선택: AI 분석용 전송 <span style={{ color: "var(--faint)" }}>얼굴 크롭만 보내고 학습 저장과는 분리돼요</span></span>
             </label>
-            <label style={consentStyle}>
-              <input
-                type="checkbox"
-                checked={datasetConsent}
-                onChange={(e) => toggleDatasetConsent(e.target.checked)}
-                style={{ accentColor: "var(--plum)", width: 16, height: 16 }}
-              />
-              <span>학습용 크롭을 이 기기에 저장 <span style={{ color: "var(--faint)" }}>내보낼 때만 사용돼요</span></span>
-            </label>
+            {staffMode && (
+              <label style={consentStyle}>
+                <input
+                  type="checkbox"
+                  checked={datasetConsent}
+                  onChange={(e) => toggleDatasetConsent(e.target.checked)}
+                  style={{ accentColor: "var(--plum)", width: 16, height: 16 }}
+                />
+                <span>연구용: 학습 크롭 저장 <span style={{ color: "var(--faint)" }}>동의한 파일만 이 기기에 최대 120개 보관돼요</span></span>
+              </label>
+            )}
           </>
         )}
 
@@ -470,36 +495,41 @@ export default function Scan() {
             <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", margin: "14px 0 4px" }}>
               * 조명, 각도, 메이크업에 따라 달라질 수 있는 참고용 분석이에요.
             </p>
-            <details style={{ marginTop: 6, fontSize: 12, color: "var(--muted)" }}>
-              <summary style={{ cursor: "pointer", textAlign: "center" }}>디버그 신호 보기</summary>
-              <pre style={debugStyle}>
+            {staffMode && (
+              <details style={{ marginTop: 6, fontSize: 12, color: "var(--muted)" }}>
+                <summary style={{ cursor: "pointer", textAlign: "center" }}>디버그 신호 보기</summary>
+                <pre style={debugStyle}>
 {`shine = ${reads.raw.shine.toFixed(3)} -> ${reads.oil.value}
 relRedness = ${reads.raw.relRedness.toFixed(4)} -> ${reads.redness.value}
 texture = ${reads.raw.cov.toFixed(3)} -> ${reads.pores.value}
 tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)}`}
-              </pre>
-            </details>
+                </pre>
+              </details>
+            )}
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-              <button onClick={reset} style={{ ...outlineBtn, flex: 1 }}>다시 찍기</button>
+              <button onClick={reset} style={{ ...(reads.retakeRecommended ? primaryBtn : outlineBtn), flex: 1 }}>다시 찍기</button>
               <a
                 href="/survey"
                 onClick={() => {
                   sessionStorage.setItem(
                     "gyeol_scan",
                     JSON.stringify({
-                      oil: toOrdinal("oil", reads.oil.value),
-                      redness: toOrdinal("redness", reads.redness.value),
-                      pores: toOrdinal("pores", reads.pores.value),
+                      oil: reads.oil.level,
+                      redness: reads.redness.level,
+                      pores: reads.pores.level,
+                      confidence: reads.confidence,
+                      retakeRecommended: reads.retakeRecommended,
+                      source: reads.source,
                     })
                   );
                   sessionStorage.setItem("gyeol_reads", JSON.stringify(reads));
                 }}
-                style={{ ...primaryBtn, flex: 1, textAlign: "center", textDecoration: "none" }}
+                style={{ ...(reads.retakeRecommended ? outlineBtn : primaryBtn), flex: 1, textAlign: "center", textDecoration: "none" }}
               >
-                추천 받기
+                {reads.retakeRecommended ? "설문으로 이어가기" : "추천 받기"}
               </a>
             </div>
-            <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />
+            {staffMode && <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />}
           </>
         )}
       </div>
@@ -603,13 +633,14 @@ function PrivacyNotice() {
   return (
     <div style={{ marginTop: 12, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.55 }}>
       <b style={{ color: "var(--ink)" }}>동의는 2가지로 분리돼요.</b>
-      <span> AI 분석 전송은 얼굴 크롭을 분석 API에 보내는 선택이고, 학습용 크롭 저장은 이 기기에 최근 25개까지 보관하는 선택입니다. </span>
+      <span> AI 분석용 전송은 얼굴 크롭을 분석 API에 보내는 선택이고, 학습용 크롭 저장은 동의한 연구 샘플을 이 기기에 최대 120개까지 보관하는 선택입니다. </span>
       <a href="/privacy" style={{ color: "var(--plum)", fontWeight: 800, textDecoration: "none" }}>자세히 보기</a>
     </div>
   );
 }
 
 function ResultCard({ reads }: { reads: SkinReads }) {
+  const confidencePct = Math.round(reads.confidence * 100);
   const rows = [
     { label: "유분", ...reads.oil },
     { label: "모공/결", ...reads.pores },
@@ -623,6 +654,26 @@ function ResultCard({ reads }: { reads: SkinReads }) {
         {reads.headline}
       </h2>
       <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{reads.narrative}</p>
+      <div style={confidenceBox(reads.retakeRecommended)}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: reads.retakeRecommended ? "#8f3f3b" : "var(--success)" }}>
+            분석 신뢰도 {reads.confidenceLabel}
+          </span>
+          <span style={{ fontFeatureSettings: '"tnum"', fontSize: 18, fontWeight: 900, color: "var(--ink)" }}>{confidencePct}%</span>
+        </div>
+        <p style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5, marginTop: 6 }}>
+          {reads.retakeRecommended
+            ? "이 결과는 추천에서 참고만 하고, 설문 답변을 더 크게 반영할게요."
+            : "촬영 품질이 충분해서 추천 기준에 스캔 신호를 함께 반영할게요."}
+        </p>
+        {reads.retakeReasons.length > 0 && (
+          <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+            {reads.retakeReasons.map((reason) => (
+              <span key={reason} style={{ fontSize: 12, color: "#8f3f3b" }}>{reason}</span>
+            ))}
+          </div>
+        )}
+      </div>
       <div style={{ borderTop: "1px solid var(--line)" }}>
         {rows.map((row) => (
           <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "13px 0", borderBottom: "1px solid var(--line)" }}>
@@ -650,7 +701,7 @@ function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads; cropD
     const meta: SampleMeta | undefined = captureMeta
       ? {
           ...captureMeta,
-          labelConfidence: source === "confirmed" ? "medium" : "high",
+          labelConfidence: source === "confirmed" ? (reads.retakeRecommended ? "low" : "medium") : "high",
           correctionFlags: source === "corrected"
             ? {
                 oil: finalLabels.oil !== init.oil,
@@ -658,6 +709,7 @@ function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads; cropD
                 pores: finalLabels.pores !== init.pores,
               }
             : undefined,
+          ungradable: reads.retakeRecommended && source === "confirmed",
         }
       : undefined;
     const sample = { ts: Date.now(), features: reads.raw, labels: finalLabels, source, meta };
@@ -780,7 +832,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     noGlare,
     steady,
     score: checks.filter(Boolean).length,
-    message: rejectReason ? "Capture quality changed. Please align your face and try again." : "Capture quality verified.",
+    message: rejectReason ? "촬영 품질을 다시 맞춰주세요." : "촬영 품질이 확인됐어요.",
     centerOffsetX,
     centerOffsetY,
     faceSize,
@@ -854,6 +906,87 @@ function cropFace(src: HTMLCanvasElement, landmarks: Landmark[]): string {
   out.height = Math.round(ch * scale);
   out.getContext("2d")?.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);
   return out.toDataURL("image/jpeg", 0.82);
+}
+
+function cropFaceImageData(src: HTMLCanvasElement, landmarks: Landmark[]): ImageData | null {
+  const w = src.width;
+  const h = src.height;
+  const box = faceBox(landmarks);
+  const pad = 0.14;
+  const x0 = Math.max(0, (box.minX - pad) * w);
+  const y0 = Math.max(0, (box.minY - pad) * h);
+  const cw = Math.min(w, (box.maxX + pad) * w) - x0;
+  const ch = Math.min(h, (box.maxY + pad) * h) - y0;
+  if (cw <= 0 || ch <= 0) return null;
+  const out = document.createElement("canvas");
+  out.width = 224;
+  out.height = 224;
+  const ctx = out.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);
+  return ctx.getImageData(0, 0, out.width, out.height);
+}
+
+function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): SkinReads {
+  const next: SkinReads = {
+    ...base,
+    oil: { ...base.oil },
+    redness: { ...base.redness },
+    pores: { ...base.pores },
+    narrative: payload.narrative || base.narrative,
+    source: "vision-api" satisfies AnalysisSource,
+  };
+
+  const confidenceValues: number[] = [];
+  for (const attr of ATTRS) {
+    const level = payload.labels?.[attr];
+    const confidence = payload.confidence?.[attr];
+    if (typeof confidence === "number" && Number.isFinite(confidence)) confidenceValues.push(confidence);
+    if (level !== 0 && level !== 1 && level !== 2) continue;
+    const current = next[attr];
+    const modelConfidence = typeof confidence === "number" && Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.52;
+    if (modelConfidence < 0.62 && modelConfidence < (current.confidence ?? 0.6)) continue;
+    next[attr] = {
+      value: SKIN_LABELS[attr][level],
+      level,
+      calm: level === 0,
+      confidence: Math.max(modelConfidence, current.confidence ?? 0.6),
+    };
+  }
+
+  if (confidenceValues.length) {
+    const visionConfidence = confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length;
+    next.confidence = Math.max(base.confidence, Math.min(0.86, visionConfidence * 0.9));
+    next.confidenceLabel = confidenceLabelFor(next.confidence);
+    next.retakeRecommended = next.confidence < 0.58 || next.retakeReasons.length >= 2;
+  }
+
+  return next;
+}
+
+function confidenceLabelFor(confidence: number): SkinReads["confidenceLabel"] {
+  if (confidence >= 0.78) return "높음";
+  if (confidence >= 0.58) return "보통";
+  return "낮음";
+}
+
+function predictionSnapshot(reads: SkinReads): Record<string, unknown> {
+  return {
+    source: reads.source,
+    confidence: Number(reads.confidence.toFixed(3)),
+    retakeRecommended: reads.retakeRecommended,
+    labels: {
+      oil: reads.oil.level,
+      redness: reads.redness.level,
+      pores: reads.pores.level,
+    },
+    values: {
+      oil: reads.oil.value,
+      redness: reads.redness.value,
+      pores: reads.pores.value,
+    },
+    featureVersion: VISIBLE_MODEL_CONTRACT.inputSchemaVersion,
+  };
 }
 
 const eyebrow: React.CSSProperties = {
@@ -992,6 +1125,16 @@ const debugStyle: React.CSSProperties = {
   marginTop: 8,
   overflowX: "auto",
 };
+
+function confidenceBox(retake: boolean): React.CSSProperties {
+  return {
+    border: retake ? "1px solid #d8b8b3" : "1px solid rgba(79,107,82,.24)",
+    borderRadius: 8,
+    background: retake ? "#fbf4f1" : "var(--plum-soft)",
+    padding: "12px 14px",
+    marginBottom: 16,
+  };
+}
 
 const ghostLink: React.CSSProperties = { color: "var(--text-muted)", fontSize: 13, marginTop: 8, textDecoration: "underline" };
 const fallbackText: React.CSSProperties = { color: "var(--ink-soft)", fontSize: 14, textAlign: "center", lineHeight: 1.5 };

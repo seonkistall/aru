@@ -70,7 +70,7 @@ export function clinicLinks(locale: CareLocale): CareLink[] {
 
 export function careSummary(survey: Survey | null, reads: SkinReads | null, result: RecoResult | null, locale: CareLocale) {
   const top = result?.picks[0]?.sku;
-  const hasVisibleRedness = reads?.redness.value === "붉은기 있음" || survey?.concerns.includes("붉은기");
+  const hasVisibleRedness = (reads?.redness.level ?? 0) >= 1 || survey?.concerns.includes("붉은기");
   const hasTroubleConcern = survey?.concerns.includes("트러블");
 
   if (locale === "en") {

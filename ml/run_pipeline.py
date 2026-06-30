@@ -230,7 +230,43 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
     images = dataset / "images"
     images.mkdir(parents=True, exist_ok=True)
     manifest = dataset / "manifest.csv"
-    fieldnames = ["image", "id", "oil", "redness", "pores", "source", "ts", "shine", "relRedness", "cov", "tzoneL", "cheekL"]
+    fieldnames = [
+        "image",
+        "id",
+        "oil",
+        "redness",
+        "pores",
+        "source",
+        "ts",
+        "participant_id",
+        "session_id",
+        "round",
+        "device_id",
+        "reviewer_id",
+        "capture_mode",
+        "quality_score",
+        "quality_reject",
+        "face_size",
+        "brightness_mean",
+        "hot_ratio",
+        "dark_ratio",
+        "prediction_source",
+        "model_version",
+        "input_schema_version",
+        "analysis_confidence",
+        "retake_recommended",
+        "label_confidence",
+        "ungradable",
+        "shine",
+        "relRedness",
+        "cov",
+        "tzoneL",
+        "cheekL",
+        "cheekTexture",
+        "tzoneSpecular",
+        "cheekSamples",
+        "tzoneSamples",
+    ]
     failures: list[str] = []
     valid = 0
     with manifest.open("w", encoding="utf-8", newline="") as handle:
@@ -246,6 +282,8 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 continue
             labels = row.get("labels", {})
             features = row.get("features", {})
+            meta = row.get("meta") or {}
+            quality = meta.get("quality") or {}
             writer.writerow({
                 "image": image_rel.as_posix(),
                 "id": image_id,
@@ -254,11 +292,34 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 "pores": labels.get("pores", ""),
                 "source": row.get("source", "unknown"),
                 "ts": row.get("ts", ""),
+                "participant_id": meta.get("participantId", ""),
+                "session_id": meta.get("sessionId", ""),
+                "round": meta.get("round", ""),
+                "device_id": meta.get("deviceId", ""),
+                "reviewer_id": meta.get("reviewerId", ""),
+                "capture_mode": meta.get("captureMode", ""),
+                "quality_score": quality.get("score", ""),
+                "quality_reject": quality.get("rejectReason", ""),
+                "face_size": quality.get("faceSize", ""),
+                "brightness_mean": quality.get("brightnessMean", ""),
+                "hot_ratio": quality.get("hotRatio", ""),
+                "dark_ratio": quality.get("darkRatio", ""),
+                "prediction_source": meta.get("predictionSource", ""),
+                "model_version": meta.get("modelVersion", ""),
+                "input_schema_version": meta.get("inputSchemaVersion", ""),
+                "analysis_confidence": meta.get("analysisConfidence", ""),
+                "retake_recommended": meta.get("retakeRecommended", ""),
+                "label_confidence": meta.get("labelConfidence", ""),
+                "ungradable": meta.get("ungradable", ""),
                 "shine": features.get("shine", ""),
                 "relRedness": features.get("relRedness", ""),
                 "cov": features.get("cov", ""),
                 "tzoneL": features.get("tzoneL", ""),
                 "cheekL": features.get("cheekL", ""),
+                "cheekTexture": features.get("cheekTexture", ""),
+                "tzoneSpecular": features.get("tzoneSpecular", ""),
+                "cheekSamples": features.get("cheekSamples", ""),
+                "tzoneSamples": features.get("tzoneSamples", ""),
             })
             valid += 1
     return {"manifest": str(manifest), "valid": valid, "failures": failures}

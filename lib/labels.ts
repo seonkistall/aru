@@ -1,8 +1,8 @@
 /**
  * Local feedback storage for calibration.
  *
- * Each confirmed or corrected scan stores only numeric features and user labels.
- * No image is stored in this v1 path.
+ * Confirmed/corrected scans store numeric features, visible-attribute labels,
+ * and optional capture metadata. Full-frame photos are never stored here.
  */
 
 export type Attr = "oil" | "redness" | "pores";
@@ -42,15 +42,22 @@ export type SampleMeta = {
     aiAnalysis?: string;
     learningCrop?: string;
   };
+  predictionSource?: string;
+  modelVersion?: string;
+  inputSchemaVersion?: string;
+  analysisConfidence?: number;
+  retakeRecommended?: boolean;
+  initialPrediction?: Record<string, unknown>;
+  finalPrediction?: Record<string, unknown>;
   labelConfidence?: LabelConfidence;
   correctionFlags?: Partial<Record<Attr, boolean>>;
   ungradable?: boolean;
 };
 
 export const SCALES: Record<Attr, [string, string, string]> = {
-  oil: ["거의 없음", "조금 있음", "많은 편"],
-  redness: ["거의 없음", "약간 보임", "붉은기 있음"],
-  pores: ["매끈한 편", "조금 도드라짐", "도드라진 편"],
+  oil: ["유분 적음", "유분 약간", "유분 많음"],
+  redness: ["붉은기 낮음", "붉은기 약간", "붉은기 뚜렷"],
+  pores: ["결 매끈", "결 약간 보임", "결 뚜렷"],
 };
 
 export function toOrdinal(attr: Attr, value: string): number {
@@ -61,7 +68,17 @@ export function toOrdinal(attr: Attr, value: string): number {
 export type LabeledSample = {
   id?: string;
   ts: number;
-  features: { shine: number; relRedness: number; cov: number; tzoneL: number; cheekL: number };
+  features: {
+    shine: number;
+    relRedness: number;
+    cov: number;
+    tzoneL: number;
+    cheekL: number;
+    cheekTexture?: number;
+    tzoneSpecular?: number;
+    cheekSamples?: number;
+    tzoneSamples?: number;
+  };
   labels: { oil: number; redness: number; pores: number };
   source: "confirmed" | "corrected";
   meta?: SampleMeta;
