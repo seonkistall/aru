@@ -29,6 +29,11 @@ export type ConfidenceSignal = {
   detail: string;
 };
 
+export type BurstInfo = {
+  frames: number;
+  agreement: Record<SkinAttr, number>;
+};
+
 export type SkinReads = {
   oil: Bucket;
   pores: Bucket;
@@ -43,6 +48,7 @@ export type SkinReads = {
   signals: ConfidenceSignal[];
   source: AnalysisSource;
   raw: SkinRawFeatures;
+  burst?: BurstInfo;
 };
 
 export type MlVisiblePrediction = {
@@ -210,7 +216,24 @@ function narrativeFor(oil: Bucket, redness: Bucket, pores: Bucket) {
   return `${parts[0]}, ${parts[1]}. ${parts[2]}.`;
 }
 
-export function analyzeSkin(imageData: ImageData, landmarks: LM[], ml?: MlVisiblePrediction | null): SkinReads | null {
+const ATTR_THRESHOLDS: Record<SkinAttr, [number, number]> = {
+  oil: [0.05, 0.16],
+  redness: [0.012, 0.03],
+  pores: [0.085, 0.14],
+};
+
+const ATTR_RAW_KEY: Record<SkinAttr, "shine" | "relRedness" | "cov"> = {
+  oil: "shine",
+  redness: "relRedness",
+  pores: "cov",
+};
+
+function levelFor(attr: SkinAttr, value: number): SkinLevel {
+  const [lo, hi] = ATTR_THRESHOLDS[attr];
+  return (value < lo ? 0 : value < hi ? 1 : 2) as SkinLevel;
+}
+
+function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
   const { data, width: w, height: h } = imageData;
   const tzone = sampleRegion(data, w, h, landmarks, TZONE);
   const cheeks = sampleRegion(data, w, h, landmarks, CHEEKS);
@@ -220,7 +243,7 @@ export function analyzeSkin(imageData: ImageData, landmarks: LM[], ml?: MlVisibl
   const tzoneL = lum(tzone.meanR, tzone.meanG, tzone.meanB);
   const rIdx = (m: RegionStats) => m.meanR / (m.meanR + m.meanG + m.meanB || 1);
 
-  const raw: SkinRawFeatures = {
+  return {
     shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255),
     relRedness: rIdx(cheeks) - rIdx(tzone),
     cov: cheeks.texture / (cheekL || 1),
@@ -231,17 +254,21 @@ export function analyzeSkin(imageData: ImageData, landmarks: LM[], ml?: MlVisibl
     cheekSamples: cheeks.n,
     tzoneSamples: tzone.n,
   };
+}
 
-  const oil = bucket("oil", raw.shine, 0.05, 0.16, distanceConfidence(raw.shine, 0.05, 0.16));
-  const redness = bucket("redness", raw.relRedness, 0.012, 0.03, distanceConfidence(raw.relRedness, 0.012, 0.03));
-  const pores = bucket("pores", raw.cov, 0.085, 0.14, distanceConfidence(raw.cov, 0.085, 0.14));
+function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, burst?: BurstInfo): SkinReads {
+  const oil = bucket("oil", raw.shine, ...ATTR_THRESHOLDS.oil, distanceConfidence(raw.shine, ...ATTR_THRESHOLDS.oil));
+  const redness = bucket("redness", raw.relRedness, ...ATTR_THRESHOLDS.redness, distanceConfidence(raw.relRedness, ...ATTR_THRESHOLDS.redness));
+  const pores = bucket("pores", raw.cov, ...ATTR_THRESHOLDS.pores, distanceConfidence(raw.cov, ...ATTR_THRESHOLDS.pores));
 
   const merged = mergeMlPrediction({ oil, redness, pores }, ml);
   const signals = buildSignals(raw);
   const signalScore = signals.filter((signal) => signal.ok).length / signals.length;
   const attrConfidence = (merged.oil.confidence ?? 0.6) * 0.34 + (merged.redness.confidence ?? 0.6) * 0.33 + (merged.pores.confidence ?? 0.6) * 0.33;
-  const confidence = clamp01(attrConfidence * 0.72 + signalScore * 0.28);
+  const meanAgreement = burst ? (burst.agreement.oil + burst.agreement.redness + burst.agreement.pores) / 3 : 1;
+  const confidence = clamp01((attrConfidence * 0.72 + signalScore * 0.28) * (burst ? 0.9 + 0.1 * meanAgreement : 1));
   const retakeReasons = signals.filter((signal) => !signal.ok).map((signal) => signal.detail);
+  if (burst && meanAgreement < 0.67) retakeReasons.push("촬영 프레임 사이에 신호가 조금 흔들렸어요");
 
   const concerns = [merged.oil, merged.redness, merged.pores].filter((b) => b.level > 0).length;
   const overall: Bucket =
@@ -265,7 +292,50 @@ export function analyzeSkin(imageData: ImageData, landmarks: LM[], ml?: MlVisibl
     signals,
     source: ml ? "ml-model" : "roi-calibrated",
     raw,
+    burst,
   };
+}
+
+export function analyzeSkin(imageData: ImageData, landmarks: LM[], ml?: MlVisiblePrediction | null): SkinReads | null {
+  const raw = extractRawFeatures(imageData, landmarks);
+  return raw ? readsFromRaw(raw, ml) : null;
+}
+
+/**
+ * Burst analysis: fuse several frames captured ~100-200ms apart by taking the
+ * per-feature median, which suppresses one-frame specular spikes and motion
+ * noise. Per-attribute agreement across frames feeds confidence and the
+ * retake decision, and is recorded in labels for ML calibration.
+ */
+export function analyzeSkinBurst(
+  frames: Array<{ imageData: ImageData; landmarks: LM[] }>,
+  ml?: MlVisiblePrediction | null
+): SkinReads | null {
+  const raws = frames
+    .map((frame) => extractRawFeatures(frame.imageData, frame.landmarks))
+    .filter((raw): raw is SkinRawFeatures => raw !== null);
+  if (!raws.length) return null;
+  if (raws.length === 1) return readsFromRaw(raws[0], ml);
+
+  const median = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    // True median: with an even count (a burst frame dropped), average the two
+    // middle values — taking the upper one would let a spike frame win.
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+  const fused = {} as SkinRawFeatures;
+  for (const key of Object.keys(raws[0]) as (keyof SkinRawFeatures)[]) {
+    fused[key] = median(raws.map((raw) => raw[key]));
+  }
+
+  const agreement = {} as BurstInfo["agreement"];
+  for (const attr of Object.keys(ATTR_RAW_KEY) as SkinAttr[]) {
+    const finalLevel = levelFor(attr, fused[ATTR_RAW_KEY[attr]]);
+    agreement[attr] = raws.filter((raw) => levelFor(attr, raw[ATTR_RAW_KEY[attr]]) === finalLevel).length / raws.length;
+  }
+
+  return readsFromRaw(fused, ml, { frames: raws.length, agreement });
 }
 
 function mergeMlPrediction(base: Record<SkinAttr, Bucket>, ml?: MlVisiblePrediction | null): Record<SkinAttr, Bucket> {

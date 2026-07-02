@@ -48,7 +48,7 @@ export default function Studio() {
     setBusy(true);
     try {
       await document.fonts.ready;
-      const dataUrl = await toPng(cardRef.current, { pixelRatio: 3, cacheBust: true, backgroundColor: "#f7f3ec" });
+      const dataUrl = await toPng(cardRef.current, { pixelRatio: 3, cacheBust: true, backgroundColor: "#ffffff" });
       const a = document.createElement("a");
       a.download = "kbeauty-skin-card.png";
       a.href = dataUrl;
@@ -119,15 +119,15 @@ export default function Studio() {
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 26, color: "var(--ink)", margin: "6px 0 4px" };
 const miniLabel: React.CSSProperties = { fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
-const cardPreview: React.CSSProperties = { width: 360, height: 640, background: "var(--paper)", padding: "34px 30px", display: "flex", flexDirection: "column", boxShadow: "0 18px 50px rgba(40,30,20,.18)", borderRadius: 8, overflow: "hidden" };
+const cardPreview: React.CSSProperties = { width: 360, height: 640, background: "var(--paper)", padding: "34px 30px", display: "flex", flexDirection: "column", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" };
 const cardHeadline: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 40, lineHeight: 1.2, color: "var(--ink)", margin: "30px 0 6px", whiteSpace: "pre-line" };
 const rowStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "13px 0", borderBottom: "1px solid var(--line)" };
-const presetBtn: React.CSSProperties = { fontSize: 12, color: "var(--muted)", background: "var(--surface-tint)", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer" };
+const presetBtn: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", background: "var(--surface-tint)", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 };
 const textareaStyle: React.CSSProperties = { width: "100%", fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 13px", marginBottom: 18, resize: "vertical" };
 const inputStyle: React.CSSProperties = { fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" };
 const downloadBtn: React.CSSProperties = { width: "100%", marginTop: 18, background: "var(--plum)", color: "var(--on-plum)", border: "none", borderRadius: 8, padding: "15px 24px", fontSize: 15, fontWeight: 700, cursor: "pointer" };
 
 function toggleBtn(calm?: boolean): React.CSSProperties {
-  return { fontSize: 11, padding: "9px 10px", borderRadius: 8, border: "1px solid var(--line)", background: calm ? "var(--surface-tint)" : "transparent", color: "var(--muted)", cursor: "pointer", whiteSpace: "nowrap" };
+  return { fontSize: 11, padding: "9px 10px", borderRadius: 8, border: "1px solid var(--line)", background: calm ? "var(--surface-tint)" : "transparent", color: "var(--text-muted)", cursor: "pointer", whiteSpace: "nowrap" };
 }

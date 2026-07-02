@@ -1,4 +1,4 @@
-export const CONSENT_VERSION = "2026-06-29.v1";
+export const CONSENT_VERSION = "2026-07-02.v2";
 
 export type ConsentKind = "ai_analysis" | "learning_crop";
 
@@ -15,7 +15,7 @@ export type ConsentEvent = {
 
 export const CONSENT_TEXT: Record<ConsentKind, string> = {
   ai_analysis:
-    "AI 분석용 전송: 얼굴 주변 크롭 이미지를 분석 API로 보내 보이는 피부 신호 기반 화장품 추천을 개선합니다. 학습용 저장과는 별도입니다.",
+    "AI 분석용 전송: 얼굴 주변 크롭 이미지를 외부 AI 제공사(Google Gemini/OpenAI) 분석 API로 전송하고, 보이는 피부 신호 기반 화장품 추천 생성에만 사용합니다. 학습용 저장과는 별도입니다.",
   learning_crop:
     "학습용 크롭 저장: 동의한 경우에만 얼굴 주변 크롭과 사용자가 확인한 라벨을 이 기기에 임시 저장하고, 내보낸 데이터만 ML 학습 검토에 사용합니다.",
 };

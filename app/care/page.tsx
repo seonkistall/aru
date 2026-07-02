@@ -89,12 +89,14 @@ export default function CarePage() {
             <span style={badge}>{view.survey.category}</span>
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-            <p style={{ ...commerceIntro, flex: 1 }}>
+            <p style={{ ...commerceIntro, flex: 1, marginBottom: 0 }}>
               {locale === "ko"
-                ? "추천 제품은 올리브영, 네이버 쇼핑, 쿠팡, 글로벌 검색으로 바로 이어져요. 지금은 검증용 링크이며, 제휴 계약 후 같은 자리에서 딥링크로 교체할 수 있어요."
-                : "Recommended products open marketplace-ready links. These can be replaced with partner deep links after commercial agreements."}
+                ? "추천 제품은 올리브영·네이버 쇼핑·쿠팡·글로벌 검색에서 바로 찾아볼 수 있어요."
+                : "Open each product on Olive Young, Naver Shopping, Coupang, or global search."}
             </p>
-            <Xiaohei size={54} pose="carry" />
+            <span style={{ marginLeft: -12 }}>
+              <Xiaohei size={54} pose="carry" />
+            </span>
           </div>
           {topPicks.map((pick) => (
             <div key={pick.sku.id} style={productRow}>
@@ -108,9 +110,9 @@ export default function CarePage() {
                   <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {link.label}
-                      {link.partnerReady && <small style={dealBadge}>제휴 후보</small>}
+                      {link.partnerReady && <small style={dealBadge}>{locale === "ko" ? "제휴 후보" : "Partner-ready"}</small>}
                     </span>
-                    <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{link.note}</small>
+                    <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{locale === "ko" ? link.note : link.noteEn ?? link.note}</small>
                   </button>
                 ))}
               </div>
@@ -159,9 +161,9 @@ const sectionHead: React.CSSProperties = { display: "flex", justifyContent: "spa
 const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, margin: 0 };
 const commerceIntro: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 14 };
 const productRow: React.CSSProperties = { borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 };
-const badge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
-const dealBadge: React.CSSProperties = { fontSize: 10.5, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 999, padding: "2px 6px", fontWeight: 900 };
-const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--surface-tint)", color: "var(--ink-soft)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
+const badge: React.CSSProperties = { fontSize: 12, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
+const dealBadge: React.CSSProperties = { fontSize: 10.5, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 6px", fontWeight: 900 };
+const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const segmented: React.CSSProperties = { display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" };
 const primaryBtn: React.CSSProperties = { background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const outlineBtn: React.CSSProperties = { background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
@@ -171,8 +173,8 @@ const tipList: React.CSSProperties = { margin: "12px 0 0", paddingLeft: 18, colo
 function segBtn(active: boolean): React.CSSProperties {
   return {
     border: "none",
-    background: active ? "var(--plum)" : "transparent",
-    color: active ? "var(--on-plum)" : "var(--text-muted)",
+    background: active ? "var(--ink)" : "transparent",
+    color: active ? "#fff" : "var(--text-muted)",
     padding: "7px 10px",
     fontSize: 12,
     fontWeight: 800,

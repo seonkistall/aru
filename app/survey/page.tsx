@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
@@ -41,13 +41,24 @@ function loadScanHint(): ScanHint {
 
 export default function Survey() {
   const router = useRouter();
-  const [scanHint] = useState<ScanHint>(() => loadScanHint());
+  const [scanHint, setScanHint] = useState<ScanHint>(null);
   const [type, setType] = useState<SkinType | null>(null);
-  const [concerns, setConcerns] = useState<Concern[]>(() => scanHint?.concerns ?? []);
+  const [concerns, setConcerns] = useState<Concern[]>([]);
   const [category, setCategory] = useState<Category | null>(null);
   const [budget, setBudget] = useState<number | null>(null);
   const [avoid, setAvoid] = useState<Avoid[]>([]);
   const ready = type && category && budget;
+
+  useEffect(() => {
+    // sessionStorage is client-only; reading it in the initial render caused an
+    // SSR hydration mismatch, so the one-time post-mount cascade is intentional.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const hint = loadScanHint();
+    if (!hint) return;
+    setScanHint(hint);
+    if (hint.concerns.length) setConcerns((prev) => (prev.length ? prev : hint.concerns));
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   function toggle<T>(list: T[], value: T, set: (next: T[]) => void) {
     set(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -88,6 +99,11 @@ export default function Survey() {
         </Section>
 
         <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>리포트 보기</button>
+        {!ready && (
+          <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
+            제품 종류·피부 타입·예산을 고르면 리포트를 볼 수 있어요
+          </p>
+        )}
       </div>
     </main>
   );
@@ -110,7 +126,7 @@ function Chips<T extends string>({ options, selected, onPick }: { options: T[]; 
       {options.map((option) => {
         const on = selected.includes(option);
         return (
-          <button key={option} onClick={() => onPick(option)} style={chipStyle(on)}>
+          <button key={option} onClick={() => onPick(option)} aria-pressed={on} style={chipStyle(on)}>
             {option}
           </button>
         );

@@ -2,14 +2,25 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getPurchases, recordCheckin, type Purchase } from "@/lib/store";
+import { getCheckins, getPurchases, recordCheckin, type Purchase } from "@/lib/store";
 
 export default function Checkin() {
   const [purchases, setPurchases] = useState<Purchase[] | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    getPurchases().then(setPurchases);
+    Promise.all([getPurchases(), getCheckins()]).then(([nextPurchases, checkins]) => {
+      // Done is per round (2주/4주): a week-2 checkin must not block the
+      // week-4 one the re-engagement email brings the user back for.
+      const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+      const initial: Record<string, boolean> = {};
+      for (const p of nextPurchases) {
+        const round = (Date.now() - p.ts) / WEEK_MS >= 3 ? 4 : 2;
+        if (checkins.some((c) => c.sku_id === p.sku_id && c.week === round)) initial[p.id] = true;
+      }
+      setDone(initial);
+      setPurchases(nextPurchases);
+    });
   }, []);
 
   if (purchases === null) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
@@ -46,7 +57,8 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
 
   async function save() {
     if (!ready) return;
-    await recordCheckin({ sku_id: purchase.sku_id, week: 2, satisfaction: sat, trouble, repurchase });
+    const weeks = (Date.now() - purchase.ts) / (7 * 24 * 60 * 60 * 1000);
+    await recordCheckin({ sku_id: purchase.sku_id, week: weeks >= 3 ? 4 : 2, satisfaction: sat, trouble, repurchase });
     onDone();
   }
 
@@ -77,14 +89,14 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function Seg({ options, value, onPick }: { options: string[]; value: number | null; onPick: (value: number) => void }) {
-  return <div style={{ display: "flex", gap: 6 }}>{options.map((option, i) => <button key={option} onClick={() => onPick(i + 1)} style={pill(value === i + 1)}>{option}</button>)}</div>;
+  return <div style={{ display: "flex", gap: 6 }}>{options.map((option, i) => <button key={option} onClick={() => onPick(i + 1)} aria-pressed={value === i + 1} style={pill(value === i + 1)}>{option}</button>)}</div>;
 }
 
 function Toggle({ value, onPick, yes, no }: { value: boolean | null; onPick: (value: boolean) => void; yes: string; no: string }) {
   return (
     <div style={{ display: "flex", gap: 6 }}>
-      <button onClick={() => onPick(true)} style={pill(value === true)}>{yes}</button>
-      <button onClick={() => onPick(false)} style={pill(value === false)}>{no}</button>
+      <button onClick={() => onPick(true)} aria-pressed={value === true} style={pill(value === true)}>{yes}</button>
+      <button onClick={() => onPick(false)} aria-pressed={value === false} style={pill(value === false)}>{no}</button>
     </div>
   );
 }

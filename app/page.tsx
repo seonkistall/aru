@@ -12,7 +12,7 @@ function Arrow({ w = 30 }: { w?: number }) {
 
 export default function Home() {
   return (
-    <main className="min-h-screen flex flex-col" style={{ background: "#fff", color: "var(--ink)" }}>
+    <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7">
         <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>결</span>
         <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)" }}>화장품, 덜 실패하게</span>
@@ -70,8 +70,8 @@ export default function Home() {
             </div>
           </div>
         </Link>
-        <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--muted)", marginTop: 11 }}>
-          사진은 기기 안에서만 · 저장 안 해요
+        <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--text-muted)", marginTop: 11 }}>
+          기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요
         </p>
       </div>
     </main>
