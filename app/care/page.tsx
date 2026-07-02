@@ -57,13 +57,33 @@ export default function CarePage() {
     return (
       <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
         <div className="mx-auto" style={{ maxWidth: 420 }}>
-          <p style={eyebrow}>care path</p>
-          <h1 style={titleStyle}>먼저 피부 스캔이나 설문을 진행해주세요</h1>
-          <p style={leadStyle}>분석 결과와 설문 답변이 있어야 구매처와 상담 연결을 자연스럽게 안내할 수 있어요.</p>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Link href="/scan" style={{ ...primaryBtn, flex: 1, textAlign: "center" }}>스캔 시작</Link>
-            <Link href="/survey" style={{ ...outlineBtn, flex: 1, textAlign: "center" }}>설문만 하기</Link>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <p style={eyebrow}>care path</p>
+            <div style={segmented}>
+              <button onClick={() => setLocale("ko")} style={segBtn(locale === "ko")}>KO</button>
+              <button onClick={() => setLocale("en")} style={segBtn(locale === "en")}>EN</button>
+            </div>
           </div>
+          <h1 style={titleStyle}>
+            {locale === "ko" ? "먼저 피부 스캔이나 설문을 진행해주세요" : "Start with a skin scan or the survey"}
+          </h1>
+          <p style={leadStyle}>
+            {locale === "ko"
+              ? "분석 결과와 설문 답변이 있어야 구매처와 상담 연결을 자연스럽게 안내할 수 있어요."
+              : "Once we have your scan or survey answers, we can point you to the right products and consultations."}
+          </p>
+          <Link href="/scan" style={{ display: "block", textDecoration: "none" }}>
+            <div style={{ position: "relative", padding: "15px 16px" }}>
+              <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
+              <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>{locale === "ko" ? "스캔 시작" : "Start scan"}</span>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--orange)" }}>→</span>
+              </div>
+            </div>
+          </Link>
+          <Link href="/survey" style={{ ...outlineBtn, display: "block", textAlign: "center", marginTop: 12 }}>
+            {locale === "ko" ? "설문만 하기" : "Survey only"}
+          </Link>
         </div>
       </main>
     );
@@ -165,7 +185,6 @@ const badge: React.CSSProperties = { fontSize: 12, background: "transparent", co
 const dealBadge: React.CSSProperties = { fontSize: 10.5, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 6px", fontWeight: 900 };
 const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const segmented: React.CSSProperties = { display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" };
-const primaryBtn: React.CSSProperties = { background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const outlineBtn: React.CSSProperties = { background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const linkBtn: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "10px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };
 const tipList: React.CSSProperties = { margin: "12px 0 0", paddingLeft: 18, color: "var(--ink-soft)", fontSize: 13.5, lineHeight: 1.65 };

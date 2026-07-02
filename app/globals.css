@@ -1,4 +1,4 @@
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "tailwindcss";
 
 /* ── DESIGN.md tokens (xiaohei — 순백 손그림 + 절제된 주석색) ──────────────── */
@@ -44,7 +44,7 @@
   --font-serif: var(--font-hand), cursive;
   --font-ko-serif: var(--font-hand), cursive;
   --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
-  --font-sans: "Pretendard", -apple-system, sans-serif;
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
 }
 
 @keyframes gyeol-scan { 0% { top: 6%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 94%; opacity: 0; } }
@@ -53,6 +53,6 @@
 
 html, body { background: var(--paper); color: var(--ink); }
 body {
-  font-family: "Pretendard", -apple-system, sans-serif;
+  font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

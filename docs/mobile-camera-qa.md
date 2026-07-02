@@ -113,3 +113,29 @@ responsive mode.
 - Do not claim skin disease detection.
 - Do not store original full-frame photos.
 - Do not sync learning crops to Supabase until production consent and deletion flows are ready.
+
+## v0.3 auto-capture (real-device checks)
+
+- Auto-capture toggle `자동 촬영` is on by default and visible above the capture button.
+- With all gates green, the 3-2-1 hand-font countdown appears after roughly 1.3s of
+  sustained quality and fires the shot about 2s later (total ~3.3s from stable).
+  Judge on-device whether this feels too slow/fast; timing knobs are the 2-tick arm
+  threshold and the per-tick (650ms) countdown step in app/scan/page.tsx handleAutoTick.
+- Breaking any gate (move, cover the lens, turn away) cancels the countdown instantly.
+- After a rejected shot ("촬영 순간 품질이 흔들렸어요"), auto-capture waits ~4s before
+  re-arming — confirm no rapid capture loop.
+- Manual `지금 촬영하기` still works during a countdown.
+- `다시 찍기` from the result screen restarts the camera with a live preview
+  (regression check for the dead-black-camera fix).
+- Toggling auto-capture off stops the countdown and never fires automatically.
+
+## v0.3 xiaohei skin (real-device checks)
+
+- Home: hand-drawn CTA border wobbles (SVG filter) and Nanum Pen headings render on
+  both iOS Safari and Android Chrome (filter url(#sketch) support).
+- Countdown numerals are legible over bright and dark camera scenes.
+- Quality chips show green checks (not red) when passing; guide oval color steps
+  red -> orange -> green as conditions improve.
+- Report/care pages: 小黑 accents do not overlap text at 360px-width devices.
+- Fonts: body text renders as Pretendard (self-hosted); no FOUT flash longer than ~1s
+  on first load over 4G.

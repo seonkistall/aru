@@ -18,7 +18,10 @@ import { getCurrentPilotSession } from "@/lib/pilot";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type Landmark = { x: number; y: number; z?: number };
-type FaceLandmarker = { detect: (image: HTMLCanvasElement) => { faceLandmarks?: Landmark[][] }; close?: () => void };
+type FaceLandmarker = {
+  detectForVideo: (source: HTMLVideoElement | HTMLCanvasElement, timestampMs: number) => { faceLandmarks?: Landmark[][] };
+  close?: () => void;
+};
 type CaptureMode = "balanced" | "texture" | "tone";
 type CaptureProfile = {
   label: string;
@@ -248,7 +251,7 @@ export default function Scan() {
     const fileset = await FilesetResolver.forVisionTasks(WASM);
     landmarkerRef.current = await FaceLandmarker.createFromOptions(fileset, {
       baseOptions: { modelAssetPath: MODEL, delegate: "GPU" },
-      runningMode: "IMAGE",
+      runningMode: "VIDEO",
       numFaces: 1,
     });
     return landmarkerRef.current;
@@ -277,10 +280,12 @@ export default function Scan() {
 
   const measureQuality = useCallback(
     async (landmarker: FaceLandmarker) => {
-      const frame = readFrame();
-      if (!frame) return;
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || !video.videoHeight) return;
 
-      const res = landmarker.detect(frame.canvas);
+      // VIDEO running mode tracks temporally and reads the element directly —
+      // the downscaled canvas below is only needed for exposure statistics.
+      const res = landmarker.detectForVideo(video, performance.now());
       const face = res.faceLandmarks?.[0];
       if (!face?.length) {
         lastCenterRef.current = null;
@@ -288,6 +293,9 @@ export default function Scan() {
         handleAutoTick(false);
         return;
       }
+
+      const frame = readFrame();
+      if (!frame) return;
 
       const box = faceBox(face);
       const centerX = (box.minX + box.maxX) / 2;
@@ -391,7 +399,7 @@ export default function Scan() {
       if (!ctx) throw new Error("canvas unavailable");
       ctx.drawImage(video, 0, 0, w, h);
 
-      const res = landmarker.detect(canvas);
+      const res = landmarker.detectForVideo(canvas, performance.now());
       const faces = res.faceLandmarks ?? [];
       if (!faces.length) {
         autoHoldUntilRef.current = performance.now() + 4000;
@@ -400,7 +408,21 @@ export default function Scan() {
       }
 
       const imageData = ctx.getImageData(0, 0, w, h);
-      const verifiedQuality = evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], quality.steady);
+      // Steadiness from the capture frame itself when the baseline is long
+      // enough to estimate a per-250ms velocity; under 80ms the estimate is
+      // noise-dominated, so fall back to the (fresh) tick value instead.
+      const captureBox = faceBox(faces[0]);
+      const last = lastCenterRef.current;
+      const captureCenter = { x: (captureBox.minX + captureBox.maxX) / 2, y: (captureBox.minY + captureBox.maxY) / 2 };
+      const dtMs = last ? performance.now() - last.t : 0;
+      const captureMovement =
+        last && dtMs >= 80 ? Math.hypot(captureCenter.x - last.x, captureCenter.y - last.y) / (dtMs / 250) : undefined;
+      const captureSteady =
+        captureMovement !== undefined ? captureMovement < CAPTURE_PROFILES[captureMode].maxMovement : quality.steady;
+      const verifiedQuality: Quality = {
+        ...evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], captureSteady),
+        movement: captureMovement,
+      };
       commitQuality(verifiedQuality, true);
       if (!qualityPassed(verifiedQuality, CAPTURE_PROFILES[captureMode])) {
         autoHoldUntilRef.current = performance.now() + 4000;
@@ -421,7 +443,7 @@ export default function Scan() {
       for (let i = 1; i < 3; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 140));
         ctx.drawImage(video, 0, 0, w, h);
-        const extra = landmarker.detect(canvas).faceLandmarks?.[0];
+        const extra = landmarker.detectForVideo(canvas, performance.now()).faceLandmarks?.[0];
         if (extra?.length) burstFrames.push({ imageData: ctx.getImageData(0, 0, w, h), landmarks: extra });
       }
 

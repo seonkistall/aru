@@ -1,6 +1,6 @@
 # 결 (gyeol) / K뷰티 AI 추천 — 작업 상황 (STATUS)
 
-> 최종 업데이트: **2026-07-03** · 버전: **v0.3.0 (자동 촬영 + 버스트 분석)** · 브랜치: `main`
+> 최종 업데이트: **2026-07-03** · 버전: **v0.3.1 (스캔 성능 + 글로벌 준비)** · 브랜치: `main`
 
 ## 제품 정체성 (혼동 방지)
 **셀피 → 피부 분석 → 화장품 추천** 앱. 브랜드명 **결(gyeol)**.
@@ -27,7 +27,8 @@
 5. ML 스캔 신뢰도 루프 (2026-06-30, Codex)
 6. 커머스 아웃링크 + 파트너 추적 (2026-07-02)
 7. main(xiaohei) ↔ 카메라 파일럿 **통합 머지**(PR #1, 파일럿 UI 기준) + **xiaohei 리스타일 라운드** (2026-07-02)
-8. **자동 촬영(3·2·1) + 3프레임 버스트 분석** + 전면 감사 라운드(팔레트 통일·AA 대비·동의문구 PIPA 보강·성능픽스) (2026-07-03)
+8. **자동 촬영(3·2·1) + 3프레임 버스트 분석** + 전면 감사 라운드(팔레트 통일·AA 대비·동의문구 PIPA 보강·성능픽스) (2026-07-03, PR #2)
+9. **백로그 라운드**: MediaPipe VIDEO 모드 + 촬영순간 움직임 재계산 + Pretendard 셀프호스팅 + 프라이버시 KO/EN + sketch CTA 통일 (2026-07-03)
 
 ## 상태
 - 스택: Next.js 16.2.9 (수정된 배포판 — AGENTS.md 참조) + MediaPipe + Supabase
@@ -37,9 +38,9 @@
 - 브랜치: `main` (작업장: `Documents\K-Beauty AI (Camera)`)
 
 ## 다음 (Next)
-- **모바일 실기기 QA** — iPhone Safari / Android Chrome에서 `/scan` 가이드·미러링·품질게이트 (`docs/mobile-camera-qa.md`)
+- **모바일 실기기 QA** — iPhone Safari / Android Chrome. v0.3 자동촬영 타이밍·xiaohei 스킨 항목 포함 (`docs/mobile-camera-qa.md`)
 - **30명 파일럿 데이터 수집** — `/pilot` 세션으로 라벨+동의 크롭 확보 (`docs/pilot-ml-loop.md`)
-- **ML 게이트 준수**: 크롭 <30 캘리브레이션만 · 100+ dry-run · 300+ MobileNetV3 학습 (현재 데이터 0)
+- **ML 게이트 준수**: 크롭 <30 캘리브레이션만 · 100+ dry-run · 300+ MobileNetV3 학습 → 이후 ONNX 런타임 연결 (현재 데이터 0)
 - **BD 제휴** — 올리브영/브랜드몰 딜 후 `COMMERCE_LINK_OVERRIDES_JSON`으로 딥링크 교체 (`docs/commerce-partnership-playbook.md`)
 - 렌탈 훅 → 숏폼 공유 루프 설계 반영
 
