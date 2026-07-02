@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
-import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
+import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
+import { FlowSteps } from "@/app/components/flow-steps";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -64,7 +65,7 @@ export default function Report() {
       category: pick.sku.category,
       type: initial.survey.type,
       matched: initial.survey.concerns.filter((concern) => pick.sku.concerns.includes(concern)),
-      budgetText: `${Math.round(initial.survey.budget / 10000)}만원대`,
+      budgetText: budgetLabel(initial.survey.budget),
       freeOf: pick.sku.freeOf,
       fallback: pick.reason,
     }));
@@ -105,6 +106,7 @@ export default function Report() {
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
             <p style={eyebrow}>피부 리포트</p>
+            <FlowSteps current="report" />
             <h1 style={headlineStyle}>{reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}</h1>
           </div>
           <Xiaohei size={60} pose="magnify" />
@@ -134,24 +136,14 @@ export default function Report() {
         <section style={{ margin: "30px 0 24px" }}>
           <p style={sectionLabel}>추천 기준</p>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
-            {survey.type} 피부, {concernText} 고민, {Math.round(survey.budget / 10000)}만원대 예산에 맞춰 {survey.category}를 골랐어요.
+            {survey.type} 피부, {concernText} 고민, {budgetLabel(survey.budget)} 예산에 맞춰 {survey.category}를 골랐어요.
           </p>
         </section>
 
         <section style={card}>
           <p style={sectionLabel}>오늘의 루틴</p>
-          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-            {result.routine.map((step, index) => (
-              <div key={step.id} style={routineStep}>
-                <span style={routineIndex}>{index + 1}</span>
-                <div>
-                  <h2 style={routineTitle}>{step.title}</h2>
-                  <p style={routineBody}>{step.body}</p>
-                  {step.heroSku && <p style={routineProduct}>{step.heroSku.brand} {step.heroSku.name}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
+          <RoutineHalf label="아침" steps={result.routine.am} />
+          <RoutineHalf label="저녁" steps={result.routine.pm} />
         </section>
 
         <section style={careCard}>
@@ -187,6 +179,30 @@ export default function Report() {
         </div>
       )}
     </main>
+  );
+}
+
+function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <p style={routineHalfLabel}>{label}</p>
+      <div style={{ display: "grid", gap: 12 }}>
+        {steps.map((step, index) => (
+          <div key={step.id} style={routineStep}>
+            <span style={routineIndex}>{index + 1}</span>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <h2 style={routineTitle}>{step.title}</h2>
+                {step.cadence && <span style={cadenceChip}>{step.cadence}</span>}
+              </div>
+              <p style={routineBody}>{step.body}</p>
+              <p style={routineWhy}>{step.why}</p>
+              {step.heroSku && <p style={routineProduct}>{step.heroSku.brand} {step.heroSku.name}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -266,7 +282,10 @@ const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)",
 const imageBox: React.CSSProperties = { width: "100%", height: 150, borderRadius: 8, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 };
 const pill: React.CSSProperties = { background: "transparent", border: "1px solid var(--line)", color: "var(--ink-soft)", fontSize: 12, borderRadius: 8, padding: "4px 10px", fontWeight: 700 };
 const watchOutStyle: React.CSSProperties = { fontSize: 12.5, color: "var(--plum-press)", background: "var(--plum-soft)", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 10px", lineHeight: 1.45, marginBottom: 12 };
+const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
 const routineStep: React.CSSProperties = { display: "grid", gridTemplateColumns: "30px 1fr", gap: 12, alignItems: "start", borderTop: "1px solid var(--line)", paddingTop: 12 };
+const routineWhy: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 4 };
+const cadenceChip: React.CSSProperties = { fontSize: 11, border: "1px solid var(--line)", color: "var(--bronze)", borderRadius: 999, padding: "2px 8px", fontWeight: 700, whiteSpace: "nowrap" };
 const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--paper)", border: "1.5px solid var(--ink)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };
 const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 17, color: "var(--ink)", marginBottom: 4 };
 const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };

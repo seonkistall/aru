@@ -85,6 +85,9 @@ type RegionStats = {
 const TZONE = [9, 8, 107, 336, 151, 10, 67, 297, 1, 4, 5, 195, 197];
 const CHEEKS = [50, 101, 118, 117, 116, 205, 36, 280, 330, 347, 346, 345, 425, 266];
 
+// Exposed so the capture guide can draw the REAL sampling regions on the face.
+export const SAMPLING_LANDMARKS = { tzone: TZONE, cheeks: CHEEKS };
+
 export const SKIN_LABELS: Record<SkinAttr, [string, string, string]> = {
   oil: ["유분 적음", "유분 약간", "유분 많음"],
   redness: ["붉은기 낮음", "붉은기 약간", "붉은기 뚜렷"],

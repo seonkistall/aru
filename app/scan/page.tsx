@@ -6,6 +6,7 @@ import { saveCropSample, cropSampleCount, exportCropSamples } from "@/lib/crops"
 import {
   analyzeSkinBurst,
   classifyVisibleAttributes,
+  SAMPLING_LANDMARKS,
   SKIN_LABELS,
   VISIBLE_MODEL_CONTRACT,
   type AnalysisSource,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/skin";
 import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type CaptureQualityMeta, type SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
+import { FlowSteps } from "@/app/components/flow-steps";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type Landmark = { x: number; y: number; z?: number };
@@ -55,6 +57,14 @@ type Quality = {
   rejectReason?: string;
 };
 
+type ZoneRect = { left: number; top: number; width: number; height: number };
+type GuideZones = {
+  tzone: ZoneRect;
+  leftCheek: ZoneRect;
+  rightCheek: ZoneRect;
+  contour: Array<{ x: number; y: number }>;
+};
+
 type VisionAnalysis = {
   labels?: Partial<Record<SkinAttr, SkinLevel>>;
   confidence?: Partial<Record<SkinAttr, number>>;
@@ -78,6 +88,12 @@ const initialQuality: Quality = {
   score: 0,
   message: "얼굴을 윤곽선 안에 맞춰주세요.",
 };
+
+const ANALYSIS_STEPS = ["촬영 프레임 정합", "T존·양볼 신호 추출", "유분·붉은기·결 판정", "신뢰도 교차 검증"];
+
+// A light face outline (subset of the MediaPipe face-oval indices) for the
+// tracking dots — enough to read as "locked on", without a dense mesh.
+const FACE_CONTOUR = [10, 297, 284, 389, 454, 361, 397, 379, 152, 150, 172, 132, 234, 162, 54, 67];
 
 const CAPTURE_MODES: CaptureMode[] = ["balanced", "texture", "tone"];
 const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
@@ -149,6 +165,8 @@ export default function Scan() {
   const [captureMeta, setCaptureMeta] = useState<SampleMeta | null>(null);
   const [autoCapture, setAutoCapture] = useState(true);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [zones, setZones] = useState<GuideZones | null>(null);
+  const [analysisStep, setAnalysisStep] = useState(0);
   const captureProfile = CAPTURE_PROFILES[captureMode];
   const staffMode = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -289,6 +307,7 @@ export default function Scan() {
       const face = res.faceLandmarks?.[0];
       if (!face?.length) {
         lastCenterRef.current = null;
+        setZones(null);
         commitQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
         handleAutoTick(false);
         return;
@@ -334,6 +353,7 @@ export default function Scan() {
 
       commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
       handleAutoTick(centered && distance && brightness && noGlare && (!profile.requiresSteady || steady));
+      setZones(computeGuideZones(face, video.videoWidth, video.videoHeight));
     },
     [captureMode, commitQuality, handleAutoTick, readFrame]
   );
@@ -385,8 +405,20 @@ export default function Scan() {
     setCountdownSafe(null);
     passStreakRef.current = 0;
     setPhase("analyzing");
+    setAnalysisStep(0);
     setErr("");
     setCropDataUrl(null);
+
+    // Pace the four analysis stages so each is readable (~800ms min); the
+    // real pipeline work runs inside the same awaits, so nothing is faked —
+    // fast devices just get an honest, followable reveal.
+    let stepStartedAt = performance.now();
+    const advanceStep = async (step: number) => {
+      const waitMs = 800 - (performance.now() - stepStartedAt);
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      setAnalysisStep(step);
+      stepStartedAt = performance.now();
+    };
 
     try {
       const landmarker = await ensureLandmarker();
@@ -447,12 +479,15 @@ export default function Scan() {
         if (extra?.length) burstFrames.push({ imageData: ctx.getImageData(0, 0, w, h), landmarks: extra });
       }
 
+      await advanceStep(1);
       const mlPrediction = modelCrop ? await classifyVisibleAttributes(modelCrop) : null;
       const out = analyzeSkinBurst(burstFrames, mlPrediction);
       if (!out) {
         setPhase("noface");
         return;
       }
+      await advanceStep(2);
+      await advanceStep(3);
 
       let final = out;
       if (consent && faceCrop) {
@@ -500,6 +535,7 @@ export default function Scan() {
         finalPrediction: predictionSnapshot(final),
       });
 
+      await advanceStep(4);
       setReads(final);
       stopCamera();
       setPhase("result");
@@ -542,6 +578,7 @@ export default function Scan() {
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <p style={eyebrow}>K-Beauty skin scan</p>
+        <FlowSteps current="scan" />
         <h1 style={titleStyle}>얼굴 톤과 피부 결이 잘 보이게 찍어볼게요</h1>
         <p style={leadStyle}>
           얼굴 윤곽을 맞추고, 이마와 양볼 샘플링 영역이 밝고 번들거림 없이 보이면 분석 품질이 좋아집니다.
@@ -550,13 +587,13 @@ export default function Scan() {
         {phase !== "result" && (
           <div style={cameraFrame}>
             <video ref={videoRef} playsInline muted style={videoStyle(phase)} />
-            {phase === "ready" && <CameraGuide quality={quality} mode={captureMode} />}
+            {phase === "ready" && <CameraGuide quality={quality} mode={captureMode} zones={zones} />}
             {phase === "init" && (
               <Center>
                 <button onClick={startCamera} style={primaryBtn}>카메라 시작</button>
               </Center>
             )}
-            {phase === "analyzing" && <Scanning />}
+            {phase === "analyzing" && <Scanning step={analysisStep} />}
             {phase === "ready" && countdown !== null && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
                 <span style={{ fontFamily: "var(--font-hand)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
@@ -719,19 +756,46 @@ function ScanModePicker({ mode, onChange }: { mode: CaptureMode; onChange: (mode
   );
 }
 
-function CameraGuide({ quality, mode }: { quality: Quality; mode: CaptureMode }) {
+function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: CaptureMode; zones: GuideZones | null }) {
   const border = quality.score >= 6 ? "rgba(47,125,79,.95)" : quality.score >= 4 ? "rgba(239,138,31,.92)" : "rgba(224,56,44,.9)";
+  const locked = quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare;
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       <div style={{ position: "absolute", inset: "8% 12% 17%", border: `2px solid ${border}`, borderRadius: "48% 48% 45% 45%", boxShadow: "0 0 0 999px rgba(0,0,0,.18)" }} />
       <div style={{ position: "absolute", top: "11%", bottom: "20%", left: "50%", width: 1, background: "rgba(255,255,255,.62)" }} />
-      <div style={{ position: "absolute", top: "31%", left: "21%", right: "21%", borderTop: "1px dashed rgba(255,255,255,.72)" }} />
       <div style={{ position: "absolute", top: 14, right: 14, background: "rgba(255,255,255,.9)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 999, color: "var(--ink)", fontSize: 11, fontWeight: 800, padding: "5px 9px" }}>
         {CAPTURE_PROFILES[mode].label}
       </div>
-      <GuideZone label="이마/T존" style={{ top: "18%", left: "36%", width: "28%", height: "12%" }} />
-      <GuideZone label="왼볼 결" style={{ top: "45%", left: "21%", width: "22%", height: "15%" }} />
-      <GuideZone label="오른볼 결" style={{ top: "45%", right: "21%", width: "22%", height: "15%" }} />
+      {zones ? (
+        <>
+          {zones.contour.map((point, index) => (
+            <div
+              key={index}
+              style={{
+                position: "absolute",
+                left: `${point.x}%`,
+                top: `${point.y}%`,
+                width: 3,
+                height: 3,
+                marginLeft: -1.5,
+                marginTop: -1.5,
+                borderRadius: 999,
+                background: "rgba(255,255,255,.85)",
+                transition: "left .3s ease-out, top .3s ease-out",
+              }}
+            />
+          ))}
+          <TrackedZone label="이마·T존" rect={zones.tzone} locked={locked} />
+          <TrackedZone label="왼볼 결" rect={zones.leftCheek} locked={locked} />
+          <TrackedZone label="오른볼 결" rect={zones.rightCheek} locked={locked} />
+        </>
+      ) : (
+        <>
+          <GuideZone label="이마/T존" style={{ top: "18%", left: "36%", width: "28%", height: "12%" }} />
+          <GuideZone label="왼볼 결" style={{ top: "45%", left: "21%", width: "22%", height: "15%" }} />
+          <GuideZone label="오른볼 결" style={{ top: "45%", right: "21%", width: "22%", height: "15%" }} />
+        </>
+      )}
       <div style={{ position: "absolute", left: 18, right: 18, bottom: 18, display: "flex", justifyContent: "center" }}>
         <span style={{ background: "rgba(255,255,255,.9)", color: "var(--ink)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 8, padding: "8px 12px", fontSize: 13, lineHeight: 1.35, textAlign: "center" }}>
           {quality.message}
@@ -739,6 +803,101 @@ function CameraGuide({ quality, mode }: { quality: Quality; mode: CaptureMode })
       </div>
     </div>
   );
+}
+
+function TrackedZone({ label, rect, locked }: { label: string; rect: ZoneRect; locked: boolean }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${rect.left}%`,
+        top: `${rect.top}%`,
+        width: `${rect.width}%`,
+        height: `${rect.height}%`,
+        border: `1.5px solid ${locked ? "rgba(110,220,150,.92)" : "rgba(255,255,255,.85)"}`,
+        borderRadius: 10,
+        background: locked ? "rgba(47,125,79,.10)" : "rgba(47,109,224,.08)",
+        transition: "left .3s ease-out, top .3s ease-out, width .3s ease-out, height .3s ease-out, border-color .25s, background .25s",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: -15,
+          transform: "translateX(-50%)",
+          whiteSpace: "nowrap",
+          color: "rgba(255,255,255,.94)",
+          fontSize: 10,
+          fontWeight: 800,
+          textShadow: "0 1px 8px rgba(0,0,0,.5)",
+        }}
+      >
+        {locked ? `${label} ✓` : label}
+      </span>
+    </div>
+  );
+}
+
+// Guide rects come from the REAL sampling landmarks (lib/skin.ts) so what the
+// user aligns is exactly what gets measured. Landmarks are normalized to the
+// VIDEO frame, but the overlay lives in the 3:4 container that object-fit:
+// cover crops the stream into — so coords are remapped to the visible region
+// first, then mirrored to match the CSS-mirrored preview.
+const FRAME_RATIO = 3 / 4;
+
+type GuidePoint = { x: number; y: number };
+
+function zoneFromPoints(points: GuidePoint[], padX: number, padY: number): ZoneRect | null {
+  if (!points.length) return null;
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    minY = Math.min(minY, point.y);
+    maxY = Math.max(maxY, point.y);
+  }
+  minX -= padX;
+  maxX += padX;
+  minY -= padY;
+  maxY += padY;
+  const round = (value: number) => Math.round(value * 1000) / 10;
+  return { left: round(1 - maxX), top: round(minY), width: round(maxX - minX), height: round(maxY - minY) };
+}
+
+function computeGuideZones(landmarks: Landmark[], videoWidth: number, videoHeight: number): GuideZones | null {
+  const videoRatio = videoWidth > 0 && videoHeight > 0 ? videoWidth / videoHeight : FRAME_RATIO;
+  const fx = Math.min(1, FRAME_RATIO / videoRatio);
+  const fy = Math.min(1, videoRatio / FRAME_RATIO);
+  const mapPoint = (lm: Landmark): GuidePoint => ({ x: (lm.x - (1 - fx) / 2) / fx, y: (lm.y - (1 - fy) / 2) / fy });
+  const pointsFor = (indices: number[]) =>
+    indices
+      .map((index) => landmarks[index])
+      .filter((lm): lm is Landmark => Boolean(lm))
+      .map(mapPoint);
+
+  const cheekPoints = pointsFor(SAMPLING_LANDMARKS.cheeks);
+  if (!cheekPoints.length) return null;
+  const centerX = cheekPoints.reduce((sum, point) => sum + point.x, 0) / cheekPoints.length;
+  const sideA = cheekPoints.filter((point) => point.x < centerX);
+  const sideB = cheekPoints.filter((point) => point.x >= centerX);
+
+  const tzone = zoneFromPoints(pointsFor(SAMPLING_LANDMARKS.tzone), 0.015, 0.02);
+  const zoneA = zoneFromPoints(sideA, 0.015, 0.015);
+  const zoneB = zoneFromPoints(sideB, 0.015, 0.015);
+  if (!tzone || !zoneA || !zoneB) return null;
+
+  // Label cheeks by their on-screen (mirrored) position.
+  const [leftCheek, rightCheek] = zoneA.left <= zoneB.left ? [zoneA, zoneB] : [zoneB, zoneA];
+  const contour = pointsFor(FACE_CONTOUR).map((point) => ({
+    x: Math.round((1 - point.x) * 1000) / 10,
+    y: Math.round(point.y * 1000) / 10,
+  }));
+
+  return { tzone, leftCheek, rightCheek, contour };
 }
 
 function GuideZone({ label, style }: { label: string; style: React.CSSProperties }) {
@@ -832,8 +991,19 @@ function ResultCard({ reads }: { reads: SkinReads }) {
         )}
       </div>
       <div style={{ borderTop: "1px solid var(--line)" }}>
-        {rows.map((row) => (
-          <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "13px 0", borderBottom: "1px solid var(--line)" }}>
+        {rows.map((row, index) => (
+          <div
+            key={row.label}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              padding: "13px 0",
+              borderBottom: "1px solid var(--line)",
+              animation: "gyeol-fade-up .45s ease-out both",
+              animationDelay: `${160 + index * 110}ms`,
+            }}
+          >
             <span style={{ fontSize: 14, color: "var(--ink)" }}>{row.label}</span>
             <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: row.calm ? "var(--text-muted)" : "var(--plum)" }}>{row.value}</span>
           </div>
@@ -932,12 +1102,38 @@ function Center({ children }: { children: React.ReactNode }) {
   return <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, textAlign: "center" }}>{children}</div>;
 }
 
-function Scanning() {
+function Scanning({ step }: { step: number }) {
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
       <div style={{ position: "absolute", left: "8%", right: "8%", height: 2, background: "var(--blue)", animation: "gyeol-scan 1.8s ease-in-out infinite" }} />
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 18 }}>
-        <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)", background: "rgba(255,255,255,.88)", border: "1px solid rgba(0,0,0,.12)", padding: "6px 14px", borderRadius: 8 }}>피부 신호를 읽는 중</span>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 14 }}>
+        <div style={{ background: "rgba(255,255,255,.93)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 8, padding: "10px 16px", minWidth: 216 }}>
+          <p style={{ fontFamily: "var(--font-hand)", fontSize: 18, color: "var(--ink)", margin: "0 0 6px" }}>피부 신호를 읽는 중</p>
+          <div style={{ display: "grid", gap: 4 }}>
+            {ANALYSIS_STEPS.map((label, index) => {
+              const done = index < step;
+              const active = index === step;
+              return (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    fontSize: 11.5,
+                    color: done ? "var(--success)" : active ? "var(--ink)" : "var(--muted)",
+                    fontWeight: active ? 700 : 500,
+                  }}
+                >
+                  <span style={{ width: 12, textAlign: "center", animation: active ? "gyeol-bob 1.1s ease-in-out infinite" : undefined }}>
+                    {done ? "✓" : active ? "●" : "○"}
+                  </span>
+                  <span>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

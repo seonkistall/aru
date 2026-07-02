@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FlowSteps } from "@/app/components/flow-steps";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 
@@ -75,8 +77,14 @@ export default function Survey() {
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <p style={eyebrow}>몇 가지만 더 알려주세요</p>
+        <FlowSteps current="survey" />
         <h1 style={titleStyle}>추천을 더 정확하게 맞춰볼게요</h1>
-        {scanHint && <p style={scanHintStyle}>{scanHint.text}</p>}
+        {scanHint && (
+          <div style={scanHintStyle}>
+            <p style={{ margin: 0 }}>{scanHint.text}</p>
+            <Link href="/scan" style={retakeLinkStyle}>스캔 다시 하기</Link>
+          </div>
+        )}
 
         <Section title="제품 종류" required>
           <Chips options={CATEGORIES} selected={category ? [category] : []} onPick={setCategory} />
@@ -98,7 +106,7 @@ export default function Survey() {
           <Chips options={AVOIDS} selected={avoid} onPick={(v) => toggle(avoid, v, setAvoid)} />
         </Section>
 
-        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>리포트 보기</button>
+        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>내 추천 보기</button>
         {!ready && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
             제품 종류·피부 타입·예산을 고르면 리포트를 볼 수 있어요
@@ -138,6 +146,7 @@ function Chips<T extends string>({ options, selected, onPick }: { options: T[]; 
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 12px" };
 const scanHintStyle: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 12px", lineHeight: 1.5, marginBottom: 22 };
+const retakeLinkStyle: React.CSSProperties = { display: "inline-block", marginTop: 6, fontSize: 12.5, color: "var(--text-muted)", textDecoration: "underline" };
 
 function chipStyle(on: boolean): React.CSSProperties {
   return {
