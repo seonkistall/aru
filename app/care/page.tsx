@@ -6,6 +6,7 @@ import { careSummary, clinicLinks, productSearchLinks, type CareLink, type CareL
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
+import { Xiaohei } from "@/app/components/sketch";
 
 type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
@@ -87,11 +88,14 @@ export default function CarePage() {
             <p style={sectionLabel}>{locale === "ko" ? "제품 구매 연결" : "Product links"}</p>
             <span style={badge}>{view.survey.category}</span>
           </div>
-          <p style={commerceIntro}>
-            {locale === "ko"
-              ? "추천 제품은 올리브영, 네이버 쇼핑, 쿠팡, 글로벌 검색으로 바로 이어져요. 지금은 검증용 링크이며, 제휴 계약 후 같은 자리에서 딥링크로 교체할 수 있어요."
-              : "Recommended products open marketplace-ready links. These can be replaced with partner deep links after commercial agreements."}
-          </p>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <p style={{ ...commerceIntro, flex: 1 }}>
+              {locale === "ko"
+                ? "추천 제품은 올리브영, 네이버 쇼핑, 쿠팡, 글로벌 검색으로 바로 이어져요. 지금은 검증용 링크이며, 제휴 계약 후 같은 자리에서 딥링크로 교체할 수 있어요."
+                : "Recommended products open marketplace-ready links. These can be replaced with partner deep links after commercial agreements."}
+            </p>
+            <Xiaohei size={54} pose="carry" />
+          </div>
           {topPicks.map((pick) => (
             <div key={pick.sku.id} style={productRow}>
               <div>

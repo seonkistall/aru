@@ -7,6 +7,7 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
+import { Xiaohei } from "@/app/components/sketch";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -101,8 +102,13 @@ export default function Report() {
   return (
     <main className="min-h-screen px-5 pt-9" style={{ background: "var(--paper)", paddingBottom: 112 }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>피부 리포트</p>
-        <h1 style={headlineStyle}>{reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}</h1>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <p style={eyebrow}>피부 리포트</p>
+            <h1 style={headlineStyle}>{reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}</h1>
+          </div>
+          <Xiaohei size={60} pose="magnify" />
+        </div>
         <p style={subStyle}>{reads ? "사진과 설문을 함께 읽었어요." : "설문 답변을 바탕으로 정리했어요."}</p>
         {reads?.narrative && <p style={narrativeStyle}>{reads.narrative}</p>}
         {reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
