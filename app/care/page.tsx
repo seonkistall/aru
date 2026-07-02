@@ -37,7 +37,18 @@ export default function CarePage() {
   const clinics = clinicLinks(locale);
 
   async function openCareLink(link: CareLink, context?: string) {
-    await recordCareIntent({ kind: link.kind, label: link.label, href: link.href, locale, context });
+    await recordCareIntent({
+      kind: link.kind,
+      label: link.label,
+      href: link.href,
+      locale,
+      context,
+      sku_id: link.skuId,
+      merchant: link.merchant,
+      placement: link.placement,
+      partner_ready: link.partnerReady,
+      region: link.region,
+    });
     window.open(link.href, "_blank", "noopener,noreferrer");
   }
 
@@ -47,7 +58,7 @@ export default function CarePage() {
         <div className="mx-auto" style={{ maxWidth: 420 }}>
           <p style={eyebrow}>care path</p>
           <h1 style={titleStyle}>먼저 피부 스캔이나 설문을 진행해주세요</h1>
-          <p style={leadStyle}>분석 결과와 설문 답변이 있어야 구매처와 상담 연결을 더 자연스럽게 안내할 수 있어요.</p>
+          <p style={leadStyle}>분석 결과와 설문 답변이 있어야 구매처와 상담 연결을 자연스럽게 안내할 수 있어요.</p>
           <div style={{ display: "flex", gap: 10 }}>
             <Link href="/scan" style={{ ...primaryBtn, flex: 1, textAlign: "center" }}>스캔 시작</Link>
             <Link href="/survey" style={{ ...outlineBtn, flex: 1, textAlign: "center" }}>설문만 하기</Link>
@@ -76,6 +87,11 @@ export default function CarePage() {
             <p style={sectionLabel}>{locale === "ko" ? "제품 구매 연결" : "Product links"}</p>
             <span style={badge}>{view.survey.category}</span>
           </div>
+          <p style={commerceIntro}>
+            {locale === "ko"
+              ? "추천 제품은 올리브영, 네이버 쇼핑, 쿠팡, 글로벌 검색으로 바로 이어져요. 지금은 검증용 링크이며, 제휴 계약 후 같은 자리에서 딥링크로 교체할 수 있어요."
+              : "Recommended products open marketplace-ready links. These can be replaced with partner deep links after commercial agreements."}
+          </p>
           {topPicks.map((pick) => (
             <div key={pick.sku.id} style={productRow}>
               <div>
@@ -84,9 +100,12 @@ export default function CarePage() {
                 <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>{pick.reason}</p>
               </div>
               <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
-                {productSearchLinks(pick.sku).map((link) => (
-                  <button key={link.label} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
-                    <span>{link.label}</span>
+                {productSearchLinks(pick.sku, `care_${locale}`).map((link) => (
+                  <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {link.label}
+                      {link.partnerReady && <small style={dealBadge}>제휴 후보</small>}
+                    </span>
                     <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{link.note}</small>
                   </button>
                 ))}
@@ -118,7 +137,7 @@ export default function CarePage() {
         <section style={sectionStyle}>
           <p style={sectionLabel}>{locale === "ko" ? "외국인 사용자 안내" : "For international users"}</p>
           <ul style={tipList}>
-            <li>{locale === "ko" ? "제품명은 영문 검색도 함께 열어 해외 구매 가능성을 확인할 수 있어요." : "Use Global search to check overseas availability."}</li>
+            <li>{locale === "ko" ? "Global search는 해외 구매 가능성과 영문 제품명을 확인하는 데 좋아요." : "Use Global search to check overseas availability and English product names."}</li>
             <li>{locale === "ko" ? "상담 전 사용 중인 제품명과 스캔 결과를 저장해두면 설명이 쉬워요." : "Save your product list and scan result before a clinic visit."}</li>
             <li>{locale === "ko" ? "시술이나 처방 판단은 앱이 아니라 병원 상담에서 결정해야 해요." : "Procedures and prescriptions should be decided by a clinician, not the app."}</li>
           </ul>
@@ -134,8 +153,10 @@ const leadStyle: React.CSSProperties = { fontSize: 14.5, color: "var(--ink-soft)
 const sectionStyle: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 18, marginBottom: 16 };
 const sectionHead: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 };
 const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, margin: 0 };
+const commerceIntro: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 14 };
 const productRow: React.CSSProperties = { borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 };
 const badge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
+const dealBadge: React.CSSProperties = { fontSize: 10.5, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 999, padding: "2px 6px", fontWeight: 900 };
 const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--surface-tint)", color: "var(--ink-soft)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const segmented: React.CSSProperties = { display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" };
 const primaryBtn: React.CSSProperties = { background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };

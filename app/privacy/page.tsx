@@ -5,11 +5,13 @@ import { useState } from "react";
 import { clearConsentEvents, CONSENT_VERSION, consentEventCount, exportConsentEvents } from "@/lib/consent";
 import { clearCropSamples, cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { clearLabels, exportLabels, labelCount } from "@/lib/labels";
+import { careIntentCount, clearCareIntents } from "@/lib/store";
 
 export default function PrivacyPage() {
   const [labelTotal, setLabelTotal] = useState(() => labelCount());
   const [cropTotal, setCropTotal] = useState(() => cropSampleCount());
   const [consentTotal, setConsentTotal] = useState(() => consentEventCount());
+  const [careTotal, setCareTotal] = useState(() => careIntentCount());
 
   function clearLearningData() {
     clearCropSamples();
@@ -21,6 +23,11 @@ export default function PrivacyPage() {
   function clearConsentLog() {
     clearConsentEvents();
     setConsentTotal(consentEventCount());
+  }
+
+  function clearCommerceLog() {
+    clearCareIntents();
+    setCareTotal(careIntentCount());
   }
 
   return (
@@ -72,6 +79,17 @@ export default function PrivacyPage() {
           <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
             <button onClick={exportConsentEvents} disabled={consentTotal === 0} style={{ ...outlineBtn, opacity: consentTotal === 0 ? 0.5 : 1 }}>동의 기록 CSV 내보내기</button>
             <button onClick={clearConsentLog} disabled={consentTotal === 0} style={{ ...dangerBtn, opacity: consentTotal === 0 ? 0.5 : 1 }}>동의 기록 삭제</button>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <p style={sectionLabel}>구매/상담 클릭 기록</p>
+          <h2 style={sectionTitle}>제휴 검증용 클릭 신호</h2>
+          <p style={bodyText}>
+            제품 구매처나 상담 링크를 누르면 링크 종류, 판매처, 언어, 연결 위치가 이 브라우저에 기록됩니다. 실제 구매 여부나 결제 정보는 저장하지 않아요. 현재 클릭 기록은 {careTotal}개입니다.
+          </p>
+          <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+            <button onClick={clearCommerceLog} disabled={careTotal === 0} style={{ ...dangerBtn, opacity: careTotal === 0 ? 0.5 : 1 }}>구매/상담 클릭 기록 삭제</button>
           </div>
         </section>
 

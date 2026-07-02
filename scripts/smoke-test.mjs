@@ -23,6 +23,7 @@ const routeChecks = [
   { method: "GET", path: "/privacy", status: 200 },
   { method: "GET", path: "/pilot", status: 200 },
   { method: "GET", path: "/ops", status: 200 },
+  { method: "GET", path: "/api/out?sku=tn1&merchant=oliveyoung&placement=smoke", status: 302, redirect: "manual", locationIncludes: "www.oliveyoung.co.kr" },
   { method: "GET", path: "/api/sync", status: 200 },
   { method: "POST", path: "/api/sync", status: 401 },
 ];
@@ -100,10 +101,18 @@ async function checkRoute(baseUrl, check) {
     headers: check.headers,
     body: check.body,
     cache: "no-store",
+    redirect: check.redirect,
   });
 
   if (response.status !== check.status) {
     throw new Error(`${check.method} ${check.path} returned ${response.status}, expected ${check.status}`);
+  }
+
+  if (check.locationIncludes) {
+    const location = response.headers.get("location") || "";
+    if (!location.includes(check.locationIncludes)) {
+      throw new Error(`${check.method} ${check.path} redirected to ${location}, expected ${check.locationIncludes}`);
+    }
   }
 
   console.log(`ok ${check.method} ${check.path} -> ${response.status}`);

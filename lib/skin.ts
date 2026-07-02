@@ -54,6 +54,17 @@ export type MlVisiblePrediction = {
   confidence: Partial<Record<SkinAttr, number>>;
 };
 
+type VisibleModelManifest = {
+  status: "pending-training-data" | "active" | "disabled";
+  modelPath?: string | null;
+  modelVersion?: string;
+  inputSchemaVersion?: string;
+  runtime?: {
+    featureFlag?: string;
+    package?: string;
+  };
+};
+
 type LM = { x: number; y: number; z?: number };
 type RegionStats = {
   meanR: number;
@@ -79,6 +90,8 @@ export const VISIBLE_MODEL_CONTRACT = {
   fallbackVersion: "roi-calibrated-2026-06-30",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
+
+let visibleManifestPromise: Promise<VisibleModelManifest | null> | null = null;
 
 function lum(r: number, g: number, b: number) {
   return 0.299 * r + 0.587 * g + 0.114 * b;
@@ -278,7 +291,19 @@ function mergeMlPrediction(base: Record<SkinAttr, Bucket>, ml?: MlVisiblePredict
 
 export async function classifyVisibleAttributes(skinCrop: ImageData): Promise<MlVisiblePrediction | null> {
   void skinCrop;
-  // Runtime hook for the exported ONNX model. Until enough consented crops exist,
-  // the app keeps using calibrated ROI features and records the same contract.
+  if (process.env.NEXT_PUBLIC_VISIBLE_ATTR_MODEL !== "on") return null;
+  const manifest = await loadVisibleModelManifest();
+  if (!manifest || manifest.status !== "active" || !manifest.modelPath) return null;
+
+  // ONNX runtime is intentionally not bundled until Pilot 1 produces enough
+  // consented crops. The manifest/flag path keeps promotion mechanics stable.
   return null;
+}
+
+function loadVisibleModelManifest(): Promise<VisibleModelManifest | null> {
+  if (visibleManifestPromise) return visibleManifestPromise;
+  visibleManifestPromise = fetch("/models/visible-attributes/manifest.json", { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() as Promise<VisibleModelManifest> : null))
+    .catch(() => null);
+  return visibleManifestPromise;
 }

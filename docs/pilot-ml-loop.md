@@ -33,6 +33,9 @@ Collect:
 - Device type, browser, lighting condition, makeup state, glasses/hair obstruction notes.
 - Pilot metadata through `/pilot`, then export `gyeol-pilot-notes`.
 - Consent event history through `/privacy` or `/ops`, then export `gyeol-consent-events`.
+- Commerce-intent notes: after the report, ask whether the user would click
+  Olive Young, Naver Shopping, Coupang, brand official mall, or global purchase
+  links. Record whether low-confidence scans make product links feel premature.
 
 Watch during collection:
 
@@ -40,6 +43,8 @@ Watch during collection:
   and the current ML readiness band.
 - Use `/ops` after every 5-10 participants to catch device, lighting, or consent
   drop-off before the full pilot is finished.
+- Use `/care` after every participant to verify the top recommended products
+  have working marketplace links and that care-intent clicks are recorded locally.
 
 Run after collection:
 
@@ -125,6 +130,21 @@ Track these for every model candidate:
 - Persistent redness, pain, sudden change, or severe breakouts route to professional consultation.
 - Do not use terms like diagnosis, treatment, cure, removal, or guaranteed improvement.
 - Keep explanation tied to visible signals and product fit.
+- Product links can be monetized, but ranking should still pass skin-signal fit,
+  sensitivity, budget, and avoid-ingredient filters before commercial priority.
+
+## Commerce validation gate
+
+Before signing affiliate or seller deals, review:
+
+- Merchant click share by SKU and category.
+- Product clicks after high-confidence vs low-confidence scans.
+- Whether users prefer marketplace search, Olive Young, brand official mall, or
+  global links.
+- Whether clinic links are clicked more often for redness/trouble cases.
+
+Use marketplace search links for Pilot 1. Replace with partner deep links through
+`COMMERCE_LINK_OVERRIDES_JSON` after deal terms are agreed.
 
 ## Data governance before backend crop sync
 

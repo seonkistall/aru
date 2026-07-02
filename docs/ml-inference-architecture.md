@@ -25,6 +25,14 @@ data exists.
 5. Every labeled sample stores initial prediction, final prediction, confidence,
    model/source version, input schema, quality metadata, and retake decision.
 
+## ONNX Feature Flag
+
+The browser only attempts model loading when `NEXT_PUBLIC_VISIBLE_ATTR_MODEL=on`.
+The loader reads `public/models/visible-attributes/manifest.json`; if the
+manifest is not `active` or has no `modelPath`, the app stays on ROI fallback.
+This keeps the runtime safe while data collection is still below the training
+gate.
+
 ## Training Gate
 
 - Fewer than 30 labeled samples: do not train; adjust thresholds only.

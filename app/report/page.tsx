@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
@@ -86,6 +87,7 @@ export default function Report() {
 
   const { survey, reads } = initial;
   const top = result.picks[0];
+  const topCommerce = top ? primaryCommerceLink(top.sku) : null;
   const concernText = survey.concerns.slice(0, 2).join("·") || `${survey.type} 피부`;
   const analysisRows = reads
     ? ([
@@ -167,8 +169,12 @@ export default function Report() {
       {top && (
         <div style={stickyBar}>
           <div className="mx-auto" style={{ maxWidth: 420, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <a href={top.sku.buyUrl} onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })} style={buyBtn}>
-              바로 검색
+            <a
+              href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_sticky") : top.sku.buyUrl}
+              onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })}
+              style={buyBtn}
+            >
+              {topCommerce ? `${topCommerce.label} 보기` : "바로 검색"}
             </a>
             <Link href="/care" style={stickyCareBtn}>구매/상담 연결</Link>
           </div>
@@ -179,6 +185,7 @@ export default function Report() {
 }
 
 function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last: boolean }) {
+  const commerce = primaryCommerceLink(pick.sku);
   return (
     <div>
       <div style={imageBox}><span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 13, color: "var(--faint)" }}>{pick.sku.category}</span></div>
@@ -197,7 +204,13 @@ function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last:
       {pick.watchOut && <p style={watchOutStyle}>{pick.watchOut}</p>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{pick.sku.price.toLocaleString()}원</span>
-        <a href={pick.sku.buyUrl} onClick={() => recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price })} style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none", fontWeight: 700 }}>보러가기</a>
+        <a
+          href={commerceOutHref(pick.sku.id, commerce.merchant, "report_product")}
+          onClick={() => recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price })}
+          style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none", fontWeight: 700 }}
+        >
+          {commerce.label}에서 보기
+        </a>
       </div>
       {!last && <div style={{ height: 1, background: "var(--line)", margin: "34px 0" }} />}
     </div>

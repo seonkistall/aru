@@ -1,7 +1,17 @@
 import { getSupabase, hasSupabase } from "./supabase";
 import type { CareIntentKind, CareLocale } from "./care";
+import type { MerchantId } from "./commerce";
 
-export type Purchase = { id: string; sku_id: string; name: string; price: number; ts: number };
+export type Purchase = {
+  id: string;
+  sku_id: string;
+  name: string;
+  price: number;
+  merchant?: MerchantId;
+  placement?: string;
+  href?: string;
+  ts: number;
+};
 export type Checkin = {
   id: string;
   sku_id: string;
@@ -18,6 +28,11 @@ export type CareIntent = {
   href: string;
   locale: CareLocale;
   context?: string;
+  sku_id?: string;
+  merchant?: MerchantId;
+  placement?: string;
+  partner_ready?: boolean;
+  region?: string;
   ts: number;
 };
 
@@ -52,7 +67,7 @@ async function insertOrLocal<T>(table: string, key: string, value: T) {
   lsPush(key, value);
 }
 
-export async function recordPurchase(purchase: { sku_id: string; name: string; price: number }): Promise<Purchase> {
+export async function recordPurchase(purchase: Omit<Purchase, "id" | "ts">): Promise<Purchase> {
   const rec: Purchase = { ...purchase, id: uid(), ts: Date.now() };
   await insertOrLocal("purchases", "gyeol_purchases", rec);
   return rec;
@@ -90,4 +105,27 @@ export async function recordCareIntent(intent: Omit<CareIntent, "id" | "ts">): P
 
 export function getCareIntents(): CareIntent[] {
   return lsGet<CareIntent>("gyeol_care_intents").reverse();
+}
+
+export function careIntentCount(): number {
+  return lsGet<CareIntent>("gyeol_care_intents").length;
+}
+
+export function exportCareIntents() {
+  const rows = getCareIntents();
+  const header = ["id", "kind", "label", "href", "locale", "context", "sku_id", "merchant", "placement", "partner_ready", "region", "ts"];
+  const esc = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = [header.join(","), ...rows.map((row) => header.map((key) => esc(row[key as keyof CareIntent])).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `gyeol-care-intents-${rows.length}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function clearCareIntents() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("gyeol_care_intents");
 }

@@ -52,9 +52,20 @@ responsive mode.
 ## Result flow
 
 - Confirm the result screen appears after capture.
-- Confirm debug signals are present for internal QA.
-- Confirm `추천 받기` saves scan data and opens `/survey`.
+- Confirm debug signals are hidden for normal users and visible with `/scan?staff=1`.
+- Confirm `추천 받기` saves scan confidence/source/retake data and opens `/survey`.
+- Confirm low-confidence scans show `설문으로 이어가기` and keep recommendation weight on survey answers.
 - Confirm result copy says reference/cosmetic guidance, not diagnosis.
+
+## Commerce flow QA
+
+- Complete `/scan -> /survey -> /report -> /care` on iPhone Safari and Android Chrome.
+- Confirm sticky report CTA opens `/api/out` and redirects to the top merchant.
+- Confirm product cards use merchant labels such as `올리브영에서 보기`.
+- Confirm `/care` shows Olive Young, Naver Shopping, Coupang, and Global search links for each top pick.
+- Confirm link clicks open a new tab and create a local care-intent record.
+- Confirm links include no diagnosis, treatment, or guaranteed-effect language.
+- Confirm foreign-user copy is visible in EN mode and Global search remains available.
 
 ## Consent flow
 
@@ -80,6 +91,10 @@ responsive mode.
 - Keep pilot notes separate from image crops unless the participant opted into learning crop storage.
 - Open `/ops` during and after the session to check label count, crop count,
   pilot completion rate, consent event count, and ML readiness band.
+- For commerce validation, record whether participants expected Olive Young,
+  Naver, Coupang, brand official mall, or global purchase links after the report.
+- Ask whether product links felt helpful, too sales-like, or premature after a
+  low-confidence scan.
 
 ## Mobile permission checklist
 

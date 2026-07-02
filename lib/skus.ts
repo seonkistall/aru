@@ -4,6 +4,8 @@
  * Copy describes cosmetic fit only. Avoid medical/guaranteed efficacy claims.
  */
 
+import { buildCommerceLinks, primaryCommerceLink, type CommerceLink } from "./commerce";
+
 export type SkinType = "지성" | "건성" | "복합성" | "민감성";
 export type Concern = "모공" | "붉은기" | "건조" | "트러블" | "유분" | "탄력";
 export type Avoid = "향료" | "알코올" | "에센셜오일";
@@ -22,14 +24,22 @@ export type Sku = {
   freeOf: Avoid[];
   tone: Tone;
   buyUrl: string;
+  commerceLinks: CommerceLink[];
 };
 
-function shoppingSearch(brand: string, name: string) {
-  return `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(`${brand} ${name}`)}`;
+type SkuInput = Omit<Sku, "buyUrl" | "commerceLinks">;
+
+function sku(input: SkuInput): Sku {
+  const commerceLinks = buildCommerceLinks(input);
+  return {
+    ...input,
+    commerceLinks,
+    buyUrl: primaryCommerceLink({ commerceLinks }).href,
+  };
 }
 
 export const SKUS: Sku[] = [
-  {
+  sku({
     id: "cl1",
     brand: "라운드랩",
     name: "자작나무 수분 클렌저",
@@ -40,9 +50,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["자작나무 수액", "글리세린"],
     freeOf: ["에센셜오일"],
     tone: "safe",
-    buyUrl: shoppingSearch("라운드랩", "자작나무 수분 클렌저"),
-  },
-  {
+  }),
+  sku({
     id: "cl2",
     brand: "이즈앤트리",
     name: "히알루론산 약산성 클렌저",
@@ -53,9 +62,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["히알루론산", "판테놀"],
     freeOf: ["향료", "알코올", "에센셜오일"],
     tone: "gentle",
-    buyUrl: shoppingSearch("이즈앤트리", "히알루론산 약산성 클렌저"),
-  },
-  {
+  }),
+  sku({
     id: "tn1",
     brand: "아누아",
     name: "어성초 77 토너",
@@ -66,9 +74,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["어성초 추출물", "베타인"],
     freeOf: ["향료", "알코올"],
     tone: "value",
-    buyUrl: shoppingSearch("아누아", "어성초 77 토너"),
-  },
-  {
+  }),
+  sku({
     id: "tn2",
     brand: "라운드랩",
     name: "독도 토너",
@@ -79,9 +86,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["해양심층수", "판테놀"],
     freeOf: ["향료", "에센셜오일"],
     tone: "safe",
-    buyUrl: shoppingSearch("라운드랩", "독도 토너"),
-  },
-  {
+  }),
+  sku({
     id: "sr1",
     brand: "아누아",
     name: "어성초 80 세럼",
@@ -92,9 +98,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["어성초 80%", "판테놀"],
     freeOf: ["향료", "알코올"],
     tone: "value",
-    buyUrl: shoppingSearch("아누아", "어성초 80 세럼"),
-  },
-  {
+  }),
+  sku({
     id: "sr2",
     brand: "토리든",
     name: "다이브인 저분자 히알루론산 세럼",
@@ -105,9 +110,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["히알루론산", "알란토인"],
     freeOf: ["향료", "알코올", "에센셜오일"],
     tone: "gentle",
-    buyUrl: shoppingSearch("토리든", "다이브인 저분자 히알루론산 세럼"),
-  },
-  {
+  }),
+  sku({
     id: "cr1",
     brand: "에스트라",
     name: "아토베리어 365 크림",
@@ -118,9 +122,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["세라마이드", "판테놀"],
     freeOf: ["향료", "알코올", "에센셜오일"],
     tone: "gentle",
-    buyUrl: shoppingSearch("에스트라", "아토베리어 365 크림"),
-  },
-  {
+  }),
+  sku({
     id: "cr2",
     brand: "일리윤",
     name: "세라마이드 아토 크림",
@@ -131,9 +134,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["세라마이드"],
     freeOf: ["향료"],
     tone: "value",
-    buyUrl: shoppingSearch("일리윤", "세라마이드 아토 크림"),
-  },
-  {
+  }),
+  sku({
     id: "su1",
     brand: "라운드랩",
     name: "자작나무 수분 선크림",
@@ -144,9 +146,8 @@ export const SKUS: Sku[] = [
     keyIngredients: ["자작나무 수액", "나이아신아마이드"],
     freeOf: ["에센셜오일"],
     tone: "safe",
-    buyUrl: shoppingSearch("라운드랩", "자작나무 수분 선크림"),
-  },
-  {
+  }),
+  sku({
     id: "su2",
     brand: "닥터지",
     name: "그린 마일드 업 선",
@@ -157,6 +158,5 @@ export const SKUS: Sku[] = [
     keyIngredients: ["시카", "판테놀"],
     freeOf: ["향료", "에센셜오일"],
     tone: "gentle",
-    buyUrl: shoppingSearch("닥터지", "그린 마일드 업 선"),
-  },
+  }),
 ];

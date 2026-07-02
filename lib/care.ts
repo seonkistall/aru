@@ -1,6 +1,7 @@
 import type { RecoResult, Survey } from "./recommend";
 import type { SkinReads } from "./skin";
 import type { Sku } from "./skus";
+import { commerceOutHref, type MerchantId } from "./commerce";
 
 export type CareLocale = "ko" | "en";
 export type CareIntentKind = "purchase" | "clinic" | "tourist";
@@ -10,30 +11,27 @@ export type CareLink = {
   href: string;
   note: string;
   kind: CareIntentKind;
+  partnerReady?: boolean;
+  merchant?: MerchantId;
+  placement?: string;
+  skuId?: string;
+  region?: string;
 };
 
-export function productSearchLinks(sku: Sku): CareLink[] {
-  const q = encodeURIComponent(`${sku.brand} ${sku.name}`);
-  return [
-    {
-      label: "네이버 쇼핑",
-      href: `https://search.shopping.naver.com/search/all?query=${q}`,
-      note: "국내 가격 비교와 구매처를 확인해요.",
+export function productSearchLinks(sku: Sku, placement = "care"): CareLink[] {
+  return [...sku.commerceLinks]
+    .sort((a, b) => a.priority - b.priority)
+    .map((link) => ({
+      label: link.label,
+      href: commerceOutHref(sku.id, link.merchant, placement),
+      note: link.note,
       kind: "purchase",
-    },
-    {
-      label: "올리브영 검색",
-      href: `https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${q}`,
-      note: "국내 드럭스토어 재고와 리뷰를 확인해요.",
-      kind: "purchase",
-    },
-    {
-      label: "Global search",
-      href: `https://www.google.com/search?q=${encodeURIComponent(`${sku.brand} ${sku.name} Korean skincare`)}`,
-      note: "For international users and overseas availability.",
-      kind: "purchase",
-    },
-  ];
+      partnerReady: link.partnerReady,
+      merchant: link.merchant,
+      placement,
+      skuId: sku.id,
+      region: link.region,
+    }));
 }
 
 export function clinicLinks(locale: CareLocale): CareLink[] {
