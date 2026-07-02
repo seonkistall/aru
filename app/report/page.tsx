@@ -196,7 +196,7 @@ function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last:
     <div>
       <div style={imageBox}><span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 13, color: "var(--faint)" }}>{pick.sku.category}</span></div>
       <div style={tag}>{pick.toneLabel} · {pick.sku.category}</div>
-      <div style={{ fontFamily: "var(--font-serif, serif)", fontSize: 21, fontWeight: 600, color: "var(--ink)", margin: "8px 0 9px" }}>
+      <div style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 9px" }}>
         <span style={{ color: "var(--muted)", fontSize: 14, fontWeight: 500 }}>{pick.sku.brand} </span>
         {pick.sku.name}
       </div>
@@ -242,7 +242,7 @@ function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplie
       {reads.retakeReasons.length > 0 && (
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
           {reads.retakeReasons.map((reason) => (
-            <span key={reason} style={{ fontSize: 12.5, color: "#8f3f3b" }}>{reason}</span>
+            <span key={reason} style={{ fontSize: 12.5, color: "var(--plum-press)" }}>{reason}</span>
           ))}
         </div>
       )}
@@ -264,21 +264,21 @@ const careCard: React.CSSProperties = { background: "var(--surface)", border: "1
 const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
 const imageBox: React.CSSProperties = { width: "100%", height: 150, borderRadius: 8, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 };
-const pill: React.CSSProperties = { background: "var(--plum-soft)", color: "var(--plum)", fontSize: 12, borderRadius: 8, padding: "4px 10px", fontWeight: 700 };
-const watchOutStyle: React.CSSProperties = { fontSize: 12.5, color: "#8f3f3b", background: "#fbf4f1", border: "1px solid #ead2cc", borderRadius: 8, padding: "9px 10px", lineHeight: 1.45, marginBottom: 12 };
+const pill: React.CSSProperties = { background: "transparent", border: "1px solid var(--line)", color: "var(--ink-soft)", fontSize: 12, borderRadius: 8, padding: "4px 10px", fontWeight: 700 };
+const watchOutStyle: React.CSSProperties = { fontSize: 12.5, color: "var(--plum-press)", background: "var(--plum-soft)", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 10px", lineHeight: 1.45, marginBottom: 12 };
 const routineStep: React.CSSProperties = { display: "grid", gridTemplateColumns: "30px 1fr", gap: 12, alignItems: "start", borderTop: "1px solid var(--line)", paddingTop: 12 };
-const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--plum)", color: "var(--on-plum)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };
+const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--paper)", border: "1.5px solid var(--ink)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };
 const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 17, color: "var(--ink)", marginBottom: 4 };
 const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };
-const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--plum)", fontWeight: 800, marginTop: 6 };
-const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px", boxShadow: "0 -8px 24px rgba(40,30,20,.06)" };
+const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--ink)", fontWeight: 800, marginTop: 6 };
+const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px" };
 const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 
 function confidenceCard(retake: boolean): React.CSSProperties {
   return {
-    background: retake ? "#fbf4f1" : "var(--plum-soft)",
-    border: retake ? "1px solid #ead2cc" : "1px solid rgba(79,107,82,.22)",
+    background: retake ? "var(--plum-soft)" : "var(--surface)",
+    border: "1px solid var(--line)",
     borderRadius: 8,
     padding: "18px 18px 16px",
     marginBottom: 18,

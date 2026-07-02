@@ -97,7 +97,7 @@ function scoreSku(sku: Sku, survey: Survey, concerns: Concern[]): number {
 
 function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean, avoidedClear: boolean): string {
   const matched = concerns.filter((concern) => sku.concerns.includes(concern)).slice(0, 2);
-  const budgetText = `${Math.round(survey.budget / 10000)}만 원대`;
+  const budgetText = `${Math.round(survey.budget / 10000)}만원대`;
   const scanText = scanApplied ? "오늘 스캔에서 보인 신호와 " : "";
   const head = matched.length ? `${matched.join(", ")} 고민` : `${survey.type} 피부`;
   let reason = `${scanText}${head}, ${budgetText} 예산을 함께 보고 고른 ${sku.category}예요.`;
@@ -151,7 +151,7 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
     },
     {
       id: "hydrate",
-      title: hasRedness ? "진정감 있는 수분층 만들기" : "수분감을 얇게 채우기",
+      title: hasRedness ? "순한 수분층 만들기" : "수분감을 얇게 채우기",
       body: hasRedness ? "붉어 보이는 날은 향이 강한 제품보다 순한 수분 제품부터 맞춰보세요." : "스캔 결과와 설문을 보면 가벼운 수분 단계가 루틴의 중심이에요.",
       category: survey.category,
     },
@@ -203,7 +203,7 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
       : relaxed === "budget"
         ? "예산 안에서 조건을 모두 만족하는 제품이 적어, 가장 가까운 선택까지 함께 봤어요."
         : relaxed === "avoid"
-          ? "선택한 제외 성분을 모두 피한 제품이 적어 일부 조건을 완화했어요. 구매 전 전성분을 확인해 주세요."
+          ? "선택한 제외 성분을 모두 피한 제품이 적어 기준을 조금 넓혔어요. 구매 전 전성분을 확인해 주세요."
           : undefined;
 
   return { picks, routine: routineFor(survey, concerns, picks), relaxed, scanApplied, note };

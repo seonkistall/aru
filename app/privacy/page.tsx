@@ -48,14 +48,14 @@ export default function PrivacyPage() {
         <section style={sectionStyle}>
           <p style={sectionLabel}>AI 분석용 전송</p>
           <h2 style={sectionTitle}>선택한 경우에만 얼굴 크롭 전송</h2>
-          <p style={bodyText}>체크하면 얼굴 크롭을 분석 API로 보내 보조 설명을 받아요. 이 선택은 학습용 저장 동의와 분리됩니다.</p>
+          <p style={bodyText}>체크하면 얼굴 크롭이 외부 AI 제공사(Google Gemini 또는 OpenAI)의 분석 API로 전송되고, 추천 생성에만 사용돼요. 이 선택은 학습용 저장 동의와 분리됩니다.</p>
         </section>
 
         <section style={sectionStyle}>
           <p style={sectionLabel}>학습용 크롭 저장</p>
           <h2 style={sectionTitle}>연구 동의 샘플만 로컬 보관</h2>
           <p style={bodyText}>
-            동의한 경우 얼굴 크롭, 라벨, 촬영 품질 메타데이터를 이 브라우저에 저장합니다. 최근 120개까지만 보관되며, 내보내기 전에는 서버로 자동 업로드되지 않아요.
+            동의한 경우 얼굴 크롭, 라벨, 촬영 품질 메타데이터를 이 브라우저에 저장합니다. 최근 120개까지만 보관되며, 내보내기 전에는 서버로 자동 업로드되지 않아요. 파일럿 연구에 참여해 동의한 경우, 동의된 샘플만 운영자가 연구용 서버로 옮길 수 있어요.
           </p>
         </section>
 
@@ -64,7 +64,7 @@ export default function PrivacyPage() {
           <h2 style={sectionTitle}>이 기기에 저장된 데이터</h2>
           <p style={bodyText}>현재 라벨 {labelTotal}개, 학습용 크롭 {cropTotal}개가 이 브라우저에 있어요.</p>
           <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
-            <button onClick={exportLabels} style={outlineBtn}>라벨 JSONL 내보내기</button>
+            <button onClick={exportLabels} disabled={labelTotal === 0} style={{ ...outlineBtn, opacity: labelTotal === 0 ? 0.5 : 1 }}>라벨 JSONL 내보내기</button>
             <button onClick={exportCropSamples} disabled={cropTotal === 0} style={{ ...outlineBtn, opacity: cropTotal === 0 ? 0.5 : 1 }}>크롭 JSONL 내보내기</button>
             <button onClick={clearLearningData} style={dangerBtn}>로컬 학습 데이터 삭제</button>
           </div>
@@ -120,4 +120,4 @@ const bodyText: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)"
 const primaryBtn: React.CSSProperties = { background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const outlineLink: React.CSSProperties = { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const outlineBtn: React.CSSProperties = { background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "left" };
-const dangerBtn: React.CSSProperties = { background: "transparent", color: "#8f3f3b", border: "1px solid #d8b8b3", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "left" };
+const dangerBtn: React.CSSProperties = { background: "transparent", color: "var(--plum)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "left" };

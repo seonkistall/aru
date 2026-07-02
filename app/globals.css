@@ -6,8 +6,8 @@
   --ink: #1a1a1a;          /* black line art / main */
   --ink-soft: #3d3d3d;
   --text-muted: #6e6e6e;
-  --muted: #8e8e8e;        /* quiet labels */
-  --faint: #b4b4b4;
+  --muted: #767676;        /* quiet labels */
+  --faint: #9a9a9a;
   --paper: #ffffff;        /* pure white — NO texture/gradient/shadow */
   --surface: #ffffff;
   --surface-tint: #f5f5f5; /* used sparingly */
@@ -19,7 +19,7 @@
   --plum-soft: #fbe6e4;
   --orange: #ef8a1f;       /* flow / arrows / A→B */
   --blue: #2f6de0;         /* AI / system / 2nd-layer notes */
-  --bronze: #8e8e8e;       /* labels = quiet */
+  --bronze: #767676;       /* labels = quiet */
   --rose: #f5f5f5;
   --peach: #f5f5f5;
   --on-plum: #ffffff;
@@ -43,7 +43,7 @@
   /* repoint all display roles to the hand font; body stays Pretendard */
   --font-serif: var(--font-hand), cursive;
   --font-ko-serif: var(--font-hand), cursive;
-  --font-mono: var(--font-hand), cursive;
+  --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
   --font-sans: "Pretendard", -apple-system, sans-serif;
 }
 

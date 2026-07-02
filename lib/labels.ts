@@ -52,6 +52,7 @@ export type SampleMeta = {
   labelConfidence?: LabelConfidence;
   correctionFlags?: Partial<Record<Attr, boolean>>;
   ungradable?: boolean;
+  burst?: { frames: number; agreement: Partial<Record<Attr, number>> };
 };
 
 export const SCALES: Record<Attr, [string, string, string]> = {

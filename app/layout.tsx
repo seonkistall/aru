@@ -14,7 +14,7 @@ const hand = Nanum_Pen_Script({
 
 export const metadata: Metadata = {
   title: "결 — 믿을 수 있는 화장품 추천",
-  description: "과장 없이, 너한테 딱 맞는 셋. 카메라로 피부를 읽고 큐레이션해 드려요.",
+  description: "과장 없이, 너한테 딱 맞는 셋. 카메라로 피부를 읽고 솔직하게 골라드려요.",
 };
 
 export default function RootLayout({

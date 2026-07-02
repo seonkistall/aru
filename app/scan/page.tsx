@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CONSENT_VERSION, latestConsent, recordConsentEvent } from "@/lib/consent";
 import { saveCropSample, cropSampleCount, exportCropSamples } from "@/lib/crops";
 import {
-  analyzeSkin,
+  analyzeSkinBurst,
   classifyVisibleAttributes,
   SKIN_LABELS,
   VISIBLE_MODEL_CONTRACT,
@@ -18,7 +18,7 @@ import { getCurrentPilotSession } from "@/lib/pilot";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type Landmark = { x: number; y: number; z?: number };
-type FaceLandmarker = { detect: (image: HTMLCanvasElement) => { faceLandmarks?: Landmark[][] } };
+type FaceLandmarker = { detect: (image: HTMLCanvasElement) => { faceLandmarks?: Landmark[][] }; close?: () => void };
 type CaptureMode = "balanced" | "texture" | "tone";
 type CaptureProfile = {
   label: string;
@@ -106,7 +106,7 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
   },
   tone: {
     label: "피부톤",
-    hint: "톤과 붉은기를 보려고 더 부드러운 빛과 낮은 반사를 요구합니다.",
+    hint: "톤과 붉은기를 보기 위해 더 부드러운 빛, 더 적은 반사가 필요해요.",
     centerToleranceX: 0.12,
     centerToleranceY: 0.16,
     minFaceSize: 0.43,
@@ -125,6 +125,15 @@ export default function Scan() {
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const lastCenterRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const qualityTimerRef = useRef<number | null>(null);
+  const procCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const passStreakRef = useRef(0);
+  const countdownRef = useRef<number | null>(null);
+  const autoHoldUntilRef = useRef(0);
+  const capturingRef = useRef(false);
+  const autoCaptureRef = useRef(true);
+  const disposedRef = useRef(false);
+  const prevQualityKeyRef = useRef("");
+  const captureRef = useRef<(() => Promise<void>) | null>(null);
 
   const [phase, setPhase] = useState<Phase>("init");
   const [reads, setReads] = useState<SkinReads | null>(null);
@@ -135,6 +144,8 @@ export default function Scan() {
   const [quality, setQuality] = useState<Quality>(initialQuality);
   const [cropDataUrl, setCropDataUrl] = useState<string | null>(null);
   const [captureMeta, setCaptureMeta] = useState<SampleMeta | null>(null);
+  const [autoCapture, setAutoCapture] = useState(true);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const captureProfile = CAPTURE_PROFILES[captureMode];
   const staffMode = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -150,12 +161,56 @@ export default function Scan() {
     quality.noGlare &&
     (!captureProfile.requiresSteady || quality.steady);
 
+  // Skip renders when nothing user-visible changed (ticks arrive every 650ms);
+  // qualityRef-independent auto-capture reads results via handleAutoTick instead.
+  const commitQuality = useCallback((next: Quality, force = false) => {
+    const key = `${next.face}|${next.centered}|${next.distance}|${next.brightness}|${next.noGlare}|${next.steady}|${next.message}`;
+    if (!force && key === prevQualityKeyRef.current) return;
+    prevQualityKeyRef.current = key;
+    setQuality(next);
+  }, []);
+
+  const setCountdownSafe = useCallback((value: number | null) => {
+    if (countdownRef.current === value) return;
+    countdownRef.current = value;
+    setCountdown(value);
+  }, []);
+
+  // Auto capture: two consecutive passing ticks arm a 3-2-1 countdown (one step
+  // per 650ms tick); any failing check cancels it. Runs off refs so the quality
+  // render bail-out above cannot stall it.
+  const handleAutoTick = useCallback((pass: boolean) => {
+    if (!autoCaptureRef.current || capturingRef.current) return;
+    if (!pass) {
+      passStreakRef.current = 0;
+      setCountdownSafe(null);
+      return;
+    }
+    if (performance.now() < autoHoldUntilRef.current) return;
+    passStreakRef.current += 1;
+    const current = countdownRef.current;
+    if (current === null) {
+      if (passStreakRef.current >= 2) setCountdownSafe(3);
+    } else if (current > 1) {
+      setCountdownSafe(current - 1);
+    } else {
+      setCountdownSafe(null);
+      capturingRef.current = true;
+      void captureRef.current?.().finally(() => {
+        capturingRef.current = false;
+      });
+    }
+  }, [setCountdownSafe]);
+
   const startCamera = useCallback(async () => {
     setErr("");
     setReads(null);
     setCropDataUrl(null);
     setCaptureMeta(null);
     setQuality(initialQuality);
+    prevQualityKeyRef.current = "";
+    lastCenterRef.current = null;
+    passStreakRef.current = 0;
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("unsupported");
       return;
@@ -171,6 +226,11 @@ export default function Scan() {
         },
         audio: false,
       });
+      if (disposedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -206,9 +266,9 @@ export default function Scan() {
     const ratio = video.videoWidth / video.videoHeight;
     const h = video.videoHeight > video.videoWidth ? maxSize : Math.round(maxSize / ratio);
     const w = Math.round(h * ratio);
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
+    const canvas = procCanvasRef.current ?? (procCanvasRef.current = document.createElement("canvas"));
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, w, h);
@@ -223,7 +283,9 @@ export default function Scan() {
       const res = landmarker.detect(frame.canvas);
       const face = res.faceLandmarks?.[0];
       if (!face?.length) {
-        setQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
+        lastCenterRef.current = null;
+        commitQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
+        handleAutoTick(false);
         return;
       }
 
@@ -234,7 +296,9 @@ export default function Scan() {
       const profile = CAPTURE_PROFILES[captureMode];
       const centered = Math.abs(centerX - 0.5) < profile.centerToleranceX && Math.abs(centerY - 0.48) < profile.centerToleranceY;
       const distance = size > profile.minFaceSize && size < profile.maxFaceSize;
-      const exposure = exposureStats(frame.ctx.getImageData(0, 0, frame.w, frame.h));
+      // Face-box exposure, matching evaluateCapturedQuality — a whole-frame
+      // reading here lets backlit shots pass live and fail at capture.
+      const exposure = exposureStats(frame.ctx.getImageData(0, 0, frame.w, frame.h), box);
       const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
       const noGlare = exposure.hotRatio < profile.maxHotRatio;
 
@@ -260,9 +324,10 @@ export default function Scan() {
                 ? "잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요."
                 : "좋아요. 이마와 양볼 결이 잘 보입니다.";
 
-      setQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
+      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
+      handleAutoTick(centered && distance && brightness && noGlare && (!profile.requiresSteady || steady));
     },
-    [captureMode, readFrame]
+    [captureMode, commitQuality, handleAutoTick, readFrame]
   );
 
   useEffect(() => {
@@ -272,6 +337,7 @@ export default function Scan() {
       .then((landmarker) => {
         if (!mounted) return;
         qualityTimerRef.current = window.setInterval(() => {
+          if (document.hidden) return;
           void measureQuality(landmarker);
         }, 650);
       })
@@ -279,14 +345,37 @@ export default function Scan() {
     return () => {
       mounted = false;
       if (qualityTimerRef.current) window.clearInterval(qualityTimerRef.current);
+      passStreakRef.current = 0;
+      setCountdownSafe(null);
     };
-  }, [ensureLandmarker, measureQuality, phase]);
+  }, [ensureLandmarker, measureQuality, phase, setCountdownSafe]);
 
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => {
+    disposedRef.current = false;
+    return () => {
+      disposedRef.current = true;
+      stopCamera();
+      landmarkerRef.current?.close?.();
+      landmarkerRef.current = null;
+    };
+  }, [stopCamera]);
+
+  // The <video> is unmounted during the result phase, so 다시 찍기's
+  // startCamera can resolve before the element exists — reattach on remount.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (phase !== "ready" || !video || !streamRef.current) return;
+    if (video.srcObject !== streamRef.current) {
+      video.srcObject = streamRef.current;
+      void video.play();
+    }
+  }, [phase]);
 
   async function capture() {
     const video = videoRef.current;
     if (!video) return;
+    setCountdownSafe(null);
+    passStreakRef.current = 0;
     setPhase("analyzing");
     setErr("");
     setCropDataUrl(null);
@@ -305,25 +394,39 @@ export default function Scan() {
       const res = landmarker.detect(canvas);
       const faces = res.faceLandmarks ?? [];
       if (!faces.length) {
+        autoHoldUntilRef.current = performance.now() + 4000;
         setPhase("noface");
         return;
       }
 
       const imageData = ctx.getImageData(0, 0, w, h);
       const verifiedQuality = evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], quality.steady);
-      setQuality(verifiedQuality);
+      commitQuality(verifiedQuality, true);
       if (!qualityPassed(verifiedQuality, CAPTURE_PROFILES[captureMode])) {
+        autoHoldUntilRef.current = performance.now() + 4000;
         setErr("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요.");
         setPhase("ready");
         return;
       }
 
+      // Crops come from this verified first frame (canvas still holds it).
       const faceCrop = consent || datasetConsent ? cropFace(canvas, faces[0]) : null;
-      const modelCrop = cropFaceImageData(canvas, faces[0]);
+      const modelCrop = process.env.NEXT_PUBLIC_VISIBLE_ATTR_MODEL === "on" ? cropFaceImageData(canvas, faces[0]) : null;
       setCropDataUrl(staffMode && datasetConsent ? faceCrop : null);
 
+      // Burst: two extra frames ~140ms apart; the per-feature median suppresses
+      // one-frame glare/motion spikes, and cross-frame agreement feeds the
+      // confidence/retake decision (recorded in labels for ML calibration).
+      const burstFrames: Array<{ imageData: ImageData; landmarks: Landmark[] }> = [{ imageData, landmarks: faces[0] }];
+      for (let i = 1; i < 3; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 140));
+        ctx.drawImage(video, 0, 0, w, h);
+        const extra = landmarker.detect(canvas).faceLandmarks?.[0];
+        if (extra?.length) burstFrames.push({ imageData: ctx.getImageData(0, 0, w, h), landmarks: extra });
+      }
+
       const mlPrediction = modelCrop ? await classifyVisibleAttributes(modelCrop) : null;
-      const out = analyzeSkin(imageData, faces[0], mlPrediction);
+      const out = analyzeSkinBurst(burstFrames, mlPrediction);
       if (!out) {
         setPhase("noface");
         return;
@@ -348,8 +451,8 @@ export default function Scan() {
 
       const session = getCurrentPilotSession();
       const scope = session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined;
-      const aiEvent = latestConsent("ai_analysis", scope);
-      const cropEvent = latestConsent("learning_crop", scope);
+      const aiEvent = latestConsent("ai_analysis", scope) ?? (scope ? latestConsent("ai_analysis") : null);
+      const cropEvent = latestConsent("learning_crop", scope) ?? (scope ? latestConsent("learning_crop") : null);
       setCaptureMeta({
         schemaVersion: "2026-06-29.label.v2",
         participantId: session?.participantId,
@@ -362,14 +465,15 @@ export default function Scan() {
         quality: qualityMeta(verifiedQuality),
         consentVersion: CONSENT_VERSION,
         consentEventIds: {
-          aiAnalysis: aiEvent?.id,
-          learningCrop: cropEvent?.id,
+          aiAnalysis: consent && aiEvent?.granted ? aiEvent.id : undefined,
+          learningCrop: datasetConsent && cropEvent?.granted ? cropEvent.id : undefined,
         },
         predictionSource: final.source,
         modelVersion: final.source === "ml-model" && mlPrediction?.modelVersion ? mlPrediction.modelVersion : VISIBLE_MODEL_CONTRACT.fallbackVersion,
         inputSchemaVersion: mlPrediction?.inputSchemaVersion ?? VISIBLE_MODEL_CONTRACT.inputSchemaVersion,
         analysisConfidence: final.confidence,
         retakeRecommended: final.retakeRecommended,
+        burst: final.burst,
         initialPrediction: predictionSnapshot(out),
         finalPrediction: predictionSnapshot(final),
       });
@@ -379,14 +483,25 @@ export default function Scan() {
       setPhase("result");
     } catch (e) {
       console.error(e);
+      autoHoldUntilRef.current = performance.now() + 4000;
       setErr("분석 중 문제가 생겼어요. 다시 시도해 주세요.");
       setPhase("ready");
     }
   }
+  useEffect(() => {
+    captureRef.current = capture;
+  });
 
   function reset() {
     setReads(null);
     void startCamera();
+  }
+
+  function toggleAutoCapture(next: boolean) {
+    autoCaptureRef.current = next;
+    setAutoCapture(next);
+    passStreakRef.current = 0;
+    setCountdownSafe(null);
   }
 
   function toggleAiConsent(next: boolean) {
@@ -413,13 +528,19 @@ export default function Scan() {
         {phase !== "result" && (
           <div style={cameraFrame}>
             <video ref={videoRef} playsInline muted style={videoStyle(phase)} />
-            {(phase === "ready" || phase === "analyzing") && <CameraGuide quality={quality} mode={captureMode} />}
+            {phase === "ready" && <CameraGuide quality={quality} mode={captureMode} />}
             {phase === "init" && (
               <Center>
                 <button onClick={startCamera} style={primaryBtn}>카메라 시작</button>
               </Center>
             )}
             {phase === "analyzing" && <Scanning />}
+            {phase === "ready" && countdown !== null && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 21, color: "#fff", textShadow: "0 1px 10px rgba(0,0,0,.55)" }}>그대로 계세요</span>
+              </div>
+            )}
             {phase === "denied" && (
               <Center>
                 <p style={fallbackText}>카메라 권한이 필요해요.</p>
@@ -445,17 +566,17 @@ export default function Scan() {
         {phase === "ready" && (
           <>
             {staffMode && <ScanModePicker mode={captureMode} onChange={setCaptureMode} />}
-            <QualityPanel quality={quality} />
+            <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} />
             <CaptureTips />
-            <PrivacyNotice />
+            <PrivacyNotice staffMode={staffMode} />
             <label style={consentStyle}>
               <input
                 type="checkbox"
                 checked={consent}
                 onChange={(e) => toggleAiConsent(e.target.checked)}
-                style={{ accentColor: "var(--plum)", width: 16, height: 16 }}
+                style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
               />
-              <span>선택: AI 분석용 전송 <span style={{ color: "var(--faint)" }}>얼굴 크롭만 보내고 학습 저장과는 분리돼요</span></span>
+              <span>선택: AI 분석용 전송 <span style={{ color: "var(--text-muted)" }}>얼굴 크롭만 외부 AI(Gemini/OpenAI) 분석 API로 보내요 · 학습 저장과는 분리돼요</span></span>
             </label>
             {staffMode && (
               <label style={consentStyle}>
@@ -463,11 +584,20 @@ export default function Scan() {
                   type="checkbox"
                   checked={datasetConsent}
                   onChange={(e) => toggleDatasetConsent(e.target.checked)}
-                  style={{ accentColor: "var(--plum)", width: 16, height: 16 }}
+                  style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
                 />
-                <span>연구용: 학습 크롭 저장 <span style={{ color: "var(--faint)" }}>동의한 파일만 이 기기에 최대 120개 보관돼요</span></span>
+                <span>연구용: 학습 크롭 저장 <span style={{ color: "var(--text-muted)" }}>동의한 파일만 이 기기에 최대 120개 보관돼요</span></span>
               </label>
             )}
+            <label style={consentStyle}>
+              <input
+                type="checkbox"
+                checked={autoCapture}
+                onChange={(e) => toggleAutoCapture(e.target.checked)}
+                style={{ accentColor: "var(--ink)", width: 16, height: 16 }}
+              />
+              <span>자동 촬영 <span style={{ color: "var(--text-muted)" }}>조건이 맞으면 3·2·1 뒤에 저절로 찍혀요</span></span>
+            </label>
           </>
         )}
 
@@ -483,11 +613,11 @@ export default function Scan() {
               cursor: phase === "analyzing" || !canCapture ? "default" : "pointer",
             }}
           >
-            {phase === "analyzing" ? "분석 중..." : "지금 촬영하기"}
+            {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : canCapture ? "지금 촬영하기" : "조건을 맞추면 촬영할 수 있어요"}
           </button>
         )}
 
-        {err && <p style={{ color: "var(--error, #9b4a45)", fontSize: 13, marginTop: 10 }}>{err}</p>}
+        {err && <p style={{ color: "var(--plum)", fontSize: 13, marginTop: 10 }}>{err}</p>}
 
         {phase === "result" && reads && (
           <>
@@ -495,7 +625,7 @@ export default function Scan() {
             <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", margin: "14px 0 4px" }}>
               * 조명, 각도, 메이크업에 따라 달라질 수 있는 참고용 분석이에요.
             </p>
-            {staffMode && (
+            {staffMode && getCurrentPilotSession() && (
               <details style={{ marginTop: 6, fontSize: 12, color: "var(--muted)" }}>
                 <summary style={{ cursor: "pointer", textAlign: "center" }}>디버그 신호 보기</summary>
                 <pre style={debugStyle}>
@@ -568,20 +698,20 @@ function ScanModePicker({ mode, onChange }: { mode: CaptureMode; onChange: (mode
 }
 
 function CameraGuide({ quality, mode }: { quality: Quality; mode: CaptureMode }) {
-  const border = quality.score >= 6 ? "rgba(79,107,82,.95)" : quality.score >= 4 ? "rgba(168,134,90,.9)" : "rgba(107,45,74,.9)";
+  const border = quality.score >= 6 ? "rgba(47,125,79,.95)" : quality.score >= 4 ? "rgba(239,138,31,.92)" : "rgba(224,56,44,.9)";
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", inset: "8% 12% 17%", border: `2px solid ${border}`, borderRadius: "48% 48% 45% 45%", boxShadow: "0 0 0 999px rgba(34,30,26,.15)" }} />
-      <div style={{ position: "absolute", top: "11%", bottom: "20%", left: "50%", width: 1, background: "rgba(252,250,246,.62)" }} />
-      <div style={{ position: "absolute", top: "31%", left: "21%", right: "21%", borderTop: "1px dashed rgba(252,250,246,.72)" }} />
-      <div style={{ position: "absolute", top: 14, right: 14, background: "rgba(252,250,246,.86)", border: "1px solid rgba(231,223,212,.85)", borderRadius: 999, color: "var(--ink)", fontSize: 11, fontWeight: 800, padding: "5px 9px" }}>
+      <div style={{ position: "absolute", inset: "8% 12% 17%", border: `2px solid ${border}`, borderRadius: "48% 48% 45% 45%", boxShadow: "0 0 0 999px rgba(0,0,0,.18)" }} />
+      <div style={{ position: "absolute", top: "11%", bottom: "20%", left: "50%", width: 1, background: "rgba(255,255,255,.62)" }} />
+      <div style={{ position: "absolute", top: "31%", left: "21%", right: "21%", borderTop: "1px dashed rgba(255,255,255,.72)" }} />
+      <div style={{ position: "absolute", top: 14, right: 14, background: "rgba(255,255,255,.9)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 999, color: "var(--ink)", fontSize: 11, fontWeight: 800, padding: "5px 9px" }}>
         {CAPTURE_PROFILES[mode].label}
       </div>
       <GuideZone label="이마/T존" style={{ top: "18%", left: "36%", width: "28%", height: "12%" }} />
       <GuideZone label="왼볼 결" style={{ top: "45%", left: "21%", width: "22%", height: "15%" }} />
       <GuideZone label="오른볼 결" style={{ top: "45%", right: "21%", width: "22%", height: "15%" }} />
       <div style={{ position: "absolute", left: 18, right: 18, bottom: 18, display: "flex", justifyContent: "center" }}>
-        <span style={{ background: "rgba(252,250,246,.88)", color: "var(--ink)", border: "1px solid rgba(231,223,212,.85)", borderRadius: 8, padding: "8px 12px", fontSize: 13, lineHeight: 1.35, textAlign: "center" }}>
+        <span style={{ background: "rgba(255,255,255,.9)", color: "var(--ink)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 8, padding: "8px 12px", fontSize: 13, lineHeight: 1.35, textAlign: "center" }}>
           {quality.message}
         </span>
       </div>
@@ -591,28 +721,28 @@ function CameraGuide({ quality, mode }: { quality: Quality; mode: CaptureMode })
 
 function GuideZone({ label, style }: { label: string; style: React.CSSProperties }) {
   return (
-    <div style={{ position: "absolute", border: "1px solid rgba(252,250,246,.78)", borderRadius: 999, background: "rgba(107,45,74,.10)", ...style }}>
-      <span style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", color: "rgba(252,250,246,.92)", fontSize: 10, fontWeight: 800, textShadow: "0 1px 8px rgba(34,30,26,.45)" }}>{label}</span>
+    <div style={{ position: "absolute", border: "1px solid rgba(255,255,255,.8)", borderRadius: 999, background: "rgba(47,109,224,.10)", ...style }}>
+      <span style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", color: "rgba(255,255,255,.94)", fontSize: 10, fontWeight: 800, textShadow: "0 1px 8px rgba(0,0,0,.5)" }}>{label}</span>
     </div>
   );
 }
 
-function QualityPanel({ quality }: { quality: Quality }) {
-  const checks = useMemo(
-    () => [
+function QualityPanel({ quality, requireSteady }: { quality: Quality; requireSteady: boolean }) {
+  const checks = useMemo(() => {
+    const base: Array<[string, boolean]> = [
       ["얼굴", quality.face],
       ["중앙", quality.centered],
       ["거리", quality.distance],
       ["밝기", quality.brightness],
-      ["반사", quality.noGlare],
-      ["안정", quality.steady],
-    ] as const,
-    [quality]
-  );
+      ["반사 없음", quality.noGlare],
+    ];
+    if (requireSteady) base.push(["흔들림 없음", quality.steady]);
+    return base;
+  }, [quality, requireSteady]);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 12 }}>
       {checks.map(([label, ok]) => (
-        <div key={label} style={{ background: ok ? "var(--plum-soft)" : "var(--surface)", color: ok ? "var(--plum)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 4px", textAlign: "center", fontSize: 12, fontWeight: ok ? 700 : 500 }}>
+        <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 4px", textAlign: "center", fontSize: 12, fontWeight: ok ? 700 : 500 }}>
           {ok ? "✓ " : ""}{label}
         </div>
       ))}
@@ -629,11 +759,16 @@ function CaptureTips() {
   );
 }
 
-function PrivacyNotice() {
+function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
   return (
     <div style={{ marginTop: 12, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.55 }}>
       <b style={{ color: "var(--ink)" }}>동의는 2가지로 분리돼요.</b>
-      <span> AI 분석용 전송은 얼굴 크롭을 분석 API에 보내는 선택이고, 학습용 크롭 저장은 동의한 연구 샘플을 이 기기에 최대 120개까지 보관하는 선택입니다. </span>
+      <span>
+        {" "}AI 분석용 전송은 얼굴 크롭을 외부 AI(Gemini/OpenAI) 분석 API에 보내는 선택이에요.{" "}
+        {staffMode
+          ? "학습용 크롭 저장은 동의한 연구 샘플을 이 기기에 최대 120개까지 보관하는 선택입니다. "
+          : "학습용 크롭 저장은 파일럿 연구 세션에서만 별도 동의로 진행돼요. "}
+      </span>
       <a href="/privacy" style={{ color: "var(--plum)", fontWeight: 800, textDecoration: "none" }}>자세히 보기</a>
     </div>
   );
@@ -656,7 +791,7 @@ function ResultCard({ reads }: { reads: SkinReads }) {
       <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{reads.narrative}</p>
       <div style={confidenceBox(reads.retakeRecommended)}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: reads.retakeRecommended ? "#8f3f3b" : "var(--success)" }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: reads.retakeRecommended ? "var(--plum-press)" : "var(--success)" }}>
             분석 신뢰도 {reads.confidenceLabel}
           </span>
           <span style={{ fontFeatureSettings: '"tnum"', fontSize: 18, fontWeight: 900, color: "var(--ink)" }}>{confidencePct}%</span>
@@ -669,7 +804,7 @@ function ResultCard({ reads }: { reads: SkinReads }) {
         {reads.retakeReasons.length > 0 && (
           <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
             {reads.retakeReasons.map((reason) => (
-              <span key={reason} style={{ fontSize: 12, color: "#8f3f3b" }}>{reason}</span>
+              <span key={reason} style={{ fontSize: 12, color: "var(--plum-press)" }}>{reason}</span>
             ))}
           </div>
         )}
@@ -778,9 +913,9 @@ function Center({ children }: { children: React.ReactNode }) {
 function Scanning() {
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-      <div style={{ position: "absolute", left: "8%", right: "8%", height: 2, background: "linear-gradient(90deg, transparent, var(--plum), transparent)", boxShadow: "0 0 14px var(--plum)", animation: "gyeol-scan 1.8s ease-in-out infinite" }} />
+      <div style={{ position: "absolute", left: "8%", right: "8%", height: 2, background: "var(--blue)", animation: "gyeol-scan 1.8s ease-in-out infinite" }} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 18 }}>
-        <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)", background: "rgba(247,243,236,.78)", padding: "6px 14px", borderRadius: 8 }}>피부 신호를 읽는 중</span>
+        <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)", background: "rgba(255,255,255,.88)", border: "1px solid rgba(0,0,0,.12)", padding: "6px 14px", borderRadius: 8 }}>피부 신호를 읽는 중</span>
       </div>
     </div>
   );
@@ -1111,7 +1246,7 @@ const resultCardStyle: React.CSSProperties = {
   background: "var(--surface)",
   borderRadius: 8,
   padding: "28px 24px",
-  boxShadow: "0 8px 24px rgba(40,30,20,.10)",
+  border: "1px solid var(--line)",
   animation: "gyeol-fade-up .5s ease-out both",
 };
 
@@ -1128,9 +1263,9 @@ const debugStyle: React.CSSProperties = {
 
 function confidenceBox(retake: boolean): React.CSSProperties {
   return {
-    border: retake ? "1px solid #d8b8b3" : "1px solid rgba(79,107,82,.24)",
+    border: "1px solid var(--line)",
     borderRadius: 8,
-    background: retake ? "#fbf4f1" : "var(--plum-soft)",
+    background: retake ? "var(--plum-soft)" : "var(--surface)",
     padding: "12px 14px",
     marginBottom: 16,
   };

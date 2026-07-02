@@ -186,7 +186,7 @@ export default function OpsPage() {
           <p style={sectionLabel}>supabase sync</p>
           <h2 style={sectionTitle}>Backend upload gate</h2>
           {syncStatus && (
-            <div style={{ ...statusPill, color: syncStatus.configured ? "var(--success)" : "#8f3f3b" }}>
+            <div style={{ ...statusPill, color: syncStatus.configured ? "var(--success)" : "var(--plum)" }}>
               {syncStatus.configured ? "Supabase env configured" : "Supabase env missing"}
               {" | "}
               {syncStatus.cropBucketConfigured ? "crop bucket configured" : "crop bucket missing"}
@@ -273,8 +273,8 @@ function MiniBreakdown({ title, rows }: { title: string; rows: Partial<Record<st
 
 function SyncResultPanel({ result }: { result: SyncResult }) {
   return (
-    <div style={{ marginTop: 14, padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: result.ok ? "var(--plum-soft)" : "var(--paper)" }}>
-      <p style={{ fontSize: 13, fontWeight: 800, color: result.ok ? "var(--plum)" : "#8f3f3b" }}>
+    <div style={{ marginTop: 14, padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: result.ok ? "var(--surface-tint)" : "var(--paper)" }}>
+      <p style={{ fontSize: 13, fontWeight: 800, color: result.ok ? "var(--success)" : "var(--plum)" }}>
         {result.ok ? "Sync ready" : "Sync needs attention"}{result.dryRun ? " | dry-run" : ""}
       </p>
       <p style={mutedText}>
@@ -310,12 +310,13 @@ function actionButton(active: boolean): React.CSSProperties {
 
 function rosterCellStyle(status?: string): React.CSSProperties {
   const active = Boolean(status);
-  const color = status === "excluded" ? "#8f3f3b" : active ? "var(--plum)" : "var(--ink-soft)";
+  const excluded = status === "excluded";
+  const color = excluded ? "var(--plum)" : active ? "var(--ink)" : "var(--ink-soft)";
   return {
     minHeight: 48,
     border: "1px solid var(--line)",
     borderRadius: 8,
-    background: active ? "var(--plum-soft)" : "var(--paper)",
+    background: excluded ? "var(--plum-soft)" : active ? "var(--surface-tint)" : "var(--paper)",
     color,
     padding: "8px 10px",
     display: "flex",
@@ -337,7 +338,7 @@ const mutedText: React.CSSProperties = { fontSize: 12.5, color: "var(--text-mute
 const metricGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 };
 const metricStyle: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 16 };
 const metricLabel: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", fontWeight: 700 };
-const metricValue: React.CSSProperties = { display: "block", fontFamily: "var(--font-ko-serif)", fontSize: 34, color: "var(--plum)", lineHeight: 1.1, marginTop: 5 };
+const metricValue: React.CSSProperties = { display: "block", fontFamily: "var(--font-ko-serif)", fontSize: 34, color: "var(--ink)", lineHeight: 1.1, marginTop: 5 };
 const metricDetail: React.CSSProperties = { fontSize: 12, color: "var(--muted)", marginTop: 3 };
 const rowStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--line)", padding: "9px 0", fontSize: 13.5, color: "var(--ink-soft)" };
 const twoColumnGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 };
@@ -349,4 +350,4 @@ const inputStyle: React.CSSProperties = { width: "100%", border: "1px solid var(
 const checkStyle: React.CSSProperties = { minHeight: 44, display: "flex", alignItems: "center", gap: 9, color: "var(--ink-soft)", fontSize: 13.5 };
 const primaryButton: React.CSSProperties = { border: "none", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer" };
 const navStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8, marginTop: 4 };
-const navLink: React.CSSProperties = { background: "var(--plum)", color: "var(--on-plum)", textDecoration: "none", textAlign: "center", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800 };
+const navLink: React.CSSProperties = { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", textDecoration: "none", textAlign: "center", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800 };

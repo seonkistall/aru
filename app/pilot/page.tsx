@@ -227,12 +227,13 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
 }
 
 function rosterButtonStyle(active: boolean, status?: PilotStatus): React.CSSProperties {
-  const color = status === "excluded" ? "#8f3f3b" : active ? "var(--plum)" : "var(--ink-soft)";
+  const excluded = status === "excluded";
+  const color = excluded ? "var(--plum)" : active ? "var(--ink)" : "var(--ink-soft)";
   return {
     minHeight: 48,
     border: "1px solid var(--line)",
     borderRadius: 8,
-    background: active ? "var(--plum-soft)" : "var(--paper)",
+    background: excluded ? "var(--plum-soft)" : active ? "var(--surface-tint)" : "var(--paper)",
     color,
     padding: "8px 10px",
     display: "flex",
@@ -259,8 +260,8 @@ const textareaStyle: React.CSSProperties = { ...inputStyle, resize: "vertical", 
 const checkStyle: React.CSSProperties = { minHeight: 44, display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "var(--ink-soft)", cursor: "pointer" };
 const primaryBtn: React.CSSProperties = { width: "100%", background: "var(--plum)", color: "var(--on-plum)", border: "none", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 12 };
 const smallButton: React.CSSProperties = { background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 800, cursor: "pointer" };
-const dangerBtn: React.CSSProperties = { background: "transparent", color: "#8f3f3b", border: "1px solid #d8b8b3", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 800, cursor: "pointer" };
+const dangerBtn: React.CSSProperties = { background: "transparent", color: "var(--plum)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 800, cursor: "pointer" };
 const outlineLink: React.CSSProperties = { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const mutedText: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 7 };
-const errorText: React.CSSProperties = { fontSize: 12.5, color: "#8f3f3b", lineHeight: 1.5, marginTop: 7 };
+const errorText: React.CSSProperties = { fontSize: 12.5, color: "var(--plum)", lineHeight: 1.5, marginTop: 7 };
 const rosterGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(86px, 1fr))", gap: 8 };
