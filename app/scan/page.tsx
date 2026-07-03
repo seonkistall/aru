@@ -145,9 +145,11 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
 function forMobile(p: CaptureProfile): CaptureProfile {
   return {
     ...p,
-    centerToleranceX: p.centerToleranceX + 0.03,
-    centerToleranceY: p.centerToleranceY + 0.03,
-    minFaceSize: p.minFaceSize - 0.07,
+    centerToleranceX: p.centerToleranceX + 0.05,
+    centerToleranceY: p.centerToleranceY + 0.05,
+    // Front cameras are wide (≈65-75° vFOV): at arm's length a face spans only
+    // ~28-35% of the visible 3:4 frame, so the desktop minimum is unreachable.
+    minFaceSize: p.minFaceSize - 0.12,
     maxFaceSize: p.maxFaceSize + 0.06,
     minBrightness: p.minBrightness - 8,
     maxDarkRatio: p.maxDarkRatio + 0.06,
@@ -155,6 +157,16 @@ function forMobile(p: CaptureProfile): CaptureProfile {
     maxMovement: p.maxMovement + 0.013,
   };
 }
+
+// Lock-on assist (mobile only): a user who holds steady but keeps failing the
+// geometry gates gets progressively wider center/size bounds — each steady tick
+// adds a step, unsteady ticks decay it. At full assist the tolerances grow
+// ~1.4x and the size floor drops ~18%, so a stable, guide-aligned face always
+// locks eventually while a moving one still has to meet the strict bounds.
+const ASSIST_MAX = 10;
+const ASSIST_CENTER_STEP = 0.04; // ×1.4 tolerance at full assist
+const ASSIST_SIZE_LO_STEP = 0.018; // ×0.82 min size at full assist
+const ASSIST_SIZE_HI_STEP = 0.008; // ×1.08 max size at full assist
 
 function resolveProfile(mode: CaptureMode, mobile: boolean): CaptureProfile {
   return mobile ? forMobile(CAPTURE_PROFILES[mode]) : CAPTURE_PROFILES[mode];
@@ -200,6 +212,8 @@ export default function Scan() {
   const captureRef = useRef<(() => Promise<void>) | null>(null);
   const isMobileRef = useRef(false);
   const trackRef = useRef<SignalTrack | null>(null);
+  const assistRef = useRef(0);
+  const effProfileRef = useRef<CaptureProfile | null>(null);
 
   const [phase, setPhase] = useState<Phase>("init");
   const [reads, setReads] = useState<SkinReads | null>(null);
@@ -240,7 +254,10 @@ export default function Scan() {
   // Skip renders when nothing user-visible changed (ticks arrive every 650ms);
   // qualityRef-independent auto-capture reads results via handleAutoTick instead.
   const commitQuality = useCallback((next: Quality, force = false) => {
-    const key = `${next.face}|${next.centered}|${next.distance}|${next.brightness}|${next.noGlare}|${next.steady}|${next.message}`;
+    // Coarse-rounded metrics in the key so the staff debug HUD refreshes on
+    // meaningful drift without re-rendering on every tick's sub-1% noise.
+    const coarse = (value?: number) => (value === undefined ? "" : Math.round(value * 33));
+    const key = `${next.face}|${next.centered}|${next.distance}|${next.brightness}|${next.noGlare}|${next.steady}|${next.message}|${coarse(next.centerOffsetX)}|${coarse(next.centerOffsetY)}|${coarse(next.faceSize)}`;
     if (!force && key === prevQualityKeyRef.current) return;
     prevQualityKeyRef.current = key;
     setQuality(next);
@@ -287,6 +304,8 @@ export default function Scan() {
     prevQualityKeyRef.current = "";
     lastCenterRef.current = null;
     trackRef.current = null;
+    assistRef.current = 0;
+    effProfileRef.current = null;
     passStreakRef.current = 0;
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("unsupported");
@@ -299,6 +318,9 @@ export default function Scan() {
           facingMode: "user",
           width: { ideal: 720 },
           height: { ideal: 960 },
+          // Ask for the display's 3:4 directly — phones that honor it deliver a
+          // stream needing no cover-crop, keeping gate coords 1:1 with the view.
+          aspectRatio: { ideal: 3 / 4 },
           frameRate: { ideal: 30 },
         },
         audio: false,
@@ -371,6 +393,8 @@ export default function Scan() {
       if (!face?.length) {
         lastCenterRef.current = null;
         trackRef.current = null;
+        assistRef.current = 0;
+        effProfileRef.current = null;
         setZones(null);
         commitQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
         handleAutoTick(false);
@@ -410,16 +434,38 @@ export default function Scan() {
       const mean = ema(prev?.mean, exposure.mean, a);
       const darkRatio = ema(prev?.darkRatio, exposure.darkRatio, a);
       const hotRatio = ema(prev?.hotRatio, exposure.hotRatio, a);
+      // Movement before the gates: the lock-on assist below keys off steadiness.
+      const now = performance.now();
+      const last = lastCenterRef.current;
+      const movement = last ? Math.hypot(centerX - last.x, centerY - last.y) / Math.max(1, (now - last.t) / 250) : 0;
+      lastCenterRef.current = { x: centerX, y: centerY, t: now };
+      const steady = !last || movement < profile.maxMovement;
+
+      // Lock-on assist (mobile only): each steady tick widens the geometry
+      // bounds one step (unsteady ticks decay two), so a stable, guide-aligned
+      // face converges to a lock even when this device's FOV puts it outside
+      // the tuned profile — while a moving face still faces the strict bounds.
+      if (isMobileRef.current) {
+        assistRef.current = steady ? Math.min(ASSIST_MAX, assistRef.current + 1) : Math.max(0, assistRef.current - 2);
+      }
+      const assist = assistRef.current;
+      const tolX = profile.centerToleranceX * (1 + assist * ASSIST_CENTER_STEP);
+      const tolY = profile.centerToleranceY * (1 + assist * ASSIST_CENTER_STEP);
+      const minSize = profile.minFaceSize * (1 - assist * ASSIST_SIZE_LO_STEP);
+      const maxSize = profile.maxFaceSize * (1 + assist * ASSIST_SIZE_HI_STEP);
+      // Capture re-verifies against these same widened bounds (see capture()).
+      effProfileRef.current = { ...profile, centerToleranceX: tolX, centerToleranceY: tolY, minFaceSize: minSize, maxFaceSize: maxSize };
+
       const hyst = (was: boolean, strict: boolean, loose: boolean) => (was ? loose : strict);
       const centered = hyst(
         prev?.centered ?? false,
-        Math.abs(offX) < profile.centerToleranceX && Math.abs(offY) < profile.centerToleranceY,
-        Math.abs(offX) < profile.centerToleranceX * GATE_MARGIN.center && Math.abs(offY) < profile.centerToleranceY * GATE_MARGIN.center
+        Math.abs(offX) < tolX && Math.abs(offY) < tolY,
+        Math.abs(offX) < tolX * GATE_MARGIN.center && Math.abs(offY) < tolY * GATE_MARGIN.center
       );
       const distance = hyst(
         prev?.distance ?? false,
-        size > profile.minFaceSize && size < profile.maxFaceSize,
-        size > profile.minFaceSize * GATE_MARGIN.sizeLo && size < profile.maxFaceSize * GATE_MARGIN.sizeHi
+        size > minSize && size < maxSize,
+        size > minSize * GATE_MARGIN.sizeLo && size < maxSize * GATE_MARGIN.sizeHi
       );
       const brightness = hyst(
         prev?.brightness ?? false,
@@ -429,18 +475,12 @@ export default function Scan() {
       const noGlare = hyst(prev?.noGlare ?? false, hotRatio < profile.maxHotRatio, hotRatio < profile.maxHotRatio * GATE_MARGIN.glare);
       trackRef.current = { offX, offY, size, mean, darkRatio, hotRatio, centered, distance, brightness, noGlare };
 
-      const now = performance.now();
-      const last = lastCenterRef.current;
-      const movement = last ? Math.hypot(centerX - last.x, centerY - last.y) / Math.max(1, (now - last.t) / 250) : 0;
-      lastCenterRef.current = { x: centerX, y: centerY, t: now };
-      const steady = !last || movement < profile.maxMovement;
-
       const checks = [true, centered, distance, brightness, noGlare, steady];
       const score = checks.filter(Boolean).length;
       const message = !centered
-        ? "얼굴 중심을 세로선에 맞춰주세요."
+        ? centerHint(offX, offY, tolX, tolY)
         : !distance
-          ? size <= profile.minFaceSize
+          ? size <= minSize
             ? "조금 더 가까이 와주세요. 볼 결이 작게 보여요."
             : "조금만 뒤로 물러나주세요. 얼굴 윤곽이 잘려요."
           : !brightness
@@ -451,7 +491,23 @@ export default function Scan() {
                 ? "잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요."
                 : "좋아요. 이마와 양볼 결이 잘 보입니다.";
 
-      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
+      commitQuality({
+        face: true,
+        centered,
+        distance,
+        brightness,
+        noGlare,
+        steady,
+        score,
+        message,
+        centerOffsetX: offX,
+        centerOffsetY: offY,
+        faceSize: size,
+        brightnessMean: mean,
+        darkRatio,
+        hotRatio,
+        movement,
+      });
       handleAutoTick(centered && distance && brightness && noGlare && (!profile.requiresSteady || steady));
       setZones(computeGuideZones(face, video.videoWidth, video.videoHeight));
     },
@@ -464,10 +520,13 @@ export default function Scan() {
     ensureLandmarker()
       .then((landmarker) => {
         if (!mounted) return;
+        // Faster ticks on mobile: handheld framing drifts quicker than a fixed
+        // webcam, and the countdown/assist step per tick — 420ms keeps the
+        // lock-on responsive without overloading phone CPUs on CPU delegate.
         qualityTimerRef.current = window.setInterval(() => {
           if (document.hidden) return;
           void measureQuality(landmarker);
-        }, 650);
+        }, isMobileRef.current ? 420 : 650);
       })
       .catch(() => setErr("얼굴 가이드를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."));
     return () => {
@@ -549,12 +608,12 @@ export default function Scan() {
       const dtMs = last ? performance.now() - last.t : 0;
       const captureMovement =
         last && dtMs >= 80 ? Math.hypot(captureCenter.x - last.x, captureCenter.y - last.y) / (dtMs / 250) : undefined;
-      const profile = resolveProfile(captureMode, isMobileRef.current);
+      // Re-verify against the SAME bounds the live gate used — the lock-on
+      // assist widened profile if it was active — plus the lenient margins, so
+      // a shot the live gate approved can't bounce on a single noisy frame.
+      const profile = effProfileRef.current ?? resolveProfile(captureMode, isMobileRef.current);
       const captureSteady =
         captureMovement !== undefined ? captureMovement < profile.maxMovement : quality.steady;
-      // Lenient re-check (same margins as the live hysteresis loose bound): the
-      // live gate already approved this shot, so one noisy capture frame on a
-      // handheld phone shouldn't bounce the user back with a false "흔들렸어요".
       const verifiedQuality: Quality = {
         ...evaluateCapturedQuality(imageData, faces[0], profile, captureSteady, true),
         movement: captureMovement,
@@ -742,6 +801,11 @@ export default function Scan() {
           <>
             {staffMode && <ScanModePicker mode={captureMode} onChange={setCaptureMode} />}
             <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} />
+            {staffMode && (
+              <p style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
+                offX {quality.centerOffsetX?.toFixed(2) ?? "–"} · offY {quality.centerOffsetY?.toFixed(2) ?? "–"} · size {quality.faceSize?.toFixed(2) ?? "–"} · hot {quality.hotRatio?.toFixed(3) ?? "–"} · mv {quality.movement?.toFixed(3) ?? "–"}
+              </p>
+            )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
               <label style={{ ...consentStyle, marginTop: 0 }}>
                 <input
@@ -1352,6 +1416,21 @@ function Scanning({ step }: { step: number }) {
       </div>
     </div>
   );
+}
+
+// Actionable centering hint along the dominant failing axis. offX is in
+// UNMIRRORED video coords while the preview is CSS-mirrored, so a raw-right
+// face (offX > 0) appears on the LEFT of the screen — directions below are
+// what the user should do relative to what they see.
+function centerHint(offX: number, offY: number, tolX: number, tolY: number): string {
+  if (Math.abs(offY) / tolY >= Math.abs(offX) / tolX) {
+    return offY > 0
+      ? "얼굴이 화면 아래쪽에 있어요. 폰을 살짝 내리거나 턱을 들어주세요."
+      : "얼굴이 화면 위쪽에 있어요. 폰을 살짝 올려주세요.";
+  }
+  return offX > 0
+    ? "얼굴이 화면 왼쪽에 있어요. 오른쪽으로 조금만 옮겨주세요."
+    : "얼굴이 화면 오른쪽에 있어요. 왼쪽으로 조금만 옮겨주세요.";
 }
 
 function faceBox(landmarks: Landmark[]) {
