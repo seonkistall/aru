@@ -138,6 +138,51 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
   },
 };
 
+// Handheld front cameras have a wider field of view (face sits smaller / further),
+// hunt for focus+exposure, and catch more specular glare than a fixed laptop
+// webcam — so the desktop-tuned gates make 중앙/거리/반사 nearly unreachable on
+// phones. Relax those bounds for mobile only; desktop keeps the strict profile.
+function forMobile(p: CaptureProfile): CaptureProfile {
+  return {
+    ...p,
+    centerToleranceX: p.centerToleranceX + 0.03,
+    centerToleranceY: p.centerToleranceY + 0.03,
+    minFaceSize: p.minFaceSize - 0.07,
+    maxFaceSize: p.maxFaceSize + 0.06,
+    minBrightness: p.minBrightness - 8,
+    maxDarkRatio: p.maxDarkRatio + 0.06,
+    maxHotRatio: p.maxHotRatio + 0.045,
+    maxMovement: p.maxMovement + 0.013,
+  };
+}
+
+function resolveProfile(mode: CaptureMode, mobile: boolean): CaptureProfile {
+  return mobile ? forMobile(CAPTURE_PROFILES[mode]) : CAPTURE_PROFILES[mode];
+}
+
+// Signal tracker: EMA weight for smoothing gate inputs across ticks, plus the
+// hysteresis margins (strict bound to turn a check green, this-much looser to
+// keep it green) — also reused at capture time so a single noisy frame doesn't
+// bounce a shot the live gate already approved.
+const SIGNAL_ALPHA = 0.5;
+const GATE_MARGIN = { center: 1.35, sizeLo: 0.9, sizeHi: 1.08, brightLo: 0.9, darkHi: 1.2, glare: 1.4 };
+const NO_MARGIN = { center: 1, sizeLo: 1, sizeHi: 1, brightLo: 1, darkHi: 1, glare: 1 };
+const ema = (prev: number | undefined, next: number, alpha: number) =>
+  prev === undefined ? next : prev + alpha * (next - prev);
+
+type SignalTrack = {
+  offX: number;
+  offY: number;
+  size: number;
+  mean: number;
+  darkRatio: number;
+  hotRatio: number;
+  centered: boolean;
+  distance: boolean;
+  brightness: boolean;
+  noGlare: boolean;
+};
+
 export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -153,6 +198,8 @@ export default function Scan() {
   const disposedRef = useRef(false);
   const prevQualityKeyRef = useRef("");
   const captureRef = useRef<(() => Promise<void>) | null>(null);
+  const isMobileRef = useRef(false);
+  const trackRef = useRef<SignalTrack | null>(null);
 
   const [phase, setPhase] = useState<Phase>("init");
   const [reads, setReads] = useState<SkinReads | null>(null);
@@ -174,6 +221,11 @@ export default function Scan() {
     // URL is client-only context here; reading it during render breaks hydration.
     /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setStaffMode(new URLSearchParams(window.location.search).get("staff") === "1");
+    // Drive mobile-relaxed capture gates: coarse pointer covers phones/tablets,
+    // UA sniff is the fallback for browsers that misreport pointer type.
+    isMobileRef.current =
+      (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   }, []);
 
   const canCapture =
@@ -234,6 +286,7 @@ export default function Scan() {
     setQuality(initialQuality);
     prevQualityKeyRef.current = "";
     lastCenterRef.current = null;
+    trackRef.current = null;
     passStreakRef.current = 0;
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("unsupported");
@@ -317,6 +370,7 @@ export default function Scan() {
       const face = res.faceLandmarks?.[0];
       if (!face?.length) {
         lastCenterRef.current = null;
+        trackRef.current = null;
         setZones(null);
         commitQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
         handleAutoTick(false);
@@ -329,7 +383,7 @@ export default function Scan() {
       const box = faceBox(face);
       const centerX = (box.minX + box.maxX) / 2;
       const centerY = (box.minY + box.maxY) / 2;
-      const profile = CAPTURE_PROFILES[captureMode];
+      const profile = resolveProfile(captureMode, isMobileRef.current);
       // Gates run in VISIBLE coords (the 3:4 frame the user actually sees).
       // Mobile streams often arrive 9:16/16:9, so raw video coords made
       // "중앙"/"거리" unreachable — the visible-crop center is not the
@@ -339,15 +393,41 @@ export default function Scan() {
       const fy = Math.min(1, videoRatio / FRAME_RATIO);
       const visCenterX = (centerX - (1 - fx) / 2) / fx;
       const visCenterY = (centerY - (1 - fy) / 2) / fy;
-      const size = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
-      const centered =
-        Math.abs(visCenterX - 0.5) < profile.centerToleranceX && Math.abs(visCenterY - 0.48) < profile.centerToleranceY;
-      const distance = size > profile.minFaceSize && size < profile.maxFaceSize;
+      const rawSize = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
       // Face-box exposure, matching evaluateCapturedQuality — a whole-frame
       // reading here lets backlit shots pass live and fail at capture.
       const exposure = exposureStats(frame.ctx.getImageData(0, 0, frame.w, frame.h), box);
-      const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
-      const noGlare = exposure.hotRatio < profile.maxHotRatio;
+
+      // Smooth every gate input with an EMA so handheld shake and mobile
+      // auto-exposure/-focus hunting can't flip 중앙/거리/밝기/반사 tick-to-tick;
+      // hysteresis (strict to turn green, looser to stay green) makes a passing
+      // check "lock" instead of strobing on the boundary. Seeds on first frame.
+      const prev = trackRef.current;
+      const a = prev ? SIGNAL_ALPHA : 1;
+      const offX = ema(prev?.offX, visCenterX - 0.5, a);
+      const offY = ema(prev?.offY, visCenterY - 0.48, a);
+      const size = ema(prev?.size, rawSize, a);
+      const mean = ema(prev?.mean, exposure.mean, a);
+      const darkRatio = ema(prev?.darkRatio, exposure.darkRatio, a);
+      const hotRatio = ema(prev?.hotRatio, exposure.hotRatio, a);
+      const hyst = (was: boolean, strict: boolean, loose: boolean) => (was ? loose : strict);
+      const centered = hyst(
+        prev?.centered ?? false,
+        Math.abs(offX) < profile.centerToleranceX && Math.abs(offY) < profile.centerToleranceY,
+        Math.abs(offX) < profile.centerToleranceX * GATE_MARGIN.center && Math.abs(offY) < profile.centerToleranceY * GATE_MARGIN.center
+      );
+      const distance = hyst(
+        prev?.distance ?? false,
+        size > profile.minFaceSize && size < profile.maxFaceSize,
+        size > profile.minFaceSize * GATE_MARGIN.sizeLo && size < profile.maxFaceSize * GATE_MARGIN.sizeHi
+      );
+      const brightness = hyst(
+        prev?.brightness ?? false,
+        mean > profile.minBrightness && darkRatio < profile.maxDarkRatio,
+        mean > profile.minBrightness * GATE_MARGIN.brightLo && darkRatio < profile.maxDarkRatio * GATE_MARGIN.darkHi
+      );
+      const noGlare = hyst(prev?.noGlare ?? false, hotRatio < profile.maxHotRatio, hotRatio < profile.maxHotRatio * GATE_MARGIN.glare);
+      trackRef.current = { offX, offY, size, mean, darkRatio, hotRatio, centered, distance, brightness, noGlare };
 
       const now = performance.now();
       const last = lastCenterRef.current;
@@ -469,14 +549,18 @@ export default function Scan() {
       const dtMs = last ? performance.now() - last.t : 0;
       const captureMovement =
         last && dtMs >= 80 ? Math.hypot(captureCenter.x - last.x, captureCenter.y - last.y) / (dtMs / 250) : undefined;
+      const profile = resolveProfile(captureMode, isMobileRef.current);
       const captureSteady =
-        captureMovement !== undefined ? captureMovement < CAPTURE_PROFILES[captureMode].maxMovement : quality.steady;
+        captureMovement !== undefined ? captureMovement < profile.maxMovement : quality.steady;
+      // Lenient re-check (same margins as the live hysteresis loose bound): the
+      // live gate already approved this shot, so one noisy capture frame on a
+      // handheld phone shouldn't bounce the user back with a false "흔들렸어요".
       const verifiedQuality: Quality = {
-        ...evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], captureSteady),
+        ...evaluateCapturedQuality(imageData, faces[0], profile, captureSteady, true),
         movement: captureMovement,
       };
       commitQuality(verifiedQuality, true);
-      if (!qualityPassed(verifiedQuality, CAPTURE_PROFILES[captureMode])) {
+      if (!qualityPassed(verifiedQuality, profile)) {
         autoHoldUntilRef.current = performance.now() + 4000;
         setErr("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요.");
         setPhase("ready");
@@ -1282,7 +1366,7 @@ function faceBox(landmarks: Landmark[]) {
   );
 }
 
-function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], profile: CaptureProfile, previousSteady: boolean): Quality {
+function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], profile: CaptureProfile, previousSteady: boolean, lenient = false): Quality {
   const box = faceBox(landmarks);
   const centerX = (box.minX + box.maxX) / 2;
   const centerY = (box.minY + box.maxY) / 2;
@@ -1294,10 +1378,11 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const centerOffsetY = (centerY - (1 - fy) / 2) / fy - 0.48;
   const faceSize = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
   const exposure = exposureStats(imageData, box);
-  const centered = Math.abs(centerOffsetX) < profile.centerToleranceX && Math.abs(centerOffsetY) < profile.centerToleranceY;
-  const distance = faceSize > profile.minFaceSize && faceSize < profile.maxFaceSize;
-  const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
-  const noGlare = exposure.hotRatio < profile.maxHotRatio;
+  const m = lenient ? GATE_MARGIN : NO_MARGIN;
+  const centered = Math.abs(centerOffsetX) < profile.centerToleranceX * m.center && Math.abs(centerOffsetY) < profile.centerToleranceY * m.center;
+  const distance = faceSize > profile.minFaceSize * m.sizeLo && faceSize < profile.maxFaceSize * m.sizeHi;
+  const brightness = exposure.mean > profile.minBrightness * m.brightLo && exposure.darkRatio < profile.maxDarkRatio * m.darkHi;
+  const noGlare = exposure.hotRatio < profile.maxHotRatio * m.glare;
   const steady = profile.requiresSteady ? previousSteady : true;
   const rejectReason = !centered
     ? "center"
