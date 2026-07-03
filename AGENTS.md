@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Project Overview
 
-**K-Beauty AI (Camera)** is a progressive skin analysis and product recommendation platform combining on-device computer vision (MediaPipe), cloud vision APIs (Gemini/OpenAI), and a research-grade ML training loop.
+**아루 ARU** (formerly K-Beauty AI (Camera)) is a progressive skin analysis and product recommendation platform combining on-device computer vision (MediaPipe), cloud vision APIs (Gemini/OpenAI), and a research-grade ML training loop.
 
 **Core Loop:**
 1. User scans face with phone camera → MediaPipe extracts skin features (oil, redness, pores)
