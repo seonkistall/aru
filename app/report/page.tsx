@@ -171,6 +171,12 @@ export default function Report() {
             추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.
           </p>
           <Link href="/care" style={careBtn}>구매/상담 연결 보기</Link>
+          <Link
+            href="/studio"
+            style={{ display: "block", marginTop: 10, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline", textAlign: "center" }}
+          >
+            내 피부 카드 만들어 공유하기
+          </Link>
         </section>
 
         {result.note && <p style={noteStyle}>{result.note}</p>}
