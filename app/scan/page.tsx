@@ -167,6 +167,7 @@ export default function Scan() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [zones, setZones] = useState<GuideZones | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
+  const [infoOpen, setInfoOpen] = useState(false);
   const captureProfile = CAPTURE_PROFILES[captureMode];
   const [staffMode, setStaffMode] = useState(false);
   useEffect(() => {
@@ -269,11 +270,18 @@ export default function Scan() {
     if (landmarkerRef.current) return landmarkerRef.current;
     const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
     const fileset = await FilesetResolver.forVisionTasks(WASM);
-    landmarkerRef.current = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL, delegate: "GPU" },
-      runningMode: "VIDEO",
-      numFaces: 1,
-    });
+    const create = (delegate: "GPU" | "CPU") =>
+      FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MODEL, delegate },
+        runningMode: "VIDEO",
+        numFaces: 1,
+      });
+    try {
+      landmarkerRef.current = await create("GPU");
+    } catch {
+      // Some mobile GPUs fail delegate init — CPU is slower but always works.
+      landmarkerRef.current = await create("CPU");
+    }
     return landmarkerRef.current;
   }, []);
 
@@ -321,9 +329,19 @@ export default function Scan() {
       const box = faceBox(face);
       const centerX = (box.minX + box.maxX) / 2;
       const centerY = (box.minY + box.maxY) / 2;
-      const size = Math.max(box.maxX - box.minX, box.maxY - box.minY);
       const profile = CAPTURE_PROFILES[captureMode];
-      const centered = Math.abs(centerX - 0.5) < profile.centerToleranceX && Math.abs(centerY - 0.48) < profile.centerToleranceY;
+      // Gates run in VISIBLE coords (the 3:4 frame the user actually sees).
+      // Mobile streams often arrive 9:16/16:9, so raw video coords made
+      // "중앙"/"거리" unreachable — the visible-crop center is not the
+      // video center there (same cover-crop math as the zone overlay).
+      const videoRatio = video.videoWidth / video.videoHeight;
+      const fx = Math.min(1, FRAME_RATIO / videoRatio);
+      const fy = Math.min(1, videoRatio / FRAME_RATIO);
+      const visCenterX = (centerX - (1 - fx) / 2) / fx;
+      const visCenterY = (centerY - (1 - fy) / 2) / fy;
+      const size = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
+      const centered =
+        Math.abs(visCenterX - 0.5) < profile.centerToleranceX && Math.abs(visCenterY - 0.48) < profile.centerToleranceY;
       const distance = size > profile.minFaceSize && size < profile.maxFaceSize;
       // Face-box exposure, matching evaluateCapturedQuality — a whole-frame
       // reading here lets backlit shots pass live and fail at capture.
@@ -596,9 +614,7 @@ export default function Scan() {
         <p style={eyebrow}>ARU skin scan</p>
         <FlowSteps current="scan" />
         <h1 style={titleStyle}>얼굴 톤과 피부 결이 잘 보이게 찍어볼게요</h1>
-        <p style={leadStyle}>
-          얼굴 윤곽을 맞추고, 이마와 양볼 샘플링 영역이 밝고 번들거림 없이 보이면 분석 품질이 좋아집니다.
-        </p>
+        <p style={leadStyle}>가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 저절로 찍혀요.</p>
 
         {phase !== "result" && (
           <div style={cameraFrame}>
@@ -642,17 +658,26 @@ export default function Scan() {
           <>
             {staffMode && <ScanModePicker mode={captureMode} onChange={setCaptureMode} />}
             <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} />
-            <CaptureTips />
-            <PrivacyNotice staffMode={staffMode} />
-            <label style={consentStyle}>
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(e) => toggleAiConsent(e.target.checked)}
-                style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
-              />
-              <span>선택: AI 분석용 전송 <span style={{ color: "var(--text-muted)" }}>얼굴 크롭만 외부 AI(Gemini/OpenAI) 분석 API로 보내요 · 학습 저장과는 분리돼요</span></span>
-            </label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
+              <label style={{ ...consentStyle, marginTop: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => toggleAiConsent(e.target.checked)}
+                  style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
+                />
+                <span>AI 분석 전송 <span style={{ color: "var(--text-muted)" }}>선택</span></span>
+              </label>
+              <label style={{ ...consentStyle, marginTop: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={autoCapture}
+                  onChange={(e) => toggleAutoCapture(e.target.checked)}
+                  style={{ accentColor: "var(--ink)", width: 16, height: 16 }}
+                />
+                <span>자동 촬영</span>
+              </label>
+            </div>
             {staffMode && (
               <label style={consentStyle}>
                 <input
@@ -664,35 +689,32 @@ export default function Scan() {
                 <span>연구용: 학습 크롭 저장 <span style={{ color: "var(--text-muted)" }}>동의한 파일만 이 기기에 최대 120개 보관돼요</span></span>
               </label>
             )}
-            <label style={consentStyle}>
-              <input
-                type="checkbox"
-                checked={autoCapture}
-                onChange={(e) => toggleAutoCapture(e.target.checked)}
-                style={{ accentColor: "var(--ink)", width: 16, height: 16 }}
-              />
-              <span>자동 촬영 <span style={{ color: "var(--text-muted)" }}>조건이 맞으면 3·2·1 뒤에 저절로 찍혀요</span></span>
-            </label>
+            <button type="button" onClick={() => setInfoOpen(true)} style={infoLinkBtn}>
+              촬영 팁 · 동의 안내 보기
+            </button>
           </>
         )}
 
         {(phase === "ready" || phase === "analyzing") && (
-          <button
-            onClick={capture}
-            disabled={phase === "analyzing" || !canCapture}
-            style={{
-              ...primaryBtn,
-              width: "100%",
-              marginTop: 12,
-              opacity: phase === "analyzing" || !canCapture ? 0.58 : 1,
-              cursor: phase === "analyzing" || !canCapture ? "default" : "pointer",
-            }}
-          >
-            {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : canCapture ? "지금 촬영하기" : "조건을 맞추면 촬영할 수 있어요"}
-          </button>
+          <div style={{ position: "sticky", bottom: 0, zIndex: 5, background: "var(--paper)", padding: "10px 0 8px", marginTop: 6 }}>
+            <button
+              onClick={capture}
+              disabled={phase === "analyzing" || !canCapture}
+              style={{
+                ...primaryBtn,
+                width: "100%",
+                opacity: phase === "analyzing" || !canCapture ? 0.58 : 1,
+                cursor: phase === "analyzing" || !canCapture ? "default" : "pointer",
+              }}
+            >
+              {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : canCapture ? "지금 촬영하기" : "조건을 맞추면 촬영할 수 있어요"}
+            </button>
+          </div>
         )}
 
         {err && <p style={{ color: "var(--plum)", fontSize: 13, marginTop: 10 }}>{err}</p>}
+
+        {infoOpen && <InfoSheet staffMode={staffMode} onClose={() => setInfoOpen(false)} />}
 
         {phase === "result" && reads && (
           <>
@@ -940,9 +962,9 @@ function QualityPanel({ quality, requireSteady }: { quality: Quality; requireSte
     return base;
   }, [quality, requireSteady]);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${checks.length}, 1fr)`, gap: 5, marginTop: 10 }}>
       {checks.map(([label, ok]) => (
-        <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 4px", textAlign: "center", fontSize: 12, fontWeight: ok ? 700 : 500 }}>
+        <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 2px", textAlign: "center", fontSize: 11, fontWeight: ok ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden" }}>
           {ok ? "✓ " : ""}{label}
         </div>
       ))}
@@ -970,6 +992,38 @@ function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
           : "학습용 크롭 저장은 파일럿 연구 세션에서만 별도 동의로 진행돼요. "}
       </span>
       <a href="/privacy" style={{ color: "var(--plum)", fontWeight: 800, textDecoration: "none" }}>자세히 보기</a>
+    </div>
+  );
+}
+
+function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose: () => void }) {
+  // Bottom sheet: the scan screen stays a single fixed viewport; tips and
+  // consent details live here instead of pushing the camera off-screen.
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="촬영 팁과 동의 안내"
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "var(--paper)", width: "100%", maxWidth: 460, borderRadius: "14px 14px 0 0", padding: "16px 18px 22px", maxHeight: "75vh", overflowY: "auto" }}
+      >
+        <div style={{ width: 38, height: 4, borderRadius: 999, background: "var(--line)", margin: "0 auto 10px" }} />
+        <CaptureTips />
+        <PrivacyNotice staffMode={staffMode} />
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55, marginTop: 12 }}>
+          체크박스의 <b style={{ color: "var(--ink)" }}>AI 분석 전송(선택)</b>은 얼굴 크롭만 외부 AI(Google Gemini/OpenAI) 분석 API로 보내 추천 정확도를 높이는 선택이에요. 학습용 저장과는 분리되며, 동의하지 않아도 기기 안 분석만으로 진행돼요.
+        </p>
+        <button
+          onClick={onClose}
+          style={{ width: "100%", marginTop: 14, background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+        >
+          닫기
+        </button>
+      </div>
     </div>
   );
 }
@@ -1224,9 +1278,13 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const box = faceBox(landmarks);
   const centerX = (box.minX + box.maxX) / 2;
   const centerY = (box.minY + box.maxY) / 2;
-  const centerOffsetX = centerX - 0.5;
-  const centerOffsetY = centerY - 0.48;
-  const faceSize = Math.max(box.maxX - box.minX, box.maxY - box.minY);
+  // Same visible-crop mapping as the live gate (mobile streams are rarely 3:4).
+  const videoRatio = imageData.width / imageData.height;
+  const fx = Math.min(1, FRAME_RATIO / videoRatio);
+  const fy = Math.min(1, videoRatio / FRAME_RATIO);
+  const centerOffsetX = (centerX - (1 - fx) / 2) / fx - 0.5;
+  const centerOffsetY = (centerY - (1 - fy) / 2) / fy - 0.48;
+  const faceSize = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
   const exposure = exposureStats(imageData, box);
   const centered = Math.abs(centerOffsetX) < profile.centerToleranceX && Math.abs(centerOffsetY) < profile.centerToleranceY;
   const distance = faceSize > profile.minFaceSize && faceSize < profile.maxFaceSize;
@@ -1499,6 +1557,20 @@ const stepBtn: React.CSSProperties = {
   fontSize: 15,
   color: "var(--ink)",
   cursor: "pointer",
+};
+
+const infoLinkBtn: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  background: "transparent",
+  border: "none",
+  marginTop: 8,
+  padding: 4,
+  fontSize: 12.5,
+  color: "var(--text-muted)",
+  textDecoration: "underline",
+  cursor: "pointer",
+  textAlign: "center",
 };
 
 const consentStyle: React.CSSProperties = {
