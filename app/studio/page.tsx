@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
+import type { SkinReads } from "@/lib/skin";
 
 type Read = { label: string; value: string; calm?: boolean };
 
@@ -33,6 +34,38 @@ export default function Studio() {
   const [headline, setHeadline] = useState(PRESETS[0].headline);
   const [reads, setReads] = useState<Read[]>(PRESETS[0].reads);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [fromScan, setFromScan] = useState(false);
+
+  useEffect(() => {
+    // Prefill with the user's real scan when one exists this session —
+    // presets stay as the fallback. Loaded after mount (sessionStorage is
+    // client-only; render-time reads break hydration).
+    try {
+      const raw = sessionStorage.getItem("gyeol_reads");
+      if (!raw) return;
+      const scan = JSON.parse(raw) as SkinReads;
+      if (!scan?.oil?.value) return;
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setHeadline(scan.headline || PRESETS[0].headline);
+      setReads([
+        { label: "유분", value: scan.oil.value, calm: scan.oil.calm },
+        { label: "모공/결", value: scan.pores.value, calm: scan.pores.calm },
+        { label: "붉은기", value: scan.redness.value, calm: scan.redness.calm },
+        { label: "전반", value: scan.overall.value, calm: scan.overall.calm },
+      ]);
+      setFromScan(true);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch {
+      /* keep presets */
+    }
+  }, []);
+
+  async function makeCardPng(): Promise<string | null> {
+    if (!cardRef.current) return null;
+    await document.fonts.ready;
+    return toPng(cardRef.current, { pixelRatio: 3, cacheBust: true, backgroundColor: "#ffffff" });
+  }
 
   function applyPreset(i: number) {
     setHeadline(PRESETS[i].headline);
@@ -44,17 +77,41 @@ export default function Studio() {
   }
 
   async function download() {
-    if (!cardRef.current) return;
     setBusy(true);
+    setErr("");
     try {
-      await document.fonts.ready;
-      const dataUrl = await toPng(cardRef.current, { pixelRatio: 3, cacheBust: true, backgroundColor: "#ffffff" });
+      const dataUrl = await makeCardPng();
+      if (!dataUrl) return;
       const a = document.createElement("a");
-      a.download = "kbeauty-skin-card.png";
+      a.download = "aru-skin-card.png";
       a.href = dataUrl;
       a.click();
     } catch {
-      alert("이미지를 만들지 못했어요. 다시 시도해 주세요.");
+      setErr("이미지를 만들지 못했어요. 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function share() {
+    setBusy(true);
+    setErr("");
+    try {
+      const dataUrl = await makeCardPng();
+      if (!dataUrl) return;
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], "aru-skin-card.png", { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        // OS share sheet — 카톡/인스타/저장 등으로 바로 이어진다.
+        await navigator.share({ files: [file], title: "아루 피부 카드" });
+      } else {
+        const a = document.createElement("a");
+        a.download = "aru-skin-card.png";
+        a.href = dataUrl;
+        a.click();
+      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setErr("공유에 실패했어요. PNG 저장을 이용해 주세요.");
     } finally {
       setBusy(false);
     }
@@ -108,9 +165,20 @@ export default function Studio() {
           </div>
         ))}
 
-        <button onClick={download} disabled={busy} style={{ ...downloadBtn, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "생성 중..." : "PNG 다운로드"}
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={share} disabled={busy} style={{ ...downloadBtn, flex: 1, opacity: busy ? 0.6 : 1 }}>
+            {busy ? "생성 중..." : "공유하기"}
+          </button>
+          <button
+            onClick={download}
+            disabled={busy}
+            style={{ ...downloadBtn, flex: 1, background: "transparent", color: "var(--ink)", border: "1px solid var(--ink)", opacity: busy ? 0.6 : 1 }}
+          >
+            PNG 저장
+          </button>
+        </div>
+        {fromScan && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>오늘 스캔 결과를 불러왔어요. 문구는 자유롭게 고쳐도 돼요.</p>}
+        {err && <p style={{ fontSize: 13, color: "var(--plum)", marginTop: 10, textAlign: "center" }}>{err}</p>}
       </div>
     </main>
   );

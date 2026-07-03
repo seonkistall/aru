@@ -593,7 +593,7 @@ export default function Scan() {
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>K-Beauty skin scan</p>
+        <p style={eyebrow}>ARU skin scan</p>
         <FlowSteps current="scan" />
         <h1 style={titleStyle}>얼굴 톤과 피부 결이 잘 보이게 찍어볼게요</h1>
         <p style={leadStyle}>
