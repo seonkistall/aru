@@ -409,12 +409,12 @@ export default function Scan() {
     setErr("");
     setCropDataUrl(null);
 
-    // Pace the four analysis stages so each is readable (~800ms min); the
-    // real pipeline work runs inside the same awaits, so nothing is faked —
-    // fast devices just get an honest, followable reveal.
+    // Pace the four analysis stages so each is readable (825ms min = 3.3s
+    // total, i.e. three full down-up sweeps of the 1.1s scan bar); the real
+    // pipeline work runs inside the same awaits, so nothing is faked.
     let stepStartedAt = performance.now();
     const advanceStep = async (step: number) => {
-      const waitMs = 800 - (performance.now() - stepStartedAt);
+      const waitMs = 825 - (performance.now() - stepStartedAt);
       if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
       setAnalysisStep(step);
       stepStartedAt = performance.now();
@@ -762,7 +762,7 @@ function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: Capture
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       <div style={{ position: "absolute", inset: "8% 12% 17%", border: `2px solid ${border}`, borderRadius: "48% 48% 45% 45%", boxShadow: "0 0 0 999px rgba(0,0,0,.18)" }} />
-      <div style={{ position: "absolute", top: "11%", bottom: "20%", left: "50%", width: 1, background: "rgba(255,255,255,.62)" }} />
+      {!zones && <div style={{ position: "absolute", top: "11%", bottom: "20%", left: "50%", width: 1, background: "rgba(255,255,255,.62)" }} />}
       <div style={{ position: "absolute", top: 14, right: 14, background: "rgba(255,255,255,.9)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 999, color: "var(--ink)", fontSize: 11, fontWeight: 800, padding: "5px 9px" }}>
         {CAPTURE_PROFILES[mode].label}
       </div>
@@ -775,12 +775,12 @@ function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: Capture
                 position: "absolute",
                 left: `${point.x}%`,
                 top: `${point.y}%`,
-                width: 3,
-                height: 3,
-                marginLeft: -1.5,
-                marginTop: -1.5,
+                width: 2,
+                height: 2,
+                marginLeft: -1,
+                marginTop: -1,
                 borderRadius: 999,
-                background: "rgba(255,255,255,.85)",
+                background: "rgba(255,255,255,.55)",
                 transition: "left .3s ease-out, top .3s ease-out",
               }}
             />
@@ -806,6 +806,16 @@ function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: Capture
 }
 
 function TrackedZone({ label, rect, locked }: { label: string; rect: ZoneRect; locked: boolean }) {
+  // Camera-focus style corner brackets read as precise measurement, not a box
+  // drawn over the face; the fill only appears once the zone is locked.
+  const stroke = locked ? "rgba(110,220,150,.95)" : "rgba(255,255,255,.9)";
+  const corner = (position: React.CSSProperties, edges: React.CSSProperties): React.CSSProperties => ({
+    position: "absolute",
+    width: 10,
+    height: 10,
+    ...position,
+    ...edges,
+  });
   return (
     <div
       style={{
@@ -814,22 +824,26 @@ function TrackedZone({ label, rect, locked }: { label: string; rect: ZoneRect; l
         top: `${rect.top}%`,
         width: `${rect.width}%`,
         height: `${rect.height}%`,
-        border: `1.5px solid ${locked ? "rgba(110,220,150,.92)" : "rgba(255,255,255,.85)"}`,
-        borderRadius: 10,
-        background: locked ? "rgba(47,125,79,.10)" : "rgba(47,109,224,.08)",
-        transition: "left .3s ease-out, top .3s ease-out, width .3s ease-out, height .3s ease-out, border-color .25s, background .25s",
+        background: locked ? "rgba(47,125,79,.08)" : "transparent",
+        borderRadius: 6,
+        transition: "left .3s ease-out, top .3s ease-out, width .3s ease-out, height .3s ease-out, background .25s",
       }}
     >
+      <span style={corner({ left: 0, top: 0 }, { borderTop: `1.6px solid ${stroke}`, borderLeft: `1.6px solid ${stroke}`, borderTopLeftRadius: 6 })} />
+      <span style={corner({ right: 0, top: 0 }, { borderTop: `1.6px solid ${stroke}`, borderRight: `1.6px solid ${stroke}`, borderTopRightRadius: 6 })} />
+      <span style={corner({ left: 0, bottom: 0 }, { borderBottom: `1.6px solid ${stroke}`, borderLeft: `1.6px solid ${stroke}`, borderBottomLeftRadius: 6 })} />
+      <span style={corner({ right: 0, bottom: 0 }, { borderBottom: `1.6px solid ${stroke}`, borderRight: `1.6px solid ${stroke}`, borderBottomRightRadius: 6 })} />
       <span
         style={{
           position: "absolute",
           left: "50%",
-          top: -15,
+          top: -14,
           transform: "translateX(-50%)",
           whiteSpace: "nowrap",
-          color: "rgba(255,255,255,.94)",
-          fontSize: 10,
+          color: "rgba(255,255,255,.92)",
+          fontSize: 9.5,
           fontWeight: 800,
+          letterSpacing: "0.04em",
           textShadow: "0 1px 8px rgba(0,0,0,.5)",
         }}
       >
@@ -1009,6 +1023,38 @@ function ResultCard({ reads }: { reads: SkinReads }) {
           </div>
         ))}
       </div>
+      {reads.extras && reads.extras.length > 0 && (
+        <div>
+          {reads.extras.map((extra, index) => (
+            <div
+              key={extra.label}
+              style={{
+                padding: "12px 0",
+                borderBottom: "1px solid var(--line)",
+                animation: "gyeol-fade-up .45s ease-out both",
+                animationDelay: `${620 + index * 110}ms`,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 14, color: "var(--ink)" }}>{extra.label}</span>
+                <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: extra.calm ? "var(--text-muted)" : "var(--plum)" }}>{extra.value}</span>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>{extra.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 14, animation: "gyeol-fade-up .45s ease-out both", animationDelay: "880ms" }}>
+        <p style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, marginBottom: 6 }}>측정 환경</p>
+        <div style={{ display: "grid", gap: 4 }}>
+          {reads.signals.map((signal) => (
+            <div key={signal.label} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--text-muted)" }}>
+              <span style={{ width: 12, textAlign: "center", color: signal.ok ? "var(--success)" : "var(--plum)" }}>{signal.ok ? "✓" : "!"}</span>
+              <span>{signal.label} · {signal.detail}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1119,10 +1165,14 @@ function Center({ children }: { children: React.ReactNode }) {
 function Scanning({ step }: { step: number }) {
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-      <div style={{ position: "absolute", left: "8%", right: "8%", height: 2, background: "var(--blue)", animation: "gyeol-scan 1.8s ease-in-out infinite" }} />
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.22)" }} />
+      <div style={{ position: "absolute", left: "8%", right: "8%", height: 2, background: "var(--blue)", animation: "gyeol-scan 1.1s ease-in-out infinite" }} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 14 }}>
-        <div style={{ background: "rgba(255,255,255,.93)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 8, padding: "10px 16px", minWidth: 216 }}>
-          <p style={{ fontFamily: "var(--font-hand)", fontSize: 18, color: "var(--ink)", margin: "0 0 6px" }}>피부 신호를 읽는 중</p>
+        <div style={{ background: "rgba(255,255,255,.95)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 8, padding: "11px 16px 12px", minWidth: 230 }}>
+          <p style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--ink)", margin: "0 0 7px" }}>피부 신호를 읽는 중</p>
+          <div style={{ height: 2, background: "var(--line)", borderRadius: 2, overflow: "hidden", margin: "0 0 8px" }}>
+            <div style={{ height: "100%", width: `${Math.min(100, (step / ANALYSIS_STEPS.length) * 100)}%`, background: "var(--blue)", transition: "width .5s ease" }} />
+          </div>
           <div style={{ display: "grid", gap: 4 }}>
             {ANALYSIS_STEPS.map((label, index) => {
               const done = index < step;

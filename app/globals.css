@@ -47,7 +47,7 @@
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
 }
 
-@keyframes gyeol-scan { 0% { top: 6%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 94%; opacity: 0; } }
+@keyframes gyeol-scan { 0% { top: 6%; } 50% { top: 94%; } 100% { top: 6%; } }
 @keyframes gyeol-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes gyeol-bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
 
