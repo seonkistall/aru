@@ -17,6 +17,7 @@ import {
 import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type CaptureQualityMeta, type SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { FlowSteps } from "@/app/components/flow-steps";
+import { Xiaohei } from "@/app/components/sketch";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type Landmark = { x: number; y: number; z?: number };
@@ -100,40 +101,44 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
   balanced: {
     label: "균형",
     hint: "윤곽, 톤, 피부결을 함께 보는 기본 촬영입니다.",
-    centerToleranceX: 0.12,
-    centerToleranceY: 0.16,
-    minFaceSize: 0.43,
-    maxFaceSize: 0.76,
-    minBrightness: 78,
-    maxDarkRatio: 0.34,
-    maxHotRatio: 0.08,
-    maxMovement: 0.032,
+    // Tolerances/size are fractions of the VISIBLE frame; widened so normal
+    // selfie framing passes on portrait (9:16) phone streams, not only on
+    // landscape desktop webcams (v0.5.1 gates were desktop-tuned → 중앙·거리
+    // unreachable on phones). Burst median + retake still guard real quality.
+    centerToleranceX: 0.2,
+    centerToleranceY: 0.22,
+    minFaceSize: 0.3,
+    maxFaceSize: 0.9,
+    minBrightness: 72,
+    maxDarkRatio: 0.4,
+    maxHotRatio: 0.1,
+    maxMovement: 0.05,
     requiresSteady: false,
   },
   texture: {
     label: "피부결",
     hint: "모공과 결을 보려고 조금 더 가까이, 더 흔들림 없이 촬영합니다.",
-    centerToleranceX: 0.1,
-    centerToleranceY: 0.14,
-    minFaceSize: 0.48,
-    maxFaceSize: 0.78,
-    minBrightness: 82,
-    maxDarkRatio: 0.3,
+    centerToleranceX: 0.16,
+    centerToleranceY: 0.18,
+    minFaceSize: 0.34,
+    maxFaceSize: 0.9,
+    minBrightness: 80,
+    maxDarkRatio: 0.32,
     maxHotRatio: 0.065,
-    maxMovement: 0.024,
+    maxMovement: 0.03,
     requiresSteady: true,
   },
   tone: {
     label: "피부톤",
     hint: "톤과 붉은기를 보기 위해 더 부드러운 빛, 더 적은 반사가 필요해요.",
-    centerToleranceX: 0.12,
-    centerToleranceY: 0.16,
-    minFaceSize: 0.43,
-    maxFaceSize: 0.74,
-    minBrightness: 86,
-    maxDarkRatio: 0.28,
-    maxHotRatio: 0.055,
-    maxMovement: 0.03,
+    centerToleranceX: 0.2,
+    centerToleranceY: 0.22,
+    minFaceSize: 0.3,
+    maxFaceSize: 0.9,
+    minBrightness: 82,
+    maxDarkRatio: 0.32,
+    maxHotRatio: 0.06,
+    maxMovement: 0.045,
     requiresSteady: false,
   },
 };
@@ -168,6 +173,8 @@ export default function Scan() {
   const [zones, setZones] = useState<GuideZones | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [guideState, setGuideState] = useState<"loading" | "ready" | "failed">("loading");
+  const [guideAttempt, setGuideAttempt] = useState(0);
   const captureProfile = CAPTURE_PROFILES[captureMode];
   const [staffMode, setStaffMode] = useState(false);
   useEffect(() => {
@@ -258,7 +265,14 @@ export default function Scan() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        // A play() rejection (iOS Low Power Mode / AbortError) does NOT mean the
+        // camera was denied — the stream is live and attached. onLoadedMetadata
+        // retries play; never route a play() reject to the denied dead-end.
+        try {
+          await videoRef.current.play();
+        } catch {
+          /* live stream attached; onLoadedMetadata will start playback */
+        }
       }
       setPhase("ready");
     } catch {
@@ -381,22 +395,37 @@ export default function Scan() {
   useEffect(() => {
     if (phase !== "ready") return;
     let mounted = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGuideState("loading");
     ensureLandmarker()
       .then((landmarker) => {
         if (!mounted) return;
+        setGuideState("ready");
         qualityTimerRef.current = window.setInterval(() => {
           if (document.hidden) return;
           void measureQuality(landmarker);
         }, 650);
       })
-      .catch(() => setErr("얼굴 가이드를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."));
+      .catch(() => {
+        if (!mounted) return;
+        // Model/WASM failed to load (offline, blocked CDN, GPU+CPU both fail).
+        // Never leave the user stuck on a live preview with a dead button.
+        landmarkerRef.current = null;
+        setGuideState("failed");
+      });
     return () => {
       mounted = false;
       if (qualityTimerRef.current) window.clearInterval(qualityTimerRef.current);
       passStreakRef.current = 0;
       setCountdownSafe(null);
     };
-  }, [ensureLandmarker, measureQuality, phase, setCountdownSafe]);
+  }, [ensureLandmarker, measureQuality, phase, setCountdownSafe, guideAttempt]);
+
+  function retryGuide() {
+    landmarkerRef.current = null;
+    setGuideState("loading");
+    setGuideAttempt((n) => n + 1);
+  }
 
   useEffect(() => {
     disposedRef.current = false;
@@ -609,7 +638,7 @@ export default function Scan() {
   }
 
   return (
-    <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
+    <main className="px-5 py-9" style={{ background: "var(--paper)", minHeight: "100dvh" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <p style={eyebrow}>ARU skin scan</p>
         <FlowSteps current="scan" />
@@ -618,8 +647,27 @@ export default function Scan() {
 
         {phase !== "result" && (
           <div style={cameraFrame}>
-            <video ref={videoRef} playsInline muted style={videoStyle(phase)} />
-            {phase === "ready" && <CameraGuide quality={quality} mode={captureMode} zones={zones} />}
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
+              style={videoStyle(phase)}
+            />
+            {phase === "ready" && guideState === "ready" && <CameraGuide quality={quality} mode={captureMode} zones={zones} />}
+            {phase === "ready" && guideState === "loading" && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(255,255,255,.78)" }}>
+                <Xiaohei size={64} pose="magnify" bob />
+                <p style={{ fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--ink)" }}>얼굴 가이드 불러오는 중…</p>
+              </div>
+            )}
+            {phase === "ready" && guideState === "failed" && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 24, textAlign: "center", background: "rgba(255,255,255,.92)" }}>
+                <p style={fallbackText}>얼굴 가이드를 불러오지 못했어요.<br />네트워크를 확인하고 다시 시도해 주세요.</p>
+                <button onClick={retryGuide} style={primaryBtn}>다시 시도</button>
+                <a href="/survey" style={ghostLink}>사진 없이 추천받기</a>
+              </div>
+            )}
             {phase === "init" && (
               <Center>
                 <button onClick={startCamera} style={primaryBtn}>카메라 시작</button>
@@ -707,7 +755,7 @@ export default function Scan() {
                 cursor: phase === "analyzing" || !canCapture ? "default" : "pointer",
               }}
             >
-              {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : canCapture ? "지금 촬영하기" : "조건을 맞추면 촬영할 수 있어요"}
+              {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : guideState !== "ready" ? "가이드 준비 중…" : canCapture ? "지금 촬영하기" : "얼굴을 가이드에 맞춰주세요"}
             </button>
           </div>
         )}
