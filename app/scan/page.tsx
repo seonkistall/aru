@@ -168,6 +168,15 @@ const ASSIST_CENTER_STEP = 0.04; // ×1.4 tolerance at full assist
 const ASSIST_SIZE_LO_STEP = 0.018; // ×0.82 min size at full assist
 const ASSIST_SIZE_HI_STEP = 0.008; // ×1.08 max size at full assist
 
+// Patience override (mobile only): the hard guarantee behind the assist. If a
+// detected face holds STEADY this many consecutive ticks while 중앙/거리 still
+// fail (some front cameras sit outside even the assist-widened bounds), the
+// geometry gates are forced open so the user can always proceed — brightness
+// and glare stay genuinely enforced, and the recorded quality meta keeps the
+// honest offsets/size for downstream confidence weighting.
+const OVERRIDE_TICKS = 8; // ≈3.4s of stillness at the 420ms mobile tick
+const OVERRIDE_PROFILE_GEOMETRY = { centerToleranceX: 0.6, centerToleranceY: 0.6, minFaceSize: 0.02, maxFaceSize: 3 };
+
 function resolveProfile(mode: CaptureMode, mobile: boolean): CaptureProfile {
   return mobile ? forMobile(CAPTURE_PROFILES[mode]) : CAPTURE_PROFILES[mode];
 }
@@ -213,6 +222,7 @@ export default function Scan() {
   const isMobileRef = useRef(false);
   const trackRef = useRef<SignalTrack | null>(null);
   const assistRef = useRef(0);
+  const overrideRef = useRef(0);
   const effProfileRef = useRef<CaptureProfile | null>(null);
 
   const [phase, setPhase] = useState<Phase>("init");
@@ -305,6 +315,7 @@ export default function Scan() {
     lastCenterRef.current = null;
     trackRef.current = null;
     assistRef.current = 0;
+    overrideRef.current = 0;
     effProfileRef.current = null;
     passStreakRef.current = 0;
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -363,7 +374,7 @@ export default function Scan() {
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    if (qualityTimerRef.current) window.clearInterval(qualityTimerRef.current);
+    if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
   }, []);
 
   const readFrame = useCallback((maxSize = 360) => {
@@ -394,6 +405,7 @@ export default function Scan() {
         lastCenterRef.current = null;
         trackRef.current = null;
         assistRef.current = 0;
+        overrideRef.current = 0;
         effProfileRef.current = null;
         setZones(null);
         commitQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
@@ -457,12 +469,12 @@ export default function Scan() {
       effProfileRef.current = { ...profile, centerToleranceX: tolX, centerToleranceY: tolY, minFaceSize: minSize, maxFaceSize: maxSize };
 
       const hyst = (was: boolean, strict: boolean, loose: boolean) => (was ? loose : strict);
-      const centered = hyst(
+      const centeredGate = hyst(
         prev?.centered ?? false,
         Math.abs(offX) < tolX && Math.abs(offY) < tolY,
         Math.abs(offX) < tolX * GATE_MARGIN.center && Math.abs(offY) < tolY * GATE_MARGIN.center
       );
-      const distance = hyst(
+      const distanceGate = hyst(
         prev?.distance ?? false,
         size > minSize && size < maxSize,
         size > minSize * GATE_MARGIN.sizeLo && size < maxSize * GATE_MARGIN.sizeHi
@@ -473,7 +485,22 @@ export default function Scan() {
         mean > profile.minBrightness * GATE_MARGIN.brightLo && darkRatio < profile.maxDarkRatio * GATE_MARGIN.darkHi
       );
       const noGlare = hyst(prev?.noGlare ?? false, hotRatio < profile.maxHotRatio, hotRatio < profile.maxHotRatio * GATE_MARGIN.glare);
-      trackRef.current = { offX, offY, size, mean, darkRatio, hotRatio, centered, distance, brightness, noGlare };
+      // hysteresis state keeps the RAW gate results so the override can't
+      // feed back into its own trigger condition.
+      trackRef.current = { offX, offY, size, mean, darkRatio, hotRatio, centered: centeredGate, distance: distanceGate, brightness, noGlare };
+
+      // Patience-override latch: grows while a steady face still fails
+      // geometry (and stays latched once reached); movement or face loss
+      // releases it. Geometry-only — brightness/glare remain genuine.
+      if (!isMobileRef.current || !steady) overrideRef.current = 0;
+      else if (!(centeredGate && distanceGate) || overrideRef.current >= OVERRIDE_TICKS)
+        overrideRef.current = Math.min(OVERRIDE_TICKS + 4, overrideRef.current + 1);
+      else overrideRef.current = 0;
+      const overridden = overrideRef.current >= OVERRIDE_TICKS;
+      const centered = centeredGate || overridden;
+      const distance = distanceGate || overridden;
+      // Capture verification must accept what the live gate accepted.
+      if (overridden) effProfileRef.current = { ...profile, ...OVERRIDE_PROFILE_GEOMETRY };
 
       const checks = [true, centered, distance, brightness, noGlare, steady];
       const score = checks.filter(Boolean).length;
@@ -522,16 +549,30 @@ export default function Scan() {
         if (!mounted) return;
         // Faster ticks on mobile: handheld framing drifts quicker than a fixed
         // webcam, and the countdown/assist step per tick — 420ms keeps the
-        // lock-on responsive without overloading phone CPUs on CPU delegate.
-        qualityTimerRef.current = window.setInterval(() => {
-          if (document.hidden) return;
-          void measureQuality(landmarker);
-        }, isMobileRef.current ? 420 : 650);
+        // lock-on responsive. Self-scheduling (measure, then arm the next tick
+        // from what's left of the budget) so slow CPU-delegate phones degrade
+        // to a longer effective tick instead of piling up overlapping runs the
+        // way setInterval would.
+        const target = isMobileRef.current ? 420 : 650;
+        const tick = async () => {
+          const started = performance.now();
+          if (!document.hidden) {
+            try {
+              await measureQuality(landmarker);
+            } catch {
+              /* keep the loop alive; the next tick retries */
+            }
+          }
+          if (!mounted) return;
+          const elapsed = performance.now() - started;
+          qualityTimerRef.current = window.setTimeout(tick, Math.max(140, target - elapsed));
+        };
+        qualityTimerRef.current = window.setTimeout(tick, target);
       })
       .catch(() => setErr("얼굴 가이드를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."));
     return () => {
       mounted = false;
-      if (qualityTimerRef.current) window.clearInterval(qualityTimerRef.current);
+      if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
       passStreakRef.current = 0;
       setCountdownSafe(null);
     };
