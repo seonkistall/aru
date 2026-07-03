@@ -1,71 +1,71 @@
-# 아루 ARU — 매일의 K뷰티 루틴
+﻿# ?꾨（ ARU ??留ㅼ씪??K酉고떚 猷⑦떞
 
-> **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
-> 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
+> **ARU = Areumdaum + Routine + U** 쨌 *ARU is your daily Korean beauty routine.*
+> ?꾨쫫?ㅼ???留ㅼ씪??猷⑦떞?쇰줈 留뚮뱾?댁＜??K酉고떚 ??
 
-> **버전 v0.4.0 (프로 스캔 경험)** · 최종 업데이트 2026-07-03 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md)
-> **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
+> **踰꾩쟾 v0.4.0 (?꾨줈 ?ㅼ틪 寃쏀뿕)** 쨌 理쒖쥌 ?낅뜲?댄듃 2026-07-03 쨌 ?묒뾽?곹솴: [`docs/STATUS.md`](docs/STATUS.md)
+> **?뺤껜??** ??????쇰? 遺꾩꽍 ???붿옣??異붿쿇 ?? ?ㅻⅨ ?뚯뀥??諛λ줈洹??ㅻ쑉)怨??쇰룞 湲덉?.
 
-셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
+??????μ쑝濡?**?쇰?瑜?遺꾩꽍**?섍퀬, 洹몄뿉 留욌뒗 **?붿옣?댟룸（?댁쓣 異붿쿇**?섎뒗 K酉고떚 ?? 釉뚮옖?쒕챸 **?꾨（(ARU)** ??援?紐낆묶 寃?gyeol)쨌kbeauty-app?먯꽌 2026-07-03 ?듯빀 由щ툕?쒕뵫. (?대? ?????`gyeol_*`쨌Supabase 踰꾪궥紐낆? ?곗씠???명솚???꾪빐 ?좎?)
 
-**라이브:** https://kbeauty-ai-camera.vercel.app
+**?쇱씠釉?** https://aru-beauty.vercel.app
 
-## ⚠️ 코드 작성 규칙 (필독)
-이 레포는 Next.js 기반이지만 **표준 Next.js가 아니다.** 루트 [`AGENTS.md`](AGENTS.md)에 따라 **코드를 쓰기 전 `node_modules/next/dist/docs/`의 해당 가이드를 먼저 확인**하고 deprecation 경고를 준수할 것.
+## ?좑툘 肄붾뱶 ?묒꽦 洹쒖튃 (?꾨룆)
+???덊룷??Next.js 湲곕컲?댁?留?**?쒖? Next.js媛 ?꾨땲??** 猷⑦듃 [`AGENTS.md`](AGENTS.md)???곕씪 **肄붾뱶瑜??곌린 ??`node_modules/next/dist/docs/`???대떦 媛?대뱶瑜?癒쇱? ?뺤씤**?섍퀬 deprecation 寃쎄퀬瑜?以?섑븷 寃?
 
-## 전략 (office-hours 설계 APPROVED · 2026-06-28)
-- **여성-우선 국내 MVP** 로 시작.
-- **카메라(피부 스캔) = 렌탈 훅 + 숏폼 바이럴** 동력.
-- **북극성:** 외국인 대상 **K뷰티 컨시어지**.
-- 설계 문서: `~/.gstack/projects/kbeauty-ai-advisor/`
+## ?꾨왂 (office-hours ?ㅺ퀎 APPROVED 쨌 2026-06-28)
+- **?ъ꽦-?곗꽑 援?궡 MVP** 濡??쒖옉.
+- **移대찓???쇰? ?ㅼ틪) = ?뚰깉 ??+ ?륂뤌 諛붿씠??* ?숇젰.
+- **遺곴레??** ?멸뎅?????**K酉고떚 而⑥떆?댁?**.
+- ?ㅺ퀎 臾몄꽌: `~/.gstack/projects/kbeauty-ai-advisor/`
 
-## 현재 버전 — v0.2.0 "카메라 파일럿 통합"
-- **카메라 파일럿 ML 루프** — 스캔 품질 게이트 + 이중동의(AI 분석/학습 크롭) + 참가자 세션(P001–P030) + `/ops` 대시보드 + Supabase sync + 오프라인 ML 파이프라인(`ml/`, MobileNetV3 목표)
-- **ML 스캔 신뢰도 루프** — confidence/retake 판단, 모델 승격 메커니즘(`public/models/visible-attributes/manifest.json` + 피처 플래그)
-- **커머스 아웃링크** — 올리브영/네이버/쿠팡/글로벌 검색 연결, `/api/out` 클릭 추적(UTM), 제휴 딥링크 오버라이드(`COMMERCE_LINK_OVERRIDES_JSON`)
-- **손그림(xiaohei) 아이덴티티** — 순백 배경 + 小黑 캐릭터 + 손글씨 톤 (파일럿 UI 전체에 적용)
+## ?꾩옱 踰꾩쟾 ??v0.2.0 "移대찓???뚯씪???듯빀"
+- **移대찓???뚯씪??ML 猷⑦봽** ???ㅼ틪 ?덉쭏 寃뚯씠??+ ?댁쨷?숈쓽(AI 遺꾩꽍/?숈뒿 ?щ∼) + 李멸????몄뀡(P001?밣030) + `/ops` ??쒕낫??+ Supabase sync + ?ㅽ봽?쇱씤 ML ?뚯씠?꾨씪??`ml/`, MobileNetV3 紐⑺몴)
+- **ML ?ㅼ틪 ?좊ː??猷⑦봽** ??confidence/retake ?먮떒, 紐⑤뜽 ?밴꺽 硫붿빱?덉쬁(`public/models/visible-attributes/manifest.json` + ?쇱쿂 ?뚮옒洹?
+- **而ㅻ㉧???꾩썐留곹겕** ???щ━釉뚯쁺/?ㅼ씠踰?荑좏뙜/湲濡쒕쾶 寃???곌껐, `/api/out` ?대┃ 異붿쟻(UTM), ?쒗쑕 ?λ쭅???ㅻ쾭?쇱씠??`COMMERCE_LINK_OVERRIDES_JSON`)
+- **?먭렇由?xiaohei) ?꾩씠?댄떚??* ???쒕갚 諛곌꼍 + 弱뤻퍚 罹먮┃??+ ?먭?????(?뚯씪??UI ?꾩껜???곸슜)
 
-## 버전 이력
+## 踰꾩쟾 ?대젰
 - **v0.4.0** (2026-07-03)
-  - **랜드마크 추적 가이드**: T존·양볼 샘플링 존이 실제 측정 랜드마크를 따라 얼굴에 잠금(✓) + 얼굴 윤곽 추적 도트 (미러링 보정)
-  - **4단계 분석 연출**: 프레임 정합→신호 추출→판정→교차 검증, 단계당 최소 800ms 페이싱 + 결과 행 스태거 리빌
-  - **아침/저녁 개인화 루틴**: 스캔·설문 신호별 단계 구성 + 단계별 "왜" 근거 + 주기 칩 (스캔 미적용 시 설문 근거만 사용)
-  - **플로우 스테퍼**: 촬영→설문→추천→케어 진행 표시를 소비자 4개 페이지에 통일
-  - `docs/analysis-performance-roadmap.md` — 분석 성능 개선 트랙별 태스크 로드맵
+  - **?쒕뱶留덊겕 異붿쟻 媛?대뱶**: T議는룹뼇蹂??섑뵆留?議댁씠 ?ㅼ젣 痢≪젙 ?쒕뱶留덊겕瑜??곕씪 ?쇨뎬???좉툑(?? + ?쇨뎬 ?ㅺ낸 異붿쟻 ?꾪듃 (誘몃윭留?蹂댁젙)
+  - **4?④퀎 遺꾩꽍 ?곗텧**: ?꾨젅???뺥빀?믪떊??異붿텧?믫뙋?뺚넂援먯감 寃利? ?④퀎??理쒖냼 800ms ?섏씠??+ 寃곌낵 ???ㅽ깭嫄?由щ퉴
+  - **?꾩묠/???媛쒖씤??猷⑦떞**: ?ㅼ틪쨌?ㅻЦ ?좏샇蹂??④퀎 援ъ꽦 + ?④퀎蹂?"?? 洹쇨굅 + 二쇨린 移?(?ㅼ틪 誘몄쟻?????ㅻЦ 洹쇨굅留??ъ슜)
+  - **?뚮줈???ㅽ뀒??*: 珥ъ쁺?믪꽕臾멤넂異붿쿇?믪???吏꾪뻾 ?쒖떆瑜??뚮퉬??4媛??섏씠吏???듭씪
+  - `docs/analysis-performance-roadmap.md` ??遺꾩꽍 ?깅뒫 媛쒖꽑 ?몃옓蹂??쒖뒪??濡쒕뱶留?
 - **v0.3.1** (2026-07-03)
-  - MediaPipe **VIDEO 러닝모드** 전환(detectForVideo, 비디오 엘리먼트 직접 읽기) + 촬영 순간 움직임 재계산(스테일 steady 제거)
-  - **Pretendard 셀프호스팅**(npm 패키지 dynamic subset — 렌더 블로킹 서드파티 CDN 제거)
-  - **프라이버시 페이지 KO/EN** 이중언어(외국인 북극성 대비, 외부 AI 제공사 고지 유지)
-  - care/privacy 주요 CTA **손그림(sketch) 버튼 통일** + care 빈 상태 영어 지원
-  - 모바일 QA 체크리스트에 v0.3 자동촬영·스킨 항목 추가
+  - MediaPipe **VIDEO ?щ떇紐⑤뱶** ?꾪솚(detectForVideo, 鍮꾨뵒???섎━癒쇳듃 吏곸젒 ?쎄린) + 珥ъ쁺 ?쒓컙 ?吏곸엫 ?ш퀎???ㅽ뀒??steady ?쒓굅)
+  - **Pretendard ??꾪샇?ㅽ똿**(npm ?⑦궎吏 dynamic subset ???뚮뜑 釉붾줈???쒕뱶?뚰떚 CDN ?쒓굅)
+  - **?꾨씪?대쾭???섏씠吏 KO/EN** ?댁쨷?몄뼱(?멸뎅??遺곴레???鍮? ?몃? AI ?쒓났??怨좎? ?좎?)
+  - care/privacy 二쇱슂 CTA **?먭렇由?sketch) 踰꾪듉 ?듭씪** + care 鍮??곹깭 ?곸뼱 吏??
+  - 紐⑤컮??QA 泥댄겕由ъ뒪?몄뿉 v0.3 ?먮룞珥ъ쁺쨌?ㅽ궓 ??ぉ 異붽?
 - **v0.3.0** (2026-07-02 ~ 07-03)
-  - **자동 촬영**: 품질 게이트 연속 통과 시 3·2·1 카운트다운 후 자동 캡처(토글 가능, 실패 시 4초 쿨다운)
-  - **버스트 분석**: 3프레임 중앙값 융합 + 프레임 간 합의도 → confidence/retake 판단 정교화, ML 캘리브레이션 메타 기록
-  - 스캔 성능: 라이브 게이트 노출측정을 얼굴 박스로 정합(역광 거부루프 해소), 캔버스 재사용, 스트림 누수 가드, 백그라운드 탭 스킵
-  - 전면 감사 라운드: xiaohei 팔레트 통일(빨강=문제 의미 복원, 그림자 제거, 구 팔레트 잔재 청소), AA 대비 토큰, 동의 문구에 외부 AI 제공사 명시(PIPA, CONSENT v2), 홈 프라이버시 문구 정직화, 커머스 카피 사용자화(ko/en)
+  - **?먮룞 珥ъ쁺**: ?덉쭏 寃뚯씠???곗냽 ?듦낵 ??3쨌2쨌1 移댁슫?몃떎?????먮룞 罹≪쿂(?좉? 媛?? ?ㅽ뙣 ??4珥?荑⑤떎??
+  - **踰꾩뒪??遺꾩꽍**: 3?꾨젅??以묒븰媛??듯빀 + ?꾨젅??媛??⑹쓽????confidence/retake ?먮떒 ?뺢탳?? ML 罹섎━釉뚮젅?댁뀡 硫뷀? 湲곕줉
+  - ?ㅼ틪 ?깅뒫: ?쇱씠釉?寃뚯씠???몄텧痢≪젙???쇨뎬 諛뺤뒪濡??뺥빀(??킅 嫄곕?猷⑦봽 ?댁냼), 罹붾쾭???ъ궗?? ?ㅽ듃由??꾩닔 媛?? 諛깃렇?쇱슫?????ㅽ궢
+  - ?꾨㈃ 媛먯궗 ?쇱슫?? xiaohei ?붾젅???듭씪(鍮④컯=臾몄젣 ?섎? 蹂듭썝, 洹몃┝???쒓굅, 援??붾젅???붿옱 泥?냼), AA ?鍮??좏겙, ?숈쓽 臾멸뎄???몃? AI ?쒓났??紐낆떆(PIPA, CONSENT v2), ???꾨씪?대쾭??臾멸뎄 ?뺤쭅?? 而ㅻ㉧??移댄뵾 ?ъ슜?먰솕(ko/en)
 - **v0.2.0** (2026-06-29 ~ 07-02)
-  - 카메라 파일럿 ML 파이프라인 + 데이터 추적성 + 스캔 신뢰도 루프 (Codex 라운드)
-  - 커머스 아웃링크 + 파트너 오버라이드 + BM 플레이북
-  - main(xiaohei)과 통합 머지 + 손그림 아이덴티티 리스타일
+  - 移대찓???뚯씪??ML ?뚯씠?꾨씪??+ ?곗씠??異붿쟻??+ ?ㅼ틪 ?좊ː??猷⑦봽 (Codex ?쇱슫??
+  - 而ㅻ㉧???꾩썐留곹겕 + ?뚰듃???ㅻ쾭?쇱씠??+ BM ?뚮젅?대턿
+  - main(xiaohei)怨??듯빀 癒몄? + ?먭렇由??꾩씠?댄떚??由ъ뒪???
 - **v0.1.0** (2026-06-28 ~ 06-29)
-  - 결 v0: on-device skin scan + recommendation engine + data flywheel
-  - 종합 리포트 + 비전 피부분석 (Gemini/OpenAI 스위처블)
-  - 손그림 리디자인 (순백 + 小黑 + 손글씨)
+  - 寃?v0: on-device skin scan + recommendation engine + data flywheel
+  - 醫낇빀 由ы룷??+ 鍮꾩쟾 ?쇰?遺꾩꽍 (Gemini/OpenAI ?ㅼ쐞泥섎툝)
+  - ?먭렇由?由щ뵒?먯씤 (?쒕갚 + 弱뤻퍚 + ?먭???
 
-## 실행
+## ?ㅽ뻾
 
 ```bash
 npm install
 npm run dev        # http://localhost:3000
-npm run smoke      # lint + build + ML 스크립트 컴파일 + 라우트 검증 (커밋 전 게이트)
+npm run smoke      # lint + build + ML ?ㅽ겕由쏀듃 而댄뙆??+ ?쇱슦??寃利?(而ㅻ컠 ??寃뚯씠??
 ```
 
-비전 피부분석에는 Gemini 또는 OpenAI API 키가 필요하다(스위처블, 없으면 온디바이스 폴백).
+鍮꾩쟾 ?쇰?遺꾩꽍?먮뒗 Gemini ?먮뒗 OpenAI API ?ㅺ? ?꾩슂?섎떎(?ㅼ쐞泥섎툝, ?놁쑝硫??⑤뵒諛붿씠???대갚).
 
-## 관련 문서
-- [`docs/STATUS.md`](docs/STATUS.md) — 작업 상황 / 다음 할 일
-- [`AGENTS.md`](AGENTS.md) — 코드 작성 규칙 · 아키텍처 · 함정
-- [`docs/pilot-ml-loop.md`](docs/pilot-ml-loop.md) — 30명 파일럿 운영 런북
-- [`docs/commerce-partnership-playbook.md`](docs/commerce-partnership-playbook.md) — 제휴/BM 플레이북
-- [`docs/mobile-camera-qa.md`](docs/mobile-camera-qa.md) — 모바일 카메라 QA 체크리스트
-- 설계 doc: `~/.gstack/projects/kbeauty-ai-advisor/`
+## 愿??臾몄꽌
+- [`docs/STATUS.md`](docs/STATUS.md) ???묒뾽 ?곹솴 / ?ㅼ쓬 ????
+- [`AGENTS.md`](AGENTS.md) ??肄붾뱶 ?묒꽦 洹쒖튃 쨌 ?꾪궎?띿쿂 쨌 ?⑥젙
+- [`docs/pilot-ml-loop.md`](docs/pilot-ml-loop.md) ??30紐??뚯씪???댁쁺 ?곕턿
+- [`docs/commerce-partnership-playbook.md`](docs/commerce-partnership-playbook.md) ???쒗쑕/BM ?뚮젅?대턿
+- [`docs/mobile-camera-qa.md`](docs/mobile-camera-qa.md) ??紐⑤컮??移대찓??QA 泥댄겕由ъ뒪??
+- ?ㅺ퀎 doc: `~/.gstack/projects/kbeauty-ai-advisor/`
