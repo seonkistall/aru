@@ -17,7 +17,7 @@ export function FlowSteps({ current }: { current: FlowKey }) {
   return (
     <nav aria-label="진행 단계" style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
       <Link href="/" aria-label="홈으로" style={{ fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
-        결
+        아루
       </Link>
       <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", marginRight: 2 }} />
       {STEPS.map((step, index) => {

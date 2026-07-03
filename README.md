@@ -1,9 +1,12 @@
-# 결 (gyeol) — K뷰티 AI 피부분석 & 화장품 추천
+# 아루 ARU — 매일의 K뷰티 루틴
+
+> **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
+> 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
 > **버전 v0.4.0 (프로 스캔 경험)** · 최종 업데이트 2026-07-03 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md)
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
-셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품을 추천**하는 K뷰티 앱. 브랜드명 **결(gyeol)**.
+셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
 
 **라이브:** https://kbeauty-ai-camera.vercel.app
 
