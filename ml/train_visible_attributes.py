@@ -57,13 +57,30 @@ class CropDataset(Dataset):
         return self.transform(image), target
 
 
-class MultiHeadMobileNet(nn.Module):
-    def __init__(self):
+class MultiHeadNet(nn.Module):
+    """Multi-head visible-attribute classifier over a swappable backbone.
+
+    mobilenetv3_small stays the on-device default; efficientnet_b0 is the
+    bake-off candidate (transfer learning reaches ~80% on small facial-skin
+    datasets in prior art, so both should be trained at the 300+ crop gate
+    and compared under participant-grouped CV before ONNX promotion).
+    """
+
+    def __init__(self, arch: str = "mobilenetv3_small"):
         super().__init__()
-        weights = models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
-        backbone = models.mobilenet_v3_small(weights=weights)
-        in_features = backbone.classifier[0].in_features
-        backbone.classifier = nn.Identity()
+        if arch == "efficientnet_b0":
+            weights = models.EfficientNet_B0_Weights.IMAGENET1K_V1
+            backbone = models.efficientnet_b0(weights=weights)
+            in_features = backbone.classifier[1].in_features
+            backbone.classifier = nn.Identity()
+        elif arch == "mobilenetv3_small":
+            weights = models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
+            backbone = models.mobilenet_v3_small(weights=weights)
+            in_features = backbone.classifier[0].in_features
+            backbone.classifier = nn.Identity()
+        else:
+            raise ValueError(f"unknown arch: {arch}")
+        self.arch = arch
         self.features = backbone
         self.heads = nn.ModuleDict({attr: nn.Linear(in_features, 3) for attr in ATTRS})
 
@@ -254,6 +271,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--arch", choices=["mobilenetv3_small", "efficientnet_b0"], default="mobilenetv3_small")
     parser.add_argument("--export-onnx", action="store_true")
     parser.add_argument("--out-dir", type=Path, default=Path("ml/artifacts"))
     args = parser.parse_args()
@@ -279,7 +297,7 @@ def main() -> None:
     ])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = MultiHeadMobileNet().to(device)
+    model = MultiHeadNet(args.arch).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     train_loader = DataLoader(CropDataset(train_rows, train_tf), batch_size=args.batch_size, shuffle=True, num_workers=2)
     val_loader = DataLoader(CropDataset(val_rows, val_tf), batch_size=args.batch_size, shuffle=False, num_workers=2)
@@ -290,7 +308,7 @@ def main() -> None:
     write_split(out_dir / "split_val.csv", val_rows)
 
     best = -1.0
-    best_path = out_dir / "visible_attr_mobilenetv3.pt"
+    best_path = out_dir / f"visible_attr_{args.arch}.pt"
     history = []
     best_epoch = None
     last_val_confusion = {attr: [[0, 0, 0] for _ in range(3)] for attr in ATTRS}
@@ -322,10 +340,11 @@ def main() -> None:
     print(f"best checkpoint: {best_path} mean_val_acc={best:.3f}")
     artifacts = {
         "checkpoint": {"path": str(best_path), "sha256": sha256(best_path)} if best_path.exists() else None,
+        "arch": args.arch,
         "onnx": None,
     }
     if args.export_onnx:
-        onnx_path = out_dir / "visible_attr_mobilenetv3.onnx"
+        onnx_path = out_dir / f"visible_attr_{args.arch}.onnx"
         checkpoint = torch.load(best_path, map_location=device)
         model.load_state_dict(checkpoint["model"])
         export_onnx(model, onnx_path, device)

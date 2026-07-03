@@ -32,11 +32,15 @@ export type RoutineStep = {
   body: string;
   category: Category;
   heroSku?: Sku;
+  why: string;
+  cadence?: string;
 };
+
+export type Routine = { am: RoutineStep[]; pm: RoutineStep[] };
 
 export type RecoResult = {
   picks: Recommendation[];
-  routine: RoutineStep[];
+  routine: Routine;
   relaxed: null | "budget" | "avoid";
   scanApplied: boolean;
   note?: string;
@@ -95,9 +99,16 @@ function scoreSku(sku: Sku, survey: Survey, concerns: Concern[]): number {
   return score;
 }
 
+// Survey stores 15000/25000/35000/60000 for the chips 1/2/3만원대·4만원 이상 —
+// rounding won values mislabels every bucket, so map back to the chip label.
+export function budgetLabel(won: number): string {
+  if (won >= 40000) return "4만원 이상";
+  return `${Math.max(1, Math.floor(won / 10000))}만원대`;
+}
+
 function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean, avoidedClear: boolean): string {
   const matched = concerns.filter((concern) => sku.concerns.includes(concern)).slice(0, 2);
-  const budgetText = `${Math.round(survey.budget / 10000)}만원대`;
+  const budgetText = budgetLabel(survey.budget);
   const scanText = scanApplied ? "오늘 스캔에서 보인 신호와 " : "";
   const head = matched.length ? `${matched.join(", ")} 고민` : `${survey.type} 피부`;
   let reason = `${scanText}${head}, ${budgetText} 예산을 함께 보고 고른 ${sku.category}예요.`;
@@ -139,34 +150,155 @@ function diversify(sorted: Sku[]): Sku[] {
   return picks;
 }
 
-function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]): RoutineStep[] {
-  const hasRedness = concerns.includes("붉은기") || concerns.includes("트러블");
-  const hasOil = concerns.includes("유분") || concerns.includes("모공");
-  const steps: RoutineStep[] = [
+function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[], scan: ScanReads, scanApplied: boolean): Routine {
+  const reads = scanApplied && scan ? scan : null;
+  const scanOil = reads !== null && reads.oil >= 2;
+  const scanRedness = reads !== null && reads.redness >= 2;
+  const scanPores = reads !== null && reads.pores >= 1;
+  const saidOil = survey.concerns.includes("유분") || survey.type === "지성" || survey.type === "복합성";
+  const saidRedness = survey.concerns.includes("붉은기") || survey.type === "민감성";
+  const hasOil = scanOil || saidOil;
+  const hasRedness = scanRedness || saidRedness;
+  const hasPores = scanPores || survey.concerns.includes("모공");
+  const dry = survey.concerns.includes("건조") || survey.type === "건성";
+  const budgetText = budgetLabel(survey.budget);
+
+  const am: RoutineStep[] = [
     {
-      id: "cleanse",
-      title: hasOil ? "가볍게 씻고 번들거림 줄이기" : "피부가 당기지 않게 씻기",
-      body: hasOil ? "아침에는 과하게 뽀득한 마무리보다 산뜻한 세안을 권장해요." : "세안 후 당김이 적은 제품을 먼저 보는 흐름이 좋아요.",
+      id: "am-cleanse",
       category: "클렌저",
+      title: hasRedness ? "미지근한 물로 부드럽게 씻기" : hasOil ? "가볍게 씻고 번들거림 줄이기" : "피부가 당기지 않게 씻기",
+      body: hasRedness
+        ? "문지르는 시간을 줄이고, 미지근한 물로 짧게 세안하는 편이 좋아요."
+        : hasOil
+          ? "아침에는 과하게 뽀득한 마무리보다 산뜻한 세안을 권장해요."
+          : "세안 후 당김이 적은 제품을 먼저 보는 흐름이 좋아요.",
+      why: scanRedness
+        ? "오늘 스캔에서 볼 쪽 붉은기가 보여서 아침은 자극이 덜한 순서로 잡았어요."
+        : saidRedness
+          ? "설문에서 답해주신 붉은기·민감 고민에 맞춰 아침 세안을 부드럽게 잡았어요."
+          : scanOil
+            ? "오늘 스캔에서 T존 번들거림이 보여서 가벼운 세안부터 시작해요."
+            : saidOil
+              ? "설문에서 답해주신 유분 고민에 맞춰 아침을 산뜻하게 시작해요."
+              : `${survey.type} 피부라고 답해주셔서 당김 없는 세안부터 순서를 잡았어요.`,
     },
     {
-      id: "hydrate",
-      title: hasRedness ? "순한 수분층 만들기" : "수분감을 얇게 채우기",
-      body: hasRedness ? "붉어 보이는 날은 향이 강한 제품보다 순한 수분 제품부터 맞춰보세요." : "스캔 결과와 설문을 보면 가벼운 수분 단계가 루틴의 중심이에요.",
+      id: "am-hydrate",
       category: survey.category,
+      title: hasRedness ? "순한 수분층 만들기" : hasOil ? "수분은 얇게, 가벼운 제형으로" : "수분감을 얇게 채우기",
+      body: hasRedness
+        ? "향이 강한 제품보다 순한 수분 제품부터 얇게 맞춰보세요."
+        : hasOil
+          ? "아침에는 무거운 마무리보다 가벼운 수분 한 겹이면 충분해요."
+          : "가벼운 수분 단계를 아침 루틴의 중심에 두는 흐름이에요.",
+      why: scanRedness
+        ? "붉은기 신호가 보인 날이라 순한 선택 위주로 골랐어요."
+        : scanOil
+          ? "스캔에 보인 T존 유분에 맞춰 아침 제형은 가볍게 골랐어요."
+          : saidRedness
+            ? "민감·붉은기 답변에 맞춰 순한 수분 제품을 가운데 뒀어요."
+            : saidOil
+              ? "유분 고민 답변에 맞춰 아침에는 가벼운 제형을 골랐어요."
+              : `${budgetText} 예산 안에서 매일 쓰기 부담 없는 제품으로 맞췄어요.`,
     },
     {
-      id: "protect",
-      title: "낮에는 선케어로 마무리",
-      body: "피부 컨디션과 관계없이 낮 루틴은 자외선 차단제를 마지막 단계로 두는 편이 좋아요.",
+      id: "am-protect",
       category: "선크림",
+      title: hasRedness ? "선케어는 오늘 아침의 핵심" : "낮에는 선케어로 마무리",
+      body: scanRedness
+        ? "붉은기가 보이는 날일수록 외출 전 자외선 차단을 더 꼼꼼히 챙기는 편이 좋아요."
+        : saidRedness
+          ? "붉은기 고민이 있을수록 낮 자외선 차단을 더 꼼꼼히 챙기는 편이 좋아요."
+          : "피부 컨디션과 관계없이 낮 루틴은 자외선 차단제를 마지막 단계로 두는 편이 좋아요.",
+      why: scanRedness
+        ? "오늘 스캔의 붉은기 신호 때문에 아침 선케어를 가장 강조했어요."
+        : saidRedness
+          ? "붉은기 고민을 답해주셔서 아침 선케어를 강조했어요."
+          : "계절과 상관없이 낮의 마지막 단계는 선케어로 두는 걸 권해요.",
+      cadence: "매일",
     },
   ];
 
-  return steps.map((step) => ({
-    ...step,
-    heroSku: picks.find((pick) => pick.sku.category === step.category)?.sku,
-  }));
+  const pm: RoutineStep[] = [
+    {
+      id: "pm-cleanse",
+      category: "클렌저",
+      title: hasOil ? "저녁 세안은 조금 더 꼼꼼하게" : hasRedness ? "저녁에도 부드럽게 씻기" : "하루를 씻어내는 저녁 세안",
+      body: hasOil
+        ? "하루 동안 쌓인 유분과 자외선 차단제를 저녁에 충분히 씻어내는 게 좋아요."
+        : hasRedness
+          ? "이중 세안이 필요 없는 날은 순한 세안 한 번으로 충분해요."
+          : "선크림이나 메이크업을 썼다면 저녁에 씻어내고 자는 흐름을 권해요.",
+      why: scanOil
+        ? "오늘 스캔에서 유분 신호가 뚜렷해서 저녁 세안에 비중을 뒀어요."
+        : saidOil
+          ? "유분 고민 답변에 맞춰 저녁 세안에 비중을 뒀어요."
+          : scanRedness
+            ? "붉은기 신호가 있어서 저녁에도 부드러운 세안을 권해요."
+            : saidRedness
+              ? "민감 고민 답변에 맞춰 저녁 세안도 순하게 잡았어요."
+              : "하루 마무리 세안은 피부 타입과 상관없이 기본이 되는 단계예요.",
+    },
+    ...(hasPores
+      ? [
+          {
+            id: "pm-texture",
+            category: "세럼" as Category,
+            title: "피부결 돌보기는 저녁에 나눠서",
+            body: hasRedness
+              ? "붉은기가 신경 쓰이는 날은 건너뛰고, 컨디션 좋은 저녁에만 가볍게 써보세요."
+              : "결 케어 제품은 매일보다 저녁에만, 간격을 두고 쓰는 편이 부담이 적어요.",
+            why: scanPores
+              ? "스캔에서 볼 쪽 결이 보여서 저녁 결 케어 단계를 넣었어요."
+              : "모공 고민을 답해주셔서 저녁 결 케어 단계를 넣었어요.",
+            cadence: "주 2-3회",
+          },
+        ]
+      : []),
+    {
+      id: "pm-hydrate",
+      category: survey.category,
+      title: hasRedness ? "순한 수분으로 하루 마무리" : "수분을 채우고 하루 마무리",
+      body: hasRedness
+        ? "저녁에는 순한 수분 제품을 얇게 두 번 나눠 발라도 좋아요."
+        : "세안 직후 물기가 마르기 전에 수분 단계를 이어주는 흐름이 좋아요.",
+      why: survey.avoid.length && picks.some((pick) => pick.avoidedClear)
+        ? "피하고 싶다고 답해주신 성분을 뺀 제품 위주로 골라뒀어요."
+        : `${budgetText} 예산과 ${survey.type} 피부 답변을 함께 보고 고른 단계예요.`,
+    },
+    {
+      id: "pm-seal",
+      category: "크림",
+      title: hasOil ? "마무리는 가볍게 잠그기" : dry ? "마지막은 크림으로 덮기" : "크림으로 하루 마무리",
+      body: hasOil
+        ? "번들거림이 고민이면 크림 대신 가벼운 젤 제형을 얇게 발라도 좋아요."
+        : dry
+          ? "수분 단계가 마르기 전에 크림을 얇게 덮어 밤사이 당김을 줄여보세요."
+          : "저녁 마지막 단계는 크림을 얇게 발라 수분을 잠그는 흐름이에요.",
+      why: survey.concerns.includes("건조")
+        ? "건조 고민을 답해주셔서 밤 마무리 단계를 챙겼어요."
+        : scanOil
+          ? "스캔에 보인 유분 신호에 맞춰 밤 마무리도 가벼운 제형을 권해요."
+          : saidOil
+            ? "유분 고민 답변에 맞춰 밤 마무리도 가볍게 잡았어요."
+            : `${survey.type} 피부 답변에 맞춰 밤 마무리 단계를 잡았어요.`,
+    },
+  ];
+
+  const attach = (steps: RoutineStep[]): RoutineStep[] => {
+    const seen = new Set<string>();
+    return steps.map((step) => {
+      // pm-texture is interval-use guidance; attaching a daily product there
+      // would contradict its own cadence, so it stays product-free.
+      const hero = step.id === "pm-texture" ? undefined : picks.find((pick) => pick.sku.category === step.category)?.sku;
+      if (!hero || seen.has(hero.id)) return step;
+      seen.add(hero.id);
+      return { ...step, heroSku: hero };
+    });
+  };
+
+  return { am: attach(am), pm: attach(pm) };
 }
 
 export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
@@ -206,5 +338,5 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
           ? "선택한 제외 성분을 모두 피한 제품이 적어 기준을 조금 넓혔어요. 구매 전 전성분을 확인해 주세요."
           : undefined;
 
-  return { picks, routine: routineFor(survey, concerns, picks), relaxed, scanApplied, note };
+  return { picks, routine: routineFor(survey, concerns, picks, scan, scanApplied), relaxed, scanApplied, note };
 }

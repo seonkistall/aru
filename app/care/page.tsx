@@ -7,6 +7,7 @@ import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/r
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
+import { FlowSteps } from "@/app/components/flow-steps";
 
 type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
@@ -99,6 +100,7 @@ export default function CarePage() {
             <button onClick={() => setLocale("en")} style={segBtn(locale === "en")}>EN</button>
           </div>
         </div>
+        <FlowSteps current="care" />
 
         <h1 style={titleStyle}>{summary.title}</h1>
         <p style={leadStyle}>{summary.body}</p>

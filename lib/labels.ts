@@ -53,6 +53,8 @@ export type SampleMeta = {
   correctionFlags?: Partial<Record<Attr, boolean>>;
   ungradable?: boolean;
   burst?: { frames: number; agreement: Partial<Record<Attr, number>> };
+  /** Optional user observations outside the graded attrs (observation only — never severity grades). */
+  observations?: { troubleSeen?: boolean };
 };
 
 export const SCALES: Record<Attr, [string, string, string]> = {

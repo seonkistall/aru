@@ -21,6 +21,10 @@ export type SkinRawFeatures = {
   tzoneSpecular: number;
   cheekSamples: number;
   tzoneSamples: number;
+  /** Dominant cheek tone as CIELAB L* — recorded for calibration and tone-subgroup evaluation, never shown to users. */
+  toneLstar: number;
+  /** Individual Typology Angle (deg) of the dominant cheek tone — same recording-only purpose. */
+  toneIta: number;
 };
 
 export type ConfidenceSignal = {
@@ -72,6 +76,7 @@ type VisibleModelManifest = {
 };
 
 type LM = { x: number; y: number; z?: number };
+type SkinPixel = { r: number; g: number; b: number; L: number };
 type RegionStats = {
   meanR: number;
   meanG: number;
@@ -80,10 +85,14 @@ type RegionStats = {
   specularRatio: number;
   texture: number;
   n: number;
+  pixels: SkinPixel[];
 };
 
 const TZONE = [9, 8, 107, 336, 151, 10, 67, 297, 1, 4, 5, 195, 197];
 const CHEEKS = [50, 101, 118, 117, 116, 205, 36, 280, 330, 347, 346, 345, 425, 266];
+
+// Exposed so the capture guide can draw the REAL sampling regions on the face.
+export const SAMPLING_LANDMARKS = { tzone: TZONE, cheeks: CHEEKS };
 
 export const SKIN_LABELS: Record<SkinAttr, [string, string, string]> = {
   oil: ["유분 적음", "유분 약간", "유분 많음"],
@@ -93,7 +102,8 @@ export const SKIN_LABELS: Record<SkinAttr, [string, string, string]> = {
 
 export const VISIBLE_MODEL_CONTRACT = {
   inputSchemaVersion: "2026-06-30.visible-face-crop.v1",
-  fallbackVersion: "roi-calibrated-2026-06-30",
+  // Bumped 07-03: trimmed region stats + tone (L*/ITA) fields change feature semantics.
+  fallbackVersion: "roi-calibrated-2026-07-03",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
 
@@ -108,12 +118,8 @@ function clamp01(value: number) {
 }
 
 function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: LM[], indices: number[], radius = 4): RegionStats | null {
-  let sumR = 0;
-  let sumG = 0;
-  let sumB = 0;
-  let n = 0;
+  const collected: SkinPixel[] = [];
   let specular = 0;
-  const lums: number[] = [];
 
   for (const idx of indices) {
     const lm = landmarks[idx];
@@ -130,30 +136,115 @@ function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: 
         const g = data[o + 1];
         const b = data[o + 2];
         const L = lum(r, g, b);
-        sumR += r;
-        sumG += g;
-        sumB += b;
-        lums.push(L);
+        collected.push({ r, g, b, L });
         if (L > 218) specular += 1;
-        n += 1;
       }
     }
   }
 
-  if (n === 0 || lums.length === 0) return null;
+  if (collected.length === 0) return null;
 
-  const meanL = lums.reduce((a, c) => a + c, 0) / lums.length;
-  const variance = lums.reduce((a, c) => a + (c - meanL) * (c - meanL), 0) / lums.length;
+  // Fixed landmark patches bleed into hair shadow and glints; trimming the
+  // luminance extremes keeps color/texture stats on actual skin. The specular
+  // ratio stays measured on the UNTRIMMED set — glints ARE that signal.
+  const sorted = [...collected].sort((a, b) => a.L - b.L);
+  const cut = Math.floor(sorted.length * 0.1);
+  const kept = sorted.length - cut * 2 >= 20 ? sorted.slice(cut, sorted.length - cut) : sorted;
+
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let sumL = 0;
+  for (const pixel of kept) {
+    sumR += pixel.r;
+    sumG += pixel.g;
+    sumB += pixel.b;
+    sumL += pixel.L;
+  }
+  const meanL = sumL / kept.length;
+  const variance = kept.reduce((acc, pixel) => acc + (pixel.L - meanL) * (pixel.L - meanL), 0) / kept.length;
 
   return {
-    meanR: sumR / n,
-    meanG: sumG / n,
-    meanB: sumB / n,
+    meanR: sumR / kept.length,
+    meanG: sumG / kept.length,
+    meanB: sumB / kept.length,
     meanL,
-    specularRatio: specular / n,
+    specularRatio: specular / collected.length,
     texture: Math.sqrt(variance),
-    n,
+    n: collected.length,
+    pixels: kept,
   };
+}
+
+function rgbToLab(r: number, g: number, b: number): { l: number; a: number; b: number } {
+  const linear = (channel: number) => {
+    const c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const rl = linear(r);
+  const gl = linear(g);
+  const bl = linear(b);
+  // sRGB -> XYZ (D65), normalized to reference white.
+  const x = (rl * 0.4124 + gl * 0.3576 + bl * 0.1805) / 0.95047;
+  const y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
+  const z = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const fx = f(x);
+  const fy = f(y);
+  const fz = f(z);
+  return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+
+/**
+ * Dominant skin tone via tiny K-means (k=3, 5 iterations) over the trimmed
+ * cheek pixels — the largest cluster screens out residual blush/shadow the
+ * trim didn't catch. Returned as CIELAB L* and ITA, recorded (not displayed)
+ * so the 500+ crop gate's tone-subgroup evaluation has per-sample tone data.
+ */
+function dominantTone(pixels: SkinPixel[]): { lstar: number; ita: number } | null {
+  if (pixels.length < 30) return null;
+  const sample = pixels.filter((_, index) => index % 2 === 0);
+  const centroids = [sample[0], sample[Math.floor(sample.length / 2)], sample[sample.length - 1]].map((p) => ({ r: p.r, g: p.g, b: p.b }));
+  const assignment = new Array<number>(sample.length).fill(0);
+
+  for (let iter = 0; iter < 5; iter += 1) {
+    for (let i = 0; i < sample.length; i += 1) {
+      let best = 0;
+      let bestDist = Infinity;
+      for (let c = 0; c < centroids.length; c += 1) {
+        const dr = sample[i].r - centroids[c].r;
+        const dg = sample[i].g - centroids[c].g;
+        const db = sample[i].b - centroids[c].b;
+        const dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = c;
+        }
+      }
+      assignment[i] = best;
+    }
+    for (let c = 0; c < centroids.length; c += 1) {
+      let count = 0;
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+      for (let i = 0; i < sample.length; i += 1) {
+        if (assignment[i] !== c) continue;
+        count += 1;
+        sumR += sample[i].r;
+        sumG += sample[i].g;
+        sumB += sample[i].b;
+      }
+      if (count > 0) centroids[c] = { r: sumR / count, g: sumG / count, b: sumB / count };
+    }
+  }
+
+  const counts = [0, 0, 0];
+  for (const clusterIndex of assignment) counts[clusterIndex] += 1;
+  const dominant = centroids[counts.indexOf(Math.max(...counts))];
+  const lab = rgbToLab(dominant.r, dominant.g, dominant.b);
+  const ita = Math.abs(lab.b) < 0.01 ? (lab.l > 50 ? 90 : -90) : (Math.atan((lab.l - 50) / lab.b) * 180) / Math.PI;
+  return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
 }
 
 function bucket(attr: SkinAttr, value: number, lo: number, hi: number, confidence: number): Bucket {
@@ -242,6 +333,11 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
   const cheekL = lum(cheeks.meanR, cheeks.meanG, cheeks.meanB);
   const tzoneL = lum(tzone.meanR, tzone.meanG, tzone.meanB);
   const rIdx = (m: RegionStats) => m.meanR / (m.meanR + m.meanG + m.meanB || 1);
+  const tone = dominantTone(cheeks.pixels) ?? (() => {
+    const lab = rgbToLab(cheeks.meanR, cheeks.meanG, cheeks.meanB);
+    const ita = Math.abs(lab.b) < 0.01 ? (lab.l > 50 ? 90 : -90) : (Math.atan((lab.l - 50) / lab.b) * 180) / Math.PI;
+    return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
+  })();
 
   return {
     shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255),
@@ -253,6 +349,8 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     tzoneSpecular: tzone.specularRatio,
     cheekSamples: cheeks.n,
     tzoneSamples: tzone.n,
+    toneLstar: tone.lstar,
+    toneIta: tone.ita,
   };
 }
 
