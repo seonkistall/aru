@@ -327,6 +327,35 @@ function levelFor(attr: SkinAttr, value: number): SkinLevel {
   return (value < lo ? 0 : value < hi ? 1 : 2) as SkinLevel;
 }
 
+// Gray-world illuminant gains from the FULL frame (background included, sub-
+// sampled). Applied only to the tone estimate — oil/redness/pores stay on the
+// self-relative measures that already cancel a global color cast. Gains are
+// clamped so extreme scenes cannot invent a tone shift.
+function frameChannelGains(data: Uint8ClampedArray, width: number, height: number): { r: number; g: number; b: number } {
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let count = 0;
+  const stepY = Math.max(1, Math.floor(height / 60));
+  const stepX = Math.max(1, Math.floor(width / 60));
+  for (let y = 0; y < height; y += stepY) {
+    for (let x = 0; x < width; x += stepX) {
+      const o = (y * width + x) * 4;
+      sumR += data[o];
+      sumG += data[o + 1];
+      sumB += data[o + 2];
+      count += 1;
+    }
+  }
+  if (!count) return { r: 1, g: 1, b: 1 };
+  const meanR = sumR / count;
+  const meanG = sumG / count;
+  const meanB = sumB / count;
+  const gray = (meanR + meanG + meanB) / 3;
+  const gain = (mean: number) => Math.min(1.6, Math.max(0.6, gray / Math.max(1, mean)));
+  return { r: gain(meanR), g: gain(meanG), b: gain(meanB) };
+}
+
 function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
   const { data, width: w, height: h } = imageData;
   const tzone = sampleRegion(data, w, h, landmarks, TZONE);
@@ -336,8 +365,19 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
   const cheekL = lum(cheeks.meanR, cheeks.meanG, cheeks.meanB);
   const tzoneL = lum(tzone.meanR, tzone.meanG, tzone.meanB);
   const rIdx = (m: RegionStats) => m.meanR / (m.meanR + m.meanG + m.meanB || 1);
-  const tone = dominantTone(cheeks.pixels) ?? (() => {
-    const lab = rgbToLab(cheeks.meanR, cheeks.meanG, cheeks.meanB);
+  const gains = frameChannelGains(data, w, h);
+  const balance = (pixel: SkinPixel): SkinPixel => ({
+    r: Math.min(255, pixel.r * gains.r),
+    g: Math.min(255, pixel.g * gains.g),
+    b: Math.min(255, pixel.b * gains.b),
+    L: pixel.L,
+  });
+  const tone = dominantTone(cheeks.pixels.map(balance)) ?? (() => {
+    const lab = rgbToLab(
+      Math.min(255, cheeks.meanR * gains.r),
+      Math.min(255, cheeks.meanG * gains.g),
+      Math.min(255, cheeks.meanB * gains.b)
+    );
     const ita = Math.abs(lab.b) < 0.01 ? (lab.l > 50 ? 90 : -90) : (Math.atan((lab.l - 50) / lab.b) * 180) / Math.PI;
     return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
   })();
