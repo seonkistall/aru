@@ -17,7 +17,7 @@
 - **여성-우선 국내 MVP** 로 시작.
 - **카메라(피부 스캔) = 렌탈 훅 + 숏폼 바이럴** 동력.
 - **북극성:** 외국인 대상 **K뷰티 컨시어지**.
-- 설계 문서: `~/.gstack/projects/kbeauty-ai-advisor/`
+- 설계 문서: `~/.gstack/projects/aru/`
 
 ## 현재 버전 — v0.2.0 "카메라 파일럿 통합"
 - **카메라 파일럿 ML 루프** — 스캔 품질 게이트 + 이중동의(AI 분석/학습 크롭) + 참가자 세션(P001–P030) + `/ops` 대시보드 + Supabase sync + 오프라인 ML 파이프라인(`ml/`, MobileNetV3 목표)
@@ -68,4 +68,4 @@ npm run smoke      # lint + build + ML 스크립트 컴파일 + 라우트 검증
 - [`docs/pilot-ml-loop.md`](docs/pilot-ml-loop.md) — 30명 파일럿 운영 런북
 - [`docs/commerce-partnership-playbook.md`](docs/commerce-partnership-playbook.md) — 제휴/BM 플레이북
 - [`docs/mobile-camera-qa.md`](docs/mobile-camera-qa.md) — 모바일 카메라 QA 체크리스트
-- 설계 doc: `~/.gstack/projects/kbeauty-ai-advisor/`
+- 설계 doc: `~/.gstack/projects/aru/`

@@ -11,7 +11,7 @@
 - **여성-우선 국내 MVP.**
 - 카메라(피부 스캔) = **렌탈 훅 + 숏폼 바이럴** 동력.
 - 북극성(North Star) = **외국인 대상 K뷰티 컨시어지**.
-- 설계 doc: `~/.gstack/projects/kbeauty-ai-advisor/`
+- 설계 doc: `~/.gstack/projects/aru/`
 
 ## 현재 버전 — v0.2.0 "카메라 파일럿 통합"
 - **카메라 파일럿 ML 루프**: 스캔 품질 게이트, 이중동의(AI 분석/학습 크롭 분리), 참가자 세션(P001–P030), `/pilot`·`/ops` 연구 모드, Supabase sync, 오프라인 ML 파이프라인(`ml/`)
@@ -37,7 +37,7 @@
 - 비전 분석: Gemini/OpenAI 스위처블 (API 키 없으면 온디바이스 폴백)
 - 배포: **Vercel 라이브** https://aru-beauty.vercel.app (프로젝트 `aru-beauty`)
 - 검증 게이트: `npm run smoke` (lint + build + py_compile + 라우트 7종)
-- 브랜치: `main` (작업장: `Documents\K-Beauty AI (Camera)`)
+- 브랜치: `main` (작업장: `C:\dev\working\aru`)
 
 ## 다음 (Next)
 - **모바일 실기기 QA** — iPhone Safari / Android Chrome. v0.3 자동촬영 타이밍·xiaohei 스킨 항목 포함 (`docs/mobile-camera-qa.md`)
@@ -47,4 +47,4 @@
 - 렌탈 훅 → 숏폼 공유 루프 설계 반영
 
 ## 관련 문서
-`README.md`(제품 개요) · `AGENTS.md`(코드 작성 규칙) · `docs/pilot-ml-loop.md` · `docs/commerce-partnership-playbook.md` · `docs/mobile-camera-qa.md` · 설계 doc `~/.gstack/projects/kbeauty-ai-advisor/`
+`README.md`(제품 개요) · `AGENTS.md`(코드 작성 규칙) · `docs/pilot-ml-loop.md` · `docs/commerce-partnership-playbook.md` · `docs/mobile-camera-qa.md` · 설계 doc `~/.gstack/projects/aru/`
