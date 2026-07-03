@@ -14,8 +14,8 @@ export default function Home() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7">
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>결</span>
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)" }}>화장품, 덜 실패하게</span>
+        <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>아루</span>
+        <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)" }}>아름다움을, 매일의 루틴으로</span>
       </header>
 
       <section className="flex-1 flex flex-col items-center justify-center px-6 text-center">

@@ -25,7 +25,10 @@ const routeChecks = [
   { method: "GET", path: "/ops", status: 200 },
   { method: "GET", path: "/api/out?sku=tn1&merchant=oliveyoung&placement=smoke", status: 302, redirect: "manual", locationIncludes: "www.oliveyoung.co.kr" },
   { method: "GET", path: "/api/sync", status: 200 },
-  { method: "POST", path: "/api/sync", status: 401 },
+  // 401 when no sync token is configured; 403 when the env-based origin guard
+  // rejects first (local .env.local present). Both mean unauthenticated POSTs
+  // are blocked, which is what this check asserts.
+  { method: "POST", path: "/api/sync", status: [401, 403] },
 ];
 
 async function run(command, args) {
@@ -104,8 +107,9 @@ async function checkRoute(baseUrl, check) {
     redirect: check.redirect,
   });
 
-  if (response.status !== check.status) {
-    throw new Error(`${check.method} ${check.path} returned ${response.status}, expected ${check.status}`);
+  const expected = Array.isArray(check.status) ? check.status : [check.status];
+  if (!expected.includes(response.status)) {
+    throw new Error(`${check.method} ${check.path} returned ${response.status}, expected ${expected.join("/")}`);
   }
 
   if (check.locationIncludes) {
