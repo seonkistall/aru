@@ -20,6 +20,17 @@
 - [ ] **촬영 조건 메타 활용**: 품질 메타(밝기·글레어·거리·movement)별 라벨 분포를 확인해 "라벨이 흔들리는 촬영 조건"을 식별 → 게이트 임계값 역보정
 - [ ] **동의 클라우드 라벨 활용**: AI 분석 동의 사용자의 Gemini/OpenAI 라벨을 휴리스틱과 자동 비교(무료 준-라벨) — 불일치 케이스를 캘리브레이션 우선 검토 대상으로
 
+## 참고 사례 반영 (2026-07-03 통합됨)
+
+참고: [vinit714/A-Recommendation-system-for-Facial-Skin-Care](https://github.com/vinit714/A-Recommendation-system-for-Facial-Skin-Care-using-Machine-Learning-Models) —
+EfficientNet-B0 전이학습(피부타입 80%/여드름 68%), K-means 피부톤, 코사인 유사도 추천, Flask 서버사이드.
+**라이선스 미명시 → 코드 미사용, 아이디어만 반영.** 서버사이드 추론·CV벡터 유사도 추천·중증도 등급은 우리 불변식(온디바이스·설문 우선 룰베이스·의료 경계)과 충돌해 채택 안 함.
+
+- [x] **아키텍처 베이크오프 준비**: `train_visible_attributes.py --arch {mobilenetv3_small|efficientnet_b0}` — 300+ 게이트 도달 시 두 모델 참가자 그룹 CV로 비교 후 ONNX 승격
+- [x] **K-means 피부톤 기록**: 볼 픽셀 k=3 클러스터 → 지배 톤 CIELAB L*/ITA를 raw feature로 기록(사용자 미표시) — 500+ 게이트의 톤별 서브그룹 평가에 샘플 단위 톤 데이터 확보
+- [x] **ROI 픽셀 트리밍**: 패치 내 휘도 상·하위 10% 제거 후 색/질감 통계(글린트·머리카락 그림자 오염 차단, specular 비율은 원본 유지) — feature 버전 `roi-calibrated-2026-07-03`로 구분
+- [x] **라벨 관찰 필드**: 피드백에 "트러블 흔적 보임"(관찰만, 등급화 금지) → `meta.observations.troubleSeen`
+
 ## 트랙 2 — 캘리브레이션 (크롭 <30에서도 가능)
 
 - [ ] `ml/calibrate.py`로 threshold 보정 — 첫 10~30개 라벨만으로 oil/redness/pores 경계값(0.05/0.16 등) 재조정

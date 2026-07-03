@@ -1021,6 +1021,7 @@ function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads; cropD
   };
   const [stage, setStage] = useState<"ask" | "correcting" | "done">("ask");
   const [labels, setLabels] = useState(init);
+  const [troubleSeen, setTroubleSeen] = useState(false);
   const [count, setCount] = useState(() => labelCount());
   const [cropCount, setCropCount] = useState(() => cropSampleCount());
 
@@ -1037,6 +1038,7 @@ function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads; cropD
               }
             : undefined,
           ungradable: reads.retakeRecommended && source === "confirmed",
+          observations: troubleSeen ? { troubleSeen: true } : undefined,
         }
       : undefined;
     const sample = { ts: Date.now(), features: reads.raw, labels: finalLabels, source, meta };
@@ -1082,6 +1084,18 @@ function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads; cropD
           ))}
           <button onClick={() => commit("corrected", labels)} style={{ ...feedBtn, width: "100%", marginTop: 12, background: "var(--plum)", color: "var(--on-plum)", border: "none" }}>저장</button>
         </>
+      )}
+
+      {stage !== "done" && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={troubleSeen}
+            onChange={(e) => setTroubleSeen(e.target.checked)}
+            style={{ accentColor: "var(--ink)", width: 15, height: 15 }}
+          />
+          <span>트러블 흔적도 보였어요 <span style={{ color: "var(--faint)" }}>선택 · 관찰 기록용</span></span>
+        </label>
       )}
 
       {stage === "done" && (
