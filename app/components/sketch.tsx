@@ -64,18 +64,21 @@ export function Xiaohei({ size = 130, pose = "stand", bob = false }: { size?: nu
       aria-hidden
       style={{ filter: "url(#sketch)", animation: bob ? "gyeol-bob 2.6s ease-in-out infinite" : undefined }}
     >
-      {/* legs + little feet */}
-      <path d="M50 100 L46 122" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M68 100 L72 122" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M42 122 L51 122" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M69 122 L78 122" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
+      {/* stubby legs + little feet — short on purpose, petite reads cuter */}
+      <path d="M50 100 L47 115" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M68 100 L71 115" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M43 115 L51 115" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M68 115 L76 115" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
 
       {/* body — solid black, slightly irregular outline */}
       <path d="M38 58 C34 42 44 34 59 34 C74 34 84 43 81 59 C83 76 77 100 59 100 C40 100 36 76 38 58 Z" fill={ink} />
 
-      {/* eyes — white dots, blank stare */}
-      <circle cx="52" cy="60" r="3.7" fill="#fff" />
-      <circle cx="66" cy="60" r="3.7" fill="#fff" />
+      {/* big round eyes + tiny smile + soft blush */}
+      <circle cx="52" cy="60" r="4.6" fill="#fff" />
+      <circle cx="66" cy="60" r="4.6" fill="#fff" />
+      <path d="M53.5 70 Q59 74.5 64.5 70" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      <circle cx="45" cy="66.5" r="3" fill="rgba(255,152,140,.55)" />
+      <circle cx="73" cy="66.5" r="3" fill="rgba(255,152,140,.55)" />
 
       {pose === "magnify" && (
         <>

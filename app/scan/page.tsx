@@ -627,7 +627,7 @@ export default function Scan() {
             )}
             {phase === "analyzing" && <Scanning step={analysisStep} />}
             {phase === "ready" && countdown !== null && (
-              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
+              <div role="status" aria-live="polite" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
                 <span style={{ fontFamily: "var(--font-hand)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
                 <span style={{ fontFamily: "var(--font-hand)", fontSize: 21, color: "#fff", textShadow: "0 1px 10px rgba(0,0,0,.55)" }}>그대로 계세요</span>
               </div>
@@ -999,6 +999,14 @@ function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
 function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose: () => void }) {
   // Bottom sheet: the scan screen stays a single fixed viewport; tips and
   // consent details live here instead of pushing the camera off-screen.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   return (
     <div
       role="dialog"
