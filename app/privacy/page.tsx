@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clearConsentEvents, CONSENT_VERSION, consentEventCount, exportConsentEvents } from "@/lib/consent";
 import { clearCropSamples, cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { clearLabels, exportLabels, labelCount } from "@/lib/labels";
@@ -9,10 +9,21 @@ import { careIntentCount, clearCareIntents } from "@/lib/store";
 
 export default function PrivacyPage() {
   const [locale, setLocale] = useState<"ko" | "en">("ko");
-  const [labelTotal, setLabelTotal] = useState(() => labelCount());
-  const [cropTotal, setCropTotal] = useState(() => cropSampleCount());
-  const [consentTotal, setConsentTotal] = useState(() => consentEventCount());
-  const [careTotal, setCareTotal] = useState(() => careIntentCount());
+  const [labelTotal, setLabelTotal] = useState(0);
+  const [cropTotal, setCropTotal] = useState(0);
+  const [consentTotal, setConsentTotal] = useState(0);
+  const [careTotal, setCareTotal] = useState(0);
+
+  useEffect(() => {
+    // localStorage counts are client-only; reading them during the first
+    // render caused an SSR hydration mismatch (React #418) once data existed.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setLabelTotal(labelCount());
+    setCropTotal(cropSampleCount());
+    setConsentTotal(consentEventCount());
+    setCareTotal(careIntentCount());
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   const t = (ko: string, en: string) => (locale === "ko" ? ko : en);
 

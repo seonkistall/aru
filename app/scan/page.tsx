@@ -168,9 +168,11 @@ export default function Scan() {
   const [zones, setZones] = useState<GuideZones | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const captureProfile = CAPTURE_PROFILES[captureMode];
-  const staffMode = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return new URLSearchParams(window.location.search).get("staff") === "1";
+  const [staffMode, setStaffMode] = useState(false);
+  useEffect(() => {
+    // URL is client-only context here; reading it during render breaks hydration.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setStaffMode(new URLSearchParams(window.location.search).get("staff") === "1");
   }, []);
 
   const canCapture =

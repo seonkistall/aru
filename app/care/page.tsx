@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink, type CareLocale } from "@/lib/care";
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordCareIntent } from "@/lib/store";
@@ -33,7 +33,18 @@ function loadCareView(): CareView | null {
 
 export default function CarePage() {
   const [locale, setLocale] = useState<CareLocale>("ko");
-  const [view] = useState<CareView | null>(() => loadCareView());
+  const [view, setView] = useState<CareView | null>(null);
+  const [viewLoaded, setViewLoaded] = useState(false);
+
+  useEffect(() => {
+    // sessionStorage is client-only; reading it during the first render caused
+    // an SSR hydration mismatch (React #418), so load after mount instead.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setView(loadCareView());
+    setViewLoaded(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
   const summary = useMemo(() => careSummary(view?.survey ?? null, view?.reads ?? null, view?.result ?? null, locale), [locale, view]);
   const topPicks = view?.result.picks.slice(0, 3) ?? [];
   const clinics = clinicLinks(locale);
@@ -53,6 +64,8 @@ export default function CarePage() {
     });
     window.open(link.href, "_blank", "noopener,noreferrer");
   }
+
+  if (!viewLoaded) return <main className="min-h-screen" style={{ background: "var(--paper)" }} />;
 
   if (!view) {
     return (
