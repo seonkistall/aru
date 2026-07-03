@@ -538,6 +538,20 @@ export default function Scan() {
       });
 
       await advanceStep(4);
+      // Persist immediately so /survey, /report, and /studio all see this scan
+      // even if the user navigates without tapping the recommendation CTA.
+      sessionStorage.setItem(
+        "gyeol_scan",
+        JSON.stringify({
+          oil: final.oil.level,
+          redness: final.redness.level,
+          pores: final.pores.level,
+          confidence: final.confidence,
+          retakeRecommended: final.retakeRecommended,
+          source: final.source,
+        })
+      );
+      sessionStorage.setItem("gyeol_reads", JSON.stringify(final));
       setReads(final);
       stopCamera();
       setPhase("result");
@@ -701,25 +715,14 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
               <button onClick={reset} style={{ ...(reads.retakeRecommended ? primaryBtn : outlineBtn), flex: 1 }}>다시 찍기</button>
               <a
                 href="/survey"
-                onClick={() => {
-                  sessionStorage.setItem(
-                    "gyeol_scan",
-                    JSON.stringify({
-                      oil: reads.oil.level,
-                      redness: reads.redness.level,
-                      pores: reads.pores.level,
-                      confidence: reads.confidence,
-                      retakeRecommended: reads.retakeRecommended,
-                      source: reads.source,
-                    })
-                  );
-                  sessionStorage.setItem("gyeol_reads", JSON.stringify(reads));
-                }}
                 style={{ ...(reads.retakeRecommended ? outlineBtn : primaryBtn), flex: 1, textAlign: "center", textDecoration: "none" }}
               >
                 {reads.retakeRecommended ? "설문으로 이어가기" : "추천 받기"}
               </a>
             </div>
+            <a href="/studio" style={{ display: "block", textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline" }}>
+              결과를 카드로 만들어 공유하기
+            </a>
             {staffMode && <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />}
           </>
         )}

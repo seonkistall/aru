@@ -72,7 +72,7 @@ export default function Studio() {
         <div className="flex justify-center mb-7">
           <div ref={cardRef} style={cardPreview}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: "var(--ink)" }}>K-Beauty</span>
+              <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>아루</span>
               <span style={miniLabel}>skin mood</span>
             </div>
             <h2 style={cardHeadline}>{headline}</h2>
