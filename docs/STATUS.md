@@ -1,50 +1,50 @@
-﻿# ?꾨（ ARU ???묒뾽 ?곹솴 (STATUS)
+# 아루 ARU — 작업 상황 (STATUS)
 
-> 理쒖쥌 ?낅뜲?댄듃: **2026-07-03** 쨌 踰꾩쟾: **v0.4.0 (?꾨줈 ?ㅼ틪 寃쏀뿕)** 쨌 釉뚮옖移? `main`
+> 최종 업데이트: **2026-07-03** · 버전: **v0.4.0 (프로 스캔 경험)** · 브랜치: `main`
 
-## ?쒗뭹 ?뺤껜??(?쇰룞 諛⑹?)
-**??????쇰? 遺꾩꽍 ???붿옣?댟룸（??異붿쿇** ?? 釉뚮옖?쒕챸 **?꾨（(ARU)** = Areumdaum + Routine + U (援?寃?gyeol), 2026-07-03 由щ툕?쒕뵫. GitHub `seonkistall/aru`, ?대? ??`gyeol_*`???좎?).
-???닿쾬? **K酉고떚 ?쇰?遺꾩꽍/異붿쿇** ?쒗뭹?대떎. ?ㅻⅨ ?뚯뀥??諛λ줈洹??ㅻ쑉)怨??쇰룞 湲덉?.
-???좑툘 ?덊룷??Next.js 湲곕컲?댁?留?`AGENTS.md`??"?쒖? Next.js媛 ?꾨떂 ??肄붾뱶 ?묒꽦 ??`node_modules/next/dist/docs/` ?뺤씤" 洹쒖튃??嫄몃젮 ?덉쓬. **肄붾뱶 ?섏젙 ??諛섎뱶??以??**
+## 제품 정체성 (혼동 방지)
+**셀피 → 피부 분석 → 화장품·루틴 추천** 앱. 브랜드명 **아루(ARU)** = Areumdaum + Routine + U (구 결(gyeol), 2026-07-03 리브랜딩. GitHub `seonkistall/aru`, 내부 키 `gyeol_*`는 유지).
+→ 이것은 **K뷰티 피부분석/추천** 제품이다. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
+→ ⚠️ 레포는 Next.js 기반이지만 `AGENTS.md`에 "표준 Next.js가 아님 — 코드 작성 전 `node_modules/next/dist/docs/` 확인" 규칙이 걸려 있음. **코드 수정 시 반드시 준수.**
 
-## ?꾨왂 (office-hours ?ㅺ퀎 APPROVED, 2026-06-28)
-- **?ъ꽦-?곗꽑 援?궡 MVP.**
-- 移대찓???쇰? ?ㅼ틪) = **?뚰깉 ??+ ?륂뤌 諛붿씠??* ?숇젰.
-- 遺곴레??North Star) = **?멸뎅?????K酉고떚 而⑥떆?댁?**.
-- ?ㅺ퀎 doc: `~/.gstack/projects/kbeauty-ai-advisor/`
+## 전략 (office-hours 설계 APPROVED, 2026-06-28)
+- **여성-우선 국내 MVP.**
+- 카메라(피부 스캔) = **렌탈 훅 + 숏폼 바이럴** 동력.
+- 북극성(North Star) = **외국인 대상 K뷰티 컨시어지**.
+- 설계 doc: `~/.gstack/projects/kbeauty-ai-advisor/`
 
-## ?꾩옱 踰꾩쟾 ??v0.2.0 "移대찓???뚯씪???듯빀"
-- **移대찓???뚯씪??ML 猷⑦봽**: ?ㅼ틪 ?덉쭏 寃뚯씠?? ?댁쨷?숈쓽(AI 遺꾩꽍/?숈뒿 ?щ∼ 遺꾨━), 李멸????몄뀡(P001?밣030), `/pilot`쨌`/ops` ?곌뎄 紐⑤뱶, Supabase sync, ?ㅽ봽?쇱씤 ML ?뚯씠?꾨씪??`ml/`)
-- **?ㅼ틪 ?좊ː??猷⑦봽**: confidence/retake ?먮떒 + 紐⑤뜽 ?밴꺽 硫붿빱?덉쬁(manifest + `NEXT_PUBLIC_VISIBLE_ATTR_MODEL` ?뚮옒洹?
-- **而ㅻ㉧???꾩썐留곹겕**: ?ъ쁺/?ㅼ씠踰?荑좏뙜/湲濡쒕쾶, `/api/out` ?대┃ 異붿쟻, `COMMERCE_LINK_OVERRIDES_JSON` ?쒗쑕 ?λ쭅???ㅻ쾭?쇱씠??
-- **?먭렇由?xiaohei) ?꾩씠?댄떚??*: ?쒕갚 + 弱뤻퍚 + ?먭??????뚯씪??UI ?꾩껜 ?곸슜(?좏겙 ?ㅼ솑 + ??由ы룷??耳??罹먮┃??
+## 현재 버전 — v0.2.0 "카메라 파일럿 통합"
+- **카메라 파일럿 ML 루프**: 스캔 품질 게이트, 이중동의(AI 분석/학습 크롭 분리), 참가자 세션(P001–P030), `/pilot`·`/ops` 연구 모드, Supabase sync, 오프라인 ML 파이프라인(`ml/`)
+- **스캔 신뢰도 루프**: confidence/retake 판단 + 모델 승격 메커니즘(manifest + `NEXT_PUBLIC_VISIBLE_ATTR_MODEL` 플래그)
+- **커머스 아웃링크**: 올영/네이버/쿠팡/글로벌, `/api/out` 클릭 추적, `COMMERCE_LINK_OVERRIDES_JSON` 제휴 딥링크 오버라이드
+- **손그림(xiaohei) 아이덴티티**: 순백 + 小黑 + 손글씨 — 파일럿 UI 전체 적용(토큰 스왑 + 홈/리포트/케어 캐릭터)
 
-## 吏湲덇퉴吏 ????(而ㅻ컠 ?대젰)
-1. `寃?gyeol) v0` ??on-device skin scan + recommendation engine + data flywheel (2026-06-28)
-2. 醫낇빀 由ы룷??+ 鍮꾩쟾 ?쇰?遺꾩꽍 (Gemini/OpenAI ?ㅼ쐞泥섎툝) (2026-06-29)
-3. ?먭렇由?由щ뵒?먯씤 ???쒕갚 + 弱뤻퍚 罹먮┃??+ ?먭???(2026-06-29, 援?main)
-4. K-beauty 移대찓???뚯씪??ML ?뚯씠?꾨씪??+ ?곗씠??異붿쟻??媛뺥솕 (2026-06-29, Codex)
-5. ML ?ㅼ틪 ?좊ː??猷⑦봽 (2026-06-30, Codex)
-6. 而ㅻ㉧???꾩썐留곹겕 + ?뚰듃??異붿쟻 (2026-07-02)
-7. main(xiaohei) ??移대찓???뚯씪??**?듯빀 癒몄?**(PR #1, ?뚯씪??UI 湲곗?) + **xiaohei 由ъ뒪????쇱슫??* (2026-07-02)
-8. **?먮룞 珥ъ쁺(3쨌2쨌1) + 3?꾨젅??踰꾩뒪??遺꾩꽍** + ?꾨㈃ 媛먯궗 ?쇱슫???붾젅???듭씪쨌AA ?鍮꽷룸룞?섎Ц援?PIPA 蹂닿컯쨌?깅뒫?쎌뒪) (2026-07-03, PR #2)
-9. **諛깅줈洹??쇱슫??*: MediaPipe VIDEO 紐⑤뱶 + 珥ъ쁺?쒓컙 ?吏곸엫 ?ш퀎??+ Pretendard ??꾪샇?ㅽ똿 + ?꾨씪?대쾭??KO/EN + sketch CTA ?듭씪 (2026-07-03, PR #3)
-10. **?꾨줈 ?ㅼ틪 寃쏀뿕**: ?쒕뱶留덊겕 異붿쟻 ?섑뵆留?議?+ 4?④퀎 遺꾩꽍 ?곗텧 + ?꾩묠/???媛쒖씤??猷⑦떞 + ?뚮줈???ㅽ뀒??+ ?깅뒫 濡쒕뱶留?臾몄꽌 (2026-07-03, PR #4)
-11. **李멸퀬?덊룷 ?듯빀 + ?대━???쇱슫??*: --arch 踰좎씠?ъ삤?꽷텸-means ??湲곕줉쨌ROI ?몃━諛띉룻듃?щ툝 愿李?/ 肄붾꼫釉뚮옒??議는룹뒪罹붾컮 ?뺣났쨌由ы룷????ぉ ?뺤땐(??洹좎씪媛먃톂議?諛섏궗愿뫢룹륫?뺥솚寃?쨌?쒕뵫 ?ъ슜踰?移대뱶쨌?쇰Ц 由ъ꽌移?諛섏쁺 (2026-07-03)
+## 지금까지 한 일 (커밋 이력)
+1. `결(gyeol) v0` — on-device skin scan + recommendation engine + data flywheel (2026-06-28)
+2. 종합 리포트 + 비전 피부분석 (Gemini/OpenAI 스위처블) (2026-06-29)
+3. 손그림 리디자인 — 순백 + 小黑 캐릭터 + 손글씨 (2026-06-29, 구 main)
+4. K-beauty 카메라 파일럿 ML 파이프라인 + 데이터 추적성 강화 (2026-06-29, Codex)
+5. ML 스캔 신뢰도 루프 (2026-06-30, Codex)
+6. 커머스 아웃링크 + 파트너 추적 (2026-07-02)
+7. main(xiaohei) ↔ 카메라 파일럿 **통합 머지**(PR #1, 파일럿 UI 기준) + **xiaohei 리스타일 라운드** (2026-07-02)
+8. **자동 촬영(3·2·1) + 3프레임 버스트 분석** + 전면 감사 라운드(팔레트 통일·AA 대비·동의문구 PIPA 보강·성능픽스) (2026-07-03, PR #2)
+9. **백로그 라운드**: MediaPipe VIDEO 모드 + 촬영순간 움직임 재계산 + Pretendard 셀프호스팅 + 프라이버시 KO/EN + sketch CTA 통일 (2026-07-03, PR #3)
+10. **프로 스캔 경험**: 랜드마크 추적 샘플링 존 + 4단계 분석 연출 + 아침/저녁 개인화 루틴 + 플로우 스테퍼 + 성능 로드맵 문서 (2026-07-03, PR #4)
+11. **참고레포 통합 + 폴리시 라운드**: --arch 베이크오프·K-means 톤 기록·ROI 트리밍·트러블 관찰 / 코너브래킷 존·스캔바 왕복·리포트 항목 확충(톤 균일감·T존 반사광·측정환경)·랜딩 사용법 카드·논문 리서치 반영 (2026-07-03)
 
-## ?곹깭
-- ?ㅽ깮: Next.js 16.2.9 (?섏젙??諛고룷????AGENTS.md 李몄“) + MediaPipe + Supabase
-- 鍮꾩쟾 遺꾩꽍: Gemini/OpenAI ?ㅼ쐞泥섎툝 (API ???놁쑝硫??⑤뵒諛붿씠???대갚)
-- 諛고룷: **Vercel ?쇱씠釉?* https://aru-beauty.vercel.app (?꾨줈?앺듃 `kbeauty-ai-camera`)
-- 寃利?寃뚯씠?? `npm run smoke` (lint + build + py_compile + ?쇱슦??7醫?
-- 釉뚮옖移? `main` (?묒뾽?? `Documents\K-Beauty AI (Camera)`)
+## 상태
+- 스택: Next.js 16.2.9 (수정된 배포판 — AGENTS.md 참조) + MediaPipe + Supabase
+- 비전 분석: Gemini/OpenAI 스위처블 (API 키 없으면 온디바이스 폴백)
+- 배포: **Vercel 라이브** https://aru-beauty.vercel.app (프로젝트 `aru-beauty`)
+- 검증 게이트: `npm run smoke` (lint + build + py_compile + 라우트 7종)
+- 브랜치: `main` (작업장: `Documents\K-Beauty AI (Camera)`)
 
-## ?ㅼ쓬 (Next)
-- **紐⑤컮???ㅺ린湲?QA** ??iPhone Safari / Android Chrome. v0.3 ?먮룞珥ъ쁺 ??대컢쨌xiaohei ?ㅽ궓 ??ぉ ?ы븿 (`docs/mobile-camera-qa.md`)
-- **30紐??뚯씪???곗씠???섏쭛** ??`/pilot` ?몄뀡?쇰줈 ?쇰꺼+?숈쓽 ?щ∼ ?뺣낫 (`docs/pilot-ml-loop.md`)
-- **ML 寃뚯씠??以??*: ?щ∼ <30 罹섎━釉뚮젅?댁뀡留?쨌 100+ dry-run 쨌 300+ MobileNetV3 ?숈뒿 ???댄썑 ONNX ?고????곌껐 (?꾩옱 ?곗씠??0)
-- **BD ?쒗쑕** ???щ━釉뚯쁺/釉뚮옖?쒕ぐ ????`COMMERCE_LINK_OVERRIDES_JSON`?쇰줈 ?λ쭅??援먯껜 (`docs/commerce-partnership-playbook.md`)
-- ?뚰깉 ?????륂뤌 怨듭쑀 猷⑦봽 ?ㅺ퀎 諛섏쁺
+## 다음 (Next)
+- **모바일 실기기 QA** — iPhone Safari / Android Chrome. v0.3 자동촬영 타이밍·xiaohei 스킨 항목 포함 (`docs/mobile-camera-qa.md`)
+- **30명 파일럿 데이터 수집** — `/pilot` 세션으로 라벨+동의 크롭 확보 (`docs/pilot-ml-loop.md`)
+- **ML 게이트 준수**: 크롭 <30 캘리브레이션만 · 100+ dry-run · 300+ MobileNetV3 학습 → 이후 ONNX 런타임 연결 (현재 데이터 0)
+- **BD 제휴** — 올리브영/브랜드몰 딜 후 `COMMERCE_LINK_OVERRIDES_JSON`으로 딥링크 교체 (`docs/commerce-partnership-playbook.md`)
+- 렌탈 훅 → 숏폼 공유 루프 설계 반영
 
-## 愿??臾몄꽌
-`README.md`(?쒗뭹 媛쒖슂) 쨌 `AGENTS.md`(肄붾뱶 ?묒꽦 洹쒖튃) 쨌 `docs/pilot-ml-loop.md` 쨌 `docs/commerce-partnership-playbook.md` 쨌 `docs/mobile-camera-qa.md` 쨌 ?ㅺ퀎 doc `~/.gstack/projects/kbeauty-ai-advisor/`
+## 관련 문서
+`README.md`(제품 개요) · `AGENTS.md`(코드 작성 규칙) · `docs/pilot-ml-loop.md` · `docs/commerce-partnership-playbook.md` · `docs/mobile-camera-qa.md` · 설계 doc `~/.gstack/projects/kbeauty-ai-advisor/`
