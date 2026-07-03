@@ -302,7 +302,7 @@ export default function Scan() {
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    if (qualityTimerRef.current) window.clearInterval(qualityTimerRef.current);
+    if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
   }, []);
 
   const readFrame = useCallback((maxSize = 360) => {
@@ -348,9 +348,7 @@ export default function Scan() {
       // Mobile streams often arrive 9:16/16:9, so raw video coords made
       // "중앙"/"거리" unreachable — the visible-crop center is not the
       // video center there (same cover-crop math as the zone overlay).
-      const videoRatio = video.videoWidth / video.videoHeight;
-      const fx = Math.min(1, FRAME_RATIO / videoRatio);
-      const fy = Math.min(1, videoRatio / FRAME_RATIO);
+      const { fx, fy } = coverCropFractions(video.videoWidth, video.videoHeight);
       const visCenterX = (centerX - (1 - fx) / 2) / fx;
       const visCenterY = (centerY - (1 - fy) / 2) / fy;
       const size = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
@@ -369,8 +367,7 @@ export default function Scan() {
       lastCenterRef.current = { x: centerX, y: centerY, t: now };
       const steady = !last || movement < profile.maxMovement;
 
-      const checks = [true, centered, distance, brightness, noGlare, steady];
-      const score = checks.filter(Boolean).length;
+      const score = 1 + (centered ? 1 : 0) + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0);
       const message = !centered
         ? "얼굴 중심을 세로선에 맞춰주세요."
         : !distance
@@ -401,10 +398,25 @@ export default function Scan() {
       .then((landmarker) => {
         if (!mounted) return;
         setGuideState("ready");
-        qualityTimerRef.current = window.setInterval(() => {
-          if (document.hidden) return;
-          void measureQuality(landmarker);
-        }, 650);
+        // Self-scheduling instead of setInterval: waits for each measureQuality
+        // to finish (no overlap) and paces adaptively — on a slow CPU-delegate
+        // phone the next tick is 1.5x the last duration (650-1500ms) so the main
+        // thread stays free to paint the preview + 3-2-1 countdown. Desktop ticks
+        // finish in a few ms, so it stays at the 650ms baseline.
+        const tick = () => {
+          if (!mounted) return;
+          if (document.hidden) {
+            qualityTimerRef.current = window.setTimeout(tick, 650);
+            return;
+          }
+          const started = performance.now();
+          void measureQuality(landmarker).finally(() => {
+            if (!mounted) return;
+            const delay = Math.max(650, Math.min(1500, Math.round((performance.now() - started) * 1.5)));
+            qualityTimerRef.current = window.setTimeout(tick, delay);
+          });
+        };
+        qualityTimerRef.current = window.setTimeout(tick, 0);
       })
       .catch(() => {
         if (!mounted) return;
@@ -415,7 +427,7 @@ export default function Scan() {
       });
     return () => {
       mounted = false;
-      if (qualityTimerRef.current) window.clearInterval(qualityTimerRef.current);
+      if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
       passStreakRef.current = 0;
       setCountdownSafe(null);
     };
@@ -935,6 +947,14 @@ function TrackedZone({ label, rect, locked }: { label: string; rect: ZoneRect; l
 // first, then mirrored to match the CSS-mirrored preview.
 const FRAME_RATIO = 3 / 4;
 
+// Visible fraction of a stream shown with object-fit:cover inside the 3:4
+// frame. Shared by the live gate, capture verification, and the zone overlay
+// so the three stay in lockstep.
+function coverCropFractions(width: number, height: number): { fx: number; fy: number } {
+  const ratio = width > 0 && height > 0 ? width / height : FRAME_RATIO;
+  return { fx: Math.min(1, FRAME_RATIO / ratio), fy: Math.min(1, ratio / FRAME_RATIO) };
+}
+
 type GuidePoint = { x: number; y: number };
 
 function zoneFromPoints(points: GuidePoint[], padX: number, padY: number): ZoneRect | null {
@@ -958,9 +978,7 @@ function zoneFromPoints(points: GuidePoint[], padX: number, padY: number): ZoneR
 }
 
 function computeGuideZones(landmarks: Landmark[], videoWidth: number, videoHeight: number): GuideZones | null {
-  const videoRatio = videoWidth > 0 && videoHeight > 0 ? videoWidth / videoHeight : FRAME_RATIO;
-  const fx = Math.min(1, FRAME_RATIO / videoRatio);
-  const fy = Math.min(1, videoRatio / FRAME_RATIO);
+  const { fx, fy } = coverCropFractions(videoWidth, videoHeight);
   const mapPoint = (lm: Landmark): GuidePoint => ({ x: (lm.x - (1 - fx) / 2) / fx, y: (lm.y - (1 - fy) / 2) / fy });
   const pointsFor = (indices: number[]) =>
     indices
@@ -1319,15 +1337,19 @@ function Scanning({ step }: { step: number }) {
 }
 
 function faceBox(landmarks: Landmark[]) {
-  return landmarks.reduce(
-    (acc, p) => ({
-      minX: Math.min(acc.minX, p.x),
-      minY: Math.min(acc.minY, p.y),
-      maxX: Math.max(acc.maxX, p.x),
-      maxY: Math.max(acc.maxY, p.y),
-    }),
-    { minX: 1, minY: 1, maxX: 0, maxY: 0 }
-  );
+  // Plain loop, not reduce — this runs on every quality tick and 4x per
+  // capture over ~478 landmarks; reduce allocated a throwaway object per point.
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const p of landmarks) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], profile: CaptureProfile, previousSteady: boolean): Quality {
@@ -1335,9 +1357,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const centerX = (box.minX + box.maxX) / 2;
   const centerY = (box.minY + box.maxY) / 2;
   // Same visible-crop mapping as the live gate (mobile streams are rarely 3:4).
-  const videoRatio = imageData.width / imageData.height;
-  const fx = Math.min(1, FRAME_RATIO / videoRatio);
-  const fy = Math.min(1, videoRatio / FRAME_RATIO);
+  const { fx, fy } = coverCropFractions(imageData.width, imageData.height);
   const centerOffsetX = (centerX - (1 - fx) / 2) / fx - 0.5;
   const centerOffsetY = (centerY - (1 - fy) / 2) / fy - 0.48;
   const faceSize = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
@@ -1358,8 +1378,6 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
           : !steady
             ? "movement"
             : undefined;
-  const checks = [true, centered, distance, brightness, noGlare, steady];
-
   return {
     face: true,
     centered,
@@ -1367,7 +1385,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     brightness,
     noGlare,
     steady,
-    score: checks.filter(Boolean).length,
+    score: 1 + (centered ? 1 : 0) + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0),
     message: rejectReason ? "촬영 품질을 다시 맞춰주세요." : "촬영 품질이 확인됐어요.",
     centerOffsetX,
     centerOffsetY,
