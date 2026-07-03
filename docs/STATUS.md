@@ -1,6 +1,6 @@
 # 아루 ARU — 작업 상황 (STATUS)
 
-> 최종 업데이트: **2026-07-03** · 버전: **v0.4.0 (프로 스캔 경험)** · 브랜치: `main`
+> 최종 업데이트: **2026-07-03** · 버전: **v0.4.3** · 브랜치: `main` · 도식: [`architecture.md`](architecture.md)
 
 ## 제품 정체성 (혼동 방지)
 **셀피 → 피부 분석 → 화장품·루틴 추천** 앱. 브랜드명 **아루(ARU)** = Areumdaum + Routine + U (구 결(gyeol), 2026-07-03 리브랜딩. GitHub `seonkistall/aru`, 내부 키 `gyeol_*`는 유지).

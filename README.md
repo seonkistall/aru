@@ -3,7 +3,7 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v0.4.0 (프로 스캔 경험)** · 최종 업데이트 2026-07-03 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md)
+> **버전 v0.4.3** · 최종 업데이트 2026-07-03 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
@@ -19,13 +19,29 @@
 - **북극성:** 외국인 대상 **K뷰티 컨시어지**.
 - 설계 문서: `~/.gstack/projects/aru/`
 
-## 현재 버전 — v0.2.0 "카메라 파일럿 통합"
-- **카메라 파일럿 ML 루프** — 스캔 품질 게이트 + 이중동의(AI 분석/학습 크롭) + 참가자 세션(P001–P030) + `/ops` 대시보드 + Supabase sync + 오프라인 ML 파이프라인(`ml/`, MobileNetV3 목표)
-- **ML 스캔 신뢰도 루프** — confidence/retake 판단, 모델 승격 메커니즘(`public/models/visible-attributes/manifest.json` + 피처 플래그)
-- **커머스 아웃링크** — 올리브영/네이버/쿠팡/글로벌 검색 연결, `/api/out` 클릭 추적(UTM), 제휴 딥링크 오버라이드(`COMMERCE_LINK_OVERRIDES_JSON`)
-- **손그림(xiaohei) 아이덴티티** — 순백 배경 + 小黑 캐릭터 + 손글씨 톤 (파일럿 UI 전체에 적용)
+## 현재 버전 — v0.4.3
+- **카메라**: 자동촬영(품질 2틱 연속 통과 → 3·2·1) · 랜드마크 추적 샘플링 존(잠금 표시) · 3프레임 버스트 median 분석 + 프레임 합의도 · 4단계 분석 연출
+- **개인화**: 아침/저녁 루틴(단계별 근거·주기) · 확장 판독(톤 균일감·T존 반사광·측정환경) · 신뢰도/재촬영 판단
+- **커머스**: 올리브영/네이버/쿠팡 아웃링크(`/api/out` 클릭 추적, 파트너 딥링크 오버라이드) · 공유 카드(Web Share → 카톡)
+- **연구/데이터**: 이중동의 + 파일럿 세션 + `/ops` Supabase 동기화(가동) + `/eval` 골든셋 회귀 하네스 + 오프라인 ML 파이프라인(`--arch` 베이크오프 준비)
+- **아이덴티티**: 아루(ARU) 손그림(xiaohei) — 순백·小黑·손글씨, iOS/Android 홈화면 설치 지원
 
 ## 버전 이력
+- **v0.4.3** (2026-07-03)
+  - **`/eval` 골든셋 회귀 하네스**: 고정 이미지 세트를 브라우저 안에서 현재 파이프라인으로 재판독(업로드 없음), 베이스라인 JSONL과 레벨 diff·변화 건수 표시, 이번 실행을 다음 베이스라인으로 내보내기 — 특징/임계값 변경의 개선/퇴행을 수치로 판정
+  - **공유 카드 실전화**: `/studio`가 프리셋 대신 오늘 스캔 결과를 자동 프리필, **Web Share API**(OS 공유시트 → 카톡 원탭) + PNG 저장 폴백, 파일명 `aru-skin-card.png`, alert() → 인라인 오류
+  - **iOS 홈화면 아이콘**(`apple-icon.png` 180px 小黑 얼굴), 스캔 상단 라벨 K-Beauty → ARU 스윕, 스모크에 `/eval` 라우트 추가
+- **v0.4.2** (2026-07-03)
+  - **모바일 아이덴티티**: viewport(테마 화이트) + 웹 매니페스트(standalone "아루") + 小黑 SVG 파비콘 — 홈화면 설치 지원
+  - **바이럴 훅 연결**: 고아 페이지였던 `/studio`를 스캔 결과·리포트에서 진입 가능하게, 공유 카드의 옛 브랜드(K-Beauty) 제거
+  - **데이터 플로우 픽스**: 스캔 결과를 분석 완료 즉시 세션에 저장(CTA 클릭 시에만 저장하던 유실 경로 제거)
+  - 라이브 콘솔 전수 점검: 소비자 페이지 에러 0건 (히드레이션 픽스 프로덕션 검증)
+- **v0.4.1** (2026-07-03)
+  - **스캔 연출 폴리시**: 추적 존을 카메라 포커스식 코너 브래킷으로(잠금 시에만 필), 윤곽 도트 축소, 분석 카드 딤+진행 헤어라인
+  - **스캔바 왕복**: 위→아래→위 1.1초 사이클 × 단계 페이싱 825ms×4 = 정확히 3회 완주 후 결과
+  - **리포트 판독 확충**: 톤 균일감·T존 반사광(관찰형) + 측정 환경(조명/반사/영역) 섹션 — 스캔 카드·리포트 동시
+  - **랜딩 고도화**: 손그림 사용법 카드 3장(小黑 포즈) + 스테퍼에 아루 워드마크 홈링크
+  - React #418 히드레이션 버그 5곳 수정(report/care/privacy/pilot/scan), 체크인 회차 잠금 버그 수정, 논문·데이터셋 리서치(SCIN 라이선스 확정 등) 로드맵 반영
 - **v0.4.0** (2026-07-03)
   - **랜드마크 추적 가이드**: T존·양볼 샘플링 존이 실제 측정 랜드마크를 따라 얼굴에 잠금(✓) + 얼굴 윤곽 추적 도트 (미러링 보정)
   - **4단계 분석 연출**: 프레임 정합→신호 추출→판정→교차 검증, 단계당 최소 800ms 페이싱 + 결과 행 스태거 리빌
@@ -63,8 +79,10 @@ npm run smoke      # lint + build + ML 스크립트 컴파일 + 라우트 검증
 비전 피부분석에는 Gemini 또는 OpenAI API 키가 필요하다(스위처블, 없으면 온디바이스 폴백).
 
 ## 관련 문서
+- [`docs/architecture.md`](docs/architecture.md) — **작동 원리 도식** (전체 구성·카메라 파이프라인·분석 엔진·데이터/동의·추천/커머스, Mermaid)
 - [`docs/STATUS.md`](docs/STATUS.md) — 작업 상황 / 다음 할 일
 - [`AGENTS.md`](AGENTS.md) — 코드 작성 규칙 · 아키텍처 · 함정
+- [`docs/analysis-performance-roadmap.md`](docs/analysis-performance-roadmap.md) — 분석 성능 로드맵 · [`docs/golden-set.md`](docs/golden-set.md) — 회귀 프로토콜
 - [`docs/pilot-ml-loop.md`](docs/pilot-ml-loop.md) — 30명 파일럿 운영 런북
 - [`docs/commerce-partnership-playbook.md`](docs/commerce-partnership-playbook.md) — 제휴/BM 플레이북
 - [`docs/mobile-camera-qa.md`](docs/mobile-camera-qa.md) — 모바일 카메라 QA 체크리스트
