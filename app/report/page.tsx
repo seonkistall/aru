@@ -98,7 +98,7 @@ export default function Report() {
     };
   }, [loaded, initial, router]);
 
-  if (!initial || !result) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
+  if (!initial || !result) return <main style={{ minHeight: "100dvh", background: "var(--paper)" }} />;
 
   const { survey, reads } = initial;
   const top = result.picks[0];
@@ -117,7 +117,7 @@ export default function Report() {
     : [];
 
   return (
-    <main className="min-h-screen px-5 pt-9" style={{ background: "var(--paper)", paddingBottom: 112 }}>
+    <main className="px-5 pt-9" style={{ background: "var(--paper)", minHeight: "100dvh", paddingBottom: 112 }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
