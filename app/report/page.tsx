@@ -49,10 +49,23 @@ function loadInitialView(): InitialView | null {
 
 export default function Report() {
   const router = useRouter();
-  const [initial] = useState<InitialView | null>(() => loadInitialView());
-  const [result, setResult] = useState<RecoResult | null>(() => initial?.result ?? null);
+  const [initial, setInitial] = useState<InitialView | null>(null);
+  const [result, setResult] = useState<RecoResult | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // sessionStorage is client-only; reading it during the first render caused
+    // an SSR hydration mismatch (React #418), so load after mount instead.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const next = loadInitialView();
+    setInitial(next);
+    setResult(next?.result ?? null);
+    setLoaded(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
     if (!initial) {
       router.replace("/survey");
       return;
@@ -83,7 +96,7 @@ export default function Report() {
     return () => {
       cancelled = true;
     };
-  }, [initial, router]);
+  }, [loaded, initial, router]);
 
   if (!initial || !result) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
 

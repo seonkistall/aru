@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   PILOT_PARTICIPANT_IDS,
   clearPilotNotes,
@@ -35,7 +35,14 @@ export default function PilotPage() {
   const [consentCrop, setConsentCrop] = useState(false);
   const [excludedReason, setExcludedReason] = useState("");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState(() => getPilotNotes());
+  const [rows, setRows] = useState<ReturnType<typeof getPilotNotes>>([]);
+
+  useEffect(() => {
+    // localStorage is client-only; reading it during the first render caused
+    // an SSR hydration mismatch (React #418) once notes existed.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setRows(getPilotNotes());
+  }, []);
 
   const participantId = normalizeParticipantId(participant);
   const validParticipant = isPilotParticipantId(participantId);
