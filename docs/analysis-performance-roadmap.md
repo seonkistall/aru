@@ -31,6 +31,14 @@ EfficientNet-B0 전이학습(피부타입 80%/여드름 68%), K-means 피부톤,
 - [x] **ROI 픽셀 트리밍**: 패치 내 휘도 상·하위 10% 제거 후 색/질감 통계(글린트·머리카락 그림자 오염 차단, specular 비율은 원본 유지) — feature 버전 `roi-calibrated-2026-07-03`로 구분
 - [x] **라벨 관찰 필드**: 피드백에 "트러블 흔적 보임"(관찰만, 등급화 금지) → `meta.observations.troubleSeen`
 
+## 논문·데이터셋 리서치 (2026-07-03)
+
+- **사전학습 부트스트랩**: [SCIN (Google, 10k+ 동의 기반 실사용 피부 이미지, Fitzpatrick/Monk 톤 라벨 포함)](https://github.com/google-research-datasets/scin) — 백본을 피부 도메인에 적응시킨 뒤 우리 크롭으로 파인튜닝하면 300+ 게이트에서 더 적은 데이터로 성능 도달 가능성. 사용 전 라이선스 조건 확인 필수.
+- **톤 공정성 프로토콜**: [Fitzpatrick17k](https://www.emergentmind.com/topics/fitzpatrick-17k-dataset) 기준 척도 + 우리가 기록 중인 toneIta로 500+ 게이트 서브그룹 평가 구체화. 편차 발견 시 [FairDisCo(disentanglement contrastive)](https://arxiv.org/pdf/2208.10013) 계열 기법 참고.
+- **속성 grade 고도화 경로**: [JOCD 2024 (Lee) — U-Net으로 붉은기 등 grade 추정+세그멘테이션 동시 수행](https://onlinelibrary.wiley.com/doi/10.1111/jocd.16218) — 장기적으로 ROI 통계 → 픽셀 세그멘테이션 기반 grade로 업그레이드하는 경로의 근거.
+- **트러블 관찰 근거**: [selfie 기반 여드름 중증도 평가 (arXiv:1907.07901)](https://arxiv.org/abs/1907.07901) — 셀피에서 트러블 신호 추정이 성립함을 확인. 우리는 관찰 라벨(troubleSeen)까지만, 등급화는 의료 경계로 금지 유지.
+- **수분/TEWL 추정**: [selfie 기반 hydration/TEWL 추정 (arXiv:2509.06282)](https://arxiv.org/pdf/2509.06282) — 기술적으로 가능해지고 있으나 정량 수치 표시는 불변식상 금지. 내부 보조 신호로만 장기 검토.
+
 ## 트랙 2 — 캘리브레이션 (크롭 <30에서도 가능)
 
 - [ ] `ml/calibrate.py`로 threshold 보정 — 첫 10~30개 라벨만으로 oil/redness/pores 경계값(0.05/0.16 등) 재조정

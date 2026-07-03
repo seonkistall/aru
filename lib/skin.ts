@@ -38,6 +38,8 @@ export type BurstInfo = {
   agreement: Record<SkinAttr, number>;
 };
 
+export type SkinExtraRead = { label: string; value: string; calm: boolean; note: string };
+
 export type SkinReads = {
   oil: Bucket;
   pores: Bucket;
@@ -53,6 +55,7 @@ export type SkinReads = {
   source: AnalysisSource;
   raw: SkinRawFeatures;
   burst?: BurstInfo;
+  extras?: SkinExtraRead[];
 };
 
 export type MlVisiblePrediction = {
@@ -368,6 +371,26 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
   const retakeReasons = signals.filter((signal) => !signal.ok).map((signal) => signal.detail);
   if (burst && meanAgreement < 0.67) retakeReasons.push("촬영 프레임 사이에 신호가 조금 흔들렸어요");
 
+  // Extra visible reads (observational only — no quantities, no claims).
+  const toneDiff = Math.abs(raw.tzoneL - raw.cheekL) / Math.max(1, raw.cheekL);
+  const toneEven: SkinExtraRead =
+    toneDiff < 0.06
+      ? { label: "톤 균일감", value: "고르게 보여요", calm: true, note: "이마와 볼 밝기가 비슷하게 읽혔어요." }
+      : toneDiff < 0.13
+        ? {
+            label: "톤 균일감",
+            value: "약간 차이",
+            calm: false,
+            note: raw.tzoneL > raw.cheekL ? "T존이 볼보다 조금 밝게 읽혔어요." : "볼이 T존보다 조금 밝게 읽혔어요.",
+          }
+        : { label: "톤 균일감", value: "차이 보임", calm: false, note: "부위별 밝기 차이가 커요. 조명 영향일 수도 있어요." };
+  const gloss: SkinExtraRead =
+    raw.tzoneSpecular < 0.04
+      ? { label: "T존 반사광", value: "낮음", calm: true, note: "이마 번들거림 반사가 크지 않아요." }
+      : raw.tzoneSpecular < 0.1
+        ? { label: "T존 반사광", value: "보통", calm: true, note: "이마에 옅은 반사가 보여요." }
+        : { label: "T존 반사광", value: "높음", calm: false, note: "이마 반사가 강해요. 유분 또는 조명 영향이에요." };
+
   const concerns = [merged.oil, merged.redness, merged.pores].filter((b) => b.level > 0).length;
   const overall: Bucket =
     confidence < 0.58
@@ -391,6 +414,7 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
     source: ml ? "ml-model" : "roi-calibrated",
     raw,
     burst,
+    extras: [toneEven, gloss],
   };
 }
 

@@ -93,11 +93,14 @@ export default function Report() {
   const concernText = survey.concerns.slice(0, 2).join("·") || `${survey.type} 피부`;
   const analysisRows = reads
     ? ([
-        ["유분", reads.oil, explain("oil", reads.oil.value)],
-        ["모공/결", reads.pores, explain("pores", reads.pores.value)],
-        ["붉은기", reads.redness, explain("redness", reads.redness.value)],
-        ["전반", reads.overall, ""],
-      ] as const)
+        ["유분", reads.oil, explain("oil", reads.oil.value)] as [string, { value: string; calm?: boolean }, string],
+        ["모공/결", reads.pores, explain("pores", reads.pores.value)] as [string, { value: string; calm?: boolean }, string],
+        ["붉은기", reads.redness, explain("redness", reads.redness.value)] as [string, { value: string; calm?: boolean }, string],
+        ["전반", reads.overall, ""] as [string, { value: string; calm?: boolean }, string],
+        ...(reads.extras ?? []).map(
+          (extra) => [extra.label, { value: extra.value, calm: extra.calm }, extra.note] as [string, { value: string; calm?: boolean }, string]
+        ),
+      ])
     : [];
 
   return (

@@ -16,6 +16,10 @@ export function FlowSteps({ current }: { current: FlowKey }) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
   return (
     <nav aria-label="진행 단계" style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
+      <Link href="/" aria-label="홈으로" style={{ fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
+        결
+      </Link>
+      <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", marginRight: 2 }} />
       {STEPS.map((step, index) => {
         const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "next";
         const label = (

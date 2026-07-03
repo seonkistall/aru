@@ -60,7 +60,31 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="px-6" style={{ paddingBottom: 32 }}>
+      <section className="px-6" style={{ paddingBottom: 6 }}>
+        <p style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>이렇게 진행돼요</p>
+        <div style={{ display: "grid", gap: 10 }}>
+          <HowCard
+            index={1}
+            pose="magnify"
+            title="30초 피부 스캔"
+            body="가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 자동으로 찍혀요. 기본 스캔은 기기 안에서만 처리돼요."
+          />
+          <HowCard
+            index={2}
+            pose="funnel"
+            title="보이는 신호만 정직하게"
+            body="유분·붉은기·결처럼 눈에 보이는 신호를 여러 프레임으로 읽고, 신뢰도가 낮으면 다시 찍자고 말해줘요."
+          />
+          <HowCard
+            index={3}
+            pose="carry"
+            title="아침·저녁 루틴과 제품"
+            body="스캔과 설문을 함께 보고, 과장 없는 이유와 함께 딱 맞는 셋과 루틴을 골라드려요."
+          />
+        </div>
+      </section>
+
+      <div className="px-6" style={{ paddingBottom: 32, paddingTop: 18 }}>
         <Link href="/scan" style={{ display: "block", textDecoration: "none" }}>
           <div style={{ position: "relative", padding: "17px 16px" }}>
             <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
@@ -75,5 +99,25 @@ export default function Home() {
         </p>
       </div>
     </main>
+  );
+}
+
+function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" | "funnel" | "carry"; title: string; body: string }) {
+  return (
+    <Link href="/scan" style={{ display: "block", textDecoration: "none" }}>
+      <div style={{ position: "relative", padding: "13px 14px" }}>
+        <div style={{ position: "absolute", inset: 0, border: "1.8px solid var(--ink)", borderRadius: 4, filter: "url(#sketch-soft)" }} aria-hidden />
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontFamily: "var(--font-hand)", fontSize: 26, color: "var(--orange)", width: 18, textAlign: "center", flexShrink: 0 }}>{index}</span>
+          <span style={{ flexShrink: 0, marginLeft: -6 }}>
+            <Xiaohei size={46} pose={pose} />
+          </span>
+          <span style={{ textAlign: "left" }}>
+            <span style={{ display: "block", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</span>
+            <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
+          </span>
+        </div>
+      </div>
+    </Link>
   );
 }
