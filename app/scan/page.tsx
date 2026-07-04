@@ -168,6 +168,7 @@ export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
+  const forceCpuRef = useRef(false);
   const lastCenterRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const qualityTimerRef = useRef<number | null>(null);
   const procCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -321,6 +322,12 @@ export default function Scan() {
         runningMode: "VIDEO",
         numFaces: 1,
       });
+    if (forceCpuRef.current) {
+      // A prior GPU run emitted corrupt (non-normalized) landmarks on this
+      // device — CPU delegate is slower but always correct.
+      landmarkerRef.current = await create("CPU");
+      return landmarkerRef.current;
+    }
     try {
       landmarkerRef.current = await create("GPU");
     } catch {
@@ -372,6 +379,23 @@ export default function Scan() {
       if (!frame) return;
 
       const box = faceBox(face);
+
+      // Self-heal: some mobile GPU delegates (seen on Samsung) emit corrupt,
+      // non-normalized landmarks (values ~1e34). A real normalized box is
+      // within [0,1]; anything wild means the GPU output is garbage — switch
+      // to the CPU delegate once and reload. This also un-breaks the tracked
+      // sampling zones, which need valid landmarks.
+      if (!forceCpuRef.current && (!Number.isFinite(box.maxX) || box.maxX > 1.5 || box.minX < -0.5 || box.maxY > 1.5 || box.minY < -0.5)) {
+        forceCpuRef.current = true;
+        landmarkerRef.current?.close?.();
+        landmarkerRef.current = null;
+        if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
+        handleAutoTick(false);
+        setGuideState("loading");
+        setGuideAttempt((n) => n + 1);
+        return;
+      }
+
       const centerX = (box.minX + box.maxX) / 2;
       const centerY = (box.minY + box.maxY) / 2;
       const profile = CAPTURE_PROFILES[captureMode];
@@ -419,6 +443,7 @@ export default function Scan() {
       setZones(computeGuideZones(face, video.videoWidth, video.videoHeight));
       if (debugRef.current) {
         setDebugInfo({
+          "delegate": forceCpuRef.current ? "CPU" : "GPU",
           "video": `${video.videoWidth}x${video.videoHeight}`,
           "ratio": Number((video.videoWidth / video.videoHeight).toFixed(3)),
           "fx/fy": `${fx.toFixed(2)}/${fy.toFixed(2)}`,
