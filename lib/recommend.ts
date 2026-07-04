@@ -1,4 +1,5 @@
-import { SKUS, type Avoid, type Category, type Concern, type SkinType, type Sku } from "./skus";
+import { CONCERN_ROLES, SKUS, type Avoid, type Category, type Concern, type SkinType, type Sku } from "./skus";
+import { INGREDIENTS } from "./ingredients";
 
 export type Survey = {
   type: SkinType;
@@ -7,6 +8,11 @@ export type Survey = {
   avoid: Avoid[];
   category: Category;
 };
+
+// An ingredient tag surfaced on the card: the ingredient and why it's here
+// (which of the user's concerns its role addresses), so the match reads as
+// "chosen for you", not generic. `forConcern` is undefined for a base benefit.
+export type IngredientTag = { name: string; role: string; forConcern?: Concern };
 
 export type ScanReads = {
   oil: number;
@@ -22,6 +28,8 @@ export type Recommendation = {
   toneLabel: string;
   reason: string;
   matchedIngredients: string[];
+  matchedConcerns: Concern[];
+  ingredientTags: IngredientTag[];
   avoidedClear: boolean;
   watchOut?: string;
 };
@@ -90,13 +98,40 @@ function effectiveConcerns(survey: Survey, scan: ScanReads): Concern[] {
   return [...set];
 }
 
+function skuRoles(sku: Sku): Set<string> {
+  const set = new Set<string>();
+  for (const key of sku.ingredientKeys) for (const role of INGREDIENTS[key]?.roles ?? []) set.add(role);
+  return set;
+}
+
 function scoreSku(sku: Sku, survey: Survey, concerns: Concern[]): number {
   let score = 0;
   if (sku.forTypes.includes(survey.type)) score += 3;
-  for (const concern of concerns) if (sku.concerns.includes(concern)) score += 2;
+  const roles = skuRoles(sku);
+  for (const concern of concerns) {
+    if (sku.concerns.includes(concern)) score += 2;
+    // Ingredient-aware: reward products whose ACTUAL ingredients carry a role
+    // that addresses the concern — this is what makes the pick feel deliberate.
+    if (CONCERN_ROLES[concern]?.some((role) => roles.has(role))) score += 1.2;
+  }
   if (survey.avoid.every((avoid) => sku.freeOf.includes(avoid))) score += 1.5;
   if (sku.category === survey.category) score += 2;
+  if (sku.rating) score += (sku.rating - 4) * 0.6; // gentle popularity tiebreak
   return score;
+}
+
+// Up to 3 key-ingredient tags, prioritising ingredients whose role addresses one
+// of the user's concerns (so the tag reads "여기 있는 이유").
+function ingredientTagsFor(sku: Sku, concerns: Concern[]): IngredientTag[] {
+  const tags: IngredientTag[] = [];
+  for (const key of sku.ingredientKeys) {
+    const ing = INGREDIENTS[key];
+    if (!ing) continue;
+    const hitConcern = concerns.find((concern) => CONCERN_ROLES[concern]?.some((role) => ing.roles.includes(role as never)));
+    tags.push({ name: ing.name, role: ing.roles[0] ?? "", forConcern: hitConcern });
+  }
+  // Concern-matching tags first, then the rest; cap at 3.
+  return tags.sort((a, b) => Number(Boolean(b.forConcern)) - Number(Boolean(a.forConcern))).slice(0, 3);
 }
 
 // Survey stores 15000/25000/35000/60000 for the chips 1/2/3만원대·4만원 이상 —
@@ -124,6 +159,8 @@ function toRec(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boole
     toneLabel: TONE_LABEL[sku.tone],
     reason: reasonFor(sku, survey, concerns, scanApplied, avoidedClear),
     matchedIngredients: sku.keyIngredients.slice(0, 2),
+    matchedConcerns: concerns.filter((concern) => sku.concerns.includes(concern)),
+    ingredientTags: ingredientTagsFor(sku, concerns),
     avoidedClear,
     watchOut: avoidedClear ? undefined : "선택한 제외 성분 조건을 모두 만족하지 않을 수 있어요. 구매 전 전성분을 확인해 주세요.",
   };

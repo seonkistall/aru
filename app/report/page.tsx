@@ -8,6 +8,8 @@ import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanRea
 import { recordFunnelEvent } from "@/lib/funnel";
 import { loadLastResult, saveLastResult } from "@/lib/last-result";
 import { recordPurchase } from "@/lib/store";
+import { ProductCard } from "@/app/components/product-card";
+import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
@@ -26,6 +28,35 @@ function explain(attr: "oil" | "pores" | "redness", value: string): string {
     "redness:붉은기 뚜렷": "볼 쪽 붉은기가 눈에 띄는 편이에요.",
   };
   return messages[`${attr}:${value}`] ?? "";
+}
+
+function scanSignalText(reads: SkinReads): string {
+  const parts: string[] = [];
+  if (reads.oil.level >= 1) parts.push("T존 유분");
+  if (reads.redness.level >= 1) parts.push("볼 붉은기");
+  if (reads.pores.level >= 1) parts.push("모공·결");
+  return parts.length ? parts.join("·") : "전반적으로 안정적인";
+}
+
+function Block({ h, w = "100%", r = 8, mt = 0 }: { h: number; w?: number | string; r?: number; mt?: number }) {
+  return <div style={{ height: h, width: w, borderRadius: r, background: "var(--surface-tint)", marginTop: mt }} />;
+}
+
+function ReportSkeleton() {
+  return (
+    <main className="px-5 pt-9" style={{ background: "var(--paper)", minHeight: "100dvh" }}>
+      <div className="mx-auto" style={{ maxWidth: 420, opacity: 0.7 }}>
+        <Block h={12} w={80} />
+        <Block h={34} w="85%" mt={14} />
+        <Block h={16} w="60%" mt={12} />
+        <Block h={92} r={12} mt={22} />
+        <Block h={150} r={8} mt={22} />
+        <Block h={120} r={8} mt={22} />
+        <Block h={88} r={12} mt={22} />
+        <Block h={88} r={12} mt={12} />
+      </div>
+    </main>
+  );
 }
 
 type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
@@ -115,6 +146,7 @@ export default function Report() {
     };
   }, [loaded, initial, router]);
 
+  if (!loaded) return <ReportSkeleton />;
   if (!initial || !result) return <main style={{ minHeight: "100dvh", background: "var(--paper)" }} />;
 
   const { survey, reads } = initial;
@@ -148,10 +180,17 @@ export default function Report() {
         {reads?.narrative && <p style={narrativeStyle}>{reads.narrative}</p>}
         {reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
 
+        <ScanHistoryStrip />
+
         {reads && (
           <section style={card}>
             <p style={sectionLabel}>피부 분석</p>
-            <div style={{ borderTop: "1px solid var(--line)", marginTop: 10 }}>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+              {result.scanApplied
+                ? "촬영한 사진의 T존·양볼 신호를 설문 답변과 함께 읽었어요. 아래는 당신의 스캔 결과예요."
+                : "촬영 신뢰도가 낮아 스캔은 참고만 하고, 설문 답변을 중심으로 정리했어요."}
+            </p>
+            <div style={{ borderTop: "1px solid var(--line)", marginTop: 12 }}>
               {analysisRows.map(([label, read, note]) => (
                 <div key={label} style={{ padding: "13px 0", borderBottom: "1px solid var(--line)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -170,14 +209,23 @@ export default function Report() {
           <p style={sectionLabel}>추천 기준</p>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
             {survey.type} 피부, {concernText} 고민, {budgetLabel(survey.budget)} 예산에 맞춰 {survey.category}를 골랐어요.
+            {result.scanApplied && reads ? ` 스캔에서 보인 ${scanSignalText(reads)} 신호도 함께 반영했어요.` : ""}
           </p>
+          {survey.avoid.length > 0 && (
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>제외 요청: {survey.avoid.join(" · ")}</p>
+          )}
         </section>
 
-        <section style={card}>
-          <p style={sectionLabel}>오늘의 루틴</p>
-          <RoutineHalf label="아침" steps={result.routine.am} />
-          <RoutineHalf label="저녁" steps={result.routine.pm} />
-        </section>
+        <details open style={card}>
+          <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+            <span style={sectionLabel}>오늘의 루틴</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>아침 {result.routine.am.length} · 저녁 {result.routine.pm.length}단계</span>
+          </summary>
+          <div style={{ marginTop: 6 }}>
+            <RoutineHalf label="아침" steps={result.routine.am} />
+            <RoutineHalf label="저녁" steps={result.routine.pm} />
+          </div>
+        </details>
 
         <section style={careCard}>
           <p style={sectionLabel}>후속 연결</p>
@@ -198,10 +246,15 @@ export default function Report() {
         </section>
 
         {result.note && <p style={noteStyle}>{result.note}</p>}
-        <p style={{ ...sectionLabel, marginBottom: 14 }}>추천 제품</p>
-        {result.picks.map((pick, i) => (
-          <ProductBlock key={pick.sku.id} pick={pick} last={i === result.picks.length - 1} />
-        ))}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+          <p style={{ ...sectionLabel, marginBottom: 0 }}>추천 제품</p>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{survey.category} · {result.picks.length}개</span>
+        </div>
+        <div style={{ display: "grid", gap: 12 }}>
+          {result.picks.map((pick, i) => (
+            <ProductCard key={pick.sku.id} pick={pick} placement="report_product" rank={i + 1} />
+          ))}
+        </div>
       </div>
 
       {top && (
@@ -251,44 +304,6 @@ function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) 
   );
 }
 
-function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last: boolean }) {
-  const commerce = primaryCommerceLink(pick.sku);
-  return (
-    <div>
-      <div style={imageBox}><span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 13, color: "var(--faint)" }}>{pick.sku.category}</span></div>
-      <div style={tag}>{pick.toneLabel} · {pick.sku.category}</div>
-      <div style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 9px" }}>
-        <span style={{ color: "var(--muted)", fontSize: 14, fontWeight: 500 }}>{pick.sku.brand} </span>
-        {pick.sku.name}
-      </div>
-      <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12, lineHeight: 1.55 }}>{pick.reason}</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center", marginBottom: 14 }}>
-        {pick.matchedIngredients.map((ingredient) => (
-          <span key={ingredient} style={pill}>{ingredient}</span>
-        ))}
-        {pick.avoidedClear && <span style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 700 }}>피하고 싶은 성분 반영</span>}
-      </div>
-      {pick.watchOut && <p style={watchOutStyle}>{pick.watchOut}</p>}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{pick.sku.price.toLocaleString()}원</span>
-        <a
-          href={commerceOutHref(pick.sku.id, commerce.merchant, "report_product")}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => {
-            recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price });
-            recordFunnelEvent("commerce_clicked", { placement: "report_product", merchant: commerce.merchant });
-          }}
-          style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none", fontWeight: 700 }}
-        >
-          {commerce.label}에서 보기
-        </a>
-      </div>
-      {!last && <div style={{ height: 1, background: "var(--line)", margin: "34px 0" }} />}
-    </div>
-  );
-}
-
 function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplied: boolean }) {
   const pct = Math.round(reads.confidence * 100);
   return (
@@ -321,7 +336,6 @@ function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplie
 
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
-const tag: React.CSSProperties = { fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const headlineStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 30, lineHeight: 1.18, color: "var(--ink)", margin: "8px 0 6px", whiteSpace: "pre-line" };
 const subStyle: React.CSSProperties = { fontSize: 13.5, color: "var(--text-muted)", marginBottom: 14 };
 const narrativeStyle: React.CSSProperties = { fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 28 };
@@ -329,9 +343,6 @@ const card: React.CSSProperties = { background: "var(--surface)", border: "1px s
 const careCard: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px", margin: "24px 0 28px" };
 const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
-const imageBox: React.CSSProperties = { width: "100%", height: 150, borderRadius: 8, background: "var(--surface-tint)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 };
-const pill: React.CSSProperties = { background: "transparent", border: "1px solid var(--line)", color: "var(--ink-soft)", fontSize: 12, borderRadius: 8, padding: "4px 10px", fontWeight: 700 };
-const watchOutStyle: React.CSSProperties = { fontSize: 12.5, color: "var(--plum-press)", background: "var(--plum-soft)", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 10px", lineHeight: 1.45, marginBottom: 12 };
 const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
 const routineStep: React.CSSProperties = { display: "grid", gridTemplateColumns: "30px 1fr", gap: 12, alignItems: "start", borderTop: "1px solid var(--line)", paddingTop: 12 };
 const routineWhy: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 4 };

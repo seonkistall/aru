@@ -175,19 +175,27 @@ export default function CarePage() {
 
         <section style={sectionStyle}>
           <div style={sectionHead}>
-            <p style={sectionLabel}>{locale === "ko" ? "피부과/상담 연결" : "Clinic support"}</p>
-            {summary.clinicPriority && <span style={warnBadge}>{locale === "ko" ? "상담 고려" : "Consider"}</span>}
+            <p style={sectionLabel}>{locale === "ko" ? "피부과 · 상담 연결" : "Clinic support"}</p>
+            {summary.clinicPriority && <span style={warnBadge}>{locale === "ko" ? "상담 우선 고려" : "Consider first"}</span>}
           </div>
-          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: 12 }}>
-            {locale === "ko"
-              ? "분석은 미용 참고용이에요. 통증, 급격한 변화, 지속되는 트러블이 있으면 전문 진료를 우선하세요."
-              : "This scan is cosmetic guidance only. For pain, sudden changes, or persistent breakouts, choose a professional consultation."}
-          </p>
-          <div style={{ display: "grid", gap: 8 }}>
+
+          <div style={safetyCard}>
+            <span style={safetyMark} aria-hidden>!</span>
+            <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink)", lineHeight: 1.55 }}>
+              {locale === "ko"
+                ? "이 분석은 미용 참고용이에요. 통증·급격한 변화·지속되는 트러블이 있다면 앱보다 전문 진료를 먼저 받아보세요."
+                : "This scan is cosmetic guidance only. For pain, sudden changes, or persistent breakouts, see a professional first."}
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
             {clinics.map((link) => (
-              <button key={link.label} onClick={() => openCareLink(link, view.survey.type)} style={linkBtn}>
-                <span>{link.label}</span>
-                <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{link.note}</small>
+              <button key={link.label} onClick={() => openCareLink(link, view.survey.type)} style={clinicBtn}>
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{link.label}</span>
+                  <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{link.note}</small>
+                </span>
+                <span aria-hidden style={{ color: "var(--plum)", fontSize: 18 }}>→</span>
               </button>
             ))}
           </div>
@@ -220,6 +228,9 @@ const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-s
 const segmented: React.CSSProperties = { display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" };
 const outlineBtn: React.CSSProperties = { background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const linkBtn: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "10px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };
+const clinicBtn: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--paper)", padding: "12px 14px", cursor: "pointer", width: "100%" };
+const safetyCard: React.CSSProperties = { display: "flex", gap: 10, alignItems: "flex-start", background: "color-mix(in srgb, var(--plum) 6%, var(--paper))", border: "1px solid color-mix(in srgb, var(--plum) 28%, var(--line))", borderLeft: "3px solid var(--plum)", borderRadius: 10, padding: "12px 13px" };
+const safetyMark: React.CSSProperties = { flexShrink: 0, width: 20, height: 20, borderRadius: 999, background: "var(--plum)", color: "var(--on-plum)", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 };
 const tipList: React.CSSProperties = { margin: "12px 0 0", paddingLeft: 18, color: "var(--ink-soft)", fontSize: 13.5, lineHeight: 1.65 };
 
 function segBtn(active: boolean): React.CSSProperties {

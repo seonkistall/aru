@@ -15,6 +15,7 @@ import {
 import { labelCount, type CaptureQualityMeta, type SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
+import { pushScanHistory } from "@/lib/scan-history";
 import { ShareCard, shareCardImage, skinReadsToCard } from "@/app/components/share-card";
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
@@ -635,6 +636,7 @@ export default function Scan() {
       );
       sessionStorage.setItem("gyeol_reads", JSON.stringify(final));
       recordFunnelEvent("scan_completed", { retake: final.retakeRecommended, source: final.source });
+      pushScanHistory({ oil: final.oil.level, redness: final.redness.level, pores: final.pores.level, confidence: final.confidence, ts: Date.now() });
       setReads(final);
       stopCamera();
       setPhase("result");
@@ -724,7 +726,25 @@ export default function Scan() {
             )}
             {phase === "init" && (
               <Center>
-                <button onClick={startCamera} style={primaryBtn}>카메라 시작</button>
+                <div style={{ maxWidth: 320, background: "rgba(0,0,0,.58)", borderRadius: 14, padding: "20px 18px" }}>
+                  <p style={{ fontFamily: "var(--font-hand)", fontSize: 25, color: "#fff", marginBottom: 12 }}>30초 피부 스캔, 시작할까요?</p>
+                  <div style={{ display: "grid", gap: 9, marginBottom: 16, textAlign: "left" }}>
+                    {[
+                      ["📷", "가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 자동으로 찍혀요."],
+                      ["🔒", "기본 스캔은 기기 안에서만 처리 — 사진은 전송·저장되지 않아요."],
+                      ["✨", "T존·양볼의 유분·붉은기·결을 여러 프레임으로 읽어요."],
+                    ].map(([icon, text]) => (
+                      <div key={text} style={{ display: "flex", gap: 9, alignItems: "flex-start", color: "rgba(255,255,255,.94)", fontSize: 13, lineHeight: 1.45 }}>
+                        <span aria-hidden style={{ flexShrink: 0 }}>{icon}</span>
+                        <span>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={startCamera} style={{ ...primaryBtn, width: "100%" }}>카메라 시작</button>
+                  <a href="/survey" style={{ display: "block", textAlign: "center", marginTop: 11, fontSize: 13, color: "rgba(255,255,255,.85)", textDecoration: "underline" }}>
+                    카메라 없이 설문만
+                  </a>
+                </div>
               </Center>
             )}
             {phase === "analyzing" && <Scanning step={analysisStep} />}
@@ -769,6 +789,10 @@ export default function Scan() {
         {phase === "ready" && (
           <>
             {staffMode && <ScanModePicker mode={captureMode} onChange={setCaptureMode} />}
+            <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: quality.face ? "var(--success)" : "var(--text-muted)", fontWeight: 600 }}>
+              <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: quality.face ? "var(--success)" : "var(--muted)", animation: quality.face ? "gyeol-bob 1.1s ease-in-out infinite" : undefined, flexShrink: 0 }} />
+              <span>{quality.face ? "얼굴 인식됨 · 피부 신호를 읽고 있어요" : "얼굴을 화면 안에 맞춰주세요"}</span>
+            </div>
             <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
               <label style={{ ...consentStyle, marginTop: 0 }}>
@@ -860,8 +884,11 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
               disabled={sharing}
               style={{ ...outlineBtn, width: "100%", marginTop: 10, opacity: sharing ? 0.6 : 1 }}
             >
-              {sharing ? "카드 만드는 중..." : "카드로 공유하기"}
+              {sharing ? "카드 만드는 중..." : "친구에게 내 피부 무드 공유하기"}
             </button>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
+              공유 링크를 열면 친구도 30초 스캔으로 이어져요
+            </p>
             {shareErr && <p style={{ fontSize: 12.5, color: "var(--plum)", textAlign: "center", marginTop: 8 }}>{shareErr}</p>}
             <a href="/studio" style={{ display: "block", textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline" }}>
               카드 문구 직접 편집하기

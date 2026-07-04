@@ -100,6 +100,12 @@ export default function Home() {
             </div>
           </div>
         </Link>
+        <Link
+          href="/survey"
+          style={{ display: "block", textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 14 }}
+        >
+          카메라 없이 설문만 할래요 →
+        </Link>
         <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--text-muted)", marginTop: 11 }}>
           기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요
         </p>
