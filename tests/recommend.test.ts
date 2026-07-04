@@ -82,4 +82,27 @@ describe("recommend()", () => {
     const result = recommend(baseSurvey, { oil: 3, redness: 2, pores: 2, confidence: 0.3, retakeRecommended: true });
     expect(result.scanApplied).toBe(false);
   });
+
+  it("discloses 'both' when neither the budget nor the avoid list can be met", () => {
+    // 선크림 SKUs are 18000/20000 and neither is 알코올-free → both constraints
+    // unsatisfiable at a 1만원대 budget. Must NOT silently claim budget honored.
+    const result = recommend({ type: "민감성", concerns: [], category: "선크림", budget: 15000, avoid: ["알코올"] }, null);
+    expect(result.picks.length).toBeGreaterThan(0);
+    expect(result.relaxed).toBe("both");
+    expect(result.note).toBeDefined();
+    expect(result.note).toContain("예산"); // budget stretch disclosed
+    expect(result.note).toContain("제외 성분"); // avoid stretch disclosed
+  });
+
+  it("keeps the budget-relaxation note even alongside a low-confidence scan", () => {
+    // Serums are 22000/24000 (>1만원대) so budget must relax; a retake scan must
+    // not suppress that disclosure.
+    const result = recommend(
+      { type: "지성", concerns: [], category: "세럼", budget: 15000, avoid: [] },
+      { oil: 1, redness: 0, pores: 0, confidence: 0.4, retakeRecommended: true }
+    );
+    expect(result.relaxed).toBe("budget");
+    expect(result.note).toContain("스캔"); // scan-ambiguous line present
+    expect(result.note).toContain("예산"); // budget relaxation NOT suppressed
+  });
 });

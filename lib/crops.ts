@@ -30,11 +30,19 @@ export function cropSampleCount(): number {
   return getCropSamples().length;
 }
 
-export function saveCropSample(sample: Omit<CropSample, "id">) {
-  if (typeof window === "undefined") return;
+export function saveCropSample(sample: Omit<CropSample, "id">): boolean {
+  if (typeof window === "undefined") return false;
   const all = getCropSamples();
   all.push({ ...sample, id: uid() });
-  localStorage.setItem(KEY, JSON.stringify(all.slice(-MAX_LOCAL_CROPS)));
+  try {
+    // Crops are base64 JPEGs; ~120 of them can cross the localStorage quota.
+    // Guard the write (like funnel/last-result) so QuotaExceededError never
+    // escapes into the capture-feedback click handler and hangs the UI.
+    localStorage.setItem(KEY, JSON.stringify(all.slice(-MAX_LOCAL_CROPS)));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function exportCropSamples() {

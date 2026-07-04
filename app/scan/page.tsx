@@ -527,8 +527,16 @@ export default function Scan() {
         last && dtMs >= 80 ? Math.hypot(captureCenter.x - last.x, captureCenter.y - last.y) / (dtMs / 250) : undefined;
       const captureSteady =
         captureMovement !== undefined ? captureMovement < CAPTURE_PROFILES[captureMode].maxMovement : quality.steady;
+      // Verify exposure on the SAME ~360px downscale the live gate uses, not the
+      // full-res frame. Downscaling smooths specular glints, so full-res
+      // hot/dark ratios run higher than the gate's — with identical thresholds
+      // that let the gate green-light an exposure the full-res verify then
+      // rejected, causing an auto-capture->reject loop. (Skin analysis below
+      // still uses the full-res imageData.)
+      const verifyFrame = readFrame();
+      const verifyData = verifyFrame ? verifyFrame.ctx.getImageData(0, 0, verifyFrame.w, verifyFrame.h) : imageData;
       const verifiedQuality: Quality = {
-        ...evaluateCapturedQuality(imageData, faces[0], CAPTURE_PROFILES[captureMode], captureSteady),
+        ...evaluateCapturedQuality(verifyData, faces[0], CAPTURE_PROFILES[captureMode], captureSteady),
         movement: captureMovement,
       };
       commitQuality(verifiedQuality, true);

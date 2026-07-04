@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink, type CareLocale } from "@/lib/care";
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
+import { loadLastResult } from "@/lib/last-result";
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -15,7 +16,13 @@ type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 function loadCareView(): CareView | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem("gyeol_survey");
-  if (!raw) return null;
+  if (!raw) {
+    // Returning visitor in a fresh tab (no sessionStorage): fall back to the
+    // saved result, mirroring /report, so report's care CTA doesn't dead-end.
+    const saved = loadLastResult();
+    if (!saved) return null;
+    return { survey: saved.survey, reads: saved.reads ?? null, result: recommend(saved.survey, saved.scan ?? null) };
+  }
 
   let survey: Survey;
   try {

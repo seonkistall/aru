@@ -99,7 +99,18 @@ export async function getCheckins(): Promise<Checkin[]> {
 
 export async function recordCareIntent(intent: Omit<CareIntent, "id" | "ts">): Promise<CareIntent> {
   const rec: CareIntent = { ...intent, id: uid(), ts: Date.now() };
-  await insertOrLocal("care_intents", "gyeol_care_intents", rec);
+  // Always store locally: getCareIntents/careIntentCount/clearCareIntents (the
+  // privacy page's source of truth) read/delete localStorage only, so a
+  // Supabase-first write would make the count wrong and "delete" a no-op.
+  lsPush("gyeol_care_intents", rec);
+  const supabase = await getSupabase();
+  if (hasSupabase && supabase) {
+    try {
+      await supabase.from("care_intents").insert(rec as never);
+    } catch {
+      // Best-effort server copy; local record above is authoritative for the UI.
+    }
+  }
   return rec;
 }
 

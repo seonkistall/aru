@@ -67,21 +67,28 @@ export async function shareCardImage(
   const blob = await (await fetch(dataUrl)).blob();
   const file = new File([blob], "aru-skin-card.png", { type: "image/png" });
   if (navigator.canShare?.({ files: [file] })) {
-    opts?.onShare?.("web-share");
-    // Include the deep link so the shared post carries a way back to aru (viral
-    // loop); platforms that ignore url alongside files still share the image.
-    await navigator.share({
-      files: [file],
-      title: "아루 피부 카드",
-      ...(opts?.shareUrl ? { text: "내 피부 무드 — 아루", url: opts.shareUrl } : {}),
-    });
-    return "web-share";
+    try {
+      // Include the deep link so the shared post carries a way back to aru (viral
+      // loop); platforms that ignore url alongside files still share the image.
+      await navigator.share({
+        files: [file],
+        title: "아루 피부 카드",
+        ...(opts?.shareUrl ? { text: "내 피부 무드 — 아루", url: opts.shareUrl } : {}),
+      });
+      opts?.onShare?.("web-share");
+      return "web-share";
+    } catch (error) {
+      // User dismissed the sheet — that's a cancel, not a failure; propagate.
+      if ((error as Error).name === "AbortError") throw error;
+      // Web Share rejected (e.g. iOS drops user activation after the async
+      // raster) — fall through to the download so the user still gets a card.
+    }
   }
-  opts?.onShare?.("download");
   const a = document.createElement("a");
   a.download = "aru-skin-card.png";
   a.href = dataUrl;
   a.click();
+  opts?.onShare?.("download");
   return "download";
 }
 

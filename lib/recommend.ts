@@ -41,7 +41,7 @@ export type Routine = { am: RoutineStep[]; pm: RoutineStep[] };
 export type RecoResult = {
   picks: Recommendation[];
   routine: Routine;
-  relaxed: null | "budget" | "avoid";
+  relaxed: null | "budget" | "avoid" | "both";
   scanApplied: boolean;
   note?: string;
 };
@@ -326,17 +326,28 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
     if (pool.length) relaxed = "budget";
   }
 
-  if (pool.length === 0) pool = inCategory;
+  if (pool.length === 0) {
+    // Neither budget-only nor avoid-only could be satisfied: fall back to the
+    // whole category and disclose that BOTH constraints were stretched (else
+    // the report would claim the budget was honored over over-budget picks).
+    pool = inCategory;
+    if (pool.length) relaxed = "both";
+  }
 
   const picks = diversify(rank(pool)).map((sku) => toRec(sku, survey, concerns, scanApplied));
-  const note =
-    !scanApplied && scan
-      ? "촬영 상태가 애매해서 이번 추천은 설문 답변을 중심으로 골랐어요. 스캔 결과는 참고만 했습니다."
-      : relaxed === "budget"
-        ? "예산 안에서 조건을 모두 만족하는 제품이 적어, 가장 가까운 선택까지 함께 봤어요."
-        : relaxed === "avoid"
-          ? "선택한 제외 성분을 모두 피한 제품이 적어 기준을 조금 넓혔어요. 구매 전 전성분을 확인해 주세요."
-          : undefined;
+  // Compose the note from every applicable signal — a low-confidence scan must
+  // NOT suppress the budget/avoid relaxation disclosure (they can co-occur).
+  const noteParts: string[] = [];
+  if (!scanApplied && scan) {
+    noteParts.push("촬영 상태가 애매해서 이번 추천은 설문 답변을 중심으로 골랐어요. 스캔 결과는 참고만 했습니다.");
+  }
+  if (relaxed === "budget" || relaxed === "both") {
+    noteParts.push("예산 안에서 조건을 모두 만족하는 제품이 적어, 가장 가까운 선택까지 함께 봤어요.");
+  }
+  if (relaxed === "avoid" || relaxed === "both") {
+    noteParts.push("선택한 제외 성분을 모두 피한 제품이 적어 기준을 조금 넓혔어요. 구매 전 전성분을 확인해 주세요.");
+  }
+  const note = noteParts.length ? noteParts.join(" ") : undefined;
 
   return { picks, routine: routineFor(survey, concerns, picks, scan, scanApplied), relaxed, scanApplied, note };
 }
