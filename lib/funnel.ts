@@ -156,6 +156,49 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
   };
 }
 
+export type FunnelStage = {
+  kind: FunnelEventKind;
+  label: string;
+  count: number;
+  ofStart: number; // fraction of scan_started sessions still present
+  dropFromPrev: number; // fraction lost since the previous stage
+};
+
+// The linear conversion path (share is a side branch, excluded here).
+const STAGE_ORDER: { kind: FunnelEventKind; label: string }[] = [
+  { kind: "scan_started", label: "스캔 시작" },
+  { kind: "scan_completed", label: "스캔 완료" },
+  { kind: "survey_completed", label: "설문 완료" },
+  { kind: "reco_viewed", label: "추천 조회" },
+  { kind: "commerce_clicked", label: "구매 클릭" },
+];
+
+// A true cumulative funnel: a session counts at stage i only if it reached that
+// stage AND every earlier stage (intersection anchored on scan_started). This
+// stays monotonic (never >100%, never a negative drop) even though the raw
+// per-step counts are independent per-session sets where survey/reco/commerce
+// can fire with no scan — a survey-only session simply isn't in the scan funnel.
+export function funnelDropoff(events: FunnelEvent[] = getFunnelEvents()): FunnelStage[] {
+  const sessionsFor = (kind: FunnelEventKind) => new Set(events.filter((event) => event.kind === kind).map((event) => event.sessionId));
+  const start = sessionsFor(STAGE_ORDER[0].kind).size;
+  let running: Set<string> | null = null;
+  let prevCount = start;
+  return STAGE_ORDER.map((stage, index) => {
+    const set = sessionsFor(stage.kind);
+    running = running === null ? set : new Set([...running].filter((id) => set.has(id)));
+    const count = running.size;
+    const result: FunnelStage = {
+      kind: stage.kind,
+      label: stage.label,
+      count,
+      ofStart: start ? count / start : 0,
+      dropFromPrev: index === 0 || !prevCount ? 0 : 1 - count / prevCount,
+    };
+    prevCount = count;
+    return result;
+  });
+}
+
 export function exportFunnelEvents() {
   const rows = getFunnelEvents();
   const header = ["id", "kind", "visitorId", "sessionId", "props", "ts"];
