@@ -1,6 +1,6 @@
 # 아루 ARU — 작업 상황 (STATUS)
 
-> 최종 업데이트: **2026-07-03** · 버전: **v0.4.3** · 브랜치: `main` · 도식: [`architecture.md`](architecture.md)
+> 최종 업데이트: **2026-07-04** · 버전: **v0.5.1** · 브랜치: `main` · 도식: [`architecture.md`](architecture.md) · 실행 큐: [`AUTOPILOT.md`](../AUTOPILOT.md)
 
 ## 제품 정체성 (혼동 방지)
 **셀피 → 피부 분석 → 화장품·루틴 추천** 앱. 브랜드명 **아루(ARU)** = Areumdaum + Routine + U (구 결(gyeol), 2026-07-03 리브랜딩. GitHub `seonkistall/aru`, 내부 키 `gyeol_*`는 유지).
@@ -40,11 +40,16 @@
 - 브랜치: `main` (작업장: `C:\dev\working\aru`)
 
 ## 다음 (Next)
-- **모바일 실기기 QA** — iPhone Safari / Android Chrome. v0.3 자동촬영 타이밍·xiaohei 스킨 항목 포함 (`docs/mobile-camera-qa.md`)
-- **30명 파일럿 데이터 수집** — `/pilot` 세션으로 라벨+동의 크롭 확보 (`docs/pilot-ml-loop.md`)
-- **ML 게이트 준수**: 크롭 <30 캘리브레이션만 · 100+ dry-run · 300+ MobileNetV3 학습 → 이후 ONNX 런타임 연결 (현재 데이터 0)
-- **BD 제휴** — 올리브영/브랜드몰 딜 후 `COMMERCE_LINK_OVERRIDES_JSON`으로 딥링크 교체 (`docs/commerce-partnership-playbook.md`)
-- 렌탈 훅 → 숏폼 공유 루프 설계 반영
+> 실행 지시·완료조건·RICE는 [`AUTOPILOT.md`](../AUTOPILOT.md)가 SSOT. 아래는 요약이며 ID로 대응.
+
+**BLOCKER (CEO 의사결정 필요 — 에이전트 대행 불가)**
+- **B1 · 모바일 실기기 QA + 골든셋 10장** — CEO 결정: 실기기 조합·시점·게이트 통과 기준 승인. 해제: `docs/mobile-camera-qa.md` v0.3 통과 + 골든셋 첫 10장 수집 (`docs/golden-set.md`)
+- **B2 · 30명 파일럿 개시** — CEO 결정: 모집 채널·예산·PIPA 동의 서면 사인오프. 해제: B1 통과 + `/pilot` 크롭 100+ dry-run → 300+ 학습 (`docs/pilot-ml-loop.md`, 현재 데이터 0)
+- **B3 · BD 제휴** — CEO 결정: 아웃리치 1순위 파트너·커머셜 조건. 해제: 딜 체결 후 오너가 `COMMERCE_LINK_OVERRIDES_JSON` 교체 (`docs/commerce-partnership-playbook.md`)
+
+**AUTOPILOT (에이전트 자율)**
+- **A1 qa** smoke 그린 유지 · **A2 fe** 헤드리스 좌표 회귀 · **A3 fe/eng** 골든셋 JSONL diff 하네스(B1 대기) · **A4 pm** 문서 동기
+- 렌탈 훅 → 숏폼 공유 루프 설계 반영 (미스케줄, 파일럿 이후)
 
 ## 관련 문서
 `README.md`(제품 개요) · `AGENTS.md`(코드 작성 규칙) · `docs/pilot-ml-loop.md` · `docs/commerce-partnership-playbook.md` · `docs/mobile-camera-qa.md` · 설계 doc `~/.gstack/projects/aru/`
