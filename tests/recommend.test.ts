@@ -67,10 +67,13 @@ describe("recommend()", () => {
     }
   });
 
-  it("warns to check ingredients when an avoided-substance can't be guaranteed clear", () => {
+  it("attaches a watch-out exactly when a pick can't guarantee the avoid list", () => {
     const result = recommend({ ...baseSurvey, avoid: ["향료", "알코올", "에센셜오일"] }, null);
-    // With every avoid flag set, at least one pick is unlikely to be fully clear.
-    expect(result.picks.some((pick) => pick.watchOut !== undefined)).toBe(true);
+    // The contract: watchOut is present iff the pick isn't fully avoid-clear
+    // (catalog-independent).
+    for (const pick of result.picks) {
+      expect(Boolean(pick.watchOut)).toBe(!pick.avoidedClear);
+    }
   });
 
   it("applies scan concerns and marks scanApplied when confidence is high", () => {

@@ -8,10 +8,10 @@ import { recordFunnelEvent } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 
-const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성"];
-const CONCERNS: Concern[] = ["모공", "붉은기", "건조", "트러블", "유분", "탄력"];
-const CATEGORIES: Category[] = ["클렌저", "토너", "세럼", "크림", "선크림"];
-const AVOIDS: Avoid[] = ["향료", "알코올", "에센셜오일"];
+const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성", "중성"];
+const CONCERNS: Concern[] = ["모공", "블랙헤드", "붉은기", "건조", "수분부족", "유분", "트러블", "잡티", "칙칙함", "각질", "탄력", "민감"];
+const CATEGORIES: Category[] = ["클렌저", "토너", "에센스", "세럼", "크림", "선크림", "마스크팩", "아이크림"];
+const AVOIDS: Avoid[] = ["향료", "알코올", "에센셜오일", "파라벤", "실리콘", "인공색소", "광물성오일"];
 const BUDGETS = [
   { label: "1만원대", won: 15000 },
   { label: "2만원대", won: 25000 },
@@ -82,6 +82,22 @@ export default function Survey() {
         <p style={eyebrow}>몇 가지만 더 알려주세요</p>
         <FlowSteps current="survey" />
         <h1 style={titleStyle}>추천을 더 정확하게 맞춰볼게요</h1>
+
+        {(() => {
+          const done = [Boolean(category), Boolean(type), Boolean(budget)].filter(Boolean).length;
+          return (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--text-muted)", marginBottom: 6 }}>
+                <span>필수 항목 {done}/3</span>
+                <span>{done === 3 ? "리포트를 볼 수 있어요" : "제품·타입·예산을 골라주세요"}</span>
+              </div>
+              <div style={{ height: 6, background: "var(--surface-tint)", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(done / 3) * 100}%`, background: "var(--plum)", borderRadius: 3, transition: "width .3s ease" }} />
+              </div>
+            </div>
+          );
+        })()}
+
         {scanHint && (
           <div style={scanHintStyle}>
             <p style={{ margin: 0 }}>{scanHint.text}</p>
@@ -95,7 +111,7 @@ export default function Survey() {
         <Section title="피부 타입" required>
           <Chips options={TYPES} selected={type ? [type] : []} onPick={setType} />
         </Section>
-        <Section title="고민">
+        <Section title="고민" hint="여러 개 선택할수록 정교해져요">
           <Chips options={CONCERNS} selected={concerns} onPick={(v) => toggle(concerns, v, setConcerns)} />
         </Section>
         <Section title="예산" required>
@@ -105,7 +121,7 @@ export default function Survey() {
             onPick={(label) => setBudget(BUDGETS.find((b) => b.label === label)?.won ?? null)}
           />
         </Section>
-        <Section title="피하고 싶은 성분">
+        <Section title="피하고 싶은 성분" hint="화해 주의 성분 기준">
           <Chips options={AVOIDS} selected={avoid} onPick={(v) => toggle(avoid, v, setAvoid)} />
         </Section>
 
@@ -120,11 +136,12 @@ export default function Survey() {
   );
 }
 
-function Section({ title, required, children }: { title: string; required?: boolean; children: React.ReactNode }) {
+function Section({ title, required, hint, children }: { title: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 22 }}>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
         {title}{required && <span style={{ color: "var(--plum)" }}> *</span>}
+        {hint && <span style={{ color: "var(--faint)", fontWeight: 400 }}> · {hint}</span>}
       </p>
       {children}
     </section>
