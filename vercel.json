@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/reengage/run", "schedule": "0 9 * * *" }
+  ]
+}

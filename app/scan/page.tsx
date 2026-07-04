@@ -18,6 +18,27 @@ import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { Xiaohei } from "@/app/components/sketch";
+import { InfoSheet } from "./info-sheet";
+import {
+  cameraFrame,
+  confidenceBox,
+  consentStyle,
+  debugStyle,
+  eyebrow,
+  fallbackText,
+  feedBtn,
+  ghostLink,
+  infoLinkBtn,
+  leadStyle,
+  modeButtonStyle,
+  modePanelStyle,
+  outlineBtn,
+  primaryBtn,
+  resultCardStyle,
+  stepBtn,
+  titleStyle,
+  videoStyle,
+} from "./scan-styles";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type Landmark = { x: number; y: number; z?: number };
@@ -664,7 +685,7 @@ export default function Scan() {
               playsInline
               muted
               onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
-              style={videoStyle(phase)}
+              style={videoStyle(phase === "ready" || phase === "analyzing")}
             />
             {phase === "ready" && guideState === "ready" && <CameraGuide quality={quality} mode={captureMode} zones={zones} />}
             {phase === "ready" && guideState === "loading" && (
@@ -1034,70 +1055,6 @@ function QualityPanel({ quality, requireSteady }: { quality: Quality; requireSte
           {ok ? "✓ " : ""}{label}
         </div>
       ))}
-    </div>
-  );
-}
-
-function CaptureTips() {
-  return (
-    <div style={{ marginTop: 12, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.55 }}>
-      <b style={{ color: "var(--ink)" }}>촬영 팁</b>
-      <span>  창가의 부드러운 빛, 정면 얼굴, 닦은 렌즈, 강한 반사 없는 상태가 가장 좋아요.</span>
-    </div>
-  );
-}
-
-function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
-  return (
-    <div style={{ marginTop: 12, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.55 }}>
-      <b style={{ color: "var(--ink)" }}>동의는 2가지로 분리돼요.</b>
-      <span>
-        {" "}AI 분석용 전송은 얼굴 크롭을 외부 AI(Gemini/OpenAI) 분석 API에 보내는 선택이에요.{" "}
-        {staffMode
-          ? "학습용 크롭 저장은 동의한 연구 샘플을 이 기기에 최대 120개까지 보관하는 선택입니다. "
-          : "학습용 크롭 저장은 파일럿 연구 세션에서만 별도 동의로 진행돼요. "}
-      </span>
-      <a href="/privacy" style={{ color: "var(--plum)", fontWeight: 800, textDecoration: "none" }}>자세히 보기</a>
-    </div>
-  );
-}
-
-function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose: () => void }) {
-  // Bottom sheet: the scan screen stays a single fixed viewport; tips and
-  // consent details live here instead of pushing the camera off-screen.
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, []);
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="촬영 팁과 동의 안내"
-      onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--paper)", width: "100%", maxWidth: 460, borderRadius: "14px 14px 0 0", padding: "16px 18px 22px", maxHeight: "75vh", overflowY: "auto" }}
-      >
-        <div style={{ width: 38, height: 4, borderRadius: 999, background: "var(--line)", margin: "0 auto 10px" }} />
-        <CaptureTips />
-        <PrivacyNotice staffMode={staffMode} />
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55, marginTop: 12 }}>
-          체크박스의 <b style={{ color: "var(--ink)" }}>AI 분석 전송(선택)</b>은 얼굴 크롭만 외부 AI(Google Gemini/OpenAI) 분석 API로 보내 추천 정확도를 높이는 선택이에요. 학습용 저장과는 분리되며, 동의하지 않아도 기기 안 분석만으로 진행돼요.
-        </p>
-        <button
-          onClick={onClose}
-          style={{ width: "100%", marginTop: 14, background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-        >
-          닫기
-        </button>
-      </div>
     </div>
   );
 }
@@ -1543,166 +1500,4 @@ function predictionSnapshot(reads: SkinReads): Record<string, unknown> {
   };
 }
 
-const eyebrow: React.CSSProperties = {
-  fontSize: 11,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--bronze)",
-  fontWeight: 700,
-};
-
-const titleStyle: React.CSSProperties = {
-  fontFamily: "var(--font-ko-serif)",
-  fontSize: 28,
-  lineHeight: 1.22,
-  color: "var(--ink)",
-  margin: "6px 0 8px",
-};
-
-const leadStyle: React.CSSProperties = {
-  fontSize: 14,
-  color: "var(--text-muted)",
-  lineHeight: 1.55,
-  marginBottom: 20,
-};
-
-const cameraFrame: React.CSSProperties = {
-  position: "relative",
-  width: "100%",
-  aspectRatio: "3 / 4",
-  borderRadius: 8,
-  overflow: "hidden",
-  background: "var(--surface-tint)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-function videoStyle(phase: Phase): React.CSSProperties {
-  return {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    transform: "scaleX(-1)",
-    display: phase === "ready" || phase === "analyzing" ? "block" : "none",
-  };
-}
-
-const primaryBtn: React.CSSProperties = {
-  background: "var(--plum)",
-  color: "var(--on-plum)",
-  border: "none",
-  borderRadius: 8,
-  padding: "14px 22px",
-  fontSize: 15,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const outlineBtn: React.CSSProperties = {
-  background: "transparent",
-  color: "var(--ink)",
-  border: "1px solid var(--ink)",
-  borderRadius: 8,
-  padding: "13px 22px",
-  fontSize: 15,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const feedBtn: React.CSSProperties = {
-  flex: 1,
-  background: "transparent",
-  color: "var(--ink)",
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  padding: "12px 16px",
-  fontSize: 14,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const stepBtn: React.CSSProperties = {
-  background: "var(--surface-tint)",
-  border: "none",
-  borderRadius: 8,
-  width: 34,
-  height: 34,
-  fontSize: 15,
-  color: "var(--ink)",
-  cursor: "pointer",
-};
-
-const infoLinkBtn: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  background: "transparent",
-  border: "none",
-  marginTop: 8,
-  padding: 4,
-  fontSize: 12.5,
-  color: "var(--text-muted)",
-  textDecoration: "underline",
-  cursor: "pointer",
-  textAlign: "center",
-};
-
-const consentStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 9,
-  marginTop: 12,
-  fontSize: 13,
-  color: "var(--text-muted)",
-  cursor: "pointer",
-};
-
-const modePanelStyle: React.CSSProperties = {
-  marginTop: 12,
-  padding: 12,
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  background: "var(--surface)",
-};
-
-const modeButtonStyle: React.CSSProperties = {
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  padding: "10px 4px",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const resultCardStyle: React.CSSProperties = {
-  width: "100%",
-  background: "var(--surface)",
-  borderRadius: 8,
-  padding: "28px 24px",
-  border: "1px solid var(--line)",
-  animation: "gyeol-fade-up .5s ease-out both",
-};
-
-const debugStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "var(--ink-soft)",
-  background: "var(--surface)",
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  padding: 12,
-  marginTop: 8,
-  overflowX: "auto",
-};
-
-function confidenceBox(retake: boolean): React.CSSProperties {
-  return {
-    border: "1px solid var(--line)",
-    borderRadius: 8,
-    background: retake ? "var(--plum-soft)" : "var(--surface)",
-    padding: "12px 14px",
-    marginBottom: 16,
-  };
-}
-
-const ghostLink: React.CSSProperties = { color: "var(--text-muted)", fontSize: 13, marginTop: 8, textDecoration: "underline" };
-const fallbackText: React.CSSProperties = { color: "var(--ink-soft)", fontSize: 14, textAlign: "center", lineHeight: 1.5 };
+// Presentational styles live in ./scan-styles.

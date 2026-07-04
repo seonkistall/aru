@@ -9,6 +9,7 @@ import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
+import { ReengageOptIn } from "@/app/components/reengage-optin";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -177,6 +178,7 @@ export default function Report() {
           >
             내 피부 카드 만들어 공유하기
           </Link>
+          <ReengageOptIn context={`${survey.type}·${survey.category}`} />
         </section>
 
         {result.note && <p style={noteStyle}>{result.note}</p>}
