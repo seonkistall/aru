@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FlowSteps } from "@/app/components/flow-steps";
+import { recordFunnelEvent } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 
@@ -71,6 +72,7 @@ export default function Survey() {
     if (!ready) return;
     const survey: SurveyT = { type, concerns, category, budget, avoid };
     sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
+    recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: Boolean(scanHint?.concerns.length) });
     router.push("/report");
   }
 

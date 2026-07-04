@@ -1,5 +1,5 @@
 import { getSupabaseAdmin, hasValidSyncToken, isSupabaseSyncConfigured } from "@/lib/supabase-admin";
-import { latestConsentGranted, type GyeolSyncPayload, type SyncResult } from "@/lib/sync-payload";
+import { latestConsentGranted, SYNC_SCHEMA_VERSIONS, type GyeolSyncPayload, type SyncResult } from "@/lib/sync-payload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   const payload = body.payload;
-  if (!payload || payload.schemaVersion !== "2026-06-29.sync.v1") {
+  if (!payload || !SYNC_SCHEMA_VERSIONS.includes(payload.schemaVersion)) {
     return Response.json(result(false, ["Unsupported or missing sync payload."]), { status: 400 });
   }
 
@@ -55,6 +55,7 @@ export async function POST(request: Request) {
   }
 
   const dryRun = body.dryRun === true;
+  const funnelEvents = payload.funnelEvents ?? [];
   const warnings = validatePayload(payload);
   const counts = {
     labels: payload.labels.length,
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
     cropUploads: 0,
     pilotNotes: payload.pilotNotes.length,
     consentEvents: payload.consentEvents.length,
+    funnelEvents: funnelEvents.length,
   };
 
   if (dryRun) {
@@ -94,6 +96,22 @@ export async function POST(request: Request) {
       { onConflict: "id" }
     );
     if (error) errors.push(`consent_events: ${error.message}`);
+  }
+
+  if (funnelEvents.length) {
+    const { error } = await supabase.from("funnel_events").upsert(
+      funnelEvents.map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        visitor_id: event.visitorId,
+        session_id: event.sessionId,
+        props: event.props ?? null,
+        metadata: { source: "ops-local" },
+        ts: event.ts,
+      })),
+      { onConflict: "id" }
+    );
+    if (error) errors.push(`funnel_events: ${error.message}`);
   }
 
   if (payload.pilotNotes.length) {
@@ -314,7 +332,7 @@ function result(ok: boolean, errors: string[]): SyncResult {
   return {
     ok,
     configured: undefined,
-    counts: { labels: 0, cropSamples: 0, cropUploads: 0, pilotNotes: 0, consentEvents: 0 },
+    counts: { labels: 0, cropSamples: 0, cropUploads: 0, pilotNotes: 0, consentEvents: 0, funnelEvents: 0 },
     warnings: [],
     errors,
   };

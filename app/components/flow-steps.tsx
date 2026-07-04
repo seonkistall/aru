@@ -24,6 +24,7 @@ export function FlowSteps({ current }: { current: FlowKey }) {
         const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "next";
         const label = (
           <span
+            aria-current={state === "current" ? "step" : undefined}
             style={{
               fontFamily: "var(--font-hand)",
               fontSize: 18,

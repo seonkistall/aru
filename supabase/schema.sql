@@ -71,6 +71,20 @@ create table if not exists pilot_notes (
   user_id uuid references auth.users (id) default auth.uid()
 );
 
+-- Privacy-clean funnel analytics. Anonymous visitor/session ids only (random,
+-- not derived from any user attribute); no images, no free text. Used to track
+-- the failure-prevention conversion north-star. Synced via /api/sync.
+create table if not exists funnel_events (
+  id text primary key,
+  kind text not null,          -- scan_started | scan_completed | survey_completed | reco_viewed | share_clicked | commerce_clicked
+  visitor_id text not null,
+  session_id text not null,
+  props jsonb,
+  metadata jsonb,
+  ts bigint not null
+);
+create index if not exists funnel_events_kind_ts_idx on funnel_events (kind, ts);
+
 -- Opt-in ML crop metadata. The image bytes should live in a private Storage bucket.
 create table if not exists crop_samples (
   id text primary key,

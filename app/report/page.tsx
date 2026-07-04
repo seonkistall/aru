@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
+import { recordFunnelEvent } from "@/lib/funnel";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -68,6 +69,7 @@ export default function Report() {
     setResult(next?.result ?? null);
     setLoaded(true);
     /* eslint-enable react-hooks/set-state-in-effect */
+    if (next) recordFunnelEvent("reco_viewed", { scanApplied: next.result.scanApplied, picks: next.result.picks.length });
   }, []);
 
   useEffect(() => {
@@ -198,7 +200,10 @@ export default function Report() {
           <div className="mx-auto" style={{ maxWidth: 420, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <a
               href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_sticky") : top.sku.buyUrl}
-              onClick={() => recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price })}
+              onClick={() => {
+                recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price });
+                recordFunnelEvent("commerce_clicked", { placement: "report_sticky", merchant: topCommerce?.merchant ?? "search" });
+              }}
               style={buyBtn}
             >
               {topCommerce ? `${topCommerce.label} 보기` : "바로 검색"}
@@ -257,7 +262,10 @@ function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last:
         <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{pick.sku.price.toLocaleString()}원</span>
         <a
           href={commerceOutHref(pick.sku.id, commerce.merchant, "report_product")}
-          onClick={() => recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price })}
+          onClick={() => {
+            recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price });
+            recordFunnelEvent("commerce_clicked", { placement: "report_product", merchant: commerce.merchant });
+          }}
           style={{ fontSize: 13, color: "var(--plum)", textDecoration: "none", fontWeight: 700 }}
         >
           {commerce.label}에서 보기

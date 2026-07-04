@@ -1,18 +1,23 @@
 import { getConsentEvents, type ConsentEvent } from "./consent";
 import { getCropSamples, type CropSample } from "./crops";
+import { getFunnelEvents, type FunnelEvent } from "./funnel";
 import { getLabels, type LabeledSample } from "./labels";
 import { getPilotNotes, type PilotNote } from "./pilot";
 
 export type SyncLabel = LabeledSample & { id: string };
 
+export const SYNC_SCHEMA_VERSIONS = ["2026-06-29.sync.v1", "2026-07-04.sync.v2"] as const;
+export type SyncSchemaVersion = (typeof SYNC_SCHEMA_VERSIONS)[number];
+
 export type GyeolSyncPayload = {
-  schemaVersion: "2026-06-29.sync.v1";
+  schemaVersion: SyncSchemaVersion;
   clientGeneratedAt: number;
   source: "ops-local";
   labels: SyncLabel[];
   cropSamples: CropSample[];
   pilotNotes: PilotNote[];
   consentEvents: ConsentEvent[];
+  funnelEvents?: FunnelEvent[]; // added in v2; optional so v1 readers still parse
 };
 
 export type SyncResult = {
@@ -25,6 +30,7 @@ export type SyncResult = {
     cropUploads: number;
     pilotNotes: number;
     consentEvents: number;
+    funnelEvents: number;
   };
   warnings: string[];
   errors: string[];
@@ -37,13 +43,14 @@ export function buildLocalSyncPayload(): GyeolSyncPayload {
   }));
 
   return {
-    schemaVersion: "2026-06-29.sync.v1",
+    schemaVersion: "2026-07-04.sync.v2",
     clientGeneratedAt: Date.now(),
     source: "ops-local",
     labels,
     cropSamples: getCropSamples(),
     pilotNotes: getPilotNotes(),
     consentEvents: getConsentEvents(),
+    funnelEvents: getFunnelEvents(),
   };
 }
 
