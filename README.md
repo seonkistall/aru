@@ -3,7 +3,7 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v0.5.0 (모바일 트래킹 픽스 + 원스크린 촬영)** · 최종 업데이트 2026-07-03 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
+> **버전 v0.6.0** · 최종 업데이트 2026-07-04 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
@@ -27,6 +27,9 @@
 - **아이덴티티**: 아루(ARU) 손그림(xiaohei) — 순백·小黑·손글씨, iOS/Android 홈화면 설치 지원
 
 ## 버전 이력
+- **v0.6.0** (2026-07-04) — 재유입 루프 + 스캔 파일 분할
+  - **재유입(리마인더) 파이프라인**: 리포트에서 이메일 옵트인(`/api/reengage/subscribe`) → 2·4주 뒤 체크인 리마인더 스케줄 발송(`/api/reengage/run` + Vercel Cron). `reengage_contacts` 테이블, `lib/reengage` 발송 헬퍼. **RESEND_API_KEY+CRON_SECRET 미설정 시 안전 무동작** — 설정 순서는 [`docs/reengage-setup.md`](docs/reengage-setup.md). "매일의 루틴" 재방문 훅(MAU 레버)
+  - **스캔 파일 분할**: `page.tsx`(1,700줄)에서 순수 스타일 → `app/scan/scan-styles.ts`, 바텀시트 → `app/scan/info-sheet.tsx`로 분리(동작 무변화, trivially-safe만)
 - **v0.5.3** (2026-07-04) — 스캔 성능·구조 최적화
   - **적응형 탐지 스케줄링**: 고정 650ms setInterval → 자기예약 setTimeout(직전 틱 1.5배, 650~1500ms). 느린 폰 CPU에서 메인스레드 여유 확보(프리뷰·카운트다운 렌더), 데스크톱은 650ms 그대로
   - **좌표 변환 헬퍼 통합**: object-fit cover 가시영역 fx/fy 계산이 3곳에 중복돼 있던 것을 `coverCropFractions`로 단일화(중앙·거리 버그의 재발 위험 제거)

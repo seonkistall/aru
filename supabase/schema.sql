@@ -131,6 +131,18 @@ alter table crop_samples add column if not exists metadata jsonb;
 --   SUPABASE_CROP_RETENTION_DAYS=180
 --   SUPABASE_SYNC_ALLOWED_ORIGINS=http://localhost:3000,https://your-domain.com
 
+-- Re-engagement opt-in contacts (email reminder for the 2/4-week routine
+-- check-in). Written server-side via the service role by /api/reengage/subscribe
+-- with explicit user consent; read by the scheduled /api/reengage/run.
+create table if not exists reengage_contacts (
+  email text primary key,
+  context text,
+  consent boolean not null default true,
+  created_at timestamptz not null default now(),
+  week2_sent_at timestamptz,
+  week4_sent_at timestamptz
+);
+
 -- RLS: enable + own-rows-only (uncomment once auth is wired).
 -- alter table purchases enable row level security;
 -- alter table checkins  enable row level security;
