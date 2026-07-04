@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CONSENT_VERSION, consentEventCount, exportConsentEvents, latestConsent } from "@/lib/consent";
 import { cropSampleCount, exportCropSamples } from "@/lib/crops";
+import { exportFunnelEvents, summarizeFunnel, type FunnelSummary } from "@/lib/funnel";
 import { exportLabels, labelCount } from "@/lib/labels";
 import { getMlReadiness } from "@/lib/ml-readiness";
 import { exportPilotNotes, getPilotNotes, normalizeParticipantId, PILOT_PARTICIPANT_IDS, summarizePilotNotes } from "@/lib/pilot";
@@ -18,6 +19,7 @@ type OpsSnapshot = {
   aiGranted: boolean | null;
   cropGranted: boolean | null;
   pilot: PilotSummary;
+  funnel: FunnelSummary;
 };
 
 type SyncStatus = {
@@ -43,6 +45,21 @@ const emptyPilot: PilotSummary = {
   byStatus: {},
 };
 
+const emptyFunnel: FunnelSummary = {
+  events: 0,
+  sessions: 0,
+  steps: {
+    scan_started: 0,
+    scan_completed: 0,
+    survey_completed: 0,
+    reco_viewed: 0,
+    share_clicked: 0,
+    commerce_clicked: 0,
+  },
+  failurePreventionConversion: 0,
+  shareRate: 0,
+};
+
 const emptySnapshot: OpsSnapshot = {
   labels: 0,
   crops: 0,
@@ -50,6 +67,7 @@ const emptySnapshot: OpsSnapshot = {
   aiGranted: null,
   cropGranted: null,
   pilot: emptyPilot,
+  funnel: emptyFunnel,
 };
 
 export default function OpsPage() {
@@ -96,7 +114,7 @@ export default function OpsPage() {
     } catch (error) {
       setSyncResult({
         ok: false,
-        counts: { labels: 0, cropSamples: 0, cropUploads: 0, pilotNotes: 0, consentEvents: 0 },
+        counts: { labels: 0, cropSamples: 0, cropUploads: 0, pilotNotes: 0, consentEvents: 0, funnelEvents: 0 },
         warnings: [],
         errors: [error instanceof Error ? error.message : "Sync request failed."],
       });
@@ -159,6 +177,29 @@ export default function OpsPage() {
         </section>
 
         <section style={sectionStyle}>
+          <p style={sectionLabel}>north-star funnel</p>
+          <h2 style={sectionTitle}>Failure-prevention conversion</h2>
+          <p style={bodyText}>
+            Of {snapshot.funnel.steps.scan_completed} completed scans, {snapshot.funnel.steps.commerce_clicked} reached an
+            informed purchase intent.
+          </p>
+          <strong style={{ ...sectionTitle, fontSize: 30, color: "var(--plum)" }}>
+            {Math.round(snapshot.funnel.failurePreventionConversion * 100)}%
+          </strong>
+          <div style={{ marginTop: 12 }}>
+            <Row label="Sessions" value={`${snapshot.funnel.sessions}`} />
+            <Row label="Scan started" value={`${snapshot.funnel.steps.scan_started}`} />
+            <Row label="Scan completed" value={`${snapshot.funnel.steps.scan_completed}`} />
+            <Row label="Survey completed" value={`${snapshot.funnel.steps.survey_completed}`} />
+            <Row label="Reco viewed" value={`${snapshot.funnel.steps.reco_viewed}`} />
+            <Row label="Share clicked" value={`${snapshot.funnel.steps.share_clicked}`} />
+            <Row label="Commerce clicked" value={`${snapshot.funnel.steps.commerce_clicked}`} />
+            <Row label="Share rate" value={`${Math.round(snapshot.funnel.shareRate * 100)}%`} />
+          </div>
+          <p style={mutedText}>Local device only until a Supabase sync flows these events to funnel_events.</p>
+        </section>
+
+        <section style={sectionStyle}>
           <p style={sectionLabel}>participant board</p>
           <h2 style={sectionTitle}>P001-P030 lab board</h2>
           <div style={rosterGridStyle}>
@@ -179,6 +220,7 @@ export default function OpsPage() {
             <button onClick={exportCropSamples} disabled={snapshot.crops === 0} style={actionButton(snapshot.crops > 0)}>Crops JSONL</button>
             <button onClick={exportPilotNotes} disabled={snapshot.pilot.total === 0} style={actionButton(snapshot.pilot.total > 0)}>Pilot CSV</button>
             <button onClick={exportConsentEvents} disabled={snapshot.consentEvents === 0} style={actionButton(snapshot.consentEvents > 0)}>Consent CSV</button>
+            <button onClick={exportFunnelEvents} disabled={snapshot.funnel.events === 0} style={actionButton(snapshot.funnel.events > 0)}>Funnel CSV</button>
           </div>
         </section>
 
@@ -225,6 +267,7 @@ function readSnapshot(): OpsSnapshot {
     aiGranted: latestConsent("ai_analysis")?.granted ?? null,
     cropGranted: latestConsent("learning_crop")?.granted ?? null,
     pilot: summarizePilotNotes(),
+    funnel: summarizeFunnel(),
   };
 }
 

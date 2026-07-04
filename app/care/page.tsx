@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink, type CareLocale } from "@/lib/care";
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
+import { recordFunnelEvent } from "@/lib/funnel";
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -69,6 +70,9 @@ export default function CarePage() {
       partner_ready: link.partnerReady,
       region: link.region,
     });
+    if (link.kind === "purchase") {
+      recordFunnelEvent("commerce_clicked", { placement: link.placement ?? "care", merchant: link.merchant ?? "search" });
+    }
     window.open(link.href, "_blank", "noopener,noreferrer");
   }
 
@@ -80,9 +84,9 @@ export default function CarePage() {
         <div className="mx-auto" style={{ maxWidth: 420 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <p style={eyebrow}>care path</p>
-            <div style={segmented}>
-              <button onClick={() => setLocale("ko")} style={segBtn(locale === "ko")}>KO</button>
-              <button onClick={() => setLocale("en")} style={segBtn(locale === "en")}>EN</button>
+            <div role="group" aria-label="언어 선택" style={segmented}>
+              <button type="button" onClick={() => setLocale("ko")} aria-pressed={locale === "ko"} aria-label="한국어" style={segBtn(locale === "ko")}>KO</button>
+              <button type="button" onClick={() => setLocale("en")} aria-pressed={locale === "en"} aria-label="English" style={segBtn(locale === "en")}>EN</button>
             </div>
           </div>
           <h1 style={titleStyle}>
@@ -115,9 +119,9 @@ export default function CarePage() {
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <p style={eyebrow}>care path</p>
-          <div style={segmented}>
-            <button onClick={() => setLocale("ko")} style={segBtn(locale === "ko")}>KO</button>
-            <button onClick={() => setLocale("en")} style={segBtn(locale === "en")}>EN</button>
+          <div role="group" aria-label="언어 선택" style={segmented}>
+            <button type="button" onClick={() => setLocale("ko")} aria-pressed={locale === "ko"} aria-label="한국어" style={segBtn(locale === "ko")}>KO</button>
+            <button type="button" onClick={() => setLocale("en")} aria-pressed={locale === "en"} aria-label="English" style={segBtn(locale === "en")}>EN</button>
           </div>
         </div>
         <FlowSteps current="care" />

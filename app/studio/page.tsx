@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { toPng } from "html-to-image";
+import { recordFunnelEvent } from "@/lib/funnel";
+import { downloadCardImage, ShareCard, shareCardImage, type CardRead as Read } from "@/app/components/share-card";
 import type { SkinReads } from "@/lib/skin";
-
-type Read = { label: string; value: string; calm?: boolean };
 
 const PRESETS: { name: string; headline: string; reads: Read[] }[] = [
   {
@@ -61,12 +60,6 @@ export default function Studio() {
     }
   }, []);
 
-  async function makeCardPng(): Promise<string | null> {
-    if (!cardRef.current) return null;
-    await document.fonts.ready;
-    return toPng(cardRef.current, { pixelRatio: 3, cacheBust: true, backgroundColor: "#ffffff" });
-  }
-
   function applyPreset(i: number) {
     setHeadline(PRESETS[i].headline);
     setReads(PRESETS[i].reads.map((read) => ({ ...read })));
@@ -77,15 +70,11 @@ export default function Studio() {
   }
 
   async function download() {
+    if (!cardRef.current) return;
     setBusy(true);
     setErr("");
     try {
-      const dataUrl = await makeCardPng();
-      if (!dataUrl) return;
-      const a = document.createElement("a");
-      a.download = "aru-skin-card.png";
-      a.href = dataUrl;
-      a.click();
+      await downloadCardImage(cardRef.current);
     } catch {
       setErr("이미지를 만들지 못했어요. 다시 시도해 주세요.");
     } finally {
@@ -94,22 +83,13 @@ export default function Studio() {
   }
 
   async function share() {
+    if (!cardRef.current) return;
     setBusy(true);
     setErr("");
     try {
-      const dataUrl = await makeCardPng();
-      if (!dataUrl) return;
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], "aru-skin-card.png", { type: "image/png" });
-      if (navigator.canShare?.({ files: [file] })) {
-        // OS share sheet — 카톡/인스타/저장 등으로 바로 이어진다.
-        await navigator.share({ files: [file], title: "아루 피부 카드" });
-      } else {
-        const a = document.createElement("a");
-        a.download = "aru-skin-card.png";
-        a.href = dataUrl;
-        a.click();
-      }
+      await shareCardImage(cardRef.current, {
+        onShare: (mode) => recordFunnelEvent("share_clicked", { surface: "studio", mode }),
+      });
     } catch (e) {
       if ((e as Error).name !== "AbortError") setErr("공유에 실패했어요. PNG 저장을 이용해 주세요.");
     } finally {
@@ -127,25 +107,7 @@ export default function Studio() {
         </p>
 
         <div className="flex justify-center mb-7">
-          <div ref={cardRef} style={cardPreview}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>아루</span>
-              <span style={miniLabel}>skin mood</span>
-            </div>
-            <h2 style={cardHeadline}>{headline}</h2>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>보이는 특징만 정직하게 읽었어요.</p>
-            <div style={{ borderTop: "1px solid var(--line)" }}>
-              {reads.map((read) => (
-                <div key={read.label} style={rowStyle}>
-                  <span style={{ fontSize: 14, color: "var(--ink)" }}>{read.label}</span>
-                  <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{read.value}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ flex: 1 }} />
-            <div style={{ height: 1, width: 34, background: "var(--bronze)", margin: "0 auto 16px", opacity: 0.75 }} />
-            <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>30초 피부 스캔</p>
-          </div>
+          <ShareCard ref={cardRef} headline={headline} reads={reads} />
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -186,10 +148,6 @@ export default function Studio() {
 
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 26, color: "var(--ink)", margin: "6px 0 4px" };
-const miniLabel: React.CSSProperties = { fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
-const cardPreview: React.CSSProperties = { width: 360, height: 640, background: "var(--paper)", padding: "34px 30px", display: "flex", flexDirection: "column", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" };
-const cardHeadline: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 40, lineHeight: 1.2, color: "var(--ink)", margin: "30px 0 6px", whiteSpace: "pre-line" };
-const rowStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "13px 0", borderBottom: "1px solid var(--line)" };
 const presetBtn: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", background: "var(--surface-tint)", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 };
 const textareaStyle: React.CSSProperties = { width: "100%", fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 13px", marginBottom: 18, resize: "vertical" };
