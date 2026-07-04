@@ -51,6 +51,17 @@
 @keyframes gyeol-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes gyeol-bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
 
+/* Respect the OS "reduce motion" setting: kill the scan sweep, bob, and fade
+   transforms (vestibular safety) while keeping content fully visible. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body { background: var(--paper); color: var(--ink); }
 body {
   font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif;

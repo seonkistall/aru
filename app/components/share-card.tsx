@@ -59,13 +59,22 @@ async function rasterize(node: HTMLElement): Promise<string> {
 // onShare fires right before the action so callers can log intent with their
 // own surface label. AbortError (user dismissed the sheet) propagates so the
 // caller can ignore it silently.
-export async function shareCardImage(node: HTMLElement, opts?: { onShare?: (mode: ShareMode) => void }): Promise<ShareMode> {
+export async function shareCardImage(
+  node: HTMLElement,
+  opts?: { onShare?: (mode: ShareMode) => void; shareUrl?: string }
+): Promise<ShareMode> {
   const dataUrl = await rasterize(node);
   const blob = await (await fetch(dataUrl)).blob();
   const file = new File([blob], "aru-skin-card.png", { type: "image/png" });
   if (navigator.canShare?.({ files: [file] })) {
     opts?.onShare?.("web-share");
-    await navigator.share({ files: [file], title: "아루 피부 카드" });
+    // Include the deep link so the shared post carries a way back to aru (viral
+    // loop); platforms that ignore url alongside files still share the image.
+    await navigator.share({
+      files: [file],
+      title: "아루 피부 카드",
+      ...(opts?.shareUrl ? { text: "내 피부 무드 — 아루", url: opts.shareUrl } : {}),
+    });
     return "web-share";
   }
   opts?.onShare?.("download");

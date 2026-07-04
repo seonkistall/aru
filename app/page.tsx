@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Xiaohei } from "./components/sketch";
 import { ReturnBanner } from "./components/return-banner";
+import { MoodFromLink } from "./components/mood-from-link";
 
 function Arrow() {
   return (
@@ -18,6 +19,8 @@ export default function Home() {
         <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>아루</span>
         <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)" }}>아름다움을, 매일의 루틴으로</span>
       </header>
+
+      <MoodFromLink />
 
       <section className="flex-1 flex flex-col items-center justify-center px-6 text-center">
         {/* 小黑 reading skin through a magnifier, with a red hand annotation */}

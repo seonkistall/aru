@@ -16,6 +16,7 @@ import { labelCount, type CaptureQualityMeta, type SampleMeta } from "@/lib/labe
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { ShareCard, shareCardImage, skinReadsToCard } from "@/app/components/share-card";
+import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
 import {
   CAPTURE_PROFILES,
@@ -648,12 +649,13 @@ export default function Scan() {
 
   async function shareResultCard() {
     const node = shareCardRef.current;
-    if (!node || sharing) return;
+    if (!node || sharing || !reads) return;
     setSharing(true);
     setShareErr("");
     try {
       await shareCardImage(node, {
         onShare: (mode) => recordFunnelEvent("share_clicked", { surface: "scan_result", mode }),
+        shareUrl: moodShareUrl({ oil: reads.oil.level, redness: reads.redness.level, pores: reads.pores.level }),
       });
     } catch (e) {
       if ((e as Error).name !== "AbortError") setShareErr("공유에 실패했어요. 잠시 후 다시 시도해 주세요.");

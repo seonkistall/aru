@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CONSENT_VERSION, consentEventCount, exportConsentEvents, latestConsent } from "@/lib/consent";
 import { cropSampleCount, exportCropSamples } from "@/lib/crops";
-import { exportFunnelEvents, summarizeFunnel, type FunnelSummary } from "@/lib/funnel";
+import { exportFunnelEvents, funnelDropoff, summarizeFunnel, type FunnelStage, type FunnelSummary } from "@/lib/funnel";
 import { exportLabels, labelCount } from "@/lib/labels";
 import { getMlReadiness } from "@/lib/ml-readiness";
 import { exportPilotNotes, getPilotNotes, normalizeParticipantId, PILOT_PARTICIPANT_IDS, summarizePilotNotes } from "@/lib/pilot";
@@ -20,6 +20,7 @@ type OpsSnapshot = {
   cropGranted: boolean | null;
   pilot: PilotSummary;
   funnel: FunnelSummary;
+  funnelStages: FunnelStage[];
 };
 
 type SyncStatus = {
@@ -68,6 +69,7 @@ const emptySnapshot: OpsSnapshot = {
   cropGranted: null,
   pilot: emptyPilot,
   funnel: emptyFunnel,
+  funnelStages: [],
 };
 
 export default function OpsPage() {
@@ -186,14 +188,24 @@ export default function OpsPage() {
           <strong style={{ ...sectionTitle, fontSize: 30, color: "var(--plum)" }}>
             {Math.round(snapshot.funnel.failurePreventionConversion * 100)}%
           </strong>
+          <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+            {snapshot.funnelStages.map((stage, index) => (
+              <div key={stage.kind}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--ink)", marginBottom: 3 }}>
+                  <span>{stage.label} · {stage.count}</span>
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {Math.round(stage.ofStart * 100)}%{index > 0 && stage.dropFromPrev > 0 ? ` · -${Math.round(stage.dropFromPrev * 100)}%` : ""}
+                  </span>
+                </div>
+                <div style={{ height: 8, background: "var(--surface-tint)", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.round(stage.ofStart * 100)}%`, background: "var(--plum)", borderRadius: 4 }} />
+                </div>
+              </div>
+            ))}
+          </div>
           <div style={{ marginTop: 12 }}>
             <Row label="Sessions" value={`${snapshot.funnel.sessions}`} />
-            <Row label="Scan started" value={`${snapshot.funnel.steps.scan_started}`} />
-            <Row label="Scan completed" value={`${snapshot.funnel.steps.scan_completed}`} />
-            <Row label="Survey completed" value={`${snapshot.funnel.steps.survey_completed}`} />
-            <Row label="Reco viewed" value={`${snapshot.funnel.steps.reco_viewed}`} />
             <Row label="Share clicked" value={`${snapshot.funnel.steps.share_clicked}`} />
-            <Row label="Commerce clicked" value={`${snapshot.funnel.steps.commerce_clicked}`} />
             <Row label="Share rate" value={`${Math.round(snapshot.funnel.shareRate * 100)}%`} />
           </div>
           <p style={mutedText}>Local device only until a Supabase sync flows these events to funnel_events.</p>
@@ -268,6 +280,7 @@ function readSnapshot(): OpsSnapshot {
     cropGranted: latestConsent("learning_crop")?.granted ?? null,
     pilot: summarizePilotNotes(),
     funnel: summarizeFunnel(),
+    funnelStages: funnelDropoff(),
   };
 }
 
