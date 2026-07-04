@@ -17,6 +17,7 @@ const BUDGETS = [
   { label: "3만원대", won: 35000 },
   { label: "4만원 이상", won: 60000 },
 ];
+const BUDGET_LABELS = BUDGETS.map((b) => b.label);
 
 type ScanHint = { concerns: Concern[]; text: string } | null;
 
@@ -97,7 +98,7 @@ export default function Survey() {
         </Section>
         <Section title="예산" required>
           <Chips
-            options={BUDGETS.map((b) => b.label)}
+            options={BUDGET_LABELS}
             selected={budget ? [BUDGETS.find((b) => b.won === budget)?.label ?? ""] : []}
             onPick={(label) => setBudget(BUDGETS.find((b) => b.label === label)?.won ?? null)}
           />

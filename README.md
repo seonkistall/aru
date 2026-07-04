@@ -27,6 +27,9 @@
 - **아이덴티티**: 아루(ARU) 손그림(xiaohei) — 순백·小黑·손글씨, iOS/Android 홈화면 설치 지원
 
 ## 버전 이력
+- **v0.6.3** (2026-07-04) — 소비자 5페이지 버그 수정 + 최적화 (5에이전트 검증)
+  - **버그(촬영 우선)**: 자동복구 재로딩 중 촬영 버튼이 활성인 채라 중복 랜드마커 누수 가능 → `guideState !== "ready"`로 차단; **케어 커머스 클릭이 팝업차단으로 실패**(await 후 window.open) → 클릭 제스처 안에서 동기 오픈(major); 리포트·케어의 `gyeol_survey` JSON.parse 무가드 → 손상 시 빈 화면 → try/catch로 안전 폴백(major)
+  - **최적화**: 촬영 profile의 죽은 필드 4개 제거(centerTolerance/minFaceSize/maxFaceSize), 랜딩 헤딩 a11y(h2/h3)+Arrow 죽은 prop, 설문 BUDGET_LABELS 호이스팅, reengage 이메일 aria-label, care.ts needsClinic 중복 제거
 - **v0.6.2** (2026-07-04) — 안드로이드 GPU 손상 랜드마크 자동복구 (진짜 원인)
   - **삼성 안드로이드 실기기 debug(`?debug=1`) 데이터로 확인**: MediaPipe **GPU 델리게이트가 정규화 안 된 손상 랜드마크(값 ~1e34)**를 뱉어 rawSize가 1e35가 됨 → 거리 영원히 false, 존 추적 불가. 임계값·게이트 문제가 아니라 **입력 데이터 오염**이 진짜 원인
   - **자동 복구(self-heal)**: 얼굴 박스가 [0,1] 범위를 벗어나면 GPU 출력 손상으로 판단 → **CPU 델리게이트로 1회 자동 전환·재로딩**(느리지만 정확). 이걸로 **거리 판정 + T존/양볼 존 자동 추적이 동시에 정상화**(둘 다 유효 랜드마크 의존)

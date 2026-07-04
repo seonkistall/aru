@@ -16,7 +16,12 @@ function loadCareView(): CareView | null {
   const raw = sessionStorage.getItem("gyeol_survey");
   if (!raw) return null;
 
-  const survey: Survey = JSON.parse(raw);
+  let survey: Survey;
+  try {
+    survey = JSON.parse(raw);
+  } catch {
+    return null;
+  }
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
@@ -49,8 +54,10 @@ export default function CarePage() {
   const topPicks = view?.result.picks.slice(0, 3) ?? [];
   const clinics = clinicLinks(locale);
 
-  async function openCareLink(link: CareLink, context?: string) {
-    await recordCareIntent({
+  function openCareLink(link: CareLink, context?: string) {
+    // Open synchronously inside the click gesture — awaiting the record first
+    // pushes window.open past the user-gesture window and popup blockers kill it.
+    void recordCareIntent({
       kind: link.kind,
       label: link.label,
       href: link.href,

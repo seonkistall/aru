@@ -33,7 +33,12 @@ function loadInitialView(): InitialView | null {
   const raw = sessionStorage.getItem("gyeol_survey");
   if (!raw) return null;
 
-  const survey: Survey = JSON.parse(raw);
+  let survey: Survey;
+  try {
+    survey = JSON.parse(raw);
+  } catch {
+    return null;
+  }
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {

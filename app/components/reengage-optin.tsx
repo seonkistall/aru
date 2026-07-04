@@ -45,6 +45,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
           type="email"
           inputMode="email"
           autoComplete="email"
+          aria-label="이메일 주소"
           placeholder="이메일 주소"
           value={email}
           onChange={(e) => setEmail(e.target.value)}

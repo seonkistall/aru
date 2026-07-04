@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { Xiaohei } from "./components/sketch";
 
-function Arrow({ w = 30 }: { w?: number }) {
+function Arrow() {
   return (
-    <svg width={w} height="16" viewBox="0 0 30 16" aria-hidden style={{ filter: "url(#sketch)" }}>
+    <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden style={{ filter: "url(#sketch)" }}>
       <path d="M2 8 L23 8" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" />
       <path d="M23 8 L17 4 M23 8 L17 12" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" fill="none" />
     </svg>
@@ -61,7 +61,7 @@ export default function Home() {
       </section>
 
       <section className="px-6" style={{ paddingBottom: 6 }}>
-        <p style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>이렇게 진행돼요</p>
+        <h2 style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>이렇게 진행돼요</h2>
         <div style={{ display: "grid", gap: 10 }}>
           <HowCard
             index={1}
@@ -113,7 +113,7 @@ function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" 
             <Xiaohei size={46} pose={pose} />
           </span>
           <span style={{ textAlign: "left" }}>
-            <span style={{ display: "block", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</span>
+            <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
             <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
           </span>
         </div>
