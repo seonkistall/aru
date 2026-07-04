@@ -72,24 +72,23 @@ export function careSummary(survey: Survey | null, reads: SkinReads | null, resu
   const top = result?.picks[0]?.sku;
   const hasVisibleRedness = (reads?.redness.level ?? 0) >= 1 || survey?.concerns.includes("붉은기");
   const hasTroubleConcern = survey?.concerns.includes("트러블");
+  const needsClinic = Boolean(hasVisibleRedness || hasTroubleConcern);
 
   if (locale === "en") {
     return {
       title: top ? `Next step for ${top.name}` : "Your next K-beauty step",
-      body:
-        hasVisibleRedness || hasTroubleConcern
-          ? "You can compare products first, and consider a clinic consultation if sensitivity or breakouts continue."
-          : "Start with the recommended product search, then save a check-in after trying it.",
-      clinicPriority: Boolean(hasVisibleRedness || hasTroubleConcern),
+      body: needsClinic
+        ? "You can compare products first, and consider a clinic consultation if sensitivity or breakouts continue."
+        : "Start with the recommended product search, then save a check-in after trying it.",
+      clinicPriority: needsClinic,
     };
   }
 
   return {
     title: top ? `${top.name} 다음 단계` : "다음 케어 단계",
-    body:
-      hasVisibleRedness || hasTroubleConcern
-        ? "제품 비교와 함께, 붉은기나 트러블이 계속되면 피부과 상담 연결도 열어둘게요."
-        : "추천 제품을 먼저 비교하고, 사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요.",
-    clinicPriority: Boolean(hasVisibleRedness || hasTroubleConcern),
+    body: needsClinic
+      ? "제품 비교와 함께, 붉은기나 트러블이 계속되면 피부과 상담 연결도 열어둘게요."
+      : "추천 제품을 먼저 비교하고, 사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요.",
+    clinicPriority: needsClinic,
   };
 }

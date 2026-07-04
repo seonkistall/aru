@@ -50,10 +50,6 @@ type CaptureMode = "balanced" | "texture" | "tone";
 type CaptureProfile = {
   label: string;
   hint: string;
-  centerToleranceX: number;
-  centerToleranceY: number;
-  minFaceSize: number;
-  maxFaceSize: number;
   minBrightness: number;
   maxDarkRatio: number;
   maxHotRatio: number;
@@ -122,14 +118,8 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
   balanced: {
     label: "균형",
     hint: "윤곽, 톤, 피부결을 함께 보는 기본 촬영입니다.",
-    // Tolerances/size are fractions of the VISIBLE frame; widened so normal
-    // selfie framing passes on portrait (9:16) phone streams, not only on
-    // landscape desktop webcams (v0.5.1 gates were desktop-tuned → 중앙·거리
-    // unreachable on phones). Burst median + retake still guard real quality.
-    centerToleranceX: 0.2,
-    centerToleranceY: 0.22,
-    minFaceSize: 0.3,
-    maxFaceSize: 0.9,
+    // Distance/centering now use aspect-independent raw-box + hardcoded
+    // advisory tolerances (see measureQuality); only exposure/movement vary.
     minBrightness: 72,
     maxDarkRatio: 0.4,
     maxHotRatio: 0.1,
@@ -139,10 +129,6 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
   texture: {
     label: "피부결",
     hint: "모공과 결을 보려고 조금 더 가까이, 더 흔들림 없이 촬영합니다.",
-    centerToleranceX: 0.16,
-    centerToleranceY: 0.18,
-    minFaceSize: 0.34,
-    maxFaceSize: 0.9,
     minBrightness: 80,
     maxDarkRatio: 0.32,
     maxHotRatio: 0.065,
@@ -152,10 +138,6 @@ const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
   tone: {
     label: "피부톤",
     hint: "톤과 붉은기를 보기 위해 더 부드러운 빛, 더 적은 반사가 필요해요.",
-    centerToleranceX: 0.2,
-    centerToleranceY: 0.22,
-    minFaceSize: 0.3,
-    maxFaceSize: 0.9,
     minBrightness: 82,
     maxDarkRatio: 0.32,
     maxHotRatio: 0.06,
@@ -843,12 +825,12 @@ export default function Scan() {
           <div style={{ position: "sticky", bottom: 0, zIndex: 5, background: "var(--paper)", padding: "10px 0 8px", marginTop: 6 }}>
             <button
               onClick={capture}
-              disabled={phase === "analyzing" || !canCapture}
+              disabled={phase === "analyzing" || !canCapture || guideState !== "ready"}
               style={{
                 ...primaryBtn,
                 width: "100%",
-                opacity: phase === "analyzing" || !canCapture ? 0.58 : 1,
-                cursor: phase === "analyzing" || !canCapture ? "default" : "pointer",
+                opacity: phase === "analyzing" || !canCapture || guideState !== "ready" ? 0.58 : 1,
+                cursor: phase === "analyzing" || !canCapture || guideState !== "ready" ? "default" : "pointer",
               }}
             >
               {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : guideState !== "ready" ? "가이드 준비 중…" : canCapture ? "지금 촬영하기" : "얼굴을 가이드에 맞춰주세요"}
