@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Xiaohei } from "./components/sketch";
+import { ReturnBanner } from "./components/return-banner";
 
 function Arrow() {
   return (
@@ -58,6 +59,8 @@ export default function Home() {
           <Arrow />
           <span>추천</span>
         </div>
+
+        <ReturnBanner />
       </section>
 
       <section className="px-6" style={{ paddingBottom: 6 }}>

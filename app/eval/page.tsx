@@ -37,6 +37,7 @@ export default function EvalPage() {
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const [rows, setRows] = useState<EvalRow[]>([]);
   const [baseline, setBaseline] = useState<Record<string, EvalRow>>({});
+  const [labels, setLabels] = useState<Record<string, EvalRow>>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -112,23 +113,33 @@ export default function EvalPage() {
     }
   }
 
+  function parseJsonl(text: string): Record<string, EvalRow> {
+    const map: Record<string, EvalRow> = {};
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const row = JSON.parse(trimmed) as EvalRow;
+        if (row.file) map[row.file] = row;
+      } catch {
+        /* skip bad line */
+      }
+    }
+    return map;
+  }
+
   function loadBaseline(list: FileList | null) {
     const file = list?.[0];
     if (!file) return;
-    void file.text().then((text) => {
-      const map: Record<string, EvalRow> = {};
-      for (const line of text.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const row = JSON.parse(trimmed) as EvalRow;
-          if (row.file) map[row.file] = row;
-        } catch {
-          /* skip bad line */
-        }
-      }
-      setBaseline(map);
-    });
+    void file.text().then((text) => setBaseline(parseJsonl(text)));
+  }
+
+  // golden-labels.jsonl: operator-consensus ground truth ({file, oil, redness,
+  // pores}) — lets /eval measure ACCURACY (agreement with truth), not just drift.
+  function loadLabels(list: FileList | null) {
+    const file = list?.[0];
+    if (!file) return;
+    void file.text().then((text) => setLabels(parseJsonl(text)));
   }
 
   function exportJsonl() {
@@ -158,6 +169,44 @@ export default function EvalPage() {
     return base && (base.oil !== row.oil || base.redness !== row.redness || base.pores !== row.pores);
   }).length;
 
+  const ATTR_KEYS = ["oil", "redness", "pores"] as const;
+  const agreement = (() => {
+    const per = { oil: { m: 0, t: 0 }, redness: { m: 0, t: 0 }, pores: { m: 0, t: 0 } };
+    for (const row of rows) {
+      if (!row.ok) continue;
+      const label = labels[row.file];
+      if (!label) continue;
+      for (const key of ATTR_KEYS) {
+        if (label[key] === undefined || row[key] === undefined) continue;
+        per[key].t += 1;
+        if (label[key] === row[key]) per[key].m += 1;
+      }
+    }
+    const t = per.oil.t + per.redness.t + per.pores.t;
+    const m = per.oil.m + per.redness.m + per.pores.m;
+    return { per, t, m };
+  })();
+  const pct = (m: number, t: number) => (t ? Math.round((m / t) * 100) : 0);
+  const hasLabels = Object.keys(labels).length > 0 && agreement.t > 0;
+
+  const labelCell = (row: EvalRow) => {
+    const label = labels[row.file];
+    if (!row.ok || !label) return <td style={cell}>—</td>;
+    return (
+      <td style={cell}>
+        {ATTR_KEYS.map((key, i) => {
+          if (label[key] === undefined) return <span key={key} style={{ color: "var(--faint)" }}>{i > 0 ? "·" : ""}—</span>;
+          const match = row[key] === label[key];
+          return (
+            <span key={key} style={{ color: match ? "var(--success)" : "var(--plum)", fontWeight: match ? 500 : 800 }}>
+              {i > 0 ? " · " : ""}{label[key]}{match ? "✓" : "✗"}
+            </span>
+          );
+        })}
+      </td>
+    );
+  };
+
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 560 }}>
@@ -177,16 +226,31 @@ export default function EvalPage() {
             베이스라인 JSONL (선택 — 이전 실행과 비교)
             <input type="file" accept=".jsonl,.txt,application/json" onChange={(e) => loadBaseline(e.target.files)} style={{ display: "block", marginTop: 6 }} />
           </label>
+          <label style={fileLabel}>
+            정답 라벨 JSONL (선택 — golden-labels.jsonl, 일치율 측정)
+            <input type="file" accept=".jsonl,.txt,application/json" onChange={(e) => loadLabels(e.target.files)} style={{ display: "block", marginTop: 6 }} />
+          </label>
         </div>
 
         {status && <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>진행: {status}{Object.keys(baseline).length > 0 ? ` · 레벨 변화 ${changedCount}건` : ""}</p>}
+
+        {hasLabels && (
+          <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", marginBottom: 12, background: "var(--surface-tint)" }}>
+            <p style={{ fontSize: 13, color: "var(--ink)", fontWeight: 800 }}>
+              라벨 일치율 {pct(agreement.m, agreement.t)}% <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>({agreement.m}/{agreement.t})</span>
+            </p>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
+              유분 {pct(agreement.per.oil.m, agreement.per.oil.t)}% · 붉은기 {pct(agreement.per.redness.m, agreement.per.redness.t)}% · 결 {pct(agreement.per.pores.m, agreement.per.pores.t)}%
+            </p>
+          </div>
+        )}
 
         {rows.length > 0 && (
           <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
                 <tr style={{ background: "var(--surface-tint)" }}>
-                  {["파일", "유분", "붉은기", "결", "conf", "retake", "shine", "relRed", "cov", "ITA"].map((h) => (
+                  {["파일", "유분", "붉은기", "결", ...(hasLabels ? ["정답(유·붉·결)"] : []), "conf", "retake", "shine", "relRed", "cov", "ITA"].map((h) => (
                     <th key={h} style={{ ...cell, fontWeight: 700, textAlign: "left" }}>{h}</th>
                   ))}
                 </tr>
@@ -198,6 +262,7 @@ export default function EvalPage() {
                     {diffCell(row, "oil")}
                     {diffCell(row, "redness")}
                     {diffCell(row, "pores")}
+                    {hasLabels && labelCell(row)}
                     <td style={cell}>{row.confidence ?? "—"}</td>
                     <td style={cell}>{row.retake === undefined ? "—" : row.retake ? "Y" : "N"}</td>
                     <td style={cell}>{row.shine ?? "—"}</td>

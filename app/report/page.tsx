@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
+import { loadLastResult, saveLastResult } from "@/lib/last-result";
 import { recordPurchase } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -32,7 +33,13 @@ type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult
 function loadInitialView(): InitialView | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem("gyeol_survey");
-  if (!raw) return null;
+  if (!raw) {
+    // Fresh tab session: fall back to the last saved result so a returning
+    // visitor re-enters their report instead of being bounced to the survey.
+    const saved = loadLastResult();
+    if (!saved) return null;
+    return { survey: saved.survey, reads: saved.reads ?? null, result: recommend(saved.survey, saved.scan ?? null) };
+  }
 
   let survey: Survey;
   try {
@@ -51,6 +58,8 @@ function loadInitialView(): InitialView | null {
     if (readsRaw) reads = JSON.parse(readsRaw);
   } catch {}
 
+  // Mirror the inputs so this report survives the tab session (MAU re-entry).
+  saveLastResult({ survey, scan, reads, ts: Date.now() });
   return { survey, reads, result: recommend(survey, scan) };
 }
 
