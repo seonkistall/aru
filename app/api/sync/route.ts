@@ -35,6 +35,11 @@ export async function POST(request: Request) {
     return Response.json(result(false, ["Missing or invalid sync token."]), { status: 401 });
   }
 
+  // Rate-limit only AFTER auth so unauthenticated requests (with spoofable
+  // x-forwarded-for keys) can't grow the map unbounded.
+  const limited = rateLimitGuard(request);
+  if (limited) return limited;
+
   let body: SyncRequest;
   try {
     body = (await request.json()) as SyncRequest;
@@ -43,7 +48,14 @@ export async function POST(request: Request) {
   }
 
   const payload = body.payload;
-  if (!payload || !SYNC_SCHEMA_VERSIONS.includes(payload.schemaVersion)) {
+  if (
+    !payload ||
+    !SYNC_SCHEMA_VERSIONS.includes(payload.schemaVersion) ||
+    !Array.isArray(payload.labels) ||
+    !Array.isArray(payload.cropSamples) ||
+    !Array.isArray(payload.pilotNotes) ||
+    !Array.isArray(payload.consentEvents)
+  ) {
     return Response.json(result(false, ["Unsupported or missing sync payload."]), { status: 400 });
   }
 
@@ -206,8 +218,21 @@ function preflightGuard(request: Request) {
     return Response.json(result(false, ["Origin is not allowed for sync."]), { status: 403 });
   }
 
+  return null;
+}
+
+const RATE_LIMIT_MAX_KEYS = 10_000;
+
+function rateLimitGuard(request: Request) {
   const key = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   const now = Date.now();
+
+  // Sweep expired buckets so the map can't grow unbounded on a long-lived
+  // instance (keys are the client-supplied x-forwarded-for).
+  if (rateLimit.size > RATE_LIMIT_MAX_KEYS) {
+    for (const [k, v] of rateLimit) if (v.resetAt <= now) rateLimit.delete(k);
+  }
+
   const bucket = rateLimit.get(key);
   if (!bucket || bucket.resetAt <= now) {
     rateLimit.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
@@ -296,8 +321,9 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
 function latestConsentEvent(payload: GyeolSyncPayload, kind: "ai_analysis" | "learning_crop", sample?: GyeolSyncPayload["cropSamples"][number]) {
   const events = payload.consentEvents.filter((event) => {
     if (event.kind !== kind) return false;
-    if (sample?.meta?.participantId && event.participantId !== sample.meta.participantId) return false;
-    if (sample?.meta?.sessionId && event.sessionId !== sample.meta.sessionId) return false;
+    // Exact scope match (undefined===undefined) — see latestConsentGranted.
+    if ((event.participantId ?? undefined) !== (sample?.meta?.participantId ?? undefined)) return false;
+    if ((event.sessionId ?? undefined) !== (sample?.meta?.sessionId ?? undefined)) return false;
     return true;
   });
   return events.length ? events[events.length - 1] : null;

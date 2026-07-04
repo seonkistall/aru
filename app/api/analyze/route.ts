@@ -55,7 +55,12 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
 }
 
 export async function POST(req: Request) {
-  const { image } = (await req.json()) as { image: string };
+  let image: string | undefined;
+  try {
+    ({ image } = (await req.json()) as { image: string });
+  } catch {
+    return NextResponse.json({ ok: false, reason: "invalid JSON" }, { status: 400 });
+  }
   if (!image?.startsWith("data:image")) return NextResponse.json({ ok: false }, { status: 400 });
 
   const provider = process.env.VISION_PROVIDER ?? "gemini";

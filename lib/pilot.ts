@@ -37,7 +37,9 @@ export type PilotSession = {
 
 const KEY = "gyeol_pilot_notes_v1";
 const SESSION_KEY = "gyeol_current_pilot_session_v1";
-const PARTICIPANT_RE = /^P(0[0-9][1-9]|0[1-2][0-9]|030)$/;
+// Exactly P001-P030. The old 0[0-9][1-9] left the tens digit unconstrained and
+// also matched P031-P099, inflating the pilot participant count on ops typos.
+const PARTICIPANT_RE = /^P(00[1-9]|0[12][0-9]|030)$/;
 
 function uid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);

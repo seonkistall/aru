@@ -209,6 +209,8 @@ export default function Report() {
           <div className="mx-auto" style={{ maxWidth: 420, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <a
               href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_sticky") : top.sku.buyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
               onClick={() => {
                 recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price });
                 recordFunnelEvent("commerce_clicked", { placement: "report_sticky", merchant: topCommerce?.merchant ?? "search" });
@@ -271,6 +273,8 @@ function ProductBlock({ pick, last }: { pick: RecoResult["picks"][number]; last:
         <span style={{ fontFeatureSettings: '"tnum"', fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{pick.sku.price.toLocaleString()}원</span>
         <a
           href={commerceOutHref(pick.sku.id, commerce.merchant, "report_product")}
+          target="_blank"
+          rel="noopener noreferrer"
           onClick={() => {
             recordPurchase({ sku_id: pick.sku.id, name: pick.sku.name, price: pick.sku.price });
             recordFunnelEvent("commerce_clicked", { placement: "report_product", merchant: commerce.merchant });

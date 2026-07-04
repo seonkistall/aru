@@ -61,8 +61,11 @@ export function latestConsentGranted(
 ) {
   const events = payload.consentEvents.filter((event) => {
     if (event.kind !== kind) return false;
-    if (scope?.participantId && event.participantId !== scope.participantId) return false;
-    if (scope?.sessionId && event.sessionId !== scope.sessionId) return false;
+    // Exact scope match, including undefined===undefined. Skipping the check
+    // when the crop scope is undefined would let ANY scoped grant authorize an
+    // unscoped crop (fail-open) — a consent-invariant violation.
+    if ((event.participantId ?? undefined) !== (scope?.participantId ?? undefined)) return false;
+    if ((event.sessionId ?? undefined) !== (scope?.sessionId ?? undefined)) return false;
     return true;
   });
   return events.length ? events[events.length - 1]?.granted === true : false;
