@@ -198,16 +198,26 @@ export default function Scan() {
   const [guideAttempt, setGuideAttempt] = useState(0);
   const captureProfile = CAPTURE_PROFILES[captureMode];
   const [staffMode, setStaffMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const debugRef = useRef(false);
+  const [debugInfo, setDebugInfo] = useState<Record<string, string | number | boolean> | null>(null);
   useEffect(() => {
     // URL is client-only context here; reading it during render breaks hydration.
-    /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    setStaffMode(new URLSearchParams(window.location.search).get("staff") === "1");
+    const params = new URLSearchParams(window.location.search);
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setStaffMode(params.get("staff") === "1");
+    const dbg = params.get("debug") === "1";
+    setDebugMode(dbg);
+    debugRef.current = dbg;
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
+  // Auto-capture no longer requires centered/distance-in-a-tight-range — those
+  // depend on the fragile aspect-ratio transform and blocked real phone
+  // framing. It needs a face, a non-tiny face (raw distance), and good light.
   const canCapture =
     phase === "ready" &&
     quality.face &&
-    quality.centered &&
     quality.distance &&
     quality.brightness &&
     quality.noGlare &&
@@ -365,19 +375,21 @@ export default function Scan() {
       const centerX = (box.minX + box.maxX) / 2;
       const centerY = (box.minY + box.maxY) / 2;
       const profile = CAPTURE_PROFILES[captureMode];
-      // Gates run in VISIBLE coords (the 3:4 frame the user actually sees).
-      // Mobile streams often arrive 9:16/16:9, so raw video coords made
-      // "중앙"/"거리" unreachable — the visible-crop center is not the
-      // video center there (same cover-crop math as the zone overlay).
+
+      // Distance = the RAW normalized face box (aspect-independent). A real,
+      // reasonably-close face spans a good fraction of the frame in at least
+      // one axis, regardless of stream orientation. This drops the fragile
+      // cover-crop transform from the GATE, which is what kept blocking phones.
+      const rawSize = Math.max(box.maxX - box.minX, box.maxY - box.minY);
+      const distance = rawSize > 0.2 && rawSize < 0.98;
+
+      // Centering stays ADVISORY only (landmark ROIs analyze off-center faces
+      // fine), so it never blocks auto-capture.
       const { fx, fy } = coverCropFractions(video.videoWidth, video.videoHeight);
       const visCenterX = (centerX - (1 - fx) / 2) / fx;
       const visCenterY = (centerY - (1 - fy) / 2) / fy;
-      const size = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
-      const centered =
-        Math.abs(visCenterX - 0.5) < profile.centerToleranceX && Math.abs(visCenterY - 0.48) < profile.centerToleranceY;
-      const distance = size > profile.minFaceSize && size < profile.maxFaceSize;
-      // Face-box exposure, matching evaluateCapturedQuality — a whole-frame
-      // reading here lets backlit shots pass live and fail at capture.
+      const centered = Math.abs(visCenterX - 0.5) < 0.28 && Math.abs(visCenterY - 0.48) < 0.3;
+
       const exposure = exposureStats(frame.ctx.getImageData(0, 0, frame.w, frame.h), box);
       const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
       const noGlare = exposure.hotRatio < profile.maxHotRatio;
@@ -388,24 +400,40 @@ export default function Scan() {
       lastCenterRef.current = { x: centerX, y: centerY, t: now };
       const steady = !last || movement < profile.maxMovement;
 
-      const score = 1 + (centered ? 1 : 0) + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0);
-      const message = !centered
-        ? "얼굴 중심을 세로선에 맞춰주세요."
-        : !distance
-          ? size <= profile.minFaceSize
-            ? "조금 더 가까이 와주세요. 볼 결이 작게 보여요."
-            : "조금만 뒤로 물러나주세요. 얼굴 윤곽이 잘려요."
-          : !brightness
-            ? "빛이 부족해요. 창가처럼 밝고 부드러운 곳이 좋아요."
-            : !noGlare
-              ? "반사가 강해요. 정면 조명이나 번들거림을 줄여주세요."
-              : !steady
-                ? "잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요."
-                : "좋아요. 이마와 양볼 결이 잘 보입니다.";
+      const pass = distance && brightness && noGlare && (!profile.requiresSteady || steady);
+      const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
+      const message = !distance
+        ? rawSize <= 0.2
+          ? "얼굴이 작게 보여요. 조금 더 가까이 와주세요."
+          : "너무 가까워요. 살짝 물러나 주세요."
+        : !brightness
+          ? "빛이 부족해요. 창가처럼 밝고 부드러운 곳이 좋아요."
+          : !noGlare
+            ? "반사가 강해요. 정면 조명이나 번들거림을 줄여주세요."
+            : !steady
+              ? "잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요."
+              : "좋아요. 그대로 계세요.";
 
       commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
-      handleAutoTick(centered && distance && brightness && noGlare && (!profile.requiresSteady || steady));
+      handleAutoTick(pass);
       setZones(computeGuideZones(face, video.videoWidth, video.videoHeight));
+      if (debugRef.current) {
+        setDebugInfo({
+          "video": `${video.videoWidth}x${video.videoHeight}`,
+          "ratio": Number((video.videoWidth / video.videoHeight).toFixed(3)),
+          "fx/fy": `${fx.toFixed(2)}/${fy.toFixed(2)}`,
+          "rawSize": Number(rawSize.toFixed(3)),
+          "box cx/cy": `${centerX.toFixed(2)}/${centerY.toFixed(2)}`,
+          "vis cx/cy": `${visCenterX.toFixed(2)}/${visCenterY.toFixed(2)}`,
+          "mean/dark/hot": `${Math.round(exposure.mean)}/${exposure.darkRatio.toFixed(2)}/${exposure.hotRatio.toFixed(3)}`,
+          "distance": distance,
+          "brightness": brightness,
+          "noGlare": noGlare,
+          "steady": steady,
+          "centered(adv)": centered,
+          "AUTO PASS": pass,
+        });
+      }
     },
     [captureMode, commitQuality, handleAutoTick, readFrame]
   );
@@ -707,6 +735,16 @@ export default function Scan() {
               </Center>
             )}
             {phase === "analyzing" && <Scanning step={analysisStep} />}
+            {debugMode && debugInfo && (
+              <div style={{ position: "absolute", top: 6, left: 6, right: 6, background: "rgba(0,0,0,.72)", color: "#fff", fontSize: 10.5, fontFamily: "ui-monospace, Consolas, monospace", lineHeight: 1.5, padding: "6px 8px", borderRadius: 6, pointerEvents: "none", zIndex: 20 }}>
+                {Object.entries(debugInfo).map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, color: typeof v === "boolean" ? (v ? "#7de89a" : "#ff8c7d") : "#fff" }}>
+                    <span style={{ opacity: 0.8 }}>{k}</span>
+                    <span>{String(v)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {phase === "ready" && countdown !== null && (
               <div role="status" aria-live="polite" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
                 <span style={{ fontFamily: "var(--font-hand)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
@@ -1038,9 +1076,9 @@ function GuideZone({ label, style }: { label: string; style: React.CSSProperties
 
 function QualityPanel({ quality, requireSteady }: { quality: Quality; requireSteady: boolean }) {
   const checks = useMemo(() => {
+    // Only the actual auto-capture requirements (centering is advisory).
     const base: Array<[string, boolean]> = [
       ["얼굴", quality.face],
-      ["중앙", quality.centered],
       ["거리", quality.distance],
       ["밝기", quality.brightness],
       ["반사 없음", quality.noGlare],
@@ -1313,28 +1351,27 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const box = faceBox(landmarks);
   const centerX = (box.minX + box.maxX) / 2;
   const centerY = (box.minY + box.maxY) / 2;
-  // Same visible-crop mapping as the live gate (mobile streams are rarely 3:4).
+  // Match the live gate: raw aspect-independent distance, centering advisory.
   const { fx, fy } = coverCropFractions(imageData.width, imageData.height);
   const centerOffsetX = (centerX - (1 - fx) / 2) / fx - 0.5;
   const centerOffsetY = (centerY - (1 - fy) / 2) / fy - 0.48;
-  const faceSize = Math.max((box.maxX - box.minX) / fx, (box.maxY - box.minY) / fy);
+  const rawSize = Math.max(box.maxX - box.minX, box.maxY - box.minY);
+  const faceSize = rawSize;
   const exposure = exposureStats(imageData, box);
-  const centered = Math.abs(centerOffsetX) < profile.centerToleranceX && Math.abs(centerOffsetY) < profile.centerToleranceY;
-  const distance = faceSize > profile.minFaceSize && faceSize < profile.maxFaceSize;
+  const centered = Math.abs(centerOffsetX) < 0.28 && Math.abs(centerOffsetY) < 0.3;
+  const distance = rawSize > 0.2 && rawSize < 0.98;
   const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
   const noGlare = exposure.hotRatio < profile.maxHotRatio;
   const steady = profile.requiresSteady ? previousSteady : true;
-  const rejectReason = !centered
-    ? "center"
-    : !distance
-      ? "distance"
-      : !brightness
-        ? "brightness"
-        : !noGlare
-          ? "glare"
-          : !steady
-            ? "movement"
-            : undefined;
+  const rejectReason = !distance
+    ? "distance"
+    : !brightness
+      ? "brightness"
+      : !noGlare
+        ? "glare"
+        : !steady
+          ? "movement"
+          : undefined;
   return {
     face: true,
     centered,
@@ -1342,7 +1379,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     brightness,
     noGlare,
     steady,
-    score: 1 + (centered ? 1 : 0) + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0),
+    score: 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0),
     message: rejectReason ? "촬영 품질을 다시 맞춰주세요." : "촬영 품질이 확인됐어요.",
     centerOffsetX,
     centerOffsetY,
@@ -1355,7 +1392,8 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
 }
 
 function qualityPassed(quality: Quality, profile: CaptureProfile) {
-  return quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && (!profile.requiresSteady || quality.steady);
+  // Centering is advisory, not required (see canCapture / measureQuality).
+  return quality.face && quality.distance && quality.brightness && quality.noGlare && (!profile.requiresSteady || quality.steady);
 }
 
 function qualityMeta(quality: Quality): CaptureQualityMeta {
