@@ -3,6 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCheckins, getPurchases, recordCheckin, type Purchase } from "@/lib/store";
+import { SKUS } from "@/lib/skus";
+import { ProductVisual } from "@/app/components/product-visual";
+import { Xiaohei } from "@/app/components/sketch";
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+// The check-in round from REAL elapsed time. 0 = not yet due — a purchase.ts is
+// stamped on a commerce-link click, so a just-clicked product must not claim
+// "2주차" / "써보니 어땠나요?" before any time has passed.
+const roundFor = (ts: number) => {
+  const weeks = (Date.now() - ts) / WEEK_MS;
+  return weeks >= 3 ? 4 : weeks >= 2 ? 2 : 0;
+};
 
 export default function Checkin() {
   const [purchases, setPurchases] = useState<Purchase[] | null>(null);
@@ -12,10 +24,9 @@ export default function Checkin() {
     Promise.all([getPurchases(), getCheckins()]).then(([nextPurchases, checkins]) => {
       // Done is per round (2주/4주): a week-2 checkin must not block the
       // week-4 one the re-engagement email brings the user back for.
-      const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
       const initial: Record<string, boolean> = {};
       for (const p of nextPurchases) {
-        const round = (Date.now() - p.ts) / WEEK_MS >= 3 ? 4 : 2;
+        const round = roundFor(p.ts);
         if (checkins.some((c) => c.sku_id === p.sku_id && c.week === round)) initial[p.id] = true;
       }
       setDone(initial);
@@ -25,24 +36,47 @@ export default function Checkin() {
 
   if (purchases === null) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
 
+  const duePurchases = purchases.filter((p) => roundFor(p.ts) > 0);
+  const allDone = duePurchases.length > 0 && duePurchases.every((p) => done[p.id]);
+
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>사용 후 체크인</p>
-        <h1 style={titleStyle}>써보니 어땠나요?</h1>
-        <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 26, lineHeight: 1.55 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <Link href="/" style={{ fontFamily: "var(--font-hand)", fontSize: 22, color: "var(--ink)", textDecoration: "none" }}>아루</Link>
+            <p style={{ ...eyebrow, marginTop: 8 }}>사용 후 체크인</p>
+            <h1 style={titleStyle}>써보니 어땠나요?</h1>
+          </div>
+          <Xiaohei size={54} pose="carry" />
+        </div>
+        <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "6px 0 26px", lineHeight: 1.55 }}>
           구매 후 피드백을 남기면 다음 추천이 더 정확해져요.
         </p>
 
         {purchases.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "30px 0" }}>
-            <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>아직 기록된 구매가 없어요.</p>
-            <Link href="/scan" style={{ color: "var(--plum)", fontSize: 14, textDecoration: "none", fontWeight: 700 }}>피부 스캔하러 가기</Link>
+          <div style={{ textAlign: "center", padding: "22px 18px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12 }}>
+            <p style={{ fontSize: 14.5, color: "var(--ink)", marginBottom: 6, fontWeight: 700 }}>아직 기록된 구매가 없어요</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.55 }}>
+              추천 리포트에서 제품을 열어보면 여기에서 2·4주 후 사용감을 남길 수 있어요.
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link href="/report" style={ctaPrimary}>내 리포트 보기</Link>
+              <Link href="/scan" style={ctaGhost}>피부 스캔하기</Link>
+            </div>
           </div>
         ) : (
-          purchases.map((purchase) => (
-            <CheckinCard key={purchase.id} purchase={purchase} done={Boolean(done[purchase.id])} onDone={() => setDone((d) => ({ ...d, [purchase.id]: true }))} />
-          ))
+          <>
+            {purchases.map((purchase) => (
+              <CheckinCard key={purchase.id} purchase={purchase} done={Boolean(done[purchase.id])} onDone={() => setDone((d) => ({ ...d, [purchase.id]: true }))} />
+            ))}
+            {allDone && (
+              <div style={{ textAlign: "center", padding: "18px", marginTop: 6 }}>
+                <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>모든 피드백 완료! 다음 스캔에 더 정확히 반영할게요.</p>
+                <Link href="/scan" style={ctaPrimary}>새로 스캔하기 →</Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>
@@ -55,17 +89,32 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
   const ready = sat !== null && trouble !== null && repurchase !== null;
 
+  const sku = SKUS.find((s) => s.id === purchase.sku_id);
+  const round = roundFor(purchase.ts);
+  const due = round > 0;
+
   async function save() {
-    if (!ready) return;
-    const weeks = (Date.now() - purchase.ts) / (7 * 24 * 60 * 60 * 1000);
-    await recordCheckin({ sku_id: purchase.sku_id, week: weeks >= 3 ? 4 : 2, satisfaction: sat, trouble, repurchase });
+    if (!ready || !due) return;
+    await recordCheckin({ sku_id: purchase.sku_id, week: round === 4 ? 4 : 2, satisfaction: sat, trouble, repurchase });
     onDone();
   }
 
   return (
     <div style={card}>
-      <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 17, color: "var(--ink)", marginBottom: done ? 0 : 14 }}>{purchase.name}</p>
-      {done ? (
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: done || !due ? 0 : 14 }}>
+        <div style={{ width: 46, height: 46, flexShrink: 0 }}>
+          <ProductVisual category={sku?.category ?? "세럼"} brand={sku?.brand ?? purchase.name} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
+            <span style={due ? weekBadge : softBadge}>{due ? `${round}주차` : "사용 중"}</span>
+          </div>
+          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{purchase.name}</p>
+        </div>
+      </div>
+      {!due ? (
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>2주쯤 써본 뒤에 사용감을 여쭤볼게요. 그때 사용감을 남기면 다음 추천이 더 정확해져요.</p>
+      ) : done ? (
         <p style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>고마워요. 피드백이 저장됐어요.</p>
       ) : (
         <>
@@ -132,3 +181,7 @@ function saveBtn(ready: boolean): React.CSSProperties {
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 6px" };
 const card: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 18, marginBottom: 14 };
+const weekBadge: React.CSSProperties = { fontSize: 11, fontWeight: 800, color: "var(--on-plum)", background: "var(--plum)", borderRadius: 999, padding: "2px 8px" };
+const softBadge: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", background: "var(--surface-tint)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 8px" };
+const ctaPrimary: React.CSSProperties = { display: "inline-block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "11px 18px", fontSize: 14, fontWeight: 700, textDecoration: "none" };
+const ctaGhost: React.CSSProperties = { display: "inline-block", background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 18px", fontSize: 14, fontWeight: 700, textDecoration: "none" };

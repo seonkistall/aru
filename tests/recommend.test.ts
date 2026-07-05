@@ -97,6 +97,15 @@ describe("recommend()", () => {
     expect(result.note).toContain("제외 성분"); // avoid stretch disclosed
   });
 
+  it("does not falsely relax budget when in-band products fit the chip ceiling", () => {
+    // The "1만원대" chip stores its band ceiling (19000); toners are 16000-19000,
+    // all within the band, so the budget must be honored — not stretched.
+    const result = recommend({ type: "복합성", concerns: [], budget: 19000, avoid: [], category: "토너" }, null);
+    expect(result.relaxed).not.toBe("budget");
+    expect(result.relaxed).not.toBe("both");
+    expect(budgetLabel(19000)).toBe("1만원대");
+  });
+
   it("keeps the budget-relaxation note even alongside a low-confidence scan", () => {
     // Serums are 22000/24000 (>1만원대) so budget must relax; a retake scan must
     // not suppress that disclosure.

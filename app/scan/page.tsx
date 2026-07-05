@@ -623,18 +623,24 @@ export default function Scan() {
       await advanceStep(4);
       // Persist immediately so /survey, /report, and /studio all see this scan
       // even if the user navigates without tapping the recommendation CTA.
-      sessionStorage.setItem(
-        "gyeol_scan",
-        JSON.stringify({
-          oil: final.oil.level,
-          redness: final.redness.level,
-          pores: final.pores.level,
-          confidence: final.confidence,
-          retakeRecommended: final.retakeRecommended,
-          source: final.source,
-        })
-      );
-      sessionStorage.setItem("gyeol_reads", JSON.stringify(final));
+      // Best-effort: a blocked/full store must NOT abort the success path below —
+      // otherwise a completed scan would be mislabeled as an analysis failure.
+      try {
+        sessionStorage.setItem(
+          "gyeol_scan",
+          JSON.stringify({
+            oil: final.oil.level,
+            redness: final.redness.level,
+            pores: final.pores.level,
+            confidence: final.confidence,
+            retakeRecommended: final.retakeRecommended,
+            source: final.source,
+          })
+        );
+        sessionStorage.setItem("gyeol_reads", JSON.stringify(final));
+      } catch {
+        /* result still renders from in-memory `final` below */
+      }
       recordFunnelEvent("scan_completed", { retake: final.retakeRecommended, source: final.source });
       pushScanHistory({ oil: final.oil.level, redness: final.redness.level, pores: final.pores.level, confidence: final.confidence, ts: Date.now() });
       setReads(final);
