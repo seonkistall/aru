@@ -12,11 +12,15 @@ const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성", "중성
 const CONCERNS: Concern[] = ["모공", "블랙헤드", "붉은기", "건조", "수분부족", "유분", "트러블", "잡티", "칙칙함", "각질", "탄력", "민감"];
 const CATEGORIES: Category[] = ["클렌저", "토너", "에센스", "세럼", "크림", "선크림", "마스크팩", "아이크림"];
 const AVOIDS: Avoid[] = ["향료", "알코올", "에센셜오일", "파라벤", "실리콘", "인공색소", "광물성오일"];
+// Store each chip's band CEILING (not its midpoint) so the recommend price
+// filter (price <= budget) matches what budgetLabel calls the band — else a
+// product at 16,000 is "1만원대" by label yet over a 15,000 cap, producing a
+// false "budget stretched" note.
 const BUDGETS = [
-  { label: "1만원대", won: 15000 },
-  { label: "2만원대", won: 25000 },
-  { label: "3만원대", won: 35000 },
-  { label: "4만원 이상", won: 60000 },
+  { label: "1만원대", won: 19000 },
+  { label: "2만원대", won: 29000 },
+  { label: "3만원대", won: 39000 },
+  { label: "4만원 이상", won: 999999 },
 ];
 const BUDGET_LABELS = BUDGETS.map((b) => b.label);
 
@@ -71,7 +75,11 @@ export default function Survey() {
   function submit() {
     if (!ready) return;
     const survey: SurveyT = { type, concerns, category, budget, avoid };
-    sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
+    try {
+      sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
+    } catch {
+      // Best-effort: a blocked/full store must not dead-end the survey→report step.
+    }
     recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: Boolean(scanHint?.concerns.length) });
     router.push("/report");
   }

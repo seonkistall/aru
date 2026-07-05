@@ -10,11 +10,17 @@ export const dynamic = "force-dynamic";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 5;
+const RATE_MAX_KEYS = 10_000;
 const rate = new Map<string, { count: number; resetAt: number }>();
 
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const now = Date.now();
+  // Sweep expired buckets so this public endpoint's map can't grow unbounded on
+  // a long-lived instance (keys are the spoofable x-forwarded-for header).
+  if (rate.size > RATE_MAX_KEYS) {
+    for (const [k, v] of rate) if (v.resetAt <= now) rate.delete(k);
+  }
   const rec = rate.get(ip);
   if (rec && now < rec.resetAt) {
     if (rec.count >= RATE_MAX) return Response.json({ ok: false, reason: "rate limited" }, { status: 429 });

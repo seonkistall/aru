@@ -49,11 +49,18 @@ function lsGet<T>(key: string): T[] {
   }
 }
 
-function lsPush<T>(key: string, value: T) {
+function lsPush<T>(key: string, value: T, max = 500) {
   if (typeof window === "undefined") return;
   const all = lsGet<T>(key);
   all.push(value);
-  localStorage.setItem(key, JSON.stringify(all));
+  try {
+    // Guard + cap like the sibling stores: a blocked/full localStorage must not
+    // reject into the caller's click handler, and these arrays must not grow
+    // unbounded toward the quota.
+    localStorage.setItem(key, JSON.stringify(all.slice(-max)));
+  } catch {
+    /* best-effort */
+  }
 }
 
 async function insertOrLocal<T>(table: string, key: string, value: T) {

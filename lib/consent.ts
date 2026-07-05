@@ -66,7 +66,13 @@ export function recordConsentEvent(kind: ConsentKind, granted: boolean, scope?: 
   };
   const all = getConsentEvents();
   all.push(event);
-  localStorage.setItem(KEY, JSON.stringify(all.slice(-200)));
+  try {
+    // Guard the write: recordConsentEvent runs from synchronous consent-toggle
+    // onChange handlers, so a QuotaExceededError must not escape into the UI.
+    localStorage.setItem(KEY, JSON.stringify(all.slice(-200)));
+  } catch {
+    /* best-effort */
+  }
   return event;
 }
 
