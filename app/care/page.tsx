@@ -10,6 +10,7 @@ import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
+import { ProductVisual } from "@/app/components/product-visual";
 
 type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
@@ -153,10 +154,15 @@ export default function CarePage() {
           </div>
           {topPicks.map((pick) => (
             <div key={pick.sku.id} style={productRow}>
-              <div>
-                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{pick.sku.brand}</p>
-                <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", marginBottom: 6 }}>{pick.sku.name}</h2>
-                <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>{pick.reason}</p>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ width: 54, height: 54, flexShrink: 0 }}>
+                  <ProductVisual category={pick.sku.category} brand={pick.sku.brand} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{pick.sku.brand}</p>
+                  <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", marginBottom: 6 }}>{pick.sku.name}</h2>
+                  <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>{pick.reason}</p>
+                </div>
               </div>
               <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
                 {productSearchLinks(pick.sku, `care_${locale}`).map((link) => (

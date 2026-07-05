@@ -9,14 +9,6 @@ import { recordPurchase } from "@/lib/store";
 import type { Recommendation } from "@/lib/recommend";
 import { ProductVisual } from "./product-visual";
 
-// Deterministic pastel from the brand name so the fallback image reads as a
-// designed card, not a broken image.
-function brandTint(brand: string): { bg: string; fg: string } {
-  let hash = 0;
-  for (let i = 0; i < brand.length; i += 1) hash = (hash * 31 + brand.charCodeAt(i)) % 360;
-  return { bg: `hsl(${hash} 42% 94%)`, fg: `hsl(${hash} 38% 42%)` };
-}
-
 function formatReviews(n?: number): string | null {
   if (!n) return null;
   if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, "")}만`;
@@ -27,7 +19,6 @@ function formatReviews(n?: number): string | null {
 export function ProductCard({ pick, placement, rank }: { pick: Recommendation; placement: string; rank?: number }) {
   const { sku } = pick;
   const commerce = primaryCommerceLink(sku);
-  const tint = brandTint(sku.brand);
   const reviews = formatReviews(sku.reviewCount);
 
   return (
@@ -38,7 +29,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
             // eslint-disable-next-line @next/next/no-img-element
             <img src={sku.image} alt={`${sku.brand} ${sku.name}`} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} />
           ) : (
-            <ProductVisual category={sku.category} brand={sku.brand} tint={tint} />
+            <ProductVisual category={sku.category} brand={sku.brand} />
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>

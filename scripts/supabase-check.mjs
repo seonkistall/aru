@@ -13,6 +13,7 @@ const tables = [
   "consent_events",
   "pilot_notes",
   "crop_samples",
+  "funnel_events",
 ];
 
 function loadEnvFile(name) {

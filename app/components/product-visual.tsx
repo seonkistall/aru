@@ -5,6 +5,14 @@ import type { Category } from "@/lib/skus";
 
 type Tint = { bg: string; fg: string };
 
+// Deterministic pastel from the brand name so a card without a real photo still
+// reads as a designed product, not a broken image.
+export function brandTint(brand: string): Tint {
+  let hash = 0;
+  for (let i = 0; i < brand.length; i += 1) hash = (hash * 31 + brand.charCodeAt(i)) % 360;
+  return { bg: `hsl(${hash} 42% 94%)`, fg: `hsl(${hash} 38% 42%)` };
+}
+
 // Category -> container silhouette. Simple, clean line shapes on a tinted card.
 function shape(category: Category, fg: string) {
   const stroke = { fill: "none", stroke: fg, strokeWidth: 2.2, strokeLinejoin: "round" as const };
@@ -52,7 +60,7 @@ function shape(category: Category, fg: string) {
   }
 }
 
-export function ProductVisual({ category, brand, tint }: { category: Category; brand: string; tint: Tint }) {
+export function ProductVisual({ category, brand, tint = brandTint(brand) }: { category: Category; brand: string; tint?: Tint }) {
   return (
     <svg viewBox="0 0 68 68" width="100%" height="100%" role="img" aria-label={`${brand} ${category}`}>
       <rect width="68" height="68" rx="10" fill={tint.bg} />
