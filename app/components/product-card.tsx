@@ -7,6 +7,7 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { recordPurchase } from "@/lib/store";
 import type { Recommendation } from "@/lib/recommend";
+import { ProductVisual } from "./product-visual";
 
 // Deterministic pastel from the brand name so the fallback image reads as a
 // designed card, not a broken image.
@@ -32,15 +33,12 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
   return (
     <div style={card}>
       <div style={{ display: "flex", gap: 13 }}>
-        <div style={{ ...thumb, background: tint.bg, color: tint.fg }}>
+        <div style={thumb}>
           {sku.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={sku.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} />
+            <img src={sku.image} alt={`${sku.brand} ${sku.name}`} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} />
           ) : (
-            <>
-              <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 22, fontWeight: 800 }}>{sku.brand.slice(0, 2)}</span>
-              <span style={{ fontSize: 10, marginTop: 2, opacity: 0.8 }}>{sku.category}</span>
-            </>
+            <ProductVisual category={sku.category} brand={sku.brand} tint={tint} />
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>

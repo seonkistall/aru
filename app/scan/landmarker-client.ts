@@ -11,6 +11,11 @@ export type LandmarkerWorker = {
 
 type WorkerReply = { id: number; face?: Landmark[] | null; error?: string };
 
+// Per-frame watchdog. A live-gate tick paces ~650ms+, so 1.2s is comfortably
+// longer than a healthy CPU-delegate detect but short enough to fall back
+// before the user notices a stall.
+const DETECT_TIMEOUT_MS = 1200;
+
 export function createLandmarkerWorker(): LandmarkerWorker | null {
   if (typeof Worker === "undefined" || typeof createImageBitmap === "undefined") return null;
 
@@ -42,7 +47,22 @@ export function createLandmarkerWorker(): LandmarkerWorker | null {
     detect(bitmap, ts) {
       const id = nextId++;
       return new Promise<Landmark[] | null>((resolve, reject) => {
-        pending.set(id, { resolve, reject });
+        // Watchdog: if the worker goes silent (dropped reply, dead after init),
+        // reject so the caller falls back to main-thread inference for this
+        // frame instead of hanging the live-gate tick loop forever.
+        const timer = setTimeout(() => {
+          if (pending.delete(id)) reject(new Error("worker detect timeout"));
+        }, DETECT_TIMEOUT_MS);
+        pending.set(id, {
+          resolve: (face) => {
+            clearTimeout(timer);
+            resolve(face);
+          },
+          reject: (error) => {
+            clearTimeout(timer);
+            reject(error);
+          },
+        });
         worker.postMessage({ id, bitmap, ts }, [bitmap]);
       });
     },
