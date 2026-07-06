@@ -295,7 +295,12 @@ function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) 
               </div>
               <p style={routineBody}>{step.body}</p>
               <p style={routineWhy}>{step.why}</p>
-              {step.heroSku && <p style={routineProduct}>{step.heroSku.brand} {step.heroSku.name}</p>}
+              {step.heroSku && (
+                <div style={routineProduct}>
+                  <span style={{ fontWeight: 700 }}>{step.heroSku.brand} {step.heroSku.name}</span>
+                  {step.heroNote && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {step.heroNote}</span>}
+                </div>
+              )}
             </div>
           </div>
         ))}

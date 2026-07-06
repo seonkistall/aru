@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { downloadCardImage, ShareCard, shareCardImage, type CardRead as Read } from "@/app/components/share-card";
+import { loadLastResult } from "@/lib/last-result";
 import type { SkinReads } from "@/lib/skin";
 
 const PRESETS: { name: string; headline: string; reads: Read[] }[] = [
@@ -37,27 +38,29 @@ export default function Studio() {
   const [fromScan, setFromScan] = useState(false);
 
   useEffect(() => {
-    // Prefill with the user's real scan when one exists this session —
-    // presets stay as the fallback. Loaded after mount (sessionStorage is
-    // client-only; render-time reads break hydration).
+    // Prefill with the user's real scan — this tab's session first, then the
+    // saved last result (returning visitor), so a returning user still shares
+    // their real card. Presets stay as the fallback. Loaded after mount
+    // (sessionStorage is client-only; render-time reads break hydration).
+    let scan: SkinReads | null = null;
     try {
       const raw = sessionStorage.getItem("gyeol_reads");
-      if (!raw) return;
-      const scan = JSON.parse(raw) as SkinReads;
-      if (!scan?.oil?.value) return;
-      /* eslint-disable react-hooks/set-state-in-effect */
-      setHeadline(scan.headline || PRESETS[0].headline);
-      setReads([
-        { label: "유분", value: scan.oil.value, calm: scan.oil.calm },
-        { label: "모공/결", value: scan.pores.value, calm: scan.pores.calm },
-        { label: "붉은기", value: scan.redness.value, calm: scan.redness.calm },
-        { label: "전반", value: scan.overall.value, calm: scan.overall.calm },
-      ]);
-      setFromScan(true);
-      /* eslint-enable react-hooks/set-state-in-effect */
+      if (raw) scan = JSON.parse(raw) as SkinReads;
     } catch {
-      /* keep presets */
+      /* ignore */
     }
+    if (!scan?.oil?.value) scan = loadLastResult()?.reads ?? null;
+    if (!scan?.oil?.value) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setHeadline(scan.headline || PRESETS[0].headline);
+    setReads([
+      { label: "유분", value: scan.oil.value, calm: scan.oil.calm },
+      { label: "모공/결", value: scan.pores.value, calm: scan.pores.calm },
+      { label: "붉은기", value: scan.redness.value, calm: scan.redness.calm },
+      { label: "전반", value: scan.overall.value, calm: scan.overall.calm },
+    ]);
+    setFromScan(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   function applyPreset(i: number) {

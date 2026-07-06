@@ -51,6 +51,7 @@ describe("recommend()", () => {
     for (const step of [...result.routine.am, ...result.routine.pm]) {
       expect(efficacyClean(step.why).ok, `why: ${step.why}`).toBe(true);
       expect(efficacyClean(step.body).ok, `body: ${step.body}`).toBe(true);
+      if (step.heroNote) expect(efficacyClean(step.heroNote).ok, `heroNote: ${step.heroNote}`).toBe(true);
     }
   });
 
