@@ -49,9 +49,9 @@ export default function PrivacyPage() {
       <div className="mx-auto" style={{ maxWidth: 430 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <p style={eyebrow}>privacy & consent</p>
-          <div style={segmented}>
-            <button onClick={() => setLocale("ko")} style={segBtn(locale === "ko")}>KO</button>
-            <button onClick={() => setLocale("en")} style={segBtn(locale === "en")}>EN</button>
+          <div role="group" aria-label="언어 선택 / Language" style={segmented}>
+            <button type="button" onClick={() => setLocale("ko")} aria-pressed={locale === "ko"} aria-label="한국어" style={segBtn(locale === "ko")}>KO</button>
+            <button type="button" onClick={() => setLocale("en")} aria-pressed={locale === "en"} aria-label="English" style={segBtn(locale === "en")}>EN</button>
           </div>
         </div>
         <h1 style={titleStyle}>{t("사진 데이터는 목적별로 나눠서 다룹니다", "We handle photo data separately, by purpose")}</h1>

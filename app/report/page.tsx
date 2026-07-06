@@ -9,6 +9,8 @@ import { recordFunnelEvent } from "@/lib/funnel";
 import { loadLastResult, saveLastResult } from "@/lib/last-result";
 import { recordPurchase } from "@/lib/store";
 import { ProductCard } from "@/app/components/product-card";
+import { ProductCompare } from "@/app/components/product-compare";
+import { RoutineReminder } from "@/app/components/routine-reminder";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -184,7 +186,7 @@ export default function Report() {
 
         {reads && (
           <section style={card}>
-            <p style={sectionLabel}>피부 분석</p>
+            <h2 style={sectionLabel}>피부 분석</h2>
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
               {result.scanApplied
                 ? "촬영한 사진의 T존·양볼 신호를 설문 답변과 함께 읽었어요. 아래는 당신의 스캔 결과예요."
@@ -206,7 +208,7 @@ export default function Report() {
         )}
 
         <section style={{ margin: "30px 0 24px" }}>
-          <p style={sectionLabel}>추천 기준</p>
+          <h2 style={sectionLabel}>추천 기준</h2>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
             {survey.type} 피부, {concernText} 고민, {budgetLabel(survey.budget)} 예산에 맞춰 {survey.category}를 골랐어요.
             {result.scanApplied && reads ? ` 스캔에서 보인 ${scanSignalText(reads)} 신호도 함께 반영했어요.` : ""}
@@ -218,12 +220,13 @@ export default function Report() {
 
         <details open style={card}>
           <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
-            <span style={sectionLabel}>오늘의 루틴</span>
+            <h2 style={sectionLabel}>오늘의 루틴</h2>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>아침 {result.routine.am.length} · 저녁 {result.routine.pm.length}단계</span>
           </summary>
           <div style={{ marginTop: 6 }}>
             <RoutineHalf label="아침" steps={result.routine.am} />
             <RoutineHalf label="저녁" steps={result.routine.pm} />
+            <RoutineReminder label={`${survey.type} · ${survey.category} 루틴`} />
           </div>
         </details>
 
@@ -247,7 +250,7 @@ export default function Report() {
 
         {result.note && <p style={noteStyle}>{result.note}</p>}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-          <p style={{ ...sectionLabel, marginBottom: 0 }}>추천 제품</p>
+          <h2 style={{ ...sectionLabel, marginBottom: 0 }}>추천 제품</h2>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{survey.category} · {result.picks.length}개</span>
         </div>
         <div style={{ display: "grid", gap: 12 }}>
@@ -255,6 +258,18 @@ export default function Report() {
             <ProductCard key={pick.sku.id} pick={pick} placement="report_product" rank={i + 1} />
           ))}
         </div>
+
+        {result.picks.length >= 2 && (
+          <details style={{ ...card, marginTop: 16 }}>
+            <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+              <span style={sectionLabel}>추천 제품 비교</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>가격·평점·성분 한눈에</span>
+            </summary>
+            <div style={{ marginTop: 12 }}>
+              <ProductCompare picks={result.picks} />
+            </div>
+          </details>
+        )}
       </div>
 
       {top && (
@@ -290,7 +305,7 @@ function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) 
             <span style={routineIndex}>{index + 1}</span>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h2 style={routineTitle}>{step.title}</h2>
+                <h3 style={routineTitle}>{step.title}</h3>
                 {step.cadence && <span style={cadenceChip}>{step.cadence}</span>}
               </div>
               <p style={routineBody}>{step.body}</p>

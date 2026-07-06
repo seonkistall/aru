@@ -29,7 +29,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
   if (state === "done") {
     return (
       <div style={box}>
-        <p style={{ fontSize: 13.5, color: "var(--success)", margin: 0 }}>좋아요. 2주 뒤 피부가 어떤지 살짝 리마인드해 드릴게요.</p>
+        <p role="status" style={{ fontSize: 13.5, color: "var(--success)", margin: 0 }}>좋아요. 2주 뒤 피부가 어떤지 살짝 리마인드해 드릴게요.</p>
       </div>
     );
   }
@@ -63,7 +63,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ accentColor: "var(--ink)", width: 15, height: 15 }} />
         <span>리마인드 발송을 위해 이메일 저장에 동의해요</span>
       </label>
-      {state === "error" && <p style={{ fontSize: 12, color: "var(--plum)", marginTop: 8 }}>지금은 신청이 어려워요. 잠시 후 다시 시도해 주세요.</p>}
+      {state === "error" && <p role="alert" style={{ fontSize: 12, color: "var(--plum-press)", marginTop: 8 }}>지금은 신청이 어려워요. 잠시 후 다시 시도해 주세요.</p>}
     </div>
   );
 }

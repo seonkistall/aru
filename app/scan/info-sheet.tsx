@@ -33,10 +33,15 @@ export function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose:
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [onClose]);
 
   return (
     <div
