@@ -854,7 +854,7 @@ export default function Scan() {
           </div>
         )}
 
-        {err && <p style={{ color: "var(--plum)", fontSize: 13, marginTop: 10 }}>{err}</p>}
+        {err && <p role="alert" style={{ color: "var(--plum-press)", fontSize: 13, marginTop: 10 }}>{err}</p>}
 
         {infoOpen && <InfoSheet staffMode={staffMode} onClose={() => setInfoOpen(false)} />}
 
@@ -895,7 +895,7 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
             <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
               공유 링크를 열면 친구도 30초 스캔으로 이어져요
             </p>
-            {shareErr && <p style={{ fontSize: 12.5, color: "var(--plum)", textAlign: "center", marginTop: 8 }}>{shareErr}</p>}
+            {shareErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{shareErr}</p>}
             <a href="/studio" style={{ display: "block", textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline" }}>
               카드 문구 직접 편집하기
             </a>

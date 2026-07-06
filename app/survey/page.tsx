@@ -183,7 +183,7 @@ function chipStyle(on: boolean): React.CSSProperties {
     borderRadius: 8,
     border: on ? "1px solid var(--plum)" : "1px solid var(--line)",
     background: on ? "var(--plum-soft)" : "var(--surface)",
-    color: on ? "var(--plum)" : "var(--ink)",
+    color: on ? "var(--plum-press)" : "var(--ink)",
     fontWeight: on ? 700 : 500,
     cursor: "pointer",
   };

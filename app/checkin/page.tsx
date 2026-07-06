@@ -115,7 +115,7 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
       {!due ? (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>2주쯤 써본 뒤에 사용감을 여쭤볼게요. 그때 사용감을 남기면 다음 추천이 더 정확해져요.</p>
       ) : done ? (
-        <p style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>고마워요. 피드백이 저장됐어요.</p>
+        <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>고마워요. 피드백이 저장됐어요.</p>
       ) : (
         <>
           <Row label="만족도"><Seg options={["별로", "보통", "좋음"]} value={sat} onPick={setSat} /></Row>
@@ -157,7 +157,7 @@ function pill(on: boolean): React.CSSProperties {
     borderRadius: 8,
     border: on ? "1px solid var(--plum)" : "1px solid var(--line)",
     background: on ? "var(--plum-soft)" : "var(--surface)",
-    color: on ? "var(--plum)" : "var(--ink)",
+    color: on ? "var(--plum-press)" : "var(--ink)",
     fontWeight: on ? 700 : 500,
     cursor: "pointer",
   };

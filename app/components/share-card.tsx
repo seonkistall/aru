@@ -1,7 +1,6 @@
 "use client";
 
 import { forwardRef } from "react";
-import { toPng } from "html-to-image";
 import type { SkinReads } from "@/lib/skin";
 
 export type CardRead = { label: string; value: string; calm?: boolean };
@@ -51,6 +50,9 @@ export type ShareMode = "web-share" | "download";
 
 async function rasterize(node: HTMLElement): Promise<string> {
   await document.fonts.ready;
+  // Load html-to-image only when the user actually shares, so it isn't bundled
+  // into every page that merely renders a card (scan result, studio).
+  const { toPng } = await import("html-to-image");
   return toPng(node, { pixelRatio: 3, cacheBust: true, backgroundColor: "#ffffff" });
 }
 

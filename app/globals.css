@@ -7,7 +7,7 @@
   --ink-soft: #3d3d3d;
   --text-muted: #6e6e6e;
   --muted: #767676;        /* quiet labels */
-  --faint: #9a9a9a;
+  --faint: #767676;        /* darkened to pass WCAG AA (4.5:1 on white) */
   --paper: #ffffff;        /* pure white — NO texture/gradient/shadow */
   --surface: #ffffff;
   --surface-tint: #f5f5f5; /* used sparingly */

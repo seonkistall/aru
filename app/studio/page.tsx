@@ -119,14 +119,14 @@ export default function Studio() {
           ))}
         </div>
 
-        <label style={labelStyle}>헤드라인</label>
-        <textarea value={headline} onChange={(e) => setHeadline(e.target.value)} rows={2} style={textareaStyle} />
+        <label style={labelStyle} htmlFor="studio-headline">헤드라인</label>
+        <textarea id="studio-headline" aria-label="헤드라인" value={headline} onChange={(e) => setHeadline(e.target.value)} rows={2} style={textareaStyle} />
 
         {reads.map((read, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
-            <input value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, width: 96 }} />
-            <input value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={() => setRead(i, { calm: !read.calm })} style={toggleBtn(read.calm)}>{read.calm ? "차분" : "강조"}</button>
+            <input aria-label={`항목 ${i + 1} 이름`} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, width: 96 }} />
+            <input aria-label={`항목 ${i + 1} 값`} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={() => setRead(i, { calm: !read.calm })} aria-pressed={read.calm} style={toggleBtn(read.calm)}>{read.calm ? "차분" : "강조"}</button>
           </div>
         ))}
 

@@ -40,9 +40,10 @@ export function ScanHistoryStrip() {
         {recent.map((entry) => {
           const overall = Math.max(entry.oil, entry.redness, entry.pores); // 0-2
           const h = 14 + overall * 13;
+          const level = ["잔잔", "보통", "뚜렷"][overall];
           return (
             <div key={entry.ts} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <div style={{ width: "100%", maxWidth: 26, height: h, borderRadius: 5, background: LEVEL_COLOR[overall] }} />
+              <div role="img" aria-label={`${dayLabel(entry.ts)}, 신호 ${level}`} style={{ width: "100%", maxWidth: 26, height: h, borderRadius: 5, background: LEVEL_COLOR[overall] }} />
               <span style={{ fontSize: 10, color: "var(--faint)" }}>{dayLabel(entry.ts)}</span>
             </div>
           );

@@ -88,7 +88,7 @@ export default function CarePage() {
 
   if (!view) {
     return (
-      <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
+      <main lang={locale} className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
         <div className="mx-auto" style={{ maxWidth: 420 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <p style={eyebrow}>care path</p>
@@ -123,7 +123,7 @@ export default function CarePage() {
   }
 
   return (
-    <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
+    <main lang={locale} className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <p style={eyebrow}>care path</p>
@@ -230,7 +230,7 @@ const commerceIntro: React.CSSProperties = { fontSize: 13, color: "var(--ink-sof
 const productRow: React.CSSProperties = { borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 };
 const badge: React.CSSProperties = { fontSize: 12, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const dealBadge: React.CSSProperties = { fontSize: 10.5, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 6px", fontWeight: 900 };
-const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
+const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum-press)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const segmented: React.CSSProperties = { display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" };
 const outlineBtn: React.CSSProperties = { background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const linkBtn: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "10px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };
