@@ -40,6 +40,7 @@ export type RoutineStep = {
   body: string;
   category: Category;
   heroSku?: Sku;
+  heroNote?: string; // the hero product's specific ingredients, tied to the step
   why: string;
   cadence?: string;
 };
@@ -331,7 +332,14 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
       const hero = step.id === "pm-texture" ? undefined : picks.find((pick) => pick.sku.category === step.category)?.sku;
       if (!hero || seen.has(hero.id)) return step;
       seen.add(hero.id);
-      return { ...step, heroSku: hero };
+      // Tie the step to the hero product's actual ingredients (from the catalog),
+      // so the routine reads product-specific rather than a template.
+      const ings = hero.keyIngredients.slice(0, 2);
+      const rawNote = ings.length ? `${ings.join("·")} 성분이 담겨 있어요.` : undefined;
+      // Runtime compliance guard (like reasonFor): drop the note if a future
+      // ingredient name ever trips efficacyClean, so nothing leaks to the UI.
+      const heroNote = rawNote && efficacyClean(rawNote).ok ? rawNote : undefined;
+      return { ...step, heroSku: hero, heroNote };
     });
   };
 
