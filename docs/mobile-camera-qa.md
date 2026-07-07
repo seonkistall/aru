@@ -38,7 +38,9 @@ responsive mode.
 - `반사`: turns off under harsh direct light or strong forehead glare.
 - `안정`: turns off when the user is moving the phone.
 - Capture button stays disabled until face, center, distance, brightness, and no-glare pass.
-- In texture mode, capture should also wait for steadier framing.
+- Capture button stays disabled while the user is moving in every scan mode.
+- During the scan animation, moving out of the guide should reject the scan and return to retake guidance instead of showing a confident result.
+- In texture mode, steadiness should feel stricter than balanced mode.
 - In tone mode, harsh glare should block capture more aggressively than balanced mode.
 
 ## Capture protocol

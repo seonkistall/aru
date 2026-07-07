@@ -3,7 +3,7 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v0.6.6** · 최종 업데이트 2026-07-07 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
+> **버전 v0.6.7** · 최종 업데이트 2026-07-07 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
@@ -19,14 +19,16 @@
 - **북극성:** 외국인 대상 **K뷰티 컨시어지**.
 - 설계 문서: `~/.gstack/projects/aru/`
 
-## 현재 버전 — v0.6.6
-- **카메라 화질 고도화**: 기본 전면 카메라 요청을 1080×1440 ideal로 올리고, 실패 시 기존 720×960으로 안전 fallback.
-- **진단 강화**: `/scan?debug=1`에서 요청 해상도, 실제 video size, track settings, AI/학습/model crop size를 함께 표시.
-- **Crop 품질 상향**: AI 분석 crop은 최대 640px JPEG 0.9, 학습 crop은 최대 512px JPEG 0.86으로 분리. 작은 얼굴 crop도 target edge까지 보정.
-- **데이터 안정성**: 큰 crop으로 localStorage quota를 칠 때 오래된 crop을 줄여 재시도하고, `/ops` Supabase sync는 5MB 초과 payload를 사전 차단.
-- **모델 경로 정리**: public visible model manifest를 런타임 계약과 동기화하고, OpenAI vision path는 high-detail image analysis를 사용.
+## 현재 버전 — v0.6.7
+- **엄격 촬영 게이트**: 얼굴이 윤곽선 중앙 밖에 있거나 흔들리면 수동/자동 촬영 모두 차단.
+- **스캔 중 움직임 차단**: 촬영 후 burst 분석 프레임 사이에도 얼굴 중심 이동을 검사해, 움직이면 결과를 내지 않고 재촬영 안내.
+- **분석 신뢰도 정합**: 화면의 가이드 잠금 상태와 실제 분석 허용 조건을 일치시켜, “가이드 밖인데 촬영됨”과 “움직여도 분석됨”을 제거.
 
 ## 버전 이력
+- **v0.6.7** (2026-07-07) — Strict scan gate: guide center + stillness required
+  - **촬영 조건 정합**: `face + centered + distance + brightness + noGlare + steady`가 모두 통과해야 수동 촬영 버튼과 자동 촬영 countdown이 동작.
+  - **캡처 검증 강화**: balanced/tone 모드도 움직임을 필수 차단 조건으로 적용.
+  - **Burst 안정성**: 분석 중 추가 프레임 사이 얼굴 중심 이동이 기준을 넘으면 결과를 만들지 않고 재촬영으로 되돌림.
 - **v0.6.6** (2026-07-07) — Camera quality upgrade + crop/model path hardening
   - **카메라**: `getUserMedia`를 high-res first / legacy fallback 구조로 바꾸고, 실제 브라우저 협상 결과를 debug overlay에 기록.
   - **분석 crop**: AI 전송용 crop과 학습 저장용 crop을 분리해 각각 더 선명한 품질/크기 정책을 적용. 모델 입력은 기존 224×224 hook을 유지.

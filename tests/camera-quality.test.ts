@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import {
   buildCameraQualityDebug,
   cameraConstraintsForAttempt,
+  captureGatePassed,
+  frameMovement,
   cropOutputSize,
   cropPlanForPurpose,
   nextCameraAttempt,
@@ -76,5 +78,35 @@ describe("camera quality upgrade helpers", () => {
       "crop learning": "512x512",
       "crop model": "224x224",
     });
+  });
+
+  test("blocks capture when the face is outside the guide center", () => {
+    expect(
+      captureGatePassed({
+        face: true,
+        centered: false,
+        distance: true,
+        brightness: true,
+        noGlare: true,
+        steady: true,
+      })
+    ).toBe(false);
+  });
+
+  test("blocks capture when the user is moving in any scan mode", () => {
+    expect(
+      captureGatePassed({
+        face: true,
+        centered: true,
+        distance: true,
+        brightness: true,
+        noGlare: true,
+        steady: false,
+      })
+    ).toBe(false);
+  });
+
+  test("normalizes frame-to-frame face movement to a 250ms window", () => {
+    expect(frameMovement({ x: 0.5, y: 0.5 }, { x: 0.56, y: 0.5 }, 500)).toBeCloseTo(0.03);
   });
 });

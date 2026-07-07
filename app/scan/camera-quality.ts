@@ -2,6 +2,15 @@ export type CameraAttempt = "high" | "fallback";
 export type CropPurpose = "ai-analysis" | "learning-crop" | "model-input";
 export type CropPlan = { maxEdge: number; mimeType: "image/jpeg" | "image/png"; quality: number };
 export type CropOutputSizeInput = { sourceWidth: number; sourceHeight: number; maxEdge: number };
+export type CaptureGateQuality = {
+  face: boolean;
+  centered: boolean;
+  distance: boolean;
+  brightness: boolean;
+  noGlare: boolean;
+  steady: boolean;
+};
+export type FrameCenter = { x: number; y: number };
 
 export type CameraQualityDebugInput = {
   attempt: CameraAttempt;
@@ -46,6 +55,14 @@ export function cropOutputSize(input: CropOutputSizeInput): { width: number; hei
     width: Math.max(1, Math.round(input.sourceWidth * scale)),
     height: Math.max(1, Math.round(input.sourceHeight * scale)),
   };
+}
+
+export function captureGatePassed(quality: CaptureGateQuality): boolean {
+  return quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && quality.steady;
+}
+
+export function frameMovement(previous: FrameCenter, next: FrameCenter, elapsedMs: number): number {
+  return Math.hypot(next.x - previous.x, next.y - previous.y) / Math.max(1, elapsedMs / 250);
 }
 
 function idealConstraintValue(value: ConstrainULong | ConstrainDouble | undefined): number | string {

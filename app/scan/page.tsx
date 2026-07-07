@@ -23,8 +23,10 @@ import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-clie
 import {
   buildCameraQualityDebug,
   cameraConstraintsForAttempt,
+  captureGatePassed,
   cropOutputSize,
   cropPlanForPurpose,
+  frameMovement,
   nextCameraAttempt,
   type CameraAttempt,
   type CropPlan,
@@ -141,16 +143,7 @@ export default function Scan() {
     useWorkerRef.current = params.get("worker") === "1";
   }, []);
 
-  // Auto-capture no longer requires centered/distance-in-a-tight-range — those
-  // depend on the fragile aspect-ratio transform and blocked real phone
-  // framing. It needs a face, a non-tiny face (raw distance), and good light.
-  const canCapture =
-    phase === "ready" &&
-    quality.face &&
-    quality.distance &&
-    quality.brightness &&
-    quality.noGlare &&
-    (!captureProfile.requiresSteady || quality.steady);
+  const canCapture = phase === "ready" && captureGatePassed(quality);
 
   // Skip renders when nothing user-visible changed (ticks arrive every 650ms);
   // qualityRef-independent auto-capture reads results via handleAutoTick instead.
@@ -370,17 +363,19 @@ export default function Scan() {
 
       const now = performance.now();
       const last = lastCenterRef.current;
-      const movement = last ? Math.hypot(centerX - last.x, centerY - last.y) / Math.max(1, (now - last.t) / 250) : 0;
+      const movement = last ? frameMovement(last, { x: centerX, y: centerY }, now - last.t) : 0;
       lastCenterRef.current = { x: centerX, y: centerY, t: now };
       const steady = !last || movement < profile.maxMovement;
 
-      const pass = distance && brightness && noGlare && (!profile.requiresSteady || steady);
+      const pass = captureGatePassed({ face: true, centered, distance, brightness, noGlare, steady });
       const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
       const message = !distance
         ? rawSize <= 0.2
           ? "얼굴이 작게 보여요. 조금 더 가까이 와주세요."
           : "너무 가까워요. 살짝 물러나 주세요."
-        : !brightness
+        : !centered
+          ? "얼굴을 윤곽선 중앙에 맞춰주세요."
+          : !brightness
           ? "빛이 부족해요. 창가처럼 밝고 부드러운 곳이 좋아요."
           : !noGlare
             ? "반사가 강해요. 정면 조명이나 번들거림을 줄여주세요."
@@ -551,7 +546,7 @@ export default function Scan() {
       const captureCenter = { x: (captureBox.minX + captureBox.maxX) / 2, y: (captureBox.minY + captureBox.maxY) / 2 };
       const dtMs = last ? performance.now() - last.t : 0;
       const captureMovement =
-        last && dtMs >= 80 ? Math.hypot(captureCenter.x - last.x, captureCenter.y - last.y) / (dtMs / 250) : undefined;
+        last && dtMs >= 80 ? frameMovement(last, captureCenter, dtMs) : undefined;
       const captureSteady =
         captureMovement !== undefined ? captureMovement < CAPTURE_PROFILES[captureMode].maxMovement : quality.steady;
       // Verify exposure on the SAME ~360px downscale the live gate uses, not the
@@ -596,11 +591,25 @@ export default function Scan() {
       // one-frame glare/motion spikes, and cross-frame agreement feeds the
       // confidence/retake decision (recorded in labels for ML calibration).
       const burstFrames: Array<{ imageData: ImageData; landmarks: Landmark[] }> = [{ imageData, landmarks: faces[0] }];
+      let previousBurstCenter = captureCenter;
       for (let i = 1; i < 3; i += 1) {
+        const frameStartedAt = performance.now();
         await new Promise((resolve) => setTimeout(resolve, 140));
         ctx.drawImage(video, 0, 0, w, h);
         const extra = landmarker.detectForVideo(canvas, performance.now()).faceLandmarks?.[0];
-        if (extra?.length) burstFrames.push({ imageData: ctx.getImageData(0, 0, w, h), landmarks: extra });
+        if (extra?.length) {
+          const extraBox = faceBox(extra);
+          const extraCenter = { x: (extraBox.minX + extraBox.maxX) / 2, y: (extraBox.minY + extraBox.maxY) / 2 };
+          const movement = frameMovement(previousBurstCenter, extraCenter, performance.now() - frameStartedAt);
+          if (movement >= CAPTURE_PROFILES[captureMode].maxMovement) {
+            autoHoldUntilRef.current = performance.now() + 4000;
+            setErr("스캔 중 얼굴이 움직였어요. 윤곽선 중앙에 맞추고 잠깐 멈춰주세요.");
+            setPhase("ready");
+            return;
+          }
+          previousBurstCenter = extraCenter;
+          burstFrames.push({ imageData: ctx.getImageData(0, 0, w, h), landmarks: extra });
+        }
       }
 
       await advanceStep(1);
@@ -971,7 +980,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const distance = rawSize > 0.2 && rawSize < 0.98;
   const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
   const noGlare = exposure.hotRatio < profile.maxHotRatio;
-  const steady = profile.requiresSteady ? previousSteady : true;
+  const steady = previousSteady;
   const rejectReason = !distance
     ? "distance"
     : !brightness
@@ -1001,8 +1010,8 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
 }
 
 function qualityPassed(quality: Quality, profile: CaptureProfile) {
-  // Centering is advisory, not required (see canCapture / measureQuality).
-  return quality.face && quality.distance && quality.brightness && quality.noGlare && (!profile.requiresSteady || quality.steady);
+  void profile;
+  return captureGatePassed(quality);
 }
 
 function qualityMeta(quality: Quality): CaptureQualityMeta {
