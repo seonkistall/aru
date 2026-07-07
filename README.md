@@ -3,12 +3,12 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v0.6.0** · 최종 업데이트 2026-07-04 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
+> **버전 v0.6.4** · 최종 업데이트 2026-07-07 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
 
-**라이브:** https://aru-beauty.vercel.app
+**라이브:** https://aru-kbeauty.vercel.app
 
 ## ⚠️ 코드 작성 규칙 (필독)
 이 레포는 Next.js 기반이지만 **표준 Next.js가 아니다.** 루트 [`AGENTS.md`](AGENTS.md)에 따라 **코드를 쓰기 전 `node_modules/next/dist/docs/`의 해당 가이드를 먼저 확인**하고 deprecation 경고를 준수할 것.
@@ -19,14 +19,20 @@
 - **북극성:** 외국인 대상 **K뷰티 컨시어지**.
 - 설계 문서: `~/.gstack/projects/aru/`
 
-## 현재 버전 — v0.4.3
-- **카메라**: 자동촬영(품질 2틱 연속 통과 → 3·2·1) · 랜드마크 추적 샘플링 존(잠금 표시) · 3프레임 버스트 median 분석 + 프레임 합의도 · 4단계 분석 연출
-- **개인화**: 아침/저녁 루틴(단계별 근거·주기) · 확장 판독(톤 균일감·T존 반사광·측정환경) · 신뢰도/재촬영 판단
-- **커머스**: 올리브영/네이버/쿠팡 아웃링크(`/api/out` 클릭 추적, 파트너 딥링크 오버라이드) · 공유 카드(Web Share → 카톡)
-- **연구/데이터**: 이중동의 + 파일럿 세션 + `/ops` Supabase 동기화(가동) + `/eval` 골든셋 회귀 하네스 + 오프라인 ML 파이프라인(`--arch` 베이크오프 준비)
-- **아이덴티티**: 아루(ARU) 손그림(xiaohei) — 순백·小黑·손글씨, iOS/Android 홈화면 설치 지원
+## 현재 버전 — v0.6.4
+- **카메라/ML 데이터 루프**: 동의 기록 저장 성공 시에만 AI 전송·학습 crop 보관, 저신뢰/판독불가 샘플 학습 제외, malformed ML 출력 ROI fallback.
+- **리포트 신뢰도**: 스캔 반영 여부와 재촬영/설문 중심 추천 상태를 리포트에서 명확히 표시.
+- **학습 전략**: ARU 타깃 스키마(`ml/aru_target_schema.json`), 공개/비공개 소스 후보(`ml/source_candidates.json`), 화장품·클리닉 데이터 스펙(`docs/skin-commerce-clinic-data-spec.md`) 추가.
+- **배포**: Vercel 프로젝트를 Next.js preset으로 복구, SSO Deployment Protection 해제, public URL `https://aru-kbeauty.vercel.app` 정상화.
+- **검증**: Vitest 17 files / 77 tests, ESLint, Next production build 통과.
 
 ## 버전 이력
+- **v0.6.4** (2026-07-07) — Camera ML 데이터 루프 강화 + ARU 데이터 전략 + Vercel 배포 복구
+  - **Camera/ML**: 동의 이벤트가 실제 저장된 경우에만 AI 분석 전송·학습 crop 보관을 허용하고, `learning_crop` opt-in feedback 루프를 일반 파일럿 사용자까지 확장. ML 예측이 비어 있거나 malformed이면 `ml-model`로 표시하지 않고 ROI fallback 유지.
+  - **데이터 품질**: low-confidence/retake/ungradable 샘플을 calibration·manifest decoding·training에서 기본 제외. toneLstar/toneIta 등 subgroup 감사용 지표를 manifest에 포함.
+  - **리포트/UX**: report trust copy와 스캔 반영 상태를 분리해 추천 신뢰도를 명확히 표시. 설문 저장 실패 시 빈 리포트로 이동하지 않도록 차단.
+  - **데이터 전략**: 유분/모공/붉은기 이후 타깃(톤 균일도, 색소, 주름, 트러블, 건조/장벽, 흉터성 texture, 메이크업/필터 occlusion)과 공개·계약 데이터 소스 정책 문서화.
+  - **배포**: Vercel project framework를 `Next.js`로 수정하고 output directory를 `Next.js default`로 복구. SSO protection 해제 후 `/`와 `/scan` 모두 `200 OK` 확인.
 - **v0.6.3** (2026-07-04) — 소비자 5페이지 버그 수정 + 최적화 (5에이전트 검증)
   - **버그(촬영 우선)**: 자동복구 재로딩 중 촬영 버튼이 활성인 채라 중복 랜드마커 누수 가능 → `guideState !== "ready"`로 차단; **케어 커머스 클릭이 팝업차단으로 실패**(await 후 window.open) → 클릭 제스처 안에서 동기 오픈(major); 리포트·케어의 `gyeol_survey` JSON.parse 무가드 → 손상 시 빈 화면 → try/catch로 안전 폴백(major)
   - **최적화**: 촬영 profile의 죽은 필드 4개 제거(centerTolerance/minFaceSize/maxFaceSize), 랜딩 헤딩 a11y(h2/h3)+Arrow 죽은 prop, 설문 BUDGET_LABELS 호이스팅, reengage 이메일 aria-label, care.ts needsClinic 중복 제거
