@@ -385,7 +385,8 @@ export default function Scan() {
 
       commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
       handleAutoTick(pass);
-      setZones(computeGuideZones(face, video.videoWidth, video.videoHeight));
+      const nextZones = computeGuideZones(face, video.videoWidth, video.videoHeight);
+      setZones(nextZones);
       if (debugRef.current) {
         setDebugInfo({
           "delegate": forceCpuRef.current ? "CPU" : "GPU",
@@ -407,6 +408,7 @@ export default function Scan() {
           "noGlare": noGlare,
           "steady": steady,
           "centered(adv)": centered,
+          "zones": nextZones ? `${nextZones.tzone.width} / ${nextZones.leftCheek.width} / ${nextZones.rightCheek.width}` : "none",
           "AUTO PASS": pass,
         });
       }
@@ -853,7 +855,7 @@ export default function Scan() {
               <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: quality.face ? "var(--success)" : "var(--muted)", animation: quality.face ? "gyeol-bob 1.1s ease-in-out infinite" : undefined, flexShrink: 0 }} />
               <span>{quality.face ? "얼굴 인식됨 · 피부 신호를 읽고 있어요" : "얼굴을 화면 안에 맞춰주세요"}</span>
             </div>
-            <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} />
+            <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} zonesReady={Boolean(zones)} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
               <label style={{ ...consentStyle, marginTop: 0 }}>
                 <input

@@ -149,7 +149,12 @@ function TrackedZone({ label, rect, locked }: { label: string; rect: ZoneRect; l
 
 type GuidePoint = { x: number; y: number };
 
-function zoneFromPoints(points: GuidePoint[], padX: number, padY: number): ZoneRect | null {
+const LEFT_CHEEK_LANDMARKS = SAMPLING_LANDMARKS.cheeks.slice(0, 7);
+const RIGHT_CHEEK_LANDMARKS = SAMPLING_LANDMARKS.cheeks.slice(7);
+
+type GuideBounds = { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
+
+function pointBounds(points: GuidePoint[]): GuideBounds | null {
   if (!points.length) return null;
   let minX = 1;
   let minY = 1;
@@ -161,10 +166,18 @@ function zoneFromPoints(points: GuidePoint[], padX: number, padY: number): ZoneR
     minY = Math.min(minY, point.y);
     maxY = Math.max(maxY, point.y);
   }
-  minX -= padX;
-  maxX += padX;
-  minY -= padY;
-  maxY += padY;
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function zoneFromPoints(points: GuidePoint[], face: GuideBounds, pad: { x: number; y: number; faceX: number; faceY: number }): ZoneRect | null {
+  const bounds = pointBounds(points);
+  if (!bounds) return null;
+  const padX = Math.max(bounds.width * pad.x, face.width * pad.faceX);
+  const padY = Math.max(bounds.height * pad.y, face.height * pad.faceY);
+  const minX = Math.max(0, bounds.minX - padX);
+  const maxX = Math.min(1, bounds.maxX + padX);
+  const minY = Math.max(0, bounds.minY - padY);
+  const maxY = Math.min(1, bounds.maxY + padY);
   const round = (value: number) => Math.round(value * 1000) / 10;
   return { left: round(1 - maxX), top: round(minY), width: round(maxX - minX), height: round(maxY - minY) };
 }
@@ -178,15 +191,15 @@ export function computeGuideZones(landmarks: Landmark[], videoWidth: number, vid
       .filter((lm): lm is Landmark => Boolean(lm))
       .map(mapPoint);
 
-  const cheekPoints = pointsFor(SAMPLING_LANDMARKS.cheeks);
-  if (!cheekPoints.length) return null;
-  const centerX = cheekPoints.reduce((sum, point) => sum + point.x, 0) / cheekPoints.length;
-  const sideA = cheekPoints.filter((point) => point.x < centerX);
-  const sideB = cheekPoints.filter((point) => point.x >= centerX);
+  const tzonePoints = pointsFor(SAMPLING_LANDMARKS.tzone);
+  const leftCheekPoints = pointsFor(LEFT_CHEEK_LANDMARKS);
+  const rightCheekPoints = pointsFor(RIGHT_CHEEK_LANDMARKS);
+  const face = pointBounds([...tzonePoints, ...leftCheekPoints, ...rightCheekPoints]);
+  if (!face) return null;
 
-  const tzone = zoneFromPoints(pointsFor(SAMPLING_LANDMARKS.tzone), 0.015, 0.02);
-  const zoneA = zoneFromPoints(sideA, 0.015, 0.015);
-  const zoneB = zoneFromPoints(sideB, 0.015, 0.015);
+  const tzone = zoneFromPoints(tzonePoints, face, { x: 0.28, y: 0.32, faceX: 0.035, faceY: 0.025 });
+  const zoneA = zoneFromPoints(leftCheekPoints, face, { x: 0.24, y: 0.34, faceX: 0.032, faceY: 0.03 });
+  const zoneB = zoneFromPoints(rightCheekPoints, face, { x: 0.24, y: 0.34, faceX: 0.032, faceY: 0.03 });
   if (!tzone || !zoneA || !zoneB) return null;
 
   // Label cheeks by their on-screen (mirrored) position.
@@ -207,18 +220,19 @@ function GuideZone({ label, style }: { label: string; style: React.CSSProperties
   );
 }
 
-export function QualityPanel({ quality, requireSteady }: { quality: Quality; requireSteady: boolean }) {
+export function QualityPanel({ quality, requireSteady, zonesReady }: { quality: Quality; requireSteady: boolean; zonesReady: boolean }) {
   const checks = useMemo(() => {
-    // Only the actual auto-capture requirements (centering is advisory).
+    // Keep the camera checklist aligned with what the user needs to trust the scan.
     const base: Array<[string, boolean]> = [
       ["얼굴", quality.face],
+      ["측정영역", zonesReady],
       ["거리", quality.distance],
       ["밝기", quality.brightness],
       ["반사 없음", quality.noGlare],
     ];
     if (requireSteady) base.push(["흔들림 없음", quality.steady]);
     return base;
-  }, [quality, requireSteady]);
+  }, [quality, requireSteady, zonesReady]);
   return (
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${checks.length}, 1fr)`, gap: 5, marginTop: 10 }}>
       {checks.map(([label, ok]) => (
