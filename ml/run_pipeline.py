@@ -62,6 +62,24 @@ def read_csv(path: Path | None) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def is_truthy(value: Any) -> bool:
+    return value is True or str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def is_usable_sample(row: dict[str, Any]) -> bool:
+    meta = row.get("meta") or {}
+    return not (
+        is_truthy(row.get("ungradable")) or
+        is_truthy(meta.get("ungradable")) or
+        row.get("label_confidence") == "low" or
+        meta.get("labelConfidence") == "low"
+    )
+
+
+def usable_samples(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if is_usable_sample(row)]
+
+
 def readiness(crop_count: int) -> dict[str, Any]:
     if crop_count < 30:
         return {
@@ -257,6 +275,8 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
         "retake_recommended",
         "label_confidence",
         "ungradable",
+        "toneLstar",
+        "toneIta",
         "shine",
         "relRedness",
         "cov",
@@ -311,6 +331,8 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 "retake_recommended": meta.get("retakeRecommended", ""),
                 "label_confidence": meta.get("labelConfidence", ""),
                 "ungradable": meta.get("ungradable", ""),
+                "toneLstar": features.get("toneLstar", ""),
+                "toneIta": features.get("toneIta", ""),
                 "shine": features.get("shine", ""),
                 "relRedness": features.get("relRedness", ""),
                 "cov": features.get("cov", ""),
@@ -361,6 +383,7 @@ def write_markdown(path: Path, summary: dict[str, Any]) -> None:
         "",
         f"- Labels: {summary['counts']['labels']}",
         f"- Crops: {summary['counts']['crops']}",
+        f"- Excluded low-quality labels/crops: {summary['counts'].get('excluded_labels', 0)} / {summary['counts'].get('excluded_crops', 0)}",
         f"- Pilot notes: {summary['counts']['pilot_notes']}",
         f"- Consent events: {summary['counts']['consent_events']}",
         "",
@@ -538,8 +561,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
 
-    labels = read_jsonl(args.labels)
-    crops = read_jsonl(args.crops)
+    raw_labels = read_jsonl(args.labels)
+    raw_crops = read_jsonl(args.crops)
+    labels = usable_samples(raw_labels)
+    crops = usable_samples(raw_crops)
     pilot = read_csv(args.pilot)
     consent = read_csv(args.consent)
     out_dir = args.out or named_out_dir(args.name)
@@ -565,12 +590,16 @@ def main() -> None:
         },
         "input_files": file_metadata({"labels": args.labels, "crops": args.crops, "pilot": args.pilot, "consent": args.consent}),
         "counts": {
+            "raw_labels": len(raw_labels),
+            "raw_crops": len(raw_crops),
             "labels": len(labels),
             "crops": len(crops),
+            "excluded_labels": len(raw_labels) - len(labels),
+            "excluded_crops": len(raw_crops) - len(crops),
             "pilot_notes": len(pilot),
             "consent_events": len(consent),
         },
-        "readiness": readiness(len(crops)),
+        "readiness": readiness(int(decode.get("valid", len(crops)) or 0)),
         "labels": {
             "distribution": label_distribution(labels),
             "sources": source_distribution(labels),

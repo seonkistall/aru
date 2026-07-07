@@ -16,6 +16,7 @@ import { labelCount, type CaptureQualityMeta, type SampleMeta } from "@/lib/labe
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { pushScanHistory } from "@/lib/scan-history";
+import { shouldKeepLearningCrop, shouldShowFeedback } from "@/lib/ml-collection";
 import { ShareCard, shareCardImage, skinReadsToCard } from "@/app/components/share-card";
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
@@ -70,6 +71,7 @@ const ATTRS: SkinAttr[] = ["oil", "redness", "pores"];
 const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
 const MODEL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
 export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -548,10 +550,17 @@ export default function Scan() {
         return;
       }
 
+      const session = getCurrentPilotSession();
+      const scope = session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined;
+      const aiEvent = latestConsent("ai_analysis", scope) ?? (scope ? latestConsent("ai_analysis") : null);
+      const cropEvent = latestConsent("learning_crop", scope) ?? (scope ? latestConsent("learning_crop") : null);
+      const aiAllowed = consent && Boolean(aiEvent?.granted);
+      const cropAllowed = datasetConsent && Boolean(cropEvent?.granted);
+
       // Crops come from this verified first frame (canvas still holds it).
-      const faceCrop = consent || datasetConsent ? cropFace(canvas, faces[0]) : null;
+      const faceCrop = aiAllowed || cropAllowed ? cropFace(canvas, faces[0]) : null;
       const modelCrop = process.env.NEXT_PUBLIC_VISIBLE_ATTR_MODEL === "on" ? cropFaceImageData(canvas, faces[0]) : null;
-      setCropDataUrl(staffMode && datasetConsent ? faceCrop : null);
+      setCropDataUrl(shouldKeepLearningCrop({ datasetConsent: cropAllowed }) ? faceCrop : null);
 
       // Burst: two extra frames ~140ms apart; the per-feature median suppresses
       // one-frame glare/motion spikes, and cross-frame agreement feeds the
@@ -575,7 +584,7 @@ export default function Scan() {
       await advanceStep(3);
 
       let final = out;
-      if (consent && faceCrop) {
+      if (aiAllowed && faceCrop) {
         try {
           const resp = await fetch("/api/analyze", {
             method: "POST",
@@ -591,10 +600,6 @@ export default function Scan() {
         }
       }
 
-      const session = getCurrentPilotSession();
-      const scope = session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined;
-      const aiEvent = latestConsent("ai_analysis", scope) ?? (scope ? latestConsent("ai_analysis") : null);
-      const cropEvent = latestConsent("learning_crop", scope) ?? (scope ? latestConsent("learning_crop") : null);
       setCaptureMeta({
         schemaVersion: "2026-06-29.label.v2",
         participantId: session?.participantId,
@@ -607,8 +612,8 @@ export default function Scan() {
         quality: qualityMeta(verifiedQuality),
         consentVersion: CONSENT_VERSION,
         consentEventIds: {
-          aiAnalysis: consent && aiEvent?.granted ? aiEvent.id : undefined,
-          learningCrop: datasetConsent && cropEvent?.granted ? cropEvent.id : undefined,
+          aiAnalysis: aiAllowed && aiEvent?.granted ? aiEvent.id : undefined,
+          learningCrop: cropAllowed && cropEvent?.granted ? cropEvent.id : undefined,
         },
         predictionSource: final.source,
         modelVersion: final.source === "ml-model" && mlPrediction?.modelVersion ? mlPrediction.modelVersion : VISIBLE_MODEL_CONTRACT.fallbackVersion,
@@ -688,15 +693,25 @@ export default function Scan() {
   }
 
   function toggleAiConsent(next: boolean) {
-    setConsent(next);
     const session = getCurrentPilotSession();
-    recordConsentEvent("ai_analysis", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
+    const event = recordConsentEvent("ai_analysis", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
+    if (!event && next) {
+      setErr(CONSENT_STORAGE_ERROR);
+      return;
+    }
+    setConsent(next);
+    setErr(event ? "" : CONSENT_STORAGE_ERROR);
   }
 
   function toggleDatasetConsent(next: boolean) {
-    setDatasetConsent(next);
     const session = getCurrentPilotSession();
-    recordConsentEvent("learning_crop", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
+    const event = recordConsentEvent("learning_crop", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
+    if (!event && next) {
+      setErr(CONSENT_STORAGE_ERROR);
+      return;
+    }
+    setDatasetConsent(next);
+    setErr(event ? "" : CONSENT_STORAGE_ERROR);
   }
 
   return (
@@ -820,8 +835,7 @@ export default function Scan() {
                 <span>자동 촬영</span>
               </label>
             </div>
-            {staffMode && (
-              <label style={consentStyle}>
+            <label style={consentStyle}>
                 <input
                   type="checkbox"
                   checked={datasetConsent}
@@ -829,8 +843,7 @@ export default function Scan() {
                   style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
                 />
                 <span>연구용: 학습 크롭 저장 <span style={{ color: "var(--text-muted)" }}>동의한 파일만 이 기기에 최대 120개 보관돼요</span></span>
-              </label>
-            )}
+            </label>
             <button type="button" onClick={() => setInfoOpen(true)} style={infoLinkBtn}>
               촬영 팁 · 동의 안내 보기
             </button>
@@ -903,7 +916,9 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
             <div aria-hidden style={{ position: "absolute", left: -9999, top: 0, pointerEvents: "none" }}>
               <ShareCard ref={shareCardRef} headline={skinReadsToCard(reads).headline} reads={skinReadsToCard(reads).rows} />
             </div>
-            {staffMode && <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />}
+            {shouldShowFeedback({ hasReads: Boolean(reads), staffMode, datasetConsent }) && (
+              <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />
+            )}
           </>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeSkin, analyzeSkinBurst } from "@/lib/skin";
+import { analyzeSkin, analyzeSkinBurst, type MlVisiblePrediction } from "@/lib/skin";
 
 type LM = { x: number; y: number; z?: number };
 
@@ -39,6 +39,34 @@ describe("analyzeSkin", () => {
     expect(reads!.redness.level).toBe(0);
     expect(reads!.pores.level).toBe(0);
     expect(reads!.overall.calm).toBe(true);
+  });
+
+  it("ignores an ML prediction with no usable attribute labels", () => {
+    const reads = analyzeSkin(solidFrame(200, 200, [150, 150, 150]), centeredLandmarks(), {
+      source: "ml-model",
+      labels: {},
+      confidence: {},
+      modelVersion: "test-empty",
+    });
+
+    expect(reads).not.toBeNull();
+    expect(reads!.source).toBe("roi-calibrated");
+  });
+
+  it("ignores malformed ML labels instead of publishing invalid buckets", () => {
+    const malformed = {
+      source: "ml-model",
+      labels: { oil: 8 },
+      confidence: { oil: 0.99 },
+      modelVersion: "test-malformed",
+    } as unknown as MlVisiblePrediction;
+
+    const reads = analyzeSkin(solidFrame(200, 200, [150, 150, 150]), centeredLandmarks(), malformed);
+
+    expect(reads).not.toBeNull();
+    expect([0, 1, 2]).toContain(reads!.oil.level);
+    expect(reads!.oil.value).toBeTruthy();
+    expect(reads!.source).toBe("roi-calibrated");
   });
 });
 

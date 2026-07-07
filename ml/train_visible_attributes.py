@@ -93,6 +93,8 @@ def load_rows(root: Path, manifest: Path) -> list[Row]:
     rows: list[Row] = []
     with manifest.open(encoding="utf-8-sig", newline="") as handle:
         for idx, rec in enumerate(csv.DictReader(handle)):
+            if is_excluded_manifest_row(rec):
+                continue
             image_rel = rec["image"]
             rows.append(Row(
                 image=root / image_rel,
@@ -102,6 +104,14 @@ def load_rows(root: Path, manifest: Path) -> list[Row]:
                 meta={key: value for key, value in rec.items() if key not in {"image", *ATTRS}},
             ))
     return rows
+
+
+def is_truthy(value: object) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def is_excluded_manifest_row(rec: dict[str, str]) -> bool:
+    return is_truthy(rec.get("ungradable", "")) or rec.get("label_confidence", "") == "low"
 
 
 def accuracy(outputs: dict[str, torch.Tensor], targets: dict[str, torch.Tensor]) -> dict[str, float]:

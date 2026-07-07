@@ -29,6 +29,12 @@ Use these as reference points, not as a final product model:
 - MobileNetV3: good starting backbone for mobile inference.
 - ONNX Runtime Web: target runtime for browser inference after export.
 
+The reviewed external dataset registry is tracked in
+`ml/external_datasets.json`, with the rationale in
+`docs/ml-camera-upgrade-plan.md`. External data should be used for pretraining,
+camera-quality research, or fairness audits unless its license and labels
+explicitly fit ARU's oil/redness/pores product task.
+
 ## Tier 1: threshold calibration
 
 Export labels from the app and run:
@@ -62,7 +68,8 @@ Use `run_pipeline.py` as the lab-grade entry point for every pilot export. It
 creates a timestamped experiment directory, validates the JSONL inputs, decodes
 opt-in crops into a manifest, reports label/source distribution, flags data
 quality risks, and benchmarks the current heuristic thresholds before any CNN
-training is considered.
+training is considered. Low-confidence or ungradable feedback samples are
+excluded by default from calibration, manifest decoding, and training.
 
 ```bash
 python ml/run_pipeline.py \

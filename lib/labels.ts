@@ -81,6 +81,8 @@ export type LabeledSample = {
     tzoneSpecular?: number;
     cheekSamples?: number;
     tzoneSamples?: number;
+    toneLstar?: number;
+    toneIta?: number;
   };
   labels: { oil: number; redness: number; pores: number };
   source: "confirmed" | "corrected";
@@ -88,16 +90,22 @@ export type LabeledSample = {
 };
 
 const KEY = "gyeol_labels_v1";
+const MAX_LOCAL_LABELS = 500;
 
 function uid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
 }
 
-export function saveLabel(sample: LabeledSample) {
-  if (typeof window === "undefined") return;
+export function saveLabel(sample: LabeledSample): boolean {
+  if (typeof window === "undefined") return false;
   const all = getLabels();
   all.push({ ...sample, id: sample.id ?? uid() });
-  localStorage.setItem(KEY, JSON.stringify(all));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all.slice(-MAX_LOCAL_LABELS)));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getLabels(): LabeledSample[] {

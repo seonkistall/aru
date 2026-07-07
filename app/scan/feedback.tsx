@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cropSampleCount, exportCropSamples, saveCropSample } from "@/lib/crops";
 import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type SampleMeta } from "@/lib/labels";
+import { commitFeedbackSample, type FeedbackCommitResult } from "@/lib/feedback-storage";
 import type { SkinReads } from "@/lib/skin";
 import { feedBtn, stepBtn } from "./scan-styles";
 
@@ -17,6 +18,7 @@ export function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads
   const [troubleSeen, setTroubleSeen] = useState(false);
   const [count, setCount] = useState(() => labelCount());
   const [cropCount, setCropCount] = useState(() => cropSampleCount());
+  const [saveResult, setSaveResult] = useState<FeedbackCommitResult | null>(null);
 
   function commit(source: "confirmed" | "corrected", finalLabels: typeof init) {
     const meta: SampleMeta | undefined = captureMeta
@@ -35,12 +37,10 @@ export function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads
         }
       : undefined;
     const sample = { ts: Date.now(), features: reads.raw, labels: finalLabels, source, meta };
-    saveLabel(sample);
-    if (cropDataUrl) {
-      saveCropSample({ image: cropDataUrl, features: reads.raw, labels: finalLabels, source, meta, ts: sample.ts });
-      setCropCount(cropSampleCount());
-    }
-    setCount(labelCount());
+    const result = commitFeedbackSample({ sample, cropDataUrl }, { saveLabel, saveCropSample, labelCount, cropSampleCount });
+    setSaveResult(result);
+    setCount(result.labelCount);
+    setCropCount(result.cropCount);
     setStage("done");
   }
 
@@ -93,8 +93,12 @@ export function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads
 
       {stage === "done" && (
         <div style={{ textAlign: "center" }}>
-          <p style={{ fontSize: 14, color: "var(--ink)" }}>고마워요. {count}번째 피부 피드백이에요.</p>
-          {cropDataUrl && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>학습용 크롭 {cropCount}개가 이 기기에 저장되어 있어요.</p>}
+          <p style={{ fontSize: 14, color: saveResult?.ok === false ? "var(--plum-press)" : "var(--ink)" }}>
+            {saveResult?.message ?? `고마워요. ${count}번째 피부 피드백이에요.`}
+          </p>
+          {cropDataUrl && saveResult?.cropSaved !== false && (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>학습용 크롭 {cropCount}개가 이 기기에 저장되어 있어요.</p>
+          )}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button onClick={exportLabels} style={{ ...feedBtn, fontSize: 13 }}>라벨 내보내기</button>
             {cropDataUrl && <button onClick={exportCropSamples} style={{ ...feedBtn, fontSize: 13 }}>크롭 내보내기</button>}

@@ -16,6 +16,7 @@ import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { ReengageOptIn } from "@/app/components/reengage-optin";
+import { buildReportTrust } from "@/lib/report-trust";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -326,6 +327,7 @@ function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) 
 
 function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplied: boolean }) {
   const pct = Math.round(reads.confidence * 100);
+  const trust = buildReportTrust(reads, scanApplied);
   return (
     <section style={confidenceCard(reads.retakeRecommended)}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
@@ -333,16 +335,21 @@ function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplie
         <strong style={{ fontFeatureSettings: '"tnum"', fontSize: 20, color: "var(--ink)" }}>{pct}%</strong>
       </div>
       <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 20, color: "var(--ink)", margin: "6px 0" }}>
-        {scanApplied ? "스캔 신호를 추천에 반영했어요" : "이번 추천은 설문을 더 크게 반영했어요"}
+        {trust.title}
       </h2>
       <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
-        {scanApplied
-          ? "조명과 얼굴 위치가 충분해서 유분, 붉은기, 피부결 신호를 제품 선택에 함께 사용했어요."
-          : "촬영 조건이 애매한 부분이 있어 스캔 결과는 참고만 하고, 사용자가 답한 고민과 예산을 우선했어요."}
+        {trust.body}
       </p>
-      {reads.retakeReasons.length > 0 && (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+        <span style={trustChip}>{trust.sourceLabel}</span>
+        <span style={trustChip}>신뢰도 {reads.confidenceLabel}</span>
+        {trust.checks.slice(0, 3).map((check) => (
+          <span key={check} style={trustChip}>{check}</span>
+        ))}
+      </div>
+      {trust.reasons.length > 0 && (
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
-          {reads.retakeReasons.map((reason) => (
+          {trust.reasons.map((reason) => (
             <span key={reason} style={{ fontSize: 12.5, color: "var(--plum-press)" }}>{reason}</span>
           ))}
         </div>
@@ -371,6 +378,7 @@ const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius:
 const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 17, color: "var(--ink)", marginBottom: 4 };
 const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };
 const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--ink)", fontWeight: 800, marginTop: 6 };
+const trustChip: React.CSSProperties = { border: "1px solid var(--line)", borderRadius: 999, padding: "4px 8px", color: "var(--ink-soft)", fontSize: 11.5, fontWeight: 700 };
 const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px" };
 const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };

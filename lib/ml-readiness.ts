@@ -17,7 +17,7 @@ export function getMlReadiness({
   crops: number;
   participants?: number;
 }): MlReadiness {
-  if (participants > 0 && participants < 5) {
+  if (crops > 0 && participants < 5) {
     return {
       band: "calibrate",
       title: "Pilot coverage gate",

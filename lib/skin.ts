@@ -405,7 +405,7 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
   const merged = mergeMlPrediction({ oil, redness, pores }, ml);
   const signals = buildSignals(raw);
   const signalScore = signals.filter((signal) => signal.ok).length / signals.length;
-  const attrConfidence = (merged.oil.confidence ?? 0.6) * 0.34 + (merged.redness.confidence ?? 0.6) * 0.33 + (merged.pores.confidence ?? 0.6) * 0.33;
+  const attrConfidence = (merged.buckets.oil.confidence ?? 0.6) * 0.34 + (merged.buckets.redness.confidence ?? 0.6) * 0.33 + (merged.buckets.pores.confidence ?? 0.6) * 0.33;
   const meanAgreement = burst ? (burst.agreement.oil + burst.agreement.redness + burst.agreement.pores) / 3 : 1;
   const confidence = clamp01((attrConfidence * 0.72 + signalScore * 0.28) * (burst ? 0.9 + 0.1 * meanAgreement : 1));
   const retakeReasons = signals.filter((signal) => !signal.ok).map((signal) => signal.detail);
@@ -431,7 +431,7 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
         ? { label: "T존 반사광", value: "보통", calm: true, note: "이마에 옅은 반사가 보여요." }
         : { label: "T존 반사광", value: "높음", calm: false, note: "이마 반사가 강해요. 유분 또는 조명 영향이에요." };
 
-  const concerns = [merged.oil, merged.redness, merged.pores].filter((b) => b.level > 0).length;
+  const concerns = [merged.buckets.oil, merged.buckets.redness, merged.buckets.pores].filter((b) => b.level > 0).length;
   const overall: Bucket =
     confidence < 0.58
       ? { value: "재촬영 권장", level: 1, calm: false, confidence }
@@ -440,18 +440,18 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
         : { value: "대체로 안정", level: 0, calm: true, confidence };
 
   return {
-    oil: merged.oil,
-    pores: merged.pores,
-    redness: merged.redness,
+    oil: merged.buckets.oil,
+    pores: merged.buckets.pores,
+    redness: merged.buckets.redness,
     overall,
-    headline: headlineFor(merged.oil, merged.redness, merged.pores),
-    narrative: narrativeFor(merged.oil, merged.redness, merged.pores),
+    headline: headlineFor(merged.buckets.oil, merged.buckets.redness, merged.buckets.pores),
+    narrative: narrativeFor(merged.buckets.oil, merged.buckets.redness, merged.buckets.pores),
     confidence,
     confidenceLabel: confidenceLabel(confidence),
     retakeRecommended: confidence < 0.58 || retakeReasons.length >= 2,
     retakeReasons,
     signals,
-    source: ml ? "ml-model" : "roi-calibrated",
+    source: merged.usedMl ? "ml-model" : "roi-calibrated",
     raw,
     burst,
     extras: [toneEven, gloss],
@@ -500,14 +500,27 @@ export function analyzeSkinBurst(
   return readsFromRaw(fused, ml, { frames: raws.length, agreement });
 }
 
-function mergeMlPrediction(base: Record<SkinAttr, Bucket>, ml?: MlVisiblePrediction | null): Record<SkinAttr, Bucket> {
-  if (!ml) return base;
+function isSkinLevel(value: unknown): value is SkinLevel {
+  return value === 0 || value === 1 || value === 2;
+}
+
+function isUsableConfidence(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function mergeMlPrediction(
+  base: Record<SkinAttr, Bucket>,
+  ml?: MlVisiblePrediction | null
+): { buckets: Record<SkinAttr, Bucket>; usedMl: boolean } {
+  if (!ml) return { buckets: base, usedMl: false };
 
   const next = { ...base };
+  let usedMl = false;
   for (const attr of Object.keys(base) as SkinAttr[]) {
     const mlLevel = ml.labels[attr];
-    if (mlLevel === undefined) continue;
-    const mlConfidence = ml.confidence[attr] ?? 0;
+    if (!isSkinLevel(mlLevel)) continue;
+    const mlConfidence = ml.confidence[attr];
+    if (!isUsableConfidence(mlConfidence)) continue;
     const baseConfidence = base[attr].confidence ?? 0;
     if (mlConfidence >= 0.55 || mlConfidence >= baseConfidence) {
       next[attr] = {
@@ -516,9 +529,10 @@ function mergeMlPrediction(base: Record<SkinAttr, Bucket>, ml?: MlVisiblePredict
         calm: mlLevel === 0,
         confidence: Math.max(mlConfidence, baseConfidence * 0.9),
       };
+      usedMl = true;
     }
   }
-  return next;
+  return { buckets: next, usedMl };
 }
 
 export async function classifyVisibleAttributes(skinCrop: ImageData): Promise<MlVisiblePrediction | null> {

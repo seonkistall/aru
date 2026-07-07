@@ -61,6 +61,20 @@ def read_jsonl(path: Path) -> Iterable[dict]:
                 yield json.loads(line)
 
 
+def is_true(value: object) -> bool:
+    return value is True or str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def is_usable_sample(row: dict) -> bool:
+    meta = row.get("meta") or {}
+    return not (
+        is_true(row.get("ungradable")) or
+        is_true(meta.get("ungradable")) or
+        row.get("label_confidence") == "low" or
+        meta.get("labelConfidence") == "low"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("jsonl", type=Path)
@@ -73,6 +87,8 @@ def main() -> None:
 
     rows = []
     for idx, row in enumerate(read_jsonl(args.jsonl)):
+        if not is_usable_sample(row):
+            continue
         image_id = row.get("id") or f"crop_{idx:06d}"
         image_path = images_dir / f"{image_id}.jpg"
         image_path.write_bytes(parse_data_url(row["image"]))
@@ -108,6 +124,8 @@ def main() -> None:
             "label_confidence": meta.get("labelConfidence", ""),
             "ungradable": meta.get("ungradable", ""),
             "ita": f"{ita_from_image(image_path):.3f}",
+            "toneLstar": features.get("toneLstar", ""),
+            "toneIta": features.get("toneIta", ""),
             "shine": features.get("shine", ""),
             "relRedness": features.get("relRedness", ""),
             "cov": features.get("cov", ""),

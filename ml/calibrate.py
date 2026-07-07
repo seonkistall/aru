@@ -23,13 +23,29 @@ import sys
 FEATURE = {"oil": "shine", "redness": "relRedness", "pores": "cov"}
 
 
+def is_true(value):
+    return value is True or str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def is_usable(row):
+    meta = row.get("meta") or {}
+    return not (
+        is_true(row.get("ungradable")) or
+        is_true(meta.get("ungradable")) or
+        row.get("label_confidence") == "low" or
+        meta.get("labelConfidence") == "low"
+    )
+
+
 def load(path):
     rows = []
     with open(path, encoding="utf-8-sig") as f:  # tolerate BOM
         for line in f:
             line = line.strip()
             if line:
-                rows.append(json.loads(line))
+                row = json.loads(line)
+                if is_usable(row):
+                    rows.append(row)
     return rows
 
 

@@ -55,6 +55,7 @@ export default function Survey() {
   const [category, setCategory] = useState<Category | null>(null);
   const [budget, setBudget] = useState<number | null>(null);
   const [avoid, setAvoid] = useState<Avoid[]>([]);
+  const [saveErr, setSaveErr] = useState("");
   const ready = type && category && budget;
 
   useEffect(() => {
@@ -74,11 +75,13 @@ export default function Survey() {
 
   function submit() {
     if (!ready) return;
+    setSaveErr("");
     const survey: SurveyT = { type, concerns, category, budget, avoid };
     try {
       sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
     } catch {
-      // Best-effort: a blocked/full store must not dead-end the survey→report step.
+      setSaveErr("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.");
+      return;
     }
     recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: Boolean(scanHint?.concerns.length) });
     router.push("/report");
@@ -134,6 +137,7 @@ export default function Survey() {
         </Section>
 
         <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>내 추천 보기</button>
+        {saveErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{saveErr}</p>}
         {!ready && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
             제품 종류·피부 타입·예산을 고르면 리포트를 볼 수 있어요
