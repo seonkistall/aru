@@ -3,7 +3,7 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v0.6.4** · 최종 업데이트 2026-07-07 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
+> **버전 v0.6.5** · 최종 업데이트 2026-07-07 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
@@ -19,14 +19,17 @@
 - **북극성:** 외국인 대상 **K뷰티 컨시어지**.
 - 설계 문서: `~/.gstack/projects/aru/`
 
-## 현재 버전 — v0.6.4
-- **카메라/ML 데이터 루프**: 동의 기록 저장 성공 시에만 AI 전송·학습 crop 보관, 저신뢰/판독불가 샘플 학습 제외, malformed ML 출력 ROI fallback.
-- **리포트 신뢰도**: 스캔 반영 여부와 재촬영/설문 중심 추천 상태를 리포트에서 명확히 표시.
-- **학습 전략**: ARU 타깃 스키마(`ml/aru_target_schema.json`), 공개/비공개 소스 후보(`ml/source_candidates.json`), 화장품·클리닉 데이터 스펙(`docs/skin-commerce-clinic-data-spec.md`) 추가.
-- **배포**: Vercel 프로젝트를 Next.js preset으로 복구, SSO Deployment Protection 해제, public URL `https://aru-kbeauty.vercel.app` 정상화.
-- **검증**: Vitest 17 files / 77 tests, ESLint, Next production build 통과.
+## 현재 버전 — v0.6.5
+- **Moongi cosmetic character**: 기존 小黑 캐릭터를 기묘한 에디토리얼 톤이 아닌, 코스메틱 앱에 맞는 미니멀하고 귀여운 Moongi 헬퍼 스타일로 전면 정리.
+- **앱 아이콘 동기화**: `app/icon.svg`, `app/apple-icon.png`, `app/favicon.ico`를 동일한 Moongi cosmetic mark로 교체.
+- **검증**: `npm run smoke` 통과 — ESLint, Vitest 17 files / 77 tests, Next production build, ML Python compile, 주요 라우트 smoke 확인.
 
 ## 버전 이력
+- **v0.6.5** (2026-07-07) — Moongi cosmetic 캐릭터 전면 적용 + 앱 아이콘 교체
+  - **캐릭터 스타일**: `app/components/sketch.tsx`의 재사용 SVG 캐릭터 API(`Xiaohei`)는 유지하면서, 검정 실루엣·흰 눈·부드러운 미소·볼터치·화장품 소품 중심의 Moongi cosmetic helper로 재정의.
+  - **아이콘**: 웹 앱 아이콘, iOS 홈화면 아이콘, favicon을 같은 캐릭터 마크로 동기화해 브랜드 첫인상을 통일.
+  - **범위 제한**: 레이아웃, 추천 알고리즘, ML/카메라 로직, 커머스 플로우는 변경하지 않음.
+  - **검증**: `npm run smoke` 통과. 최초 sandbox smoke는 Google Fonts fetch 제한으로 build 단계에서 실패했으나, 네트워크 허용 재실행에서 전체 통과.
 - **v0.6.4** (2026-07-07) — Camera ML 데이터 루프 강화 + ARU 데이터 전략 + Vercel 배포 복구
   - **Camera/ML**: 동의 이벤트가 실제 저장된 경우에만 AI 분석 전송·학습 crop 보관을 허용하고, `learning_crop` opt-in feedback 루프를 일반 파일럿 사용자까지 확장. ML 예측이 비어 있거나 malformed이면 `ml-model`로 표시하지 않고 ROI fallback 유지.
   - **데이터 품질**: low-confidence/retake/ungradable 샘플을 calibration·manifest decoding·training에서 기본 제외. toneLstar/toneIta 등 subgroup 감사용 지표를 manifest에 포함.
