@@ -73,8 +73,10 @@ directories and keep dataset terms with the experiment report.
 1. Keep ROI heuristic as the always-on fallback.
 2. Use ARU opt-in crops for the supervised labels: oil, redness, pores.
 3. Run `ml/run_pipeline.py` for every export and keep its report.
-4. Use external data only for pretraining or audits unless terms and labels
-   match ARU's product task.
+4. Use external data only for camera-quality research, pretraining experiments,
+   and fairness/robustness audits. Do not treat external-data results as ARU
+   product performance. Product readiness can only be claimed on ARU opt-in
+   crops with participant-grouped validation against the calibrated ROI baseline.
 5. Train below 300 crops only for engineering smoke tests.
 6. Promote an ONNX model only after it beats calibrated ROI on participant-
    grouped validation and does not regress lighting, device, makeup, or

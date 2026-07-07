@@ -8,6 +8,7 @@ import { exportFunnelEvents, funnelDropoff, summarizeFunnel, type FunnelStage, t
 import { exportLabels, labelCount } from "@/lib/labels";
 import { getMlReadiness } from "@/lib/ml-readiness";
 import { exportPilotNotes, getPilotNotes, normalizeParticipantId, PILOT_PARTICIPANT_IDS, summarizePilotNotes } from "@/lib/pilot";
+import { buildSyncRequestBody, syncRequestByteSize } from "@/lib/sync-size";
 import { buildLocalSyncPayload, type SyncResult } from "@/lib/sync-payload";
 
 type PilotSummary = ReturnType<typeof summarizePilotNotes>;
@@ -102,16 +103,36 @@ export default function OpsPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
+      const payload = buildLocalSyncPayload();
+      const requestBody = buildSyncRequestBody({ dryRun, payload });
+      const maxBytes = syncStatus?.maxBytes;
+      const bodyBytes = syncRequestByteSize(requestBody);
+      if (maxBytes && bodyBytes > maxBytes) {
+        setSyncResult({
+          ok: false,
+          counts: {
+            labels: payload.labels.length,
+            cropSamples: payload.cropSamples.length,
+            cropUploads: 0,
+            pilotNotes: payload.pilotNotes.length,
+            consentEvents: payload.consentEvents.length,
+            funnelEvents: payload.funnelEvents?.length ?? 0,
+          },
+          warnings: [],
+          errors: [`Sync payload is ${(bodyBytes / 1024 / 1024).toFixed(2)}MB, above the ${(maxBytes / 1024 / 1024).toFixed(2)}MB upload limit. Export locally or clear old crops before syncing.`],
+        });
+        return;
+      }
       const resp = await fetch("/api/sync", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${syncToken.trim()}`,
         },
-        body: JSON.stringify({ dryRun, payload: buildLocalSyncPayload() }),
+        body: requestBody,
       });
-      const body = (await resp.json()) as SyncResult;
-      setSyncResult(body);
+      const responseBody = (await resp.json()) as SyncResult;
+      setSyncResult(responseBody);
       refresh();
     } catch (error) {
       setSyncResult({

@@ -21,6 +21,15 @@ import { ShareCard, shareCardImage, skinReadsToCard } from "@/app/components/sha
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
 import {
+  buildCameraQualityDebug,
+  cameraConstraintsForAttempt,
+  cropOutputSize,
+  cropPlanForPurpose,
+  nextCameraAttempt,
+  type CameraAttempt,
+  type CropPlan,
+} from "./camera-quality";
+import {
   CAPTURE_PROFILES,
   initialQuality,
   type CaptureMode,
@@ -92,6 +101,8 @@ export default function Scan() {
   const shareCardRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<LandmarkerWorker | null>(null);
   const useWorkerRef = useRef(false);
+  const cameraAttemptRef = useRef<CameraAttempt>("high");
+  const cropSizeRef = useRef<{ ai?: string; learning?: string; model?: string }>({});
 
   const [phase, setPhase] = useState<Phase>("init");
   const [reads, setReads] = useState<SkinReads | null>(null);
@@ -196,16 +207,23 @@ export default function Scan() {
       return;
     }
 
+    let attempt: CameraAttempt | null = "high";
+    let stream: MediaStream | null = null;
+    while (attempt) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(cameraConstraintsForAttempt(attempt));
+        cameraAttemptRef.current = attempt;
+        break;
+      } catch {
+        attempt = nextCameraAttempt(attempt);
+      }
+    }
+    if (!stream) {
+      setPhase("denied");
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 720 },
-          height: { ideal: 960 },
-          frameRate: { ideal: 30 },
-        },
-        audio: false,
-      });
       if (disposedRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -376,7 +394,13 @@ export default function Scan() {
       if (debugRef.current) {
         setDebugInfo({
           "delegate": forceCpuRef.current ? "CPU" : "GPU",
-          "video": `${video.videoWidth}x${video.videoHeight}`,
+          ...buildCameraQualityDebug({
+            attempt: cameraAttemptRef.current,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            trackSettings: streamRef.current?.getVideoTracks()[0]?.getSettings?.(),
+            cropSizes: cropSizeRef.current,
+          }),
           "ratio": Number((video.videoWidth / video.videoHeight).toFixed(3)),
           "fx/fy": `${fx.toFixed(2)}/${fy.toFixed(2)}`,
           "rawSize": Number(rawSize.toFixed(3)),
@@ -558,9 +582,15 @@ export default function Scan() {
       const cropAllowed = datasetConsent && Boolean(cropEvent?.granted);
 
       // Crops come from this verified first frame (canvas still holds it).
-      const faceCrop = aiAllowed || cropAllowed ? cropFace(canvas, faces[0]) : null;
+      const aiCrop = aiAllowed ? cropFace(canvas, faces[0], cropPlanForPurpose("ai-analysis")) : null;
+      const learningCrop = cropAllowed ? cropFace(canvas, faces[0], cropPlanForPurpose("learning-crop")) : null;
       const modelCrop = process.env.NEXT_PUBLIC_VISIBLE_ATTR_MODEL === "on" ? cropFaceImageData(canvas, faces[0]) : null;
-      setCropDataUrl(shouldKeepLearningCrop({ datasetConsent: cropAllowed }) ? faceCrop : null);
+      cropSizeRef.current = {
+        ai: aiCrop?.size,
+        learning: learningCrop?.size,
+        model: modelCrop ? `${modelCrop.width}x${modelCrop.height}` : undefined,
+      };
+      setCropDataUrl(shouldKeepLearningCrop({ datasetConsent: cropAllowed }) ? learningCrop?.dataUrl ?? null : null);
 
       // Burst: two extra frames ~140ms apart; the per-feature median suppresses
       // one-frame glare/motion spikes, and cross-frame agreement feeds the
@@ -584,12 +614,12 @@ export default function Scan() {
       await advanceStep(3);
 
       let final = out;
-      if (aiAllowed && faceCrop) {
+      if (aiAllowed && aiCrop) {
         try {
           const resp = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: faceCrop }),
+            body: JSON.stringify({ image: aiCrop.dataUrl }),
           });
           if (resp.ok) {
             const v = await resp.json();
@@ -1019,7 +1049,7 @@ function exposureStats(imageData: ImageData, box?: ReturnType<typeof faceBox>) {
   return { mean: total / Math.max(1, count), hotRatio: hot / Math.max(1, count), darkRatio: dark / Math.max(1, count) };
 }
 
-function cropFace(src: HTMLCanvasElement, landmarks: Landmark[]): string {
+function cropFace(src: HTMLCanvasElement, landmarks: Landmark[], plan: CropPlan): { dataUrl: string; size: string } {
   const w = src.width;
   const h = src.height;
   const box = faceBox(landmarks);
@@ -1028,12 +1058,12 @@ function cropFace(src: HTMLCanvasElement, landmarks: Landmark[]): string {
   const y0 = Math.max(0, (box.minY - pad) * h);
   const cw = Math.min(w, (box.maxX + pad) * w) - x0;
   const ch = Math.min(h, (box.maxY + pad) * h) - y0;
-  const scale = Math.min(1, 384 / Math.max(cw, ch));
+  const size = cropOutputSize({ sourceWidth: cw, sourceHeight: ch, maxEdge: plan.maxEdge });
   const out = document.createElement("canvas");
-  out.width = Math.round(cw * scale);
-  out.height = Math.round(ch * scale);
+  out.width = size.width;
+  out.height = size.height;
   out.getContext("2d")?.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);
-  return out.toDataURL("image/jpeg", 0.82);
+  return { dataUrl: out.toDataURL(plan.mimeType, plan.quality), size: `${out.width}x${out.height}` };
 }
 
 function cropFaceImageData(src: HTMLCanvasElement, landmarks: Landmark[]): ImageData | null {
@@ -1047,8 +1077,9 @@ function cropFaceImageData(src: HTMLCanvasElement, landmarks: Landmark[]): Image
   const ch = Math.min(h, (box.maxY + pad) * h) - y0;
   if (cw <= 0 || ch <= 0) return null;
   const out = document.createElement("canvas");
-  out.width = 224;
-  out.height = 224;
+  const plan = cropPlanForPurpose("model-input");
+  out.width = plan.maxEdge;
+  out.height = plan.maxEdge;
   const ctx = out.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);

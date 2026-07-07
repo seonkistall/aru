@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { efficacyClean } from "@/lib/recommend";
 import { SKIN_LABELS, type SkinAttr, type SkinLevel } from "@/lib/skin";
+import { openAiVisionUserContent } from "@/lib/vision-payload";
 
 const ATTRS = ["oil", "redness", "pores"] as const satisfies readonly SkinAttr[];
 
@@ -45,7 +46,7 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYS },
-        { role: "user", content: [{ type: "text", text: USER }, { type: "image_url", image_url: { url: image, detail: "low" } }] },
+        { role: "user", content: openAiVisionUserContent(USER, image) },
       ],
     }),
   });

@@ -56,6 +56,10 @@ responsive mode.
 - Confirm `추천 받기` saves scan confidence/source/retake data and opens `/survey`.
 - Confirm low-confidence scans show `설문으로 이어가기` and keep recommendation weight on survey answers.
 - Confirm result copy says reference/cosmetic guidance, not diagnosis.
+- Open `/scan?debug=1` and record requested camera profile, actual video size,
+  track settings, and AI/learning/model crop sizes. If actual video size is
+  below 720×960 on a modern phone, treat it as a device/browser capture issue
+  before tuning skin thresholds.
 
 ## Commerce flow QA
 

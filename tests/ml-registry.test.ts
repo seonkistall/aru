@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { VISIBLE_MODEL_CONTRACT } from "@/lib/skin";
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(join(process.cwd(), path), "utf8")) as T;
@@ -20,6 +21,13 @@ type SourceCandidates = {
     mapsToTargets: string[];
     commercialTraining: string;
   }>;
+};
+
+type VisibleManifest = {
+  inputSchemaVersion: string;
+  fallbackVersion: string;
+  targetModel: string;
+  promotionGate: { validation: string; minTrainingCrops: number };
 };
 
 describe("ARU ML registries", () => {
@@ -45,5 +53,15 @@ describe("ARU ML registries", () => {
     expect(sources.prioritySources.find((source) => source.id === "aru_opt_in_camera_panel")?.tier).toBe("primary");
     expect(sources.prioritySources.find((source) => source.id === "licensed_cosmetic_skin_panel")?.commercialTraining).toBe("contract_required");
     expect(sources.prioritySources.every((source) => source.mapsToTargets.length > 0)).toBe(true);
+  });
+
+  it("keeps the public visible model manifest aligned with the runtime contract", () => {
+    const manifest = readJson<VisibleManifest>("public/models/visible-attributes/manifest.json");
+
+    expect(manifest.inputSchemaVersion).toBe(VISIBLE_MODEL_CONTRACT.inputSchemaVersion);
+    expect(manifest.fallbackVersion).toBe(VISIBLE_MODEL_CONTRACT.fallbackVersion);
+    expect(manifest.targetModel).toBe(VISIBLE_MODEL_CONTRACT.targetModel);
+    expect(manifest.promotionGate.validation).toBe("grouped_by_participant");
+    expect(manifest.promotionGate.minTrainingCrops).toBeGreaterThanOrEqual(300);
   });
 });
