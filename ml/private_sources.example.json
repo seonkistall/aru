@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "2026-07-07.aru-private-sources.v1",
+  "note": "Copy to ml/private_sources.json for licensed/private datasets. The real file is gitignored. Do not commit contract terms, credentials, raw image paths, or personal data.",
+  "sources": [
+    {
+      "id": "vendor_cosmetic_skin_panel_001",
+      "vendor": "replace-with-vendor-name",
+      "contractId": "replace-with-internal-contract-id",
+      "dataController": "replace-with-legal-owner",
+      "allowedUses": ["commercial_model_training", "evaluation", "derivative_model_weights"],
+      "prohibitedUses": ["medical_diagnosis", "reidentification", "resale_raw_data"],
+      "targetsCovered": ["cosmetic_oil", "pore_visibility", "visible_redness", "tone_evenness"],
+      "populationNotes": "age range, geography, skin-tone coverage, makeup protocol",
+      "captureProtocol": "camera type, lighting, distance, before/after cleansing, makeup rules",
+      "labelProtocol": "reviewer type, number of raters, consensus rule, uncertainty labels",
+      "storageRoot": "local-or-secure-bucket-path-not-committed",
+      "retentionDays": 365,
+      "licenseReviewOwner": "replace-with-owner",
+      "approvedForTraining": false
+    }
+  ]
+}

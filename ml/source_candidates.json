@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "2026-07-07.aru-source-candidates.v1",
+  "updated": "2026-07-07",
+  "policy": {
+    "publicAttribution": "Product UI does not need to expose every training source, but internal provenance must never be hidden.",
+    "licenseBypass": false,
+    "commercialTrainingRule": "Use ARU opt-in data or explicitly licensed commercial data for product models. Public non-commercial or academic datasets are research/pretraining/audit only.",
+    "rawDataRule": "Do not commit downloaded images, model weights with restricted source data, or private source manifests.",
+    "privateManifest": "Use ml/private_sources.json locally for contract details; this file is gitignored."
+  },
+  "prioritySources": [
+    {
+      "id": "aru_opt_in_camera_panel",
+      "tier": "primary",
+      "sourceType": "first_party_consent",
+      "commercialTraining": "allowed_with_user_consent_and_retention_policy",
+      "mapsToTargets": ["cosmetic_oil", "pore_visibility", "visible_redness", "tone_evenness", "pigmentation_spots", "fine_lines_wrinkles", "blemish_acne_like", "dryness_flaking", "acne_scarring_texture"],
+      "whyAru": "Only source that directly matches ARU camera, Korean/K-beauty product language, opt-in consent, feedback labels, and commerce outcomes.",
+      "nextAction": "Collect participant-grouped crops with reviewer labels and outcomes; keep low-confidence/ungradable samples out of training by default."
+    },
+    {
+      "id": "licensed_cosmetic_skin_panel",
+      "tier": "primary",
+      "sourceType": "private_licensed",
+      "commercialTraining": "contract_required",
+      "mapsToTargets": ["cosmetic_oil", "pore_visibility", "visible_redness", "tone_evenness", "pigmentation_spots", "fine_lines_wrinkles", "blemish_acne_like", "dryness_flaking"],
+      "whyAru": "Best bridge if public cosmetic labels are unavailable or non-commercial. Contract must allow commercial ML training, derivative models, and retention.",
+      "nextAction": "Use ml/private_sources.example.json as the local contract manifest template."
+    },
+    {
+      "id": "ffhq_wrinkle",
+      "tier": "auxiliary",
+      "sourceType": "public_dataset",
+      "url": "https://github.com/labhai/ffhq-wrinkle-dataset",
+      "paper": "https://arxiv.org/abs/2408.10060",
+      "commercialTraining": "license_review_required",
+      "githubStars": null,
+      "verifiedAt": "2026-07-07",
+      "evidence": "1000 manual wrinkle masks and 50000 weak masks; source images include mixed Creative Commons terms and non-commercial constraints.",
+      "mapsToTargets": ["fine_lines_wrinkles", "face_roi_mask"],
+      "allowedUse": ["wrinkle pretraining", "mask architecture experiments", "non-product benchmark until license clears"],
+      "blockedUse": ["direct commercial ARU model training without license review"]
+    },
+    {
+      "id": "face_parsing_pytorch",
+      "tier": "tooling",
+      "sourceType": "open_source_code",
+      "url": "https://github.com/zllrunning/face-parsing.PyTorch",
+      "commercialTraining": "code_mit_dataset_separate",
+      "githubStars": "2.6k",
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["face_roi_mask", "makeup_occlusion", "region_quality"],
+      "allowedUse": ["ROI parser benchmark", "architecture reference", "mask preprocessor if dataset/model license clears"],
+      "blockedUse": ["using bundled pretrained weights commercially without checking their training-data terms"]
+    },
+    {
+      "id": "mediapipe",
+      "tier": "tooling",
+      "sourceType": "open_source_code_and_on_device_runtime",
+      "url": "https://github.com/google-ai-edge/mediapipe",
+      "commercialTraining": "code_apache_2_runtime_ok_check_model_terms",
+      "githubStars": "36k",
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["capture_quality", "face_landmarks", "region_quality"],
+      "allowedUse": ["on-device landmarks", "camera QA", "mobile latency baseline"],
+      "blockedUse": ["treating landmarks as skin-condition ground truth"]
+    },
+    {
+      "id": "retinaface_pytorch",
+      "tier": "tooling",
+      "sourceType": "open_source_code",
+      "url": "https://github.com/biubug6/Pytorch_Retinaface",
+      "paper": "https://arxiv.org/abs/1905.00641",
+      "commercialTraining": "code_mit_dataset_terms_separate",
+      "githubStars": "3k",
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["capture_quality", "face_detection_robustness"],
+      "allowedUse": ["detector benchmark", "WIDER FACE QA", "edge detector comparison"],
+      "blockedUse": ["skin label training"]
+    },
+    {
+      "id": "acne04",
+      "tier": "auxiliary",
+      "sourceType": "public_research_dataset",
+      "url": "https://github.com/xpwu95/LDL",
+      "paper": "https://arxiv.org/abs/1911.07931",
+      "commercialTraining": "not_without_author_permission",
+      "githubStars": 84,
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["blemish_acne_like"],
+      "allowedUse": ["research benchmark", "ordinal acne severity ideas", "label distribution learning reference"],
+      "blockedUse": ["commercial ARU product model training without permission"]
+    },
+    {
+      "id": "acnescu",
+      "tier": "auxiliary",
+      "sourceType": "public_research_dataset",
+      "url": "https://github.com/pingguokiller/acnedetection",
+      "paper": "https://doi.org/10.1109/JBHI.2023.3262121",
+      "commercialTraining": "prohibited_without_author_permission",
+      "githubStars": 5,
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["blemish_acne_like"],
+      "allowedUse": ["non-commercial research benchmark", "detector design review"],
+      "blockedUse": ["commercial model training"]
+    },
+    {
+      "id": "scin",
+      "tier": "audit",
+      "sourceType": "public_sensitive_dataset",
+      "url": "https://github.com/google-research-datasets/scin",
+      "paper": "https://doi.org/10.1001/jamanetworkopen.2024.46615",
+      "commercialTraining": "license_review_required",
+      "githubStars": null,
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["skin_tone_coverage", "fairness_audit", "clinic_boundary_copy"],
+      "allowedUse": ["tone coverage audit", "fairness stress test", "reviewer calibration"],
+      "blockedUse": ["direct cosmetic recommendation training"]
+    },
+    {
+      "id": "hyperskin",
+      "tier": "research",
+      "sourceType": "credentialed_dataset",
+      "url": "https://github.com/hyperspectral-skin/Hyper-Skin-2023",
+      "paper": "https://openreview.net/forum?id=doV2nhGm1l",
+      "commercialTraining": "eula_required",
+      "githubStars": null,
+      "verifiedAt": "2026-07-07",
+      "mapsToTargets": ["tone_evenness", "color_constancy", "lighting_robustness"],
+      "allowedUse": ["spectral/color research after EULA approval"],
+      "blockedUse": ["mobile-selfie product training without protocol validation"]
+    }
+  ]
+}

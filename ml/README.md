@@ -71,6 +71,16 @@ quality risks, and benchmarks the current heuristic thresholds before any CNN
 training is considered. Low-confidence or ungradable feedback samples are
 excluded by default from calibration, manifest decoding, and training.
 
+## ARU target and source registries
+
+- `aru_target_schema.json` defines the camera targets ARU needs for cosmetic
+  commerce and clinic handoff beyond oil / pores / redness.
+- `source_candidates.json` records public, tooling, first-party, and private
+  source candidates with license and allowed-use boundaries.
+- `private_sources.example.json` is the template for licensed vendor data.
+  Copy it to `ml/private_sources.json` for real contract details; the real file
+  is ignored by git.
+
 ```bash
 python ml/run_pipeline.py \
   --labels gyeol-labels-42.jsonl \
