@@ -28,6 +28,8 @@ import {
   cropPlanForPurpose,
   frameMovement,
   nextCameraAttempt,
+  scanCaptureButtonLabel,
+  scanCaptureReady,
   type CameraAttempt,
   type CropPlan,
 } from "./camera-quality";
@@ -44,6 +46,7 @@ import { CameraGuide, computeGuideZones, QualityPanel, ScanModePicker } from "./
 import { ResultCard } from "./result-card";
 import { Feedback } from "./feedback";
 import { Scanning } from "./scanning";
+import { ScanControls } from "./scan-controls";
 import { Center } from "./ui";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { Xiaohei } from "@/app/components/sketch";
@@ -51,12 +54,10 @@ import { coverCropFractions, faceBox, isNormalizedBox, rawFaceSize } from "@/lib
 import { InfoSheet } from "./info-sheet";
 import {
   cameraFrame,
-  consentStyle,
   debugStyle,
   eyebrow,
   fallbackText,
   ghostLink,
-  infoLinkBtn,
   leadStyle,
   outlineBtn,
   primaryBtn,
@@ -143,7 +144,8 @@ export default function Scan() {
     useWorkerRef.current = params.get("worker") === "1";
   }, []);
 
-  const canCapture = phase === "ready" && captureGatePassed(quality);
+  const zonesReady = Boolean(zones);
+  const canCapture = phase === "ready" && scanCaptureReady(quality, zonesReady);
 
   // Skip renders when nothing user-visible changed (ticks arrive every 650ms);
   // qualityRef-independent auto-capture reads results via handleAutoTick instead.
@@ -367,7 +369,8 @@ export default function Scan() {
       lastCenterRef.current = { x: centerX, y: centerY, t: now };
       const steady = !last || movement < profile.maxMovement;
 
-      const pass = captureGatePassed({ face: true, centered, distance, brightness, noGlare, steady });
+      const nextZones = computeGuideZones(face, video.videoWidth, video.videoHeight);
+      const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady }, Boolean(nextZones));
       const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
       const message = !distance
         ? rawSize <= 0.2
@@ -385,7 +388,6 @@ export default function Scan() {
 
       commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
       handleAutoTick(pass);
-      const nextZones = computeGuideZones(face, video.videoWidth, video.videoHeight);
       setZones(nextZones);
       if (debugRef.current) {
         setDebugInfo({
@@ -564,7 +566,7 @@ export default function Scan() {
         movement: captureMovement,
       };
       commitQuality(verifiedQuality, true);
-      if (!qualityPassed(verifiedQuality, CAPTURE_PROFILES[captureMode])) {
+      if (!captureGatePassed(verifiedQuality)) {
         autoHoldUntilRef.current = performance.now() + 4000;
         setErr("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요.");
         setPhase("ready");
@@ -855,39 +857,16 @@ export default function Scan() {
               <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: quality.face ? "var(--success)" : "var(--muted)", animation: quality.face ? "gyeol-bob 1.1s ease-in-out infinite" : undefined, flexShrink: 0 }} />
               <span>{quality.face ? "얼굴 인식됨 · 피부 신호를 읽고 있어요" : "얼굴을 화면 안에 맞춰주세요"}</span>
             </div>
-            <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} zonesReady={Boolean(zones)} />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
-              <label style={{ ...consentStyle, marginTop: 0 }}>
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => toggleAiConsent(e.target.checked)}
-                  style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
-                />
-                <span>AI 분석 전송 <span style={{ color: "var(--text-muted)" }}>선택</span></span>
-              </label>
-              <label style={{ ...consentStyle, marginTop: 0 }}>
-                <input
-                  type="checkbox"
-                  checked={autoCapture}
-                  onChange={(e) => toggleAutoCapture(e.target.checked)}
-                  style={{ accentColor: "var(--ink)", width: 16, height: 16 }}
-                />
-                <span>자동 촬영</span>
-              </label>
-            </div>
-            <label style={consentStyle}>
-                <input
-                  type="checkbox"
-                  checked={datasetConsent}
-                  onChange={(e) => toggleDatasetConsent(e.target.checked)}
-                  style={{ accentColor: "var(--blue)", width: 16, height: 16 }}
-                />
-                <span>연구용: 학습 크롭 저장 <span style={{ color: "var(--text-muted)" }}>동의한 파일만 이 기기에 최대 120개 보관돼요</span></span>
-            </label>
-            <button type="button" onClick={() => setInfoOpen(true)} style={infoLinkBtn}>
-              촬영 팁 · 동의 안내 보기
-            </button>
+            <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} zonesReady={zonesReady} />
+            <ScanControls
+              aiConsent={consent}
+              datasetConsent={datasetConsent}
+              autoCapture={autoCapture}
+              onAiConsentChange={toggleAiConsent}
+              onDatasetConsentChange={toggleDatasetConsent}
+              onAutoCaptureChange={toggleAutoCapture}
+              onInfoOpen={() => setInfoOpen(true)}
+            />
           </>
         )}
 
@@ -903,7 +882,7 @@ export default function Scan() {
                 cursor: phase === "analyzing" || !canCapture || guideState !== "ready" ? "default" : "pointer",
               }}
             >
-              {phase === "analyzing" ? "분석 중..." : countdown !== null ? `자동 촬영 ${countdown}` : guideState !== "ready" ? "가이드 준비 중…" : canCapture ? "지금 촬영하기" : "얼굴을 가이드에 맞춰주세요"}
+              {scanCaptureButtonLabel({ phase, countdown, guideReady: guideState === "ready", canCapture, zonesReady })}
             </button>
           </div>
         )}
@@ -1009,11 +988,6 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     hotRatio: exposure.hotRatio,
     rejectReason,
   };
-}
-
-function qualityPassed(quality: Quality, profile: CaptureProfile) {
-  void profile;
-  return captureGatePassed(quality);
 }
 
 function qualityMeta(quality: Quality): CaptureQualityMeta {

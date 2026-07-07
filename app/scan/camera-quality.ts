@@ -11,6 +11,13 @@ export type CaptureGateQuality = {
   steady: boolean;
 };
 export type FrameCenter = { x: number; y: number };
+export type ScanCaptureLabelInput = {
+  phase: "ready" | "analyzing";
+  countdown: number | null;
+  guideReady: boolean;
+  canCapture: boolean;
+  zonesReady: boolean;
+};
 
 export type CameraQualityDebugInput = {
   attempt: CameraAttempt;
@@ -59,6 +66,18 @@ export function cropOutputSize(input: CropOutputSizeInput): { width: number; hei
 
 export function captureGatePassed(quality: CaptureGateQuality): boolean {
   return quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && quality.steady;
+}
+
+export function scanCaptureReady(quality: CaptureGateQuality, zonesReady: boolean): boolean {
+  return captureGatePassed(quality) && zonesReady;
+}
+
+export function scanCaptureButtonLabel(input: ScanCaptureLabelInput): string {
+  if (input.phase === "analyzing") return "분석 중...";
+  if (input.countdown !== null) return `자동 촬영 ${input.countdown}`;
+  if (!input.guideReady) return "가이드 준비 중...";
+  if (!input.zonesReady) return "측정영역을 맞추는 중...";
+  return input.canCapture ? "지금 촬영하기" : "얼굴을 가이드에 맞춰주세요";
 }
 
 export function frameMovement(previous: FrameCenter, next: FrameCenter, elapsedMs: number): number {

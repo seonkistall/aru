@@ -184,7 +184,11 @@ function zoneFromPoints(points: GuidePoint[], face: GuideBounds, pad: { x: numbe
 
 export function computeGuideZones(landmarks: Landmark[], videoWidth: number, videoHeight: number): GuideZones | null {
   const { fx, fy } = coverCropFractions(videoWidth, videoHeight);
-  const mapPoint = (lm: Landmark): GuidePoint => ({ x: (lm.x - (1 - fx) / 2) / fx, y: (lm.y - (1 - fy) / 2) / fy });
+  const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+  const mapPoint = (lm: Landmark): GuidePoint => ({
+    x: clamp01((lm.x - (1 - fx) / 2) / fx),
+    y: clamp01((lm.y - (1 - fy) / 2) / fy),
+  });
   const pointsFor = (indices: number[]) =>
     indices
       .map((index) => landmarks[index])

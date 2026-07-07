@@ -3,6 +3,8 @@ import {
   buildCameraQualityDebug,
   cameraConstraintsForAttempt,
   captureGatePassed,
+  scanCaptureButtonLabel,
+  scanCaptureReady,
   frameMovement,
   cropOutputSize,
   cropPlanForPurpose,
@@ -104,6 +106,28 @@ describe("camera quality upgrade helpers", () => {
         steady: false,
       })
     ).toBe(false);
+  });
+
+  test("keeps scan capture disabled until the measurement zones are ready", () => {
+    const quality = {
+      face: true,
+      centered: true,
+      distance: true,
+      brightness: true,
+      noGlare: true,
+      steady: true,
+    };
+
+    expect(scanCaptureReady(quality, false)).toBe(false);
+    expect(scanCaptureReady(quality, true)).toBe(true);
+  });
+
+  test("explains the exact scan capture blocker in the primary CTA", () => {
+    expect(scanCaptureButtonLabel({ phase: "ready", countdown: null, guideReady: true, canCapture: false, zonesReady: false })).toBe(
+      "측정영역을 맞추는 중..."
+    );
+    expect(scanCaptureButtonLabel({ phase: "ready", countdown: 2, guideReady: true, canCapture: true, zonesReady: true })).toBe("자동 촬영 2");
+    expect(scanCaptureButtonLabel({ phase: "analyzing", countdown: null, guideReady: true, canCapture: false, zonesReady: true })).toBe("분석 중...");
   });
 
   test("normalizes frame-to-frame face movement to a 250ms window", () => {

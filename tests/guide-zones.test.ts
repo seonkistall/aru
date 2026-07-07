@@ -45,4 +45,16 @@ describe("computeGuideZones", () => {
     expect(large!.leftCheek.width / small!.leftCheek.width).toBeGreaterThan(2.45);
     expect(large!.rightCheek.height / small!.rightCheek.height).toBeGreaterThan(2.45);
   });
+
+  it("keeps contour debug points inside the visible overlay after cover-crop remapping", () => {
+    const landmarks = landmarksForFace(1);
+    for (const index of [10, 152, 234, 454]) {
+      landmarks[index] = { x: index === 234 ? -0.1 : 1.1, y: index === 10 ? -0.1 : 1.1 };
+    }
+
+    const zones = computeGuideZones(landmarks, 1920, 1080);
+
+    expect(zones).not.toBeNull();
+    expect(zones!.contour.every((point) => point.x >= 0 && point.x <= 100 && point.y >= 0 && point.y <= 100)).toBe(true);
+  });
 });

@@ -1,8 +1,8 @@
 # AUTOPILOT — 아루 ARU 자동운항 백로그
 
 > 단일 진실원(SSOT)의 **실행 큐**. 상태 서술은 [`docs/STATUS.md`](docs/STATUS.md), 실행 지시는 여기.
-> 최종 갱신: **2026-07-04** · 버전: **v0.5.1** · 브랜치 기준: `main`
-> 갱신자: pm(agent/11) · 근거: `npm run smoke` PASS(2026-07-04) + git log(PR#14까지 병합)
+> 최종 갱신: **2026-07-08** · 버전: **v0.6.9** · 브랜치 기준: `main`
+> 갱신자: Codex · 근거: `npm run smoke` PASS(2026-07-08), 스캔 UX/게이트 정합 수정
 
 ## 운항 규칙
 - **AUTOPILOT 항목**: 사람 승인 없이 에이전트가 브랜치 따서 실행 → smoke PASS → 커밋. `git push`/배포는 오너.
@@ -10,21 +10,23 @@
 - 매 사이클 끝: pm이 이 표와 STATUS `다음(Next)`을 동기화(불일치 0건 목표).
 - Gary 기준: 항목마다 **실제 유저 + 수요 증거(관심 아님, 행동)**. 증거 없으면 컷.
 
-## 이번 사이클 기준선 (2026-07-04, 검증 완료)
+## 이번 사이클 기준선 (2026-07-08, 검증 완료)
 | 게이트 | 결과 | 증거 |
 |---|---|---|
 | lint + build | PASS | `npm run smoke` |
 | py_compile (ML 5종) | PASS | prepare_crop_dataset/train_visible_attributes/evaluate_dataset/calibrate/run_pipeline |
-| 라우트 7종 | PASS | /scan·/privacy·/pilot·/ops·/eval 200, /api/out 302, GET /api/sync 200, POST /api/sync 403(토큰無 정상) |
-| 골든셋 평가 화면 | SHIPPED | `/eval` 200 (골든셋 재판독 하네스, PR#11) |
+| 라우트 7종 | PASS | /scan·/privacy·/pilot·/ops·/eval 200, /api/out 302, GET /api/sync 200, POST /api/sync 401(토큰無 정상) |
+| 라이브 배포 | PASS | https://aru-beauty.vercel.app `/`, `/scan` 200 OK |
+| 골든셋 평가 화면 | SHIPPED | `/eval` JSONL export, baseline diff, label accuracy 표시 |
+| 스캔 UX/게이트 | PASS | 측정영역 준비 전 촬영 차단 + 촬영 옵션 패널 정리 |
 
 ## AUTOPILOT 큐 (에이전트 자율 실행)
 | ID | owner | RICE | 작업 지시문 | 완료조건 | 상태 |
 |---|---|---|---|---|---|
 | A1 | qa | 8.0 | 매 PR 전 `npm run smoke` 그린 유지. 실패 시 파일:라인 + 실패 로그를 STATUS에 기록 | smoke PASS 로그 첨부 | ✅ 이번 사이클 그린 |
 | A2 | fe | 6.0 | 헤드리스로 잡을 수 있는 것만: `/scan` 뷰포트·오버레이 좌표 수식 회귀 확인(실기기 아님). PR#13 게이트 좌표 픽스 반영 검증 | 좌표 회귀 0건, 실기기 항목은 B1로 위임 | ✅ 라우트 200·좌표픽스 병합됨 |
-| A3 | fe/eng | 5.5 | 골든셋 하네스 잔여: `/eval` 재판독 결과 **JSONL 저장 + 이전 실행 diff 출력** (`docs/golden-set.md` 미완 체크박스) | JSONL 저장 + diff 콘솔/화면 출력 | ⏳ 미착수 (이미지 0장이라 저우선) |
-| A4 | pm | 4.0 | STATUS 버전 드리프트 정리(v0.4.3→v0.5.1) + Next↔AUTOPILOT 동기 유지 | 두 문서 불일치 0건 | ✅ 이번 사이클 |
+| A3 | fe/eng | 5.5 | 골든셋 하네스: `/eval` 재판독 결과 JSONL 저장 + 이전 실행 diff + 정답 라벨 일치율 표시 | JSONL 저장 + diff + accuracy 화면 출력 | ✅ 구현 완료, 이미지 수집은 B1 |
+| A4 | pm | 4.0 | README/STATUS/AUTOPILOT/package 버전 드리프트 정리(v0.6.9) + Next↔AUTOPILOT 동기 유지 | 문서 불일치 0건 | ✅ 이번 사이클 |
 
 ## BLOCKER 큐 (CEO 의사결정 필요 — 착수 전 오너 승인)
 > 형식: **CEO 결정 1줄** → **해제 조건**(충족되면 AUTOPILOT 큐로 승격).
@@ -45,6 +47,6 @@
 - **해제 조건**: 제휴 계약 체결 → 오너가 `COMMERCE_LINK_OVERRIDES_JSON` env로 딥링크 교체(`docs/commerce-partnership-playbook.md`). *(env 반영은 프로덕션 config → 오너 전용.)*
 
 ## 다음 사이클 예고
-- B1 해제 시 → A3(골든셋 diff 하네스) 승격 + 재판독 회귀 리포트.
+- B1 해제 시 → `/eval`로 첫 골든셋 재판독 회귀 리포트 생성.
 - B2 해제 시 → `/ops` ML 밴드 추적 + 크롭 카운트 KPI 계기판.
 - 상시: smoke 그린 유지(A1), 문서 동기(A4).
