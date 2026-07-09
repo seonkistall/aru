@@ -6,6 +6,8 @@
  * diagnosis.
  */
 
+import { t } from "./i18n/core";
+
 export type SkinLevel = 0 | 1 | 2;
 export type SkinAttr = "oil" | "redness" | "pores";
 export type Bucket = { value: string; level: SkinLevel; calm?: boolean; confidence?: number };
@@ -270,19 +272,19 @@ function distanceConfidence(value: number, lo: number, hi: number) {
 function buildSignals(raw: SkinRawFeatures) {
   return [
     {
-      label: "조명",
+      label: t("조명"),
       ok: raw.cheekL >= 70 && raw.cheekL <= 210,
-      detail: raw.cheekL < 70 ? "조명이 어두워요" : raw.cheekL > 210 ? "빛이 강해요" : "분석하기 좋은 밝기예요",
+      detail: raw.cheekL < 70 ? t("조명이 어두워요") : raw.cheekL > 210 ? t("빛이 강해요") : t("분석하기 좋은 밝기예요"),
     },
     {
-      label: "반사",
+      label: t("반사"),
       ok: raw.tzoneSpecular < 0.1,
-      detail: raw.tzoneSpecular >= 0.1 ? "이마/T존 반사가 강해요" : "반사가 크지 않아요",
+      detail: raw.tzoneSpecular >= 0.1 ? t("이마/T존 반사가 강해요") : t("반사가 크지 않아요"),
     },
     {
-      label: "피부 영역",
+      label: t("피부 영역"),
       ok: raw.cheekSamples >= 700 && raw.tzoneSamples >= 500,
-      detail: raw.cheekSamples < 700 || raw.tzoneSamples < 500 ? "얼굴 영역이 작게 잡혔어요" : "볼/T존 영역이 충분히 잡혔어요",
+      detail: raw.cheekSamples < 700 || raw.tzoneSamples < 500 ? t("얼굴 영역이 작게 잡혔어요") : t("볼/T존 영역이 충분히 잡혔어요"),
     },
   ] satisfies ConfidenceSignal[];
 }
@@ -294,18 +296,18 @@ function confidenceLabel(confidence: number): SkinReads["confidenceLabel"] {
 }
 
 function headlineFor(oil: Bucket, redness: Bucket, pores: Bucket) {
-  if (redness.level >= 2) return "오늘은 진정 루틴이 먼저예요";
-  if (oil.level >= 2 && pores.level >= 1) return "T존 유분과 피부결을 함께 볼게요";
-  if (oil.level >= 2) return "T존 유분이 도드라져 보여요";
-  if (pores.level >= 2) return "볼 쪽 피부결이 또렷하게 보여요";
-  return "피부 컨디션이 비교적 안정적이에요";
+  if (redness.level >= 2) return t("오늘은 진정 루틴이 먼저예요");
+  if (oil.level >= 2 && pores.level >= 1) return t("T존 유분과 피부결을 함께 볼게요");
+  if (oil.level >= 2) return t("T존 유분이 도드라져 보여요");
+  if (pores.level >= 2) return t("볼 쪽 피부결이 또렷하게 보여요");
+  return t("피부 컨디션이 비교적 안정적이에요");
 }
 
 function narrativeFor(oil: Bucket, redness: Bucket, pores: Bucket) {
   const parts = [
-    oil.level === 0 ? "T존 번들거림은 크지 않고" : oil.level === 1 ? "T존에 유분감이 조금 보이고" : "T존 유분감이 비교적 뚜렷하고",
-    redness.level === 0 ? "볼의 붉은기는 낮게 보여요" : redness.level === 1 ? "볼에 옅은 붉은기가 보여요" : "볼의 붉은기가 눈에 띄어요",
-    pores.level === 0 ? "피부결은 매끈한 편이에요" : pores.level === 1 ? "피부결은 약간 보이는 편이에요" : "피부결과 모공감이 또렷해 보여요",
+    oil.level === 0 ? t("T존 번들거림은 크지 않고") : oil.level === 1 ? t("T존에 유분감이 조금 보이고") : t("T존 유분감이 비교적 뚜렷하고"),
+    redness.level === 0 ? t("볼의 붉은기는 낮게 보여요") : redness.level === 1 ? t("볼에 옅은 붉은기가 보여요") : t("볼의 붉은기가 눈에 띄어요"),
+    pores.level === 0 ? t("피부결은 매끈한 편이에요") : pores.level === 1 ? t("피부결은 약간 보이는 편이에요") : t("피부결과 모공감이 또렷해 보여요"),
   ];
   return `${parts[0]}, ${parts[1]}. ${parts[2]}.`;
 }
@@ -409,27 +411,27 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
   const meanAgreement = burst ? (burst.agreement.oil + burst.agreement.redness + burst.agreement.pores) / 3 : 1;
   const confidence = clamp01((attrConfidence * 0.72 + signalScore * 0.28) * (burst ? 0.9 + 0.1 * meanAgreement : 1));
   const retakeReasons = signals.filter((signal) => !signal.ok).map((signal) => signal.detail);
-  if (burst && meanAgreement < 0.67) retakeReasons.push("촬영 프레임 사이에 신호가 조금 흔들렸어요");
+  if (burst && meanAgreement < 0.67) retakeReasons.push(t("촬영 프레임 사이에 신호가 조금 흔들렸어요"));
 
   // Extra visible reads (observational only — no quantities, no claims).
   const toneDiff = Math.abs(raw.tzoneL - raw.cheekL) / Math.max(1, raw.cheekL);
   const toneEven: SkinExtraRead =
     toneDiff < 0.06
-      ? { label: "톤 균일감", value: "고르게 보여요", calm: true, note: "이마와 볼 밝기가 비슷하게 읽혔어요." }
+      ? { label: t("톤 균일감"), value: t("고르게 보여요"), calm: true, note: t("이마와 볼 밝기가 비슷하게 읽혔어요.") }
       : toneDiff < 0.13
         ? {
-            label: "톤 균일감",
-            value: "약간 차이",
+            label: t("톤 균일감"),
+            value: t("약간 차이"),
             calm: false,
-            note: raw.tzoneL > raw.cheekL ? "T존이 볼보다 조금 밝게 읽혔어요." : "볼이 T존보다 조금 밝게 읽혔어요.",
+            note: raw.tzoneL > raw.cheekL ? t("T존이 볼보다 조금 밝게 읽혔어요.") : t("볼이 T존보다 조금 밝게 읽혔어요."),
           }
-        : { label: "톤 균일감", value: "차이 보임", calm: false, note: "부위별 밝기 차이가 커요. 조명 영향일 수도 있어요." };
+        : { label: t("톤 균일감"), value: t("차이 보임"), calm: false, note: t("부위별 밝기 차이가 커요. 조명 영향일 수도 있어요.") };
   const gloss: SkinExtraRead =
     raw.tzoneSpecular < 0.04
-      ? { label: "T존 반사광", value: "낮음", calm: true, note: "이마 번들거림 반사가 크지 않아요." }
+      ? { label: t("T존 반사광"), value: t("낮음"), calm: true, note: t("이마 번들거림 반사가 크지 않아요.") }
       : raw.tzoneSpecular < 0.1
-        ? { label: "T존 반사광", value: "보통", calm: true, note: "이마에 옅은 반사가 보여요." }
-        : { label: "T존 반사광", value: "높음", calm: false, note: "이마 반사가 강해요. 유분 또는 조명 영향이에요." };
+        ? { label: t("T존 반사광"), value: t("보통"), calm: true, note: t("이마에 옅은 반사가 보여요.") }
+        : { label: t("T존 반사광"), value: t("높음"), calm: false, note: t("이마 반사가 강해요. 유분 또는 조명 영향이에요.") };
 
   const concerns = [merged.buckets.oil, merged.buckets.redness, merged.buckets.pores].filter((b) => b.level > 0).length;
   const overall: Bucket =

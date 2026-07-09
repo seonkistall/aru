@@ -17,6 +17,7 @@ import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { ReengageOptIn } from "@/app/components/reengage-optin";
 import { buildReportTrust } from "@/lib/report-trust";
+import { t } from "@/lib/i18n/core";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -35,10 +36,10 @@ function explain(attr: "oil" | "pores" | "redness", value: string): string {
 
 function scanSignalText(reads: SkinReads): string {
   const parts: string[] = [];
-  if (reads.oil.level >= 1) parts.push("T존 유분");
-  if (reads.redness.level >= 1) parts.push("볼 붉은기");
-  if (reads.pores.level >= 1) parts.push("모공·결");
-  return parts.length ? parts.join("·") : "전반적으로 안정적인";
+  if (reads.oil.level >= 1) parts.push(t("T존 유분"));
+  if (reads.redness.level >= 1) parts.push(t("볼 붉은기"));
+  if (reads.pores.level >= 1) parts.push(t("모공·결"));
+  return parts.length ? parts.join("·") : t("전반적으로 안정적인");
 }
 
 function Block({ h, w = "100%", r = 8, mt = 0 }: { h: number; w?: number | string; r?: number; mt?: number }) {
@@ -155,15 +156,15 @@ export default function Report() {
   const { survey, reads } = initial;
   const top = result.picks[0];
   const topCommerce = top ? primaryCommerceLink(top.sku) : null;
-  const concernText = survey.concerns.slice(0, 2).join("·") || `${survey.type} 피부`;
+  const concernText = survey.concerns.slice(0, 2).map((concern) => t(concern)).join("·") || t("{type} 피부", { type: t(survey.type) });
   const analysisRows = reads
     ? ([
-        ["유분", reads.oil, explain("oil", reads.oil.value)] as [string, { value: string; calm?: boolean }, string],
-        ["모공/결", reads.pores, explain("pores", reads.pores.value)] as [string, { value: string; calm?: boolean }, string],
-        ["붉은기", reads.redness, explain("redness", reads.redness.value)] as [string, { value: string; calm?: boolean }, string],
-        ["전반", reads.overall, ""] as [string, { value: string; calm?: boolean }, string],
+        [t("유분"), reads.oil, explain("oil", reads.oil.value)] as [string, { value: string; calm?: boolean }, string],
+        [t("모공/결"), reads.pores, explain("pores", reads.pores.value)] as [string, { value: string; calm?: boolean }, string],
+        [t("붉은기"), reads.redness, explain("redness", reads.redness.value)] as [string, { value: string; calm?: boolean }, string],
+        [t("전반"), reads.overall, ""] as [string, { value: string; calm?: boolean }, string],
         ...(reads.extras ?? []).map(
-          (extra) => [extra.label, { value: extra.value, calm: extra.calm }, extra.note] as [string, { value: string; calm?: boolean }, string]
+          (extra) => [t(extra.label), { value: extra.value, calm: extra.calm }, extra.note] as [string, { value: string; calm?: boolean }, string]
         ),
       ])
     : [];
@@ -173,86 +174,91 @@ export default function Report() {
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <p style={eyebrow}>피부 리포트</p>
+            <p style={eyebrow}>{t("피부 리포트")}</p>
             <FlowSteps current="report" />
-            <h1 style={headlineStyle}>{reads ? reads.headline : `${survey.type} 피부를 위한 리포트`}</h1>
+            <h1 style={headlineStyle}>{reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })}</h1>
           </div>
           <Xiaohei size={60} pose="magnify" />
         </div>
-        <p style={subStyle}>{reads ? "사진과 설문을 함께 읽었어요." : "설문 답변을 바탕으로 정리했어요."}</p>
-        {reads?.narrative && <p style={narrativeStyle}>{reads.narrative}</p>}
+        <p style={subStyle}>{reads ? t("사진과 설문을 함께 읽었어요.") : t("설문 답변을 바탕으로 정리했어요.")}</p>
+        {reads?.narrative && <p style={narrativeStyle}>{t(reads.narrative)}</p>}
         {reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
 
         <ScanHistoryStrip />
 
         {reads && (
           <section style={card}>
-            <h2 style={sectionLabel}>피부 분석</h2>
+            <h2 style={sectionLabel}>{t("피부 분석")}</h2>
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
               {result.scanApplied
-                ? "촬영한 사진의 T존·양볼 신호를 설문 답변과 함께 읽었어요. 아래는 당신의 스캔 결과예요."
-                : "촬영 신뢰도가 낮아 스캔은 참고만 하고, 설문 답변을 중심으로 정리했어요."}
+                ? t("촬영한 사진의 T존·양볼 신호를 설문 답변과 함께 읽었어요. 아래는 당신의 스캔 결과예요.")
+                : t("촬영 신뢰도가 낮아 스캔은 참고만 하고, 설문 답변을 중심으로 정리했어요.")}
             </p>
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 12 }}>
               {analysisRows.map(([label, read, note]) => (
                 <div key={label} style={{ padding: "13px 0", borderBottom: "1px solid var(--line)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                     <span style={{ fontSize: 14, color: "var(--ink)" }}>{label}</span>
-                    <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{read.value}</span>
+                    <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{t(read.value)}</span>
                   </div>
-                  {note && <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>{note}</p>}
+                  {note && <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>{t(note)}</p>}
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>참고용 분석이며 조명과 각도에 따라 달라질 수 있어요.</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>{t("참고용 분석이며 조명과 각도에 따라 달라질 수 있어요.")}</p>
           </section>
         )}
 
         <section style={{ margin: "30px 0 24px" }}>
-          <h2 style={sectionLabel}>추천 기준</h2>
+          <h2 style={sectionLabel}>{t("추천 기준")}</h2>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
-            {survey.type} 피부, {concernText} 고민, {budgetLabel(survey.budget)} 예산에 맞춰 {survey.category}를 골랐어요.
-            {result.scanApplied && reads ? ` 스캔에서 보인 ${scanSignalText(reads)} 신호도 함께 반영했어요.` : ""}
+            {t("{type} 피부, {concerns} 고민, {budget} 예산에 맞춰 {category}를 골랐어요.", {
+              type: t(survey.type),
+              concerns: concernText,
+              budget: t(budgetLabel(survey.budget)),
+              category: t(survey.category),
+            })}
+            {result.scanApplied && reads ? ` ${t("스캔에서 보인 {signals} 신호도 함께 반영했어요.", { signals: scanSignalText(reads) })}` : ""}
           </p>
           {survey.avoid.length > 0 && (
-            <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>제외 요청: {survey.avoid.join(" · ")}</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>{t("제외 요청: {list}", { list: survey.avoid.map((item) => t(item)).join(" · ") })}</p>
           )}
         </section>
 
         <details open style={card}>
           <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
-            <h2 style={sectionLabel}>오늘의 루틴</h2>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>아침 {result.routine.am.length} · 저녁 {result.routine.pm.length}단계</span>
+            <h2 style={sectionLabel}>{t("오늘의 루틴")}</h2>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("아침 {am} · 저녁 {pm}단계", { am: result.routine.am.length, pm: result.routine.pm.length })}</span>
           </summary>
           <div style={{ marginTop: 6 }}>
-            <RoutineHalf label="아침" steps={result.routine.am} />
-            <RoutineHalf label="저녁" steps={result.routine.pm} />
-            <RoutineReminder label={`${survey.type} · ${survey.category} 루틴`} />
+            <RoutineHalf label={t("아침")} steps={result.routine.am} />
+            <RoutineHalf label={t("저녁")} steps={result.routine.pm} />
+            <RoutineReminder label={t("{type} · {category} 루틴", { type: t(survey.type), category: t(survey.category) })} />
           </div>
         </details>
 
         <section style={careCard}>
-          <p style={sectionLabel}>후속 연결</p>
+          <p style={sectionLabel}>{t("후속 연결")}</p>
           <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 6px" }}>
-            구매와 상담까지 이어볼까요?
+            {t("구매와 상담까지 이어볼까요?")}
           </h2>
           <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: 14 }}>
-            추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.
+            {t("추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.")}
           </p>
-          <Link href="/care" style={careBtn}>구매/상담 연결 보기</Link>
+          <Link href="/care" style={careBtn}>{t("구매/상담 연결 보기")}</Link>
           <Link
             href="/studio"
             style={{ display: "block", marginTop: 10, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline", textAlign: "center" }}
           >
-            내 피부 카드 만들어 공유하기
+            {t("내 피부 카드 만들어 공유하기")}
           </Link>
-          <ReengageOptIn context={`${survey.type}·${survey.category}`} />
+          <ReengageOptIn context={`${t(survey.type)}·${t(survey.category)}`} />
         </section>
 
-        {result.note && <p style={noteStyle}>{result.note}</p>}
+        {result.note && <p style={noteStyle}>{t(result.note)}</p>}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-          <h2 style={{ ...sectionLabel, marginBottom: 0 }}>추천 제품</h2>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{survey.category} · {result.picks.length}개</span>
+          <h2 style={{ ...sectionLabel, marginBottom: 0 }}>{t("추천 제품")}</h2>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("{category} · {n}개", { category: t(survey.category), n: result.picks.length })}</span>
         </div>
         <div style={{ display: "grid", gap: 12 }}>
           {result.picks.map((pick, i) => (
@@ -263,8 +269,8 @@ export default function Report() {
         {result.picks.length >= 2 && (
           <details style={{ ...card, marginTop: 16 }}>
             <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
-              <span style={sectionLabel}>추천 제품 비교</span>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>가격·평점·성분 한눈에</span>
+              <span style={sectionLabel}>{t("추천 제품 비교")}</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("가격·평점·성분 한눈에")}</span>
             </summary>
             <div style={{ marginTop: 12 }}>
               <ProductCompare picks={result.picks} />
@@ -286,9 +292,9 @@ export default function Report() {
               }}
               style={buyBtn}
             >
-              {topCommerce ? `${topCommerce.label} 보기` : "바로 검색"}
+              {topCommerce ? t("{label} 보기", { label: t(topCommerce.label) }) : t("바로 검색")}
             </a>
-            <Link href="/care" style={stickyCareBtn}>구매/상담 연결</Link>
+            <Link href="/care" style={stickyCareBtn}>{t("구매/상담 연결")}</Link>
           </div>
         </div>
       )}
@@ -306,15 +312,15 @@ function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) 
             <span style={routineIndex}>{index + 1}</span>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h3 style={routineTitle}>{step.title}</h3>
-                {step.cadence && <span style={cadenceChip}>{step.cadence}</span>}
+                <h3 style={routineTitle}>{t(step.title)}</h3>
+                {step.cadence && <span style={cadenceChip}>{t(step.cadence)}</span>}
               </div>
-              <p style={routineBody}>{step.body}</p>
-              <p style={routineWhy}>{step.why}</p>
+              <p style={routineBody}>{t(step.body)}</p>
+              <p style={routineWhy}>{t(step.why)}</p>
               {step.heroSku && (
                 <div style={routineProduct}>
-                  <span style={{ fontWeight: 700 }}>{step.heroSku.brand} {step.heroSku.name}</span>
-                  {step.heroNote && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {step.heroNote}</span>}
+                  <span style={{ fontWeight: 700 }}>{t(step.heroSku.brand)} {t(step.heroSku.name)}</span>
+                  {step.heroNote && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {t(step.heroNote)}</span>}
                 </div>
               )}
             </div>
@@ -331,31 +337,31 @@ function ConfidenceBridge({ reads, scanApplied }: { reads: SkinReads; scanApplie
   return (
     <section style={confidenceCard(reads.retakeRecommended)}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-        <p style={sectionLabel}>분석 신뢰도</p>
+        <p style={sectionLabel}>{t("분석 신뢰도")}</p>
         <strong style={{ fontFeatureSettings: '"tnum"', fontSize: 20, color: "var(--ink)" }}>{pct}%</strong>
       </div>
       <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 20, color: "var(--ink)", margin: "6px 0" }}>
-        {trust.title}
+        {t(trust.title)}
       </h2>
       <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
-        {trust.body}
+        {t(trust.body)}
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-        <span style={trustChip}>{trust.sourceLabel}</span>
-        <span style={trustChip}>신뢰도 {reads.confidenceLabel}</span>
+        <span style={trustChip}>{t(trust.sourceLabel)}</span>
+        <span style={trustChip}>{t("신뢰도 {label}", { label: t(reads.confidenceLabel) })}</span>
         {trust.checks.slice(0, 3).map((check) => (
-          <span key={check} style={trustChip}>{check}</span>
+          <span key={check} style={trustChip}>{t(check)}</span>
         ))}
       </div>
       {trust.reasons.length > 0 && (
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
           {trust.reasons.map((reason) => (
-            <span key={reason} style={{ fontSize: 12.5, color: "var(--plum-press)" }}>{reason}</span>
+            <span key={reason} style={{ fontSize: 12.5, color: "var(--plum-press)" }}>{t(reason)}</span>
           ))}
         </div>
       )}
       <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 10 }}>
-        의료 진단이 아니라 사진에서 보이는 피부 신호 기반의 화장품 추천입니다.
+        {t("의료 진단이 아니라 사진에서 보이는 피부 신호 기반의 화장품 추천입니다.")}
       </p>
     </section>
   );

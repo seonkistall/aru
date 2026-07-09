@@ -3,6 +3,8 @@
 // (works cross-platform), plus a saved-routine marker in localStorage so a
 // returning visitor knows their routine is kept.
 
+import { t } from "./i18n/core";
+
 const SAVED_KEY = "aru_routine_saved_v1";
 
 export function markRoutineSaved(label: string): void {
@@ -54,14 +56,14 @@ function icsEscape(text: string): string {
 
 // Build an .ics with a morning and evening daily reminder for the routine.
 export function buildRoutineIcs(routineLabel: string): string {
-  const desc = icsEscape(`아루 추천 루틴: ${routineLabel}. 앱에서 오늘의 단계를 확인하세요.`);
+  const desc = icsEscape(t("아루 추천 루틴: {label}. 앱에서 오늘의 단계를 확인하세요.", { label: routineLabel }));
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//aru//routine-reminder//KO",
     "CALSCALE:GREGORIAN",
-    vevent("aru-am@aru-beauty.app", 8, 0, "아루 아침 루틴", desc),
-    vevent("aru-pm@aru-beauty.app", 22, 0, "아루 저녁 루틴", desc),
+    vevent("aru-am@aru-beauty.app", 8, 0, icsEscape(t("아루 아침 루틴")), desc),
+    vevent("aru-pm@aru-beauty.app", 22, 0, icsEscape(t("아루 저녁 루틴")), desc),
     "END:VCALENDAR",
   ].join("\r\n");
 }

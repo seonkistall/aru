@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Nanum_Pen_Script } from "next/font/google";
 import "./globals.css";
 import { SketchDefs } from "./components/sketch";
+import { LanguageProvider } from "../lib/i18n";
+import { LanguageSwitcher } from "./components/language-switcher";
 
 // Hand-drawn pen handwriting — the xiaohei "spontaneous sketch on white paper" voice.
 const hand = Nanum_Pen_Script({
@@ -31,7 +33,10 @@ export default function RootLayout({
     <html lang="ko" className={`${hand.variable} h-full antialiased`}>
       <body className="min-h-full">
         <SketchDefs />
-        {children}
+        <LanguageProvider>
+          <LanguageSwitcher />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );

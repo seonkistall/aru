@@ -8,11 +8,12 @@ import { recordFunnelEvent } from "@/lib/funnel";
 import { recordPurchase } from "@/lib/store";
 import type { Recommendation } from "@/lib/recommend";
 import { ProductVisual } from "./product-visual";
+import { t } from "@/lib/i18n/core";
 
 function formatReviews(n?: number): string | null {
   if (!n) return null;
-  if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, "")}만`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}천`;
+  if (n >= 10000) return t("{n}만", { n: (n / 10000).toFixed(1).replace(/\.0$/, "") });
+  if (n >= 1000) return t("{n}천", { n: (n / 1000).toFixed(1).replace(/\.0$/, "") });
   return `${n}`;
 }
 
@@ -27,26 +28,26 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
         <div style={thumb}>
           {sku.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={sku.image} alt={`${sku.brand} ${sku.name}`} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} />
+            <img src={sku.image} alt={`${t(sku.brand)} ${t(sku.name)}`} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} />
           ) : (
             <ProductVisual category={sku.category} brand={sku.brand} />
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {rank ? <span style={rankBadge}>{rank}순위</span> : null}
-            <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>{sku.brand}</span>
+            {rank ? <span style={rankBadge}>{t("{rank}순위", { rank })}</span> : null}
+            <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>{t(sku.brand)}</span>
           </div>
-          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16.5, color: "var(--ink)", lineHeight: 1.25, margin: "3px 0 4px" }}>{sku.name}</p>
+          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16.5, color: "var(--ink)", lineHeight: 1.25, margin: "3px 0 4px" }}>{t(sku.name)}</p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
             {sku.volume && <span>{sku.volume}</span>}
             {sku.rating && (
               <span style={{ color: "var(--bronze)", fontWeight: 700 }}>
                 ★ {sku.rating.toFixed(1)}
-                {reviews && <span style={{ color: "var(--text-muted)", fontWeight: 500 }}> · 리뷰 {reviews}</span>}
+                {reviews && <span style={{ color: "var(--text-muted)", fontWeight: 500 }}> · {t("리뷰 {n}", { n: reviews })}</span>}
               </span>
             )}
-            <span style={{ marginLeft: "auto", fontFeatureSettings: '"tnum"', fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{sku.price.toLocaleString()}원</span>
+            <span style={{ marginLeft: "auto", fontFeatureSettings: '"tnum"', fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{t("{price}원", { price: sku.price.toLocaleString() })}</span>
           </div>
         </div>
       </div>
@@ -54,19 +55,19 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
       {sku.highlights.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 11 }}>
           {sku.highlights.map((h) => (
-            <span key={h} style={highlightChip}>{h}</span>
+            <span key={h} style={highlightChip}>{t(h)}</span>
           ))}
         </div>
       )}
 
       {pick.ingredientTags.length > 0 && (
         <div style={{ marginTop: 11 }}>
-          <p style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, marginBottom: 6 }}>핵심 성분</p>
+          <p style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, marginBottom: 6 }}>{t("핵심 성분")}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {pick.ingredientTags.map((tag) => (
               <span key={tag.name} style={tag.forConcern ? ingTagMatch : ingTag}>
-                <b style={{ fontWeight: 700 }}>{tag.name}</b>
-                <span style={{ opacity: 0.75 }}> · {tag.forConcern ? `${tag.forConcern} 케어` : tag.role}</span>
+                <b style={{ fontWeight: 700 }}>{t(tag.name)}</b>
+                <span style={{ opacity: 0.75 }}> · {tag.forConcern ? t("{concern} 케어", { concern: t(tag.forConcern) }) : t(tag.role)}</span>
               </span>
             ))}
           </div>
@@ -74,7 +75,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
       )}
 
       <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginTop: 11 }}>{pick.reason}</p>
-      {pick.watchOut && <p style={watchOutStyle}>{pick.watchOut}</p>}
+      {pick.watchOut && <p style={watchOutStyle}>{t(pick.watchOut)}</p>}
 
       <a
         href={commerceOutHref(sku.id, commerce.merchant, placement)}
@@ -86,7 +87,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
         }}
         style={buyBtn}
       >
-        {commerce.label}에서 보기 →
+        {t("{label}에서 보기 →", { label: t(commerce.label) })}
       </a>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t } from "@/lib/i18n/core";
 import { cropSampleCount, exportCropSamples, saveCropSample } from "@/lib/crops";
 import { exportLabels, labelCount, saveLabel, SCALES, toOrdinal, type Attr, type SampleMeta } from "@/lib/labels";
 import { commitFeedbackSample, type FeedbackCommitResult } from "@/lib/feedback-storage";
@@ -54,28 +55,28 @@ export function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads
     <div style={{ marginTop: 22, padding: "18px 18px 20px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8 }}>
       {stage === "ask" && (
         <>
-          <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>이 결과가 실제 피부와 비슷한가요?</p>
+          <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>{t("이 결과가 실제 피부와 비슷한가요?")}</p>
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => commit("confirmed", init)} style={{ ...feedBtn, background: "var(--plum)", color: "var(--on-plum)", border: "none" }}>맞아요</button>
-            <button onClick={() => setStage("correcting")} style={feedBtn}>조금 달라요</button>
+            <button onClick={() => commit("confirmed", init)} style={{ ...feedBtn, background: "var(--plum)", color: "var(--on-plum)", border: "none" }}>{t("맞아요")}</button>
+            <button onClick={() => setStage("correcting")} style={feedBtn}>{t("조금 달라요")}</button>
           </div>
         </>
       )}
 
       {stage === "correcting" && (
         <>
-          <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>실제 느낌에 맞게 고쳐주세요.</p>
+          <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>{t("실제 느낌에 맞게 고쳐주세요.")}</p>
           {attrs.map(({ key, label }) => (
             <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}>
-              <span style={{ fontSize: 14, color: "var(--ink)", width: 56 }}>{label}</span>
+              <span style={{ fontSize: 14, color: "var(--ink)", width: 56 }}>{t(label)}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button aria-label="낮추기" onClick={() => setLabels((l) => ({ ...l, [key]: Math.max(0, l[key] - 1) }))} style={stepBtn}>-</button>
-                <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: "var(--plum)", width: 108, textAlign: "center" }}>{SCALES[key][labels[key]]}</span>
-                <button aria-label="높이기" onClick={() => setLabels((l) => ({ ...l, [key]: Math.min(2, l[key] + 1) }))} style={stepBtn}>+</button>
+                <button aria-label={t("낮추기")} onClick={() => setLabels((l) => ({ ...l, [key]: Math.max(0, l[key] - 1) }))} style={stepBtn}>-</button>
+                <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: "var(--plum)", width: 108, textAlign: "center" }}>{t(SCALES[key][labels[key]])}</span>
+                <button aria-label={t("높이기")} onClick={() => setLabels((l) => ({ ...l, [key]: Math.min(2, l[key] + 1) }))} style={stepBtn}>+</button>
               </div>
             </div>
           ))}
-          <button onClick={() => commit("corrected", labels)} style={{ ...feedBtn, width: "100%", marginTop: 12, background: "var(--plum)", color: "var(--on-plum)", border: "none" }}>저장</button>
+          <button onClick={() => commit("corrected", labels)} style={{ ...feedBtn, width: "100%", marginTop: 12, background: "var(--plum)", color: "var(--on-plum)", border: "none" }}>{t("저장")}</button>
         </>
       )}
 
@@ -87,21 +88,21 @@ export function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads
             onChange={(e) => setTroubleSeen(e.target.checked)}
             style={{ accentColor: "var(--ink)", width: 15, height: 15 }}
           />
-          <span>트러블 흔적도 보였어요 <span style={{ color: "var(--faint)" }}>선택 · 관찰 기록용</span></span>
+          <span>{t("트러블 흔적도 보였어요")} <span style={{ color: "var(--faint)" }}>{t("선택 · 관찰 기록용")}</span></span>
         </label>
       )}
 
       {stage === "done" && (
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: 14, color: saveResult?.ok === false ? "var(--plum-press)" : "var(--ink)" }}>
-            {saveResult?.message ?? `고마워요. ${count}번째 피부 피드백이에요.`}
+            {saveResult?.message ? t(saveResult.message) : t("고마워요. {count}번째 피부 피드백이에요.", { count })}
           </p>
           {cropDataUrl && saveResult?.cropSaved !== false && (
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>학습용 크롭 {cropCount}개가 이 기기에 저장되어 있어요.</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{t("학습용 크롭 {count}개가 이 기기에 저장되어 있어요.", { count: cropCount })}</p>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button onClick={exportLabels} style={{ ...feedBtn, fontSize: 13 }}>라벨 내보내기</button>
-            {cropDataUrl && <button onClick={exportCropSamples} style={{ ...feedBtn, fontSize: 13 }}>크롭 내보내기</button>}
+            <button onClick={exportLabels} style={{ ...feedBtn, fontSize: 13 }}>{t("라벨 내보내기")}</button>
+            {cropDataUrl && <button onClick={exportCropSamples} style={{ ...feedBtn, fontSize: 13 }}>{t("크롭 내보내기")}</button>}
           </div>
         </div>
       )}

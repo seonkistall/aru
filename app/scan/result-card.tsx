@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n/core";
 import type { SkinReads } from "@/lib/skin";
 import { confidenceBox, eyebrow, resultCardStyle } from "./scan-styles";
 
@@ -12,27 +13,27 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
   ];
   return (
     <div style={resultCardStyle}>
-      <p style={eyebrow}>오늘의 피부 리포트</p>
+      <p style={eyebrow}>{t("오늘의 피부 리포트")}</p>
       <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 34, lineHeight: 1.2, color: "var(--ink)", margin: "10px 0 8px", whiteSpace: "pre-line" }}>
-        {reads.headline}
+        {t(reads.headline)}
       </h2>
-      <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{reads.narrative}</p>
+      <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{t(reads.narrative)}</p>
       <div style={confidenceBox(reads.retakeRecommended)}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <span style={{ fontSize: 13, fontWeight: 800, color: reads.retakeRecommended ? "var(--plum-press)" : "var(--success)" }}>
-            분석 신뢰도 {reads.confidenceLabel}
+            {t("분석 신뢰도 {level}", { level: t(reads.confidenceLabel) })}
           </span>
           <span style={{ fontFeatureSettings: '"tnum"', fontSize: 18, fontWeight: 900, color: "var(--ink)" }}>{confidencePct}%</span>
         </div>
         <p style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5, marginTop: 6 }}>
           {reads.retakeRecommended
-            ? "이 결과는 추천에서 참고만 하고, 설문 답변을 더 크게 반영할게요."
-            : "촬영 품질이 충분해서 추천 기준에 스캔 신호를 함께 반영할게요."}
+            ? t("이 결과는 추천에서 참고만 하고, 설문 답변을 더 크게 반영할게요.")
+            : t("촬영 품질이 충분해서 추천 기준에 스캔 신호를 함께 반영할게요.")}
         </p>
         {reads.retakeReasons.length > 0 && (
           <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
             {reads.retakeReasons.map((reason) => (
-              <span key={reason} style={{ fontSize: 12, color: "var(--plum-press)" }}>{reason}</span>
+              <span key={reason} style={{ fontSize: 12, color: "var(--plum-press)" }}>{t(reason)}</span>
             ))}
           </div>
         )}
@@ -51,8 +52,8 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
               animationDelay: `${160 + index * 110}ms`,
             }}
           >
-            <span style={{ fontSize: 14, color: "var(--ink)" }}>{row.label}</span>
-            <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: row.calm ? "var(--text-muted)" : "var(--plum)" }}>{row.value}</span>
+            <span style={{ fontSize: 14, color: "var(--ink)" }}>{t(row.label)}</span>
+            <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: row.calm ? "var(--text-muted)" : "var(--plum)" }}>{t(row.value)}</span>
           </div>
         ))}
       </div>
@@ -69,21 +70,21 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontSize: 14, color: "var(--ink)" }}>{extra.label}</span>
-                <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: extra.calm ? "var(--text-muted)" : "var(--plum)" }}>{extra.value}</span>
+                <span style={{ fontSize: 14, color: "var(--ink)" }}>{t(extra.label)}</span>
+                <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: extra.calm ? "var(--text-muted)" : "var(--plum)" }}>{t(extra.value)}</span>
               </div>
-              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>{extra.note}</p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>{t(extra.note)}</p>
             </div>
           ))}
         </div>
       )}
       <div style={{ marginTop: 14, animation: "gyeol-fade-up .45s ease-out both", animationDelay: "880ms" }}>
-        <p style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, marginBottom: 6 }}>측정 환경</p>
+        <p style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700, marginBottom: 6 }}>{t("측정 환경")}</p>
         <div style={{ display: "grid", gap: 4 }}>
           {reads.signals.map((signal) => (
             <div key={signal.label} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--text-muted)" }}>
               <span style={{ width: 12, textAlign: "center", color: signal.ok ? "var(--success)" : "var(--plum)" }}>{signal.ok ? "✓" : "!"}</span>
-              <span>{signal.label} · {signal.detail}</span>
+              <span>{t(signal.label)} · {t(signal.detail)}</span>
             </div>
           ))}
         </div>

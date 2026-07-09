@@ -6,6 +6,7 @@ import { getCheckins, getPurchases, recordCheckin, type Purchase } from "@/lib/s
 import { SKUS } from "@/lib/skus";
 import { ProductVisual } from "@/app/components/product-visual";
 import { Xiaohei } from "@/app/components/sketch";
+import { t } from "@/lib/i18n/core";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // The check-in round from REAL elapsed time. 0 = not yet due — a purchase.ts is
@@ -44,25 +45,25 @@ export default function Checkin() {
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <Link href="/" style={{ fontFamily: "var(--font-hand)", fontSize: 22, color: "var(--ink)", textDecoration: "none" }}>아루</Link>
-            <p style={{ ...eyebrow, marginTop: 8 }}>사용 후 체크인</p>
-            <h1 style={titleStyle}>써보니 어땠나요?</h1>
+            <Link href="/" style={{ fontFamily: "var(--font-hand)", fontSize: 22, color: "var(--ink)", textDecoration: "none" }}>{t("아루")}</Link>
+            <p style={{ ...eyebrow, marginTop: 8 }}>{t("사용 후 체크인")}</p>
+            <h1 style={titleStyle}>{t("써보니 어땠나요?")}</h1>
           </div>
           <Xiaohei size={54} pose="carry" />
         </div>
         <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "6px 0 26px", lineHeight: 1.55 }}>
-          구매 후 피드백을 남기면 다음 추천이 더 정확해져요.
+          {t("구매 후 피드백을 남기면 다음 추천이 더 정확해져요.")}
         </p>
 
         {purchases.length === 0 ? (
           <div style={{ textAlign: "center", padding: "22px 18px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12 }}>
-            <p style={{ fontSize: 14.5, color: "var(--ink)", marginBottom: 6, fontWeight: 700 }}>아직 기록된 구매가 없어요</p>
+            <p style={{ fontSize: 14.5, color: "var(--ink)", marginBottom: 6, fontWeight: 700 }}>{t("아직 기록된 구매가 없어요")}</p>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.55 }}>
-              추천 리포트에서 제품을 열어보면 여기에서 2·4주 후 사용감을 남길 수 있어요.
+              {t("추천 리포트에서 제품을 열어보면 여기에서 2·4주 후 사용감을 남길 수 있어요.")}
             </p>
             <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-              <Link href="/report" style={ctaPrimary}>내 리포트 보기</Link>
-              <Link href="/scan" style={ctaGhost}>피부 스캔하기</Link>
+              <Link href="/report" style={ctaPrimary}>{t("내 리포트 보기")}</Link>
+              <Link href="/scan" style={ctaGhost}>{t("피부 스캔하기")}</Link>
             </div>
           </div>
         ) : (
@@ -72,8 +73,8 @@ export default function Checkin() {
             ))}
             {allDone && (
               <div style={{ textAlign: "center", padding: "18px", marginTop: 6 }}>
-                <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>모든 피드백 완료! 다음 스캔에 더 정확히 반영할게요.</p>
-                <Link href="/scan" style={ctaPrimary}>새로 스캔하기 →</Link>
+                <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>{t("모든 피드백 완료! 다음 스캔에 더 정확히 반영할게요.")}</p>
+                <Link href="/scan" style={ctaPrimary}>{t("새로 스캔하기 →")}</Link>
               </div>
             )}
           </>
@@ -107,21 +108,21 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
-            <span style={due ? weekBadge : softBadge}>{due ? `${round}주차` : "사용 중"}</span>
+            <span style={due ? weekBadge : softBadge}>{due ? t("{round}주차", { round }) : t("사용 중")}</span>
           </div>
           <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{purchase.name}</p>
         </div>
       </div>
       {!due ? (
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>2주쯤 써본 뒤에 사용감을 여쭤볼게요. 그때 사용감을 남기면 다음 추천이 더 정확해져요.</p>
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t("2주쯤 써본 뒤에 사용감을 여쭤볼게요. 그때 사용감을 남기면 다음 추천이 더 정확해져요.")}</p>
       ) : done ? (
-        <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>고마워요. 피드백이 저장됐어요.</p>
+        <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("고마워요. 피드백이 저장됐어요.")}</p>
       ) : (
         <>
           <Row label="만족도"><Seg options={["별로", "보통", "좋음"]} value={sat} onPick={setSat} /></Row>
           <Row label="트러블"><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
           <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
-          <button onClick={save} disabled={!ready} style={saveBtn(ready)}>기록하기</button>
+          <button onClick={save} disabled={!ready} style={saveBtn(ready)}>{t("기록하기")}</button>
         </>
       )}
     </div>
@@ -131,21 +132,21 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", gap: 12 }}>
-      <span style={{ fontSize: 14, color: "var(--ink-soft)" }}>{label}</span>
+      <span style={{ fontSize: 14, color: "var(--ink-soft)" }}>{t(label)}</span>
       {children}
     </div>
   );
 }
 
 function Seg({ options, value, onPick }: { options: string[]; value: number | null; onPick: (value: number) => void }) {
-  return <div style={{ display: "flex", gap: 6 }}>{options.map((option, i) => <button key={option} onClick={() => onPick(i + 1)} aria-pressed={value === i + 1} style={pill(value === i + 1)}>{option}</button>)}</div>;
+  return <div style={{ display: "flex", gap: 6 }}>{options.map((option, i) => <button key={option} onClick={() => onPick(i + 1)} aria-pressed={value === i + 1} style={pill(value === i + 1)}>{t(option)}</button>)}</div>;
 }
 
 function Toggle({ value, onPick, yes, no }: { value: boolean | null; onPick: (value: boolean) => void; yes: string; no: string }) {
   return (
     <div style={{ display: "flex", gap: 6 }}>
-      <button onClick={() => onPick(true)} aria-pressed={value === true} style={pill(value === true)}>{yes}</button>
-      <button onClick={() => onPick(false)} aria-pressed={value === false} style={pill(value === false)}>{no}</button>
+      <button onClick={() => onPick(true)} aria-pressed={value === true} style={pill(value === true)}>{t(yes)}</button>
+      <button onClick={() => onPick(false)} aria-pressed={value === false} style={pill(value === false)}>{t(no)}</button>
     </div>
   );
 }
