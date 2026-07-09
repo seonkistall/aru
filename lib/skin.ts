@@ -269,22 +269,24 @@ function distanceConfidence(value: number, lo: number, hi: number) {
   return clamp01(0.92 - distance * 0.45);
 }
 
+// Kept as raw Korean data: lib/report-trust.ts matches on these strings and
+// consumers translate at render (t(signal.label) / t(signal.detail)).
 function buildSignals(raw: SkinRawFeatures) {
   return [
     {
-      label: t("조명"),
+      label: "조명",
       ok: raw.cheekL >= 70 && raw.cheekL <= 210,
-      detail: raw.cheekL < 70 ? t("조명이 어두워요") : raw.cheekL > 210 ? t("빛이 강해요") : t("분석하기 좋은 밝기예요"),
+      detail: raw.cheekL < 70 ? "조명이 어두워요" : raw.cheekL > 210 ? "빛이 강해요" : "분석하기 좋은 밝기예요",
     },
     {
-      label: t("반사"),
+      label: "반사",
       ok: raw.tzoneSpecular < 0.1,
-      detail: raw.tzoneSpecular >= 0.1 ? t("이마/T존 반사가 강해요") : t("반사가 크지 않아요"),
+      detail: raw.tzoneSpecular >= 0.1 ? "이마/T존 반사가 강해요" : "반사가 크지 않아요",
     },
     {
-      label: t("피부 영역"),
+      label: "피부 영역",
       ok: raw.cheekSamples >= 700 && raw.tzoneSamples >= 500,
-      detail: raw.cheekSamples < 700 || raw.tzoneSamples < 500 ? t("얼굴 영역이 작게 잡혔어요") : t("볼/T존 영역이 충분히 잡혔어요"),
+      detail: raw.cheekSamples < 700 || raw.tzoneSamples < 500 ? "얼굴 영역이 작게 잡혔어요" : "볼/T존 영역이 충분히 잡혔어요",
     },
   ] satisfies ConfidenceSignal[];
 }

@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { infoLinkBtn } from "./scan-styles";
+import { t } from "@/lib/i18n/core";
 
 type ScanControlsProps = {
   aiConsent: boolean;
@@ -23,34 +24,34 @@ export function ScanControls({
   return (
     <section style={panelStyle} aria-labelledby="scan-options-title">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-        <h2 id="scan-options-title" style={titleStyle}>촬영 옵션</h2>
-        <span style={privacyPill}>기본값: 기기 안에서 처리</span>
+        <h2 id="scan-options-title" style={titleStyle}>{t("촬영 옵션")}</h2>
+        <span style={privacyPill}>{t("기본값: 기기 안에서 처리")}</span>
       </div>
       <div style={optionGrid}>
         <ToggleRow
-          label="자동 촬영"
-          detail="조건이 맞으면 3초 카운트다운 후 촬영"
+          label={t("자동 촬영")}
+          detail={t("조건이 맞으면 3초 카운트다운 후 촬영")}
           checked={autoCapture}
           accent="var(--ink)"
           onChange={onAutoCaptureChange}
         />
         <ToggleRow
-          label="AI 분석 전송"
-          detail="선택 시 crop을 서버 분석에 사용"
+          label={t("AI 분석 전송")}
+          detail={t("선택 시 crop을 서버 분석에 사용")}
           checked={aiConsent}
           accent="var(--blue)"
           onChange={onAiConsentChange}
         />
       </div>
       <ToggleRow
-        label="연구용 학습 crop 저장"
-        detail="동의한 파일만 이 기기에 최대 120개 보관"
+        label={t("연구용 학습 crop 저장")}
+        detail={t("동의한 파일만 이 기기에 최대 120개 보관")}
         checked={datasetConsent}
         accent="var(--blue)"
         onChange={onDatasetConsentChange}
       />
       <button type="button" onClick={onInfoOpen} style={infoLinkBtn}>
-        촬영 팁 · 동의 안내 보기
+        {t("촬영 팁 · 동의 안내 보기")}
       </button>
     </section>
   );

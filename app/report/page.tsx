@@ -17,7 +17,7 @@ import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { ReengageOptIn } from "@/app/components/reengage-optin";
 import { buildReportTrust } from "@/lib/report-trust";
-import { t } from "@/lib/i18n/core";
+import { getLang, t } from "@/lib/i18n/core";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -135,7 +135,7 @@ export default function Report() {
       fallback: pick.reason,
     }));
 
-    fetch("/api/reason", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) })
+    fetch("/api/reason", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, lang: getLang() }) })
       .then((response) => response.json())
       .then((data: { reasons?: string[] }) => {
         if (cancelled || !data?.reasons) return;
