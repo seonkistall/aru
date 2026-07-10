@@ -157,8 +157,9 @@ export default function Report() {
 
   const { survey, reads } = initial;
   // One screen per stage instead of one long page: analysis → picks → routine
-  // & follow-up. Survey-only visitors (no scan) start at picks.
-  const steps: ReportStep[] = reads ? ["analysis", "picks", "routine"] : ["picks", "routine"];
+  // & follow-up. Always three steps — survey-only visitors get a survey
+  // summary plus a scan nudge on the analysis step instead of losing it.
+  const steps: ReportStep[] = ["analysis", "picks", "routine"];
   const step = steps[Math.min(stepIndex, steps.length - 1)];
   const stepTitles: Record<ReportStep, string> = {
     analysis: t("피부 분석"),
@@ -233,6 +234,36 @@ export default function Report() {
               ))}
             </div>
             <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>{t("참고용 분석이며 조명과 각도에 따라 달라질 수 있어요.")}</p>
+          </section>
+        )}
+
+        {/* Survey-only visitors keep the analysis step: their answers as the
+            "reads", plus a nudge to scan for a real skin analysis. */}
+        {step === "analysis" && !reads && (
+          <section style={card}>
+            <h2 style={sectionLabel}>{t("피부 분석")}</h2>
+            <div style={{ borderTop: "1px solid var(--line)", marginTop: 12 }}>
+              {(
+                [
+                  [t("피부 타입"), t(survey.type)],
+                  [t("고민"), survey.concerns.map((concern) => t(concern)).join(" · ")],
+                  [t("예산"), t(budgetLabel(survey.budget))],
+                  [t("피하고 싶은 성분"), survey.avoid.map((item) => t(item)).join(" · ")],
+                ] as [string, string][]
+              )
+                .filter(([, value]) => value)
+                .map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", alignItems: "baseline", padding: "12px 0" }}>
+                    <span style={{ fontSize: 14, color: "var(--ink)", flexShrink: 0 }}>{label}</span>
+                    <span aria-hidden style={{ flex: 1, borderBottom: "2px dotted var(--line)", margin: "0 8px", transform: "translateY(-4px)" }} />
+                    <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: "var(--plum)", flexShrink: 0, textAlign: "right" }}>{value}</span>
+                  </div>
+                ))}
+            </div>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
+              {t("유분·붉은기·결처럼 눈에 보이는 신호를 여러 프레임으로 읽고, 신뢰도가 낮으면 다시 찍자고 말해줘요.")}
+            </p>
+            <Link href="/scan" style={{ ...careBtn, marginTop: 12 }}>{t("30초 피부 스캔")}</Link>
           </section>
         )}
 
