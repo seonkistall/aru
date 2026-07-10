@@ -149,27 +149,6 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
             ARU·SKIN·{now.getFullYear()}{String(now.getMonth() + 1).padStart(2, "0")}{String(now.getDate()).padStart(2, "0")}
           </p>
         </div>
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            right: 14,
-            bottom: 52,
-            border: "2px solid var(--plum)",
-            borderRadius: 999,
-            color: "var(--plum)",
-            fontFamily: "var(--font-hand)",
-            fontSize: 17,
-            lineHeight: 1,
-            padding: "6px 12px",
-            transform: "rotate(-9deg)",
-            opacity: 0.75,
-            filter: "url(#sketch-soft)",
-            pointerEvents: "none",
-          }}
-        >
-          {t("참고용 분석")}
-        </span>
       </div>
       <TearEdge />
     </div>

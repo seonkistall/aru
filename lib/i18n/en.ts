@@ -694,4 +694,5 @@ export const EN: Record<string, string> = {
   "다음": "Next",
   "이전": "Back",
   "참고용 분석": "Reference only",
+  "링크가 복사됐어요! 붙여넣기만 하면 초대 완료": "Link copied! Just paste it to invite",
 };
