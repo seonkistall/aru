@@ -14,6 +14,9 @@ export type CaptureProfile = {
   maxHotRatio: number;
   maxMovement: number;
   requiresSteady: boolean;
+  /** Minimum raw normalized face size (larger box axis) required to capture —
+   * below this the face is too far for reliable skin-texture reads. */
+  minFaceSize: number;
 };
 
 export type Quality = {
@@ -72,6 +75,7 @@ export const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
     maxHotRatio: 0.1,
     maxMovement: 0.05,
     requiresSteady: false,
+    minFaceSize: 0.4,
   },
   texture: {
     label: "피부결",
@@ -81,6 +85,7 @@ export const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
     maxHotRatio: 0.065,
     maxMovement: 0.03,
     requiresSteady: true,
+    minFaceSize: 0.48,
   },
   tone: {
     label: "피부톤",
@@ -90,5 +95,6 @@ export const CAPTURE_PROFILES: Record<CaptureMode, CaptureProfile> = {
     maxHotRatio: 0.06,
     maxMovement: 0.045,
     requiresSteady: false,
+    minFaceSize: 0.42,
   },
 };

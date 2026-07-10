@@ -10,7 +10,6 @@ import { loadLastResult, saveLastResult } from "@/lib/last-result";
 import { recordPurchase } from "@/lib/store";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
-import { RoutineReminder } from "@/app/components/routine-reminder";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
 import { localizedNarrative, type SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -264,7 +263,6 @@ export default function Report() {
           <div style={{ marginTop: 6 }}>
             <RoutineHalf label={t("아침")} steps={result.routine.am} half="am" />
             <RoutineHalf label={t("저녁")} steps={result.routine.pm} half="pm" />
-            <RoutineReminder label={t("{type} · {category} 루틴", { type: t(survey.type), category: t(survey.category) })} />
           </div>
         </details>
         )}
@@ -279,12 +277,6 @@ export default function Report() {
             {t("추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.")}
           </p>
           <Link href="/care" style={careBtn}>{t("구매/상담 연결 보기")}</Link>
-          <Link
-            href="/studio"
-            style={{ display: "block", marginTop: 10, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline", textAlign: "center" }}
-          >
-            {t("내 피부 카드 만들어 공유하기")}
-          </Link>
           <ReengageOptIn context={`${t(survey.type)}·${t(survey.category)}`} />
         </section>
         )}

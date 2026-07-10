@@ -18,7 +18,7 @@ import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { pushScanHistory } from "@/lib/scan-history";
 import { shouldKeepLearningCrop, shouldShowFeedback } from "@/lib/ml-collection";
-import { ShareCard, shareCardImage, skinReadsToCard } from "@/app/components/share-card";
+
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
 import {
@@ -102,7 +102,6 @@ export default function Scan() {
   const disposedRef = useRef(false);
   const prevQualityKeyRef = useRef("");
   const captureRef = useRef<(() => Promise<void>) | null>(null);
-  const shareCardRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<LandmarkerWorker | null>(null);
   const useWorkerRef = useRef(false);
   const cameraAttemptRef = useRef<CameraAttempt>("high");
@@ -111,7 +110,7 @@ export default function Scan() {
   const [phase, setPhase] = useState<Phase>("init");
   const [reads, setReads] = useState<SkinReads | null>(null);
   const [err, setErr] = useState("");
-  const [sharing, setSharing] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [shareErr, setShareErr] = useState("");
   const [consent, setConsent] = useState(false);
   const [datasetConsent, setDatasetConsent] = useState(false);
@@ -350,8 +349,10 @@ export default function Scan() {
       // reasonably-close face spans a good fraction of the frame in at least
       // one axis, regardless of stream orientation. This drops the fragile
       // cover-crop transform from the GATE, which is what kept blocking phones.
+      // The floor is per-profile: a face inside the guide but too far renders
+      // too few skin pixels for trustworthy texture/pore reads.
       const rawSize = rawFaceSize(box);
-      const distance = rawSize > 0.2 && rawSize < 0.98;
+      const distance = rawSize > profile.minFaceSize && rawSize < 0.98;
 
       // Centering stays ADVISORY only (landmark ROIs analyze off-center faces
       // fine), so it never blocks auto-capture.
@@ -374,7 +375,7 @@ export default function Scan() {
       const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady }, Boolean(nextZones));
       const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
       const message = !distance
-        ? rawSize <= 0.2
+        ? rawSize <= profile.minFaceSize
           ? t("얼굴이 작게 보여요. 조금 더 가까이 와주세요.")
           : t("너무 가까워요. 살짝 물러나 주세요.")
         : !centered
@@ -712,20 +713,19 @@ export default function Scan() {
     void startCamera();
   }
 
+  // One-tap viral loop: copy the mood invite link to the clipboard — no file
+  // pickers or share sheets, so passing it into any chat is frictionless.
   async function shareResultCard() {
-    const node = shareCardRef.current;
-    if (!node || sharing || !reads) return;
-    setSharing(true);
+    if (!reads) return;
     setShareErr("");
+    const url = moodShareUrl({ oil: reads.oil.level, redness: reads.redness.level, pores: reads.pores.level });
     try {
-      await shareCardImage(node, {
-        onShare: (mode) => recordFunnelEvent("share_clicked", { surface: "scan_result", mode }),
-        shareUrl: moodShareUrl({ oil: reads.oil.level, redness: reads.redness.level, pores: reads.pores.level }),
-      });
-    } catch (e) {
-      if ((e as Error).name !== "AbortError") setShareErr(t("공유에 실패했어요. 잠시 후 다시 시도해 주세요."));
-    } finally {
-      setSharing(false);
+      await navigator.clipboard.writeText(url);
+      recordFunnelEvent("share_clicked", { surface: "scan_result", mode: "clipboard" });
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2400);
+    } catch {
+      setShareErr(t("공유에 실패했어요. 잠시 후 다시 시도해 주세요."));
     }
   }
 
@@ -921,22 +921,22 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
             <button
               type="button"
               onClick={shareResultCard}
-              disabled={sharing}
-              style={{ ...outlineBtn, width: "100%", marginTop: 10, opacity: sharing ? 0.6 : 1 }}
+              style={{
+                ...outlineBtn,
+                width: "100%",
+                marginTop: 10,
+                ...(shareCopied ? { borderColor: "var(--success)", color: "var(--success)" } : null),
+              }}
             >
-              {sharing ? t("카드 만드는 중...") : t("친구에게 내 피부 무드 공유하기")}
+              {shareCopied ? t("링크가 복사됐어요! 붙여넣기만 하면 초대 완료") : t("친구에게 내 피부 무드 공유하기")}
             </button>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
+            <p role="status" aria-live="polite" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
               {t("공유 링크를 열면 친구도 30초 스캔으로 이어져요")}
             </p>
             {shareErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{shareErr}</p>}
             <a href="/studio" style={{ display: "block", textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline" }}>
               {t("카드 문구 직접 편집하기")}
             </a>
-            {/* Off-screen source for the one-tap share PNG — laid out but not visible. */}
-            <div aria-hidden style={{ position: "absolute", left: -9999, top: 0, pointerEvents: "none" }}>
-              <ShareCard ref={shareCardRef} headline={skinReadsToCard(reads).headline} reads={skinReadsToCard(reads).rows} />
-            </div>
             {shouldShowFeedback({ hasReads: Boolean(reads), staffMode, datasetConsent }) && (
               <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />
             )}
@@ -959,7 +959,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const faceSize = rawSize;
   const exposure = exposureStats(imageData, box);
   const centered = Math.abs(centerOffsetX) < 0.28 && Math.abs(centerOffsetY) < 0.3;
-  const distance = rawSize > 0.2 && rawSize < 0.98;
+  const distance = rawSize > profile.minFaceSize && rawSize < 0.98;
   const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
   const noGlare = exposure.hotRatio < profile.maxHotRatio;
   const steady = previousSteady;
