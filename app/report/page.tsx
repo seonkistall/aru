@@ -223,10 +223,11 @@ export default function Report() {
             </p>
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 12 }}>
               {analysisRows.map(([label, read, note]) => (
-                <div key={label} style={{ padding: "13px 0", borderBottom: "1px solid var(--line)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                    <span style={{ fontSize: 14, color: "var(--ink)" }}>{label}</span>
-                    <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{t(read.value)}</span>
+                <div key={label} style={{ padding: "12px 0" }}>
+                  <div style={{ display: "flex", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 14, color: "var(--ink)", flexShrink: 0 }}>{label}</span>
+                    <span aria-hidden style={{ flex: 1, borderBottom: "2px dotted var(--line)", margin: "0 8px", transform: "translateY(-4px)" }} />
+                    <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)", flexShrink: 0 }}>{t(read.value)}</span>
                   </div>
                   {note && <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>{t(note)}</p>}
                 </div>
@@ -261,8 +262,8 @@ export default function Report() {
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("아침 {am} · 저녁 {pm}단계", { am: result.routine.am.length, pm: result.routine.pm.length })}</span>
           </summary>
           <div style={{ marginTop: 6 }}>
-            <RoutineHalf label={t("아침")} steps={result.routine.am} />
-            <RoutineHalf label={t("저녁")} steps={result.routine.pm} />
+            <RoutineHalf label={t("아침")} steps={result.routine.am} half="am" />
+            <RoutineHalf label={t("저녁")} steps={result.routine.pm} half="pm" />
             <RoutineReminder label={t("{type} · {category} 루틴", { type: t(survey.type), category: t(survey.category) })} />
           </div>
         </details>
@@ -354,28 +355,59 @@ export default function Report() {
   );
 }
 
-function RoutineHalf({ label, steps }: { label: string; steps: RoutineStep[] }) {
+// Hand-drawn sun/moon markers for the AM/PM halves of the routine timeline.
+function HalfIcon({ half }: { half: "am" | "pm" }) {
+  return half === "am" ? (
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden style={{ filter: "url(#sketch-soft)" }}>
+      <circle cx="11" cy="11" r="4.6" fill="none" stroke="var(--orange)" strokeWidth="1.8" />
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+        <line
+          key={deg}
+          x1={11 + 7 * Math.cos((deg * Math.PI) / 180)}
+          y1={11 + 7 * Math.sin((deg * Math.PI) / 180)}
+          x2={11 + 9.6 * Math.cos((deg * Math.PI) / 180)}
+          y2={11 + 9.6 * Math.sin((deg * Math.PI) / 180)}
+          stroke="var(--orange)"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      ))}
+    </svg>
+  ) : (
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden style={{ filter: "url(#sketch-soft)" }}>
+      <path d="M15.5 3.5 A8.6 8.6 0 1 0 18.5 14.5 A7 7 0 0 1 15.5 3.5 Z" fill="none" stroke="var(--blue)" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Vertical timeline: sketch node circles on a dotted rail, one lane per step.
+function RoutineHalf({ label, steps, half }: { label: string; steps: RoutineStep[]; half: "am" | "pm" }) {
   return (
-    <div style={{ marginTop: 16 }}>
-      <p style={routineHalfLabel}>{label}</p>
-      <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ marginTop: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <HalfIcon half={half} />
+        <p style={{ ...routineHalfLabel, marginBottom: 0 }}>{label}</p>
+      </div>
+      <div style={{ position: "relative", paddingLeft: 40 }}>
+        {/* dotted rail connecting the step nodes */}
+        <span aria-hidden style={{ position: "absolute", left: 13, top: 10, bottom: 14, borderLeft: "2px dotted var(--line)" }} />
         {steps.map((step, index) => (
-          <div key={step.id} style={routineStep}>
-            <span style={routineIndex}>{index + 1}</span>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h3 style={routineTitle}>{t(step.title)}</h3>
-                {step.cadence && <span style={cadenceChip}>{t(step.cadence)}</span>}
-              </div>
-              <p style={routineBody}>{t(step.body)}</p>
-              <p style={routineWhy}>{t(step.why)}</p>
-              {step.heroSku && (
-                <div style={routineProduct}>
-                  <span style={{ fontWeight: 700 }}>{t(step.heroSku.brand)} {t(step.heroSku.name)}</span>
-                  {step.heroNote && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {t(step.heroNote)}</span>}
-                </div>
-              )}
+          <div key={step.id} style={{ position: "relative", paddingBottom: index === steps.length - 1 ? 4 : 18 }}>
+            <span style={{ ...routineIndex, position: "absolute", left: -40, top: 0, fontFamily: "var(--font-hand)", fontSize: 16, filter: "url(#sketch-soft)" }}>
+              {index + 1}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h3 style={{ ...routineTitle, marginBottom: 0 }}>{t(step.title)}</h3>
+              {step.cadence && <span style={cadenceChip}>{t(step.cadence)}</span>}
             </div>
+            <p style={{ ...routineBody, marginTop: 4 }}>{t(step.body)}</p>
+            <p style={routineWhy}>{t(step.why)}</p>
+            {step.heroSku && (
+              <div style={{ ...routineProduct, display: "inline-block", border: "1.5px solid var(--line)", borderRadius: 8, padding: "6px 10px", filter: "url(#sketch-soft)", background: "var(--paper)" }}>
+                <span style={{ fontWeight: 700 }}>{t(step.heroSku.brand)} {t(step.heroSku.name)}</span>
+                {step.heroNote && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {t(step.heroNote)}</span>}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -429,7 +461,6 @@ const careCard: React.CSSProperties = { background: "var(--surface)", border: "1
 const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
 const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
-const routineStep: React.CSSProperties = { display: "grid", gridTemplateColumns: "30px 1fr", gap: 12, alignItems: "start", borderTop: "1px solid var(--line)", paddingTop: 12 };
 const routineWhy: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 4 };
 const cadenceChip: React.CSSProperties = { fontSize: 11, border: "1px solid var(--line)", color: "var(--bronze)", borderRadius: 999, padding: "2px 8px", fontWeight: 700, whiteSpace: "nowrap" };
 const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--paper)", border: "1.5px solid var(--ink)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };

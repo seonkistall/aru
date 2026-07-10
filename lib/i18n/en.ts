@@ -693,4 +693,5 @@ export const EN: Record<string, string> = {
   "대체로 안정": "Mostly stable",
   "다음": "Next",
   "이전": "Back",
+  "참고용 분석": "Reference only",
 };
