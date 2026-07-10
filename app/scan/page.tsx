@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "@/lib/i18n/core";
 import { CONSENT_VERSION, latestConsent, recordConsentEvent } from "@/lib/consent";
 import {
   analyzeSkinBurst,
@@ -315,7 +316,7 @@ export default function Scan() {
       if (!face?.length) {
         lastCenterRef.current = null;
         setZones(null);
-        commitQuality({ ...initialQuality, message: "얼굴이 보이지 않아요. 정면을 향해주세요." });
+        commitQuality({ ...initialQuality, message: t("얼굴이 보이지 않아요. 정면을 향해주세요.") });
         handleAutoTick(false);
         return;
       }
@@ -374,17 +375,17 @@ export default function Scan() {
       const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
       const message = !distance
         ? rawSize <= 0.2
-          ? "얼굴이 작게 보여요. 조금 더 가까이 와주세요."
-          : "너무 가까워요. 살짝 물러나 주세요."
+          ? t("얼굴이 작게 보여요. 조금 더 가까이 와주세요.")
+          : t("너무 가까워요. 살짝 물러나 주세요.")
         : !centered
-          ? "얼굴을 윤곽선 중앙에 맞춰주세요."
+          ? t("얼굴을 윤곽선 중앙에 맞춰주세요.")
           : !brightness
-          ? "빛이 부족해요. 창가처럼 밝고 부드러운 곳이 좋아요."
+          ? t("빛이 부족해요. 창가처럼 밝고 부드러운 곳이 좋아요.")
           : !noGlare
-            ? "반사가 강해요. 정면 조명이나 번들거림을 줄여주세요."
+            ? t("반사가 강해요. 정면 조명이나 번들거림을 줄여주세요.")
             : !steady
-              ? "잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요."
-              : "좋아요. 그대로 계세요.";
+              ? t("잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요.")
+              : t("좋아요. 그대로 계세요.");
 
       commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
       handleAutoTick(pass);
@@ -568,7 +569,7 @@ export default function Scan() {
       commitQuality(verifiedQuality, true);
       if (!captureGatePassed(verifiedQuality)) {
         autoHoldUntilRef.current = performance.now() + 4000;
-        setErr("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요.");
+        setErr(t("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요."));
         setPhase("ready");
         return;
       }
@@ -607,7 +608,7 @@ export default function Scan() {
           const movement = frameMovement(previousBurstCenter, extraCenter, performance.now() - frameStartedAt);
           if (movement >= CAPTURE_PROFILES[captureMode].maxMovement) {
             autoHoldUntilRef.current = performance.now() + 4000;
-            setErr("스캔 중 얼굴이 움직였어요. 윤곽선 중앙에 맞추고 잠깐 멈춰주세요.");
+            setErr(t("스캔 중 얼굴이 움직였어요. 윤곽선 중앙에 맞추고 잠깐 멈춰주세요."));
             setPhase("ready");
             return;
           }
@@ -697,7 +698,7 @@ export default function Scan() {
     } catch (e) {
       console.error(e);
       autoHoldUntilRef.current = performance.now() + 4000;
-      setErr("분석 중 문제가 생겼어요. 다시 시도해 주세요.");
+      setErr(t("분석 중 문제가 생겼어요. 다시 시도해 주세요."));
       setPhase("ready");
     }
   }
@@ -722,7 +723,7 @@ export default function Scan() {
         shareUrl: moodShareUrl({ oil: reads.oil.level, redness: reads.redness.level, pores: reads.pores.level }),
       });
     } catch (e) {
-      if ((e as Error).name !== "AbortError") setShareErr("공유에 실패했어요. 잠시 후 다시 시도해 주세요.");
+      if ((e as Error).name !== "AbortError") setShareErr(t("공유에 실패했어요. 잠시 후 다시 시도해 주세요."));
     } finally {
       setSharing(false);
     }
@@ -739,22 +740,22 @@ export default function Scan() {
     const session = getCurrentPilotSession();
     const event = recordConsentEvent("ai_analysis", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
     if (!event && next) {
-      setErr(CONSENT_STORAGE_ERROR);
+      setErr(t(CONSENT_STORAGE_ERROR));
       return;
     }
     setConsent(next);
-    setErr(event ? "" : CONSENT_STORAGE_ERROR);
+    setErr(event ? "" : t(CONSENT_STORAGE_ERROR));
   }
 
   function toggleDatasetConsent(next: boolean) {
     const session = getCurrentPilotSession();
     const event = recordConsentEvent("learning_crop", next, session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined);
     if (!event && next) {
-      setErr(CONSENT_STORAGE_ERROR);
+      setErr(t(CONSENT_STORAGE_ERROR));
       return;
     }
     setDatasetConsent(next);
-    setErr(event ? "" : CONSENT_STORAGE_ERROR);
+    setErr(event ? "" : t(CONSENT_STORAGE_ERROR));
   }
 
   return (
@@ -762,8 +763,8 @@ export default function Scan() {
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <p style={eyebrow}>ARU skin scan</p>
         <FlowSteps current="scan" />
-        <h1 style={titleStyle}>얼굴 톤과 피부 결이 잘 보이게 찍어볼게요</h1>
-        <p style={leadStyle}>가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 저절로 찍혀요.</p>
+        <h1 style={titleStyle}>{t("얼굴 톤과 피부 결이 잘 보이게 찍어볼게요")}</h1>
+        <p style={leadStyle}>{t("가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 저절로 찍혀요.")}</p>
 
         {phase !== "result" && (
           <div style={cameraFrame}>
@@ -778,20 +779,20 @@ export default function Scan() {
             {phase === "ready" && guideState === "loading" && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(255,255,255,.78)" }}>
                 <Xiaohei size={64} pose="magnify" bob />
-                <p style={{ fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--ink)" }}>얼굴 가이드 불러오는 중…</p>
+                <p style={{ fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--ink)" }}>{t("얼굴 가이드 불러오는 중…")}</p>
               </div>
             )}
             {phase === "ready" && guideState === "failed" && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 24, textAlign: "center", background: "rgba(255,255,255,.92)" }}>
-                <p style={fallbackText}>얼굴 가이드를 불러오지 못했어요.<br />네트워크를 확인하고 다시 시도해 주세요.</p>
-                <button onClick={retryGuide} style={primaryBtn}>다시 시도</button>
-                <a href="/survey" style={ghostLink}>사진 없이 추천받기</a>
+                <p style={fallbackText}>{t("얼굴 가이드를 불러오지 못했어요.")}<br />{t("네트워크를 확인하고 다시 시도해 주세요.")}</p>
+                <button onClick={retryGuide} style={primaryBtn}>{t("다시 시도")}</button>
+                <a href="/survey" style={ghostLink}>{t("사진 없이 추천받기")}</a>
               </div>
             )}
             {phase === "init" && (
               <Center>
                 <div style={{ maxWidth: 320, background: "rgba(0,0,0,.58)", borderRadius: 14, padding: "20px 18px" }}>
-                  <p style={{ fontFamily: "var(--font-hand)", fontSize: 25, color: "#fff", marginBottom: 12 }}>30초 피부 스캔, 시작할까요?</p>
+                  <p style={{ fontFamily: "var(--font-hand)", fontSize: 25, color: "#fff", marginBottom: 12 }}>{t("30초 피부 스캔, 시작할까요?")}</p>
                   <div style={{ display: "grid", gap: 9, marginBottom: 16, textAlign: "left" }}>
                     {[
                       ["📷", "가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 자동으로 찍혀요."],
@@ -800,13 +801,13 @@ export default function Scan() {
                     ].map(([icon, text]) => (
                       <div key={text} style={{ display: "flex", gap: 9, alignItems: "flex-start", color: "rgba(255,255,255,.94)", fontSize: 13, lineHeight: 1.45 }}>
                         <span aria-hidden style={{ flexShrink: 0 }}>{icon}</span>
-                        <span>{text}</span>
+                        <span>{t(text)}</span>
                       </div>
                     ))}
                   </div>
-                  <button onClick={startCamera} style={{ ...primaryBtn, width: "100%" }}>카메라 시작</button>
+                  <button onClick={startCamera} style={{ ...primaryBtn, width: "100%" }}>{t("카메라 시작")}</button>
                   <a href="/survey" style={{ display: "block", textAlign: "center", marginTop: 11, fontSize: 13, color: "rgba(255,255,255,.85)", textDecoration: "underline" }}>
-                    카메라 없이 설문만
+                    {t("카메라 없이 설문만")}
                   </a>
                 </div>
               </Center>
@@ -825,26 +826,26 @@ export default function Scan() {
             {phase === "ready" && countdown !== null && (
               <div role="status" aria-live="polite" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
                 <span style={{ fontFamily: "var(--font-hand)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
-                <span style={{ fontFamily: "var(--font-hand)", fontSize: 21, color: "#fff", textShadow: "0 1px 10px rgba(0,0,0,.55)" }}>그대로 계세요</span>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 21, color: "#fff", textShadow: "0 1px 10px rgba(0,0,0,.55)" }}>{t("그대로 계세요")}</span>
               </div>
             )}
             {phase === "denied" && (
               <Center>
-                <p style={fallbackText}>카메라 권한이 필요해요.</p>
-                <a href="/survey" style={ghostLink}>사진 없이 추천받기</a>
+                <p style={fallbackText}>{t("카메라 권한이 필요해요.")}</p>
+                <a href="/survey" style={ghostLink}>{t("사진 없이 추천받기")}</a>
               </Center>
             )}
             {phase === "noface" && (
               <Center>
-                <p style={fallbackText}>얼굴을 읽지 못했어요.<br />밝은 곳에서 정면으로 다시 찍어주세요.</p>
-                <button onClick={() => setPhase("ready")} style={primaryBtn}>다시 시도</button>
-                <a href="/survey" style={ghostLink}>사진 없이 추천받기</a>
+                <p style={fallbackText}>{t("얼굴을 읽지 못했어요.")}<br />{t("밝은 곳에서 정면으로 다시 찍어주세요.")}</p>
+                <button onClick={() => setPhase("ready")} style={primaryBtn}>{t("다시 시도")}</button>
+                <a href="/survey" style={ghostLink}>{t("사진 없이 추천받기")}</a>
               </Center>
             )}
             {phase === "unsupported" && (
               <Center>
-                <p style={fallbackText}>이 브라우저에서는 카메라를 사용할 수 없어요.</p>
-                <a href="/survey" style={ghostLink}>사진 없이 추천받기</a>
+                <p style={fallbackText}>{t("이 브라우저에서는 카메라를 사용할 수 없어요.")}</p>
+                <a href="/survey" style={ghostLink}>{t("사진 없이 추천받기")}</a>
               </Center>
             )}
           </div>
@@ -855,7 +856,7 @@ export default function Scan() {
             {staffMode && <ScanModePicker mode={captureMode} onChange={setCaptureMode} />}
             <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: quality.face ? "var(--success)" : "var(--text-muted)", fontWeight: 600 }}>
               <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: quality.face ? "var(--success)" : "var(--muted)", animation: quality.face ? "gyeol-bob 1.1s ease-in-out infinite" : undefined, flexShrink: 0 }} />
-              <span>{quality.face ? "얼굴 인식됨 · 피부 신호를 읽고 있어요" : "얼굴을 화면 안에 맞춰주세요"}</span>
+              <span>{quality.face ? t("얼굴 인식됨 · 피부 신호를 읽고 있어요") : t("얼굴을 화면 안에 맞춰주세요")}</span>
             </div>
             <QualityPanel quality={quality} requireSteady={captureProfile.requiresSteady} zonesReady={zonesReady} />
             <ScanControls
@@ -882,7 +883,7 @@ export default function Scan() {
                 cursor: phase === "analyzing" || !canCapture || guideState !== "ready" ? "default" : "pointer",
               }}
             >
-              {scanCaptureButtonLabel({ phase, countdown, guideReady: guideState === "ready", canCapture, zonesReady })}
+              {t(scanCaptureButtonLabel({ phase, countdown, guideReady: guideState === "ready", canCapture, zonesReady }))}
             </button>
           </div>
         )}
@@ -895,11 +896,11 @@ export default function Scan() {
           <>
             <ResultCard reads={reads} />
             <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", margin: "14px 0 4px" }}>
-              * 조명, 각도, 메이크업에 따라 달라질 수 있는 참고용 분석이에요.
+              {t("* 조명, 각도, 메이크업에 따라 달라질 수 있는 참고용 분석이에요.")}
             </p>
             {staffMode && getCurrentPilotSession() && (
               <details style={{ marginTop: 6, fontSize: 12, color: "var(--muted)" }}>
-                <summary style={{ cursor: "pointer", textAlign: "center" }}>디버그 신호 보기</summary>
+                <summary style={{ cursor: "pointer", textAlign: "center" }}>{t("디버그 신호 보기")}</summary>
                 <pre style={debugStyle}>
 {`shine = ${reads.raw.shine.toFixed(3)} -> ${reads.oil.value}
 relRedness = ${reads.raw.relRedness.toFixed(4)} -> ${reads.redness.value}
@@ -909,12 +910,12 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
               </details>
             )}
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-              <button onClick={reset} style={{ ...(reads.retakeRecommended ? primaryBtn : outlineBtn), flex: 1 }}>다시 찍기</button>
+              <button onClick={reset} style={{ ...(reads.retakeRecommended ? primaryBtn : outlineBtn), flex: 1 }}>{t("다시 찍기")}</button>
               <a
                 href="/survey"
                 style={{ ...(reads.retakeRecommended ? outlineBtn : primaryBtn), flex: 1, textAlign: "center", textDecoration: "none" }}
               >
-                {reads.retakeRecommended ? "설문으로 이어가기" : "추천 받기"}
+                {reads.retakeRecommended ? t("설문으로 이어가기") : t("추천 받기")}
               </a>
             </div>
             <button
@@ -923,14 +924,14 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
               disabled={sharing}
               style={{ ...outlineBtn, width: "100%", marginTop: 10, opacity: sharing ? 0.6 : 1 }}
             >
-              {sharing ? "카드 만드는 중..." : "친구에게 내 피부 무드 공유하기"}
+              {sharing ? t("카드 만드는 중...") : t("친구에게 내 피부 무드 공유하기")}
             </button>
             <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
-              공유 링크를 열면 친구도 30초 스캔으로 이어져요
+              {t("공유 링크를 열면 친구도 30초 스캔으로 이어져요")}
             </p>
             {shareErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{shareErr}</p>}
             <a href="/studio" style={{ display: "block", textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline" }}>
-              카드 문구 직접 편집하기
+              {t("카드 문구 직접 편집하기")}
             </a>
             {/* Off-screen source for the one-tap share PNG — laid out but not visible. */}
             <div aria-hidden style={{ position: "absolute", left: -9999, top: 0, pointerEvents: "none" }}>
@@ -979,7 +980,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     noGlare,
     steady,
     score: 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0),
-    message: rejectReason ? "촬영 품질을 다시 맞춰주세요." : "촬영 품질이 확인됐어요.",
+    message: rejectReason ? t("촬영 품질을 다시 맞춰주세요.") : t("촬영 품질이 확인됐어요."),
     centerOffsetX,
     centerOffsetY,
     faceSize,

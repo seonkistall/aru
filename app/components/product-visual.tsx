@@ -1,7 +1,10 @@
+"use client";
+
 // Self-contained per-category product illustration (no external assets). Used as
 // the ProductCard visual until a real partner image URL is supplied — it reads
 // as an intentional, designed product mock rather than a broken/plain fallback.
 import type { Category } from "@/lib/skus";
+import { t } from "@/lib/i18n/core";
 
 type Tint = { bg: string; fg: string };
 
@@ -62,11 +65,11 @@ function shape(category: Category, fg: string) {
 
 export function ProductVisual({ category, brand, tint = brandTint(brand) }: { category: Category; brand: string; tint?: Tint }) {
   return (
-    <svg viewBox="0 0 68 68" width="100%" height="100%" role="img" aria-label={`${brand} ${category}`}>
+    <svg viewBox="0 0 68 68" width="100%" height="100%" role="img" aria-label={`${t(brand)} ${t(category)}`}>
       <rect width="68" height="68" rx="10" fill={tint.bg} />
       {shape(category, tint.fg)}
       <text x="34" y="63" textAnchor="middle" fontSize="7" fontWeight="700" fill={tint.fg} opacity="0.75">
-        {category}
+        {t(category)}
       </text>
     </svg>
   );

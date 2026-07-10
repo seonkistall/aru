@@ -4,6 +4,8 @@
 // off-device. Opening the link lets a friend land on a "skin mood" preview with
 // a scan CTA (the viral entry).
 
+import { t } from "./i18n/core";
+
 export type MoodLevels = { oil: number; redness: number; pores: number };
 
 function asLevel(n: number): number | null {
@@ -42,5 +44,5 @@ const LABELS: Record<keyof MoodLevels, [string, string, string]> = {
 };
 
 export function moodSummary(levels: MoodLevels): string {
-  return [LABELS.oil[levels.oil], LABELS.redness[levels.redness], LABELS.pores[levels.pores]].join(" · ");
+  return [t(LABELS.oil[levels.oil]), t(LABELS.redness[levels.redness]), t(LABELS.pores[levels.pores])].join(" · ");
 }

@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { hasLastResult } from "@/lib/last-result";
+import { t } from "@/lib/i18n/core";
 
 export function ReturnBanner() {
   const [show, setShow] = useState(false);
@@ -20,10 +21,10 @@ export function ReturnBanner() {
   return (
     <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
       <Link href="/report" style={primary}>
-        지난 결과 이어보기 →
+        {t("지난 결과 이어보기 →")}
       </Link>
       <Link href="/scan" style={ghost}>
-        다시 스캔하기
+        {t("다시 스캔하기")}
       </Link>
     </div>
   );

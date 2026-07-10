@@ -5,6 +5,7 @@ import { recordFunnelEvent } from "@/lib/funnel";
 import { downloadCardImage, ShareCard, shareCardImage, type CardRead as Read } from "@/app/components/share-card";
 import { loadLastResult } from "@/lib/last-result";
 import type { SkinReads } from "@/lib/skin";
+import { t } from "@/lib/i18n/core";
 
 const PRESETS: { name: string; headline: string; reads: Read[] }[] = [
   {
@@ -79,7 +80,7 @@ export default function Studio() {
     try {
       await downloadCardImage(cardRef.current);
     } catch {
-      setErr("이미지를 만들지 못했어요. 다시 시도해 주세요.");
+      setErr(t("이미지를 만들지 못했어요. 다시 시도해 주세요."));
     } finally {
       setBusy(false);
     }
@@ -94,7 +95,7 @@ export default function Studio() {
         onShare: (mode) => recordFunnelEvent("share_clicked", { surface: "studio", mode }),
       });
     } catch (e) {
-      if ((e as Error).name !== "AbortError") setErr("공유에 실패했어요. PNG 저장을 이용해 주세요.");
+      if ((e as Error).name !== "AbortError") setErr(t("공유에 실패했어요. PNG 저장을 이용해 주세요."));
     } finally {
       setBusy(false);
     }
@@ -103,46 +104,46 @@ export default function Studio() {
   return (
     <main className="min-h-screen px-5 py-10" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>카드 스튜디오</p>
-        <h1 style={titleStyle}>피부 리포트 카드 만들기</h1>
+        <p style={eyebrow}>{t("카드 스튜디오")}</p>
+        <h1 style={titleStyle}>{t("피부 리포트 카드 만들기")}</h1>
         <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 22, lineHeight: 1.55 }}>
-          스캔 결과를 숏폼이나 상담 공유용 이미지로 저장할 수 있어요.
+          {t("스캔 결과를 숏폼이나 상담 공유용 이미지로 저장할 수 있어요.")}
         </p>
 
         <div className="flex justify-center mb-7">
-          <ShareCard ref={cardRef} headline={headline} reads={reads} />
+          <ShareCard ref={cardRef} headline={t(headline)} reads={reads.map((read) => ({ ...read, label: t(read.label), value: t(read.value) }))} />
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           {PRESETS.map((preset, i) => (
-            <button key={preset.name} onClick={() => applyPreset(i)} style={presetBtn}>{preset.name}</button>
+            <button key={preset.name} onClick={() => applyPreset(i)} style={presetBtn}>{t(preset.name)}</button>
           ))}
         </div>
 
-        <label style={labelStyle} htmlFor="studio-headline">헤드라인</label>
-        <textarea id="studio-headline" aria-label="헤드라인" value={headline} onChange={(e) => setHeadline(e.target.value)} rows={2} style={textareaStyle} />
+        <label style={labelStyle} htmlFor="studio-headline">{t("헤드라인")}</label>
+        <textarea id="studio-headline" aria-label={t("헤드라인")} value={headline} onChange={(e) => setHeadline(e.target.value)} rows={2} style={textareaStyle} />
 
         {reads.map((read, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
-            <input aria-label={`항목 ${i + 1} 이름`} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, width: 96 }} />
-            <input aria-label={`항목 ${i + 1} 값`} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={() => setRead(i, { calm: !read.calm })} aria-pressed={read.calm} style={toggleBtn(read.calm)}>{read.calm ? "차분" : "강조"}</button>
+            <input aria-label={t("항목 {n} 이름", { n: i + 1 })} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, width: 96 }} />
+            <input aria-label={t("항목 {n} 값", { n: i + 1 })} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={() => setRead(i, { calm: !read.calm })} aria-pressed={read.calm} style={toggleBtn(read.calm)}>{read.calm ? t("차분") : t("강조")}</button>
           </div>
         ))}
 
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={share} disabled={busy} style={{ ...downloadBtn, flex: 1, opacity: busy ? 0.6 : 1 }}>
-            {busy ? "생성 중..." : "공유하기"}
+            {busy ? t("생성 중...") : t("공유하기")}
           </button>
           <button
             onClick={download}
             disabled={busy}
             style={{ ...downloadBtn, flex: 1, background: "transparent", color: "var(--ink)", border: "1px solid var(--ink)", opacity: busy ? 0.6 : 1 }}
           >
-            PNG 저장
+            {t("PNG 저장")}
           </button>
         </div>
-        {fromScan && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>오늘 스캔 결과를 불러왔어요. 문구는 자유롭게 고쳐도 돼요.</p>}
+        {fromScan && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>{t("오늘 스캔 결과를 불러왔어요. 문구는 자유롭게 고쳐도 돼요.")}</p>}
         {err && <p style={{ fontSize: 13, color: "var(--plum)", marginTop: 10, textAlign: "center" }}>{err}</p>}
       </div>
     </main>

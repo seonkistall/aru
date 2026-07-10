@@ -4,6 +4,7 @@
 // their own calendar (no backend/push) and marks the routine saved on-device.
 import { useState } from "react";
 import { downloadRoutineIcs, markRoutineSaved } from "@/lib/routine-reminder";
+import { t } from "@/lib/i18n/core";
 
 export function RoutineReminder({ label }: { label: string }) {
   const [saved, setSaved] = useState(false);
@@ -19,10 +20,10 @@ export function RoutineReminder({ label }: { label: string }) {
         }}
         style={btn}
       >
-        📅 아침·저녁 리마인더 추가
+        {t("📅 아침·저녁 리마인더 추가")}
       </button>
       <span style={{ fontSize: 12.5, color: saved ? "var(--success)" : "var(--text-muted)" }}>
-        {saved ? "캘린더에 매일 알림을 추가했어요" : "내 캘린더에 매일 알림으로 저장돼요"}
+        {saved ? t("캘린더에 매일 알림을 추가했어요") : t("내 캘린더에 매일 알림으로 저장돼요")}
       </span>
     </div>
   );

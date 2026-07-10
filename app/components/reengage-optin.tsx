@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { t } from "@/lib/i18n/core";
 
 // Opt-in for the 2/4-week routine reminder (the daily-routine re-entry hook).
 // Explicit consent, minimal PII, no dark patterns. Sending is owner-gated
@@ -29,24 +30,24 @@ export function ReengageOptIn({ context }: { context?: string }) {
   if (state === "done") {
     return (
       <div style={box}>
-        <p role="status" style={{ fontSize: 13.5, color: "var(--success)", margin: 0 }}>좋아요. 2주 뒤 피부가 어떤지 살짝 리마인드해 드릴게요.</p>
+        <p role="status" style={{ fontSize: 13.5, color: "var(--success)", margin: 0 }}>{t("좋아요. 2주 뒤 피부가 어떤지 살짝 리마인드해 드릴게요.")}</p>
       </div>
     );
   }
 
   return (
     <div style={box}>
-      <p style={{ fontSize: 13.5, color: "var(--ink)", fontWeight: 700, margin: "0 0 4px" }}>2주 뒤 피부 변화, 리마인드 받기</p>
+      <p style={{ fontSize: 13.5, color: "var(--ink)", fontWeight: 700, margin: "0 0 4px" }}>{t("2주 뒤 피부 변화, 리마인드 받기")}</p>
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 0 10px" }}>
-        루틴이 잘 맞았는지 2·4주 뒤 이메일로 딱 한 번씩만 알려드려요. 언제든 그만둘 수 있어요.
+        {t("루틴이 잘 맞았는지 2·4주 뒤 이메일로 딱 한 번씩만 알려드려요. 언제든 그만둘 수 있어요.")}
       </p>
       <div style={{ display: "flex", gap: 8 }}>
         <input
           type="email"
           inputMode="email"
           autoComplete="email"
-          aria-label="이메일 주소"
-          placeholder="이메일 주소"
+          aria-label={t("이메일 주소")}
+          placeholder={t("이메일 주소")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           style={{ flex: 1, minWidth: 0, fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" }}
@@ -56,14 +57,14 @@ export function ReengageOptIn({ context }: { context?: string }) {
           disabled={!consent || !email.trim() || state === "sending"}
           style={{ flexShrink: 0, background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !consent || !email.trim() || state === "sending" ? 0.5 : 1 }}
         >
-          {state === "sending" ? "…" : "신청"}
+          {state === "sending" ? "…" : t("신청")}
         </button>
       </div>
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, fontSize: 12.5, color: "var(--text-muted)", cursor: "pointer" }}>
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ accentColor: "var(--ink)", width: 15, height: 15 }} />
-        <span>리마인드 발송을 위해 이메일 저장에 동의해요</span>
+        <span>{t("리마인드 발송을 위해 이메일 저장에 동의해요")}</span>
       </label>
-      {state === "error" && <p role="alert" style={{ fontSize: 12, color: "var(--plum-press)", marginTop: 8 }}>지금은 신청이 어려워요. 잠시 후 다시 시도해 주세요.</p>}
+      {state === "error" && <p role="alert" style={{ fontSize: 12, color: "var(--plum-press)", marginTop: 8 }}>{t("지금은 신청이 어려워요. 잠시 후 다시 시도해 주세요.")}</p>}
     </div>
   );
 }

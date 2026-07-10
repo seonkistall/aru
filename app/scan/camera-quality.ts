@@ -1,3 +1,5 @@
+import { t } from "@/lib/i18n/core";
+
 export type CameraAttempt = "high" | "fallback";
 export type CropPurpose = "ai-analysis" | "learning-crop" | "model-input";
 export type CropPlan = { maxEdge: number; mimeType: "image/jpeg" | "image/png"; quality: number };
@@ -74,7 +76,7 @@ export function scanCaptureReady(quality: CaptureGateQuality, zonesReady: boolea
 
 export function scanCaptureButtonLabel(input: ScanCaptureLabelInput): string {
   if (input.phase === "analyzing") return "분석 중...";
-  if (input.countdown !== null) return `자동 촬영 ${input.countdown}`;
+  if (input.countdown !== null) return t("자동 촬영 {n}", { n: input.countdown });
   if (!input.guideReady) return "가이드 준비 중...";
   if (!input.zonesReady) return "측정영역을 맞추는 중...";
   return input.canCapture ? "지금 촬영하기" : "얼굴을 가이드에 맞춰주세요";

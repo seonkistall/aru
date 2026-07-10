@@ -5,6 +5,7 @@
 // the user decide between picks without leaving the report.
 import type { Recommendation } from "@/lib/recommend";
 import { ProductVisual } from "./product-visual";
+import { t } from "@/lib/i18n/core";
 
 export function ProductCompare({ picks }: { picks: Recommendation[] }) {
   if (picks.length < 2) return null;
@@ -14,15 +15,15 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
 
   const rows: { label: string; render: (p: Recommendation) => React.ReactNode }[] = [
     {
-      label: "가격",
+      label: t("가격"),
       render: (p) => (
         <span style={{ fontWeight: 800, color: p.sku.price === minPrice ? "var(--success)" : "var(--ink)" }}>
-          {p.sku.price.toLocaleString()}원{p.sku.price === minPrice && picks.length > 1 ? " ↓" : ""}
+          {t("{price}원", { price: p.sku.price.toLocaleString() })}{p.sku.price === minPrice && picks.length > 1 ? " ↓" : ""}
         </span>
       ),
     },
     {
-      label: "평점",
+      label: t("평점"),
       render: (p) =>
         p.sku.rating ? (
           <span style={{ color: p.sku.rating === maxRating ? "var(--bronze)" : "var(--ink-soft)", fontWeight: p.sku.rating === maxRating ? 800 : 500 }}>
@@ -32,24 +33,24 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
           <span style={{ color: "var(--faint)" }}>—</span>
         ),
     },
-    { label: "제형", render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.texture ?? "—"}</span> },
+    { label: t("제형"), render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.texture ? t(p.sku.texture) : "—"}</span> },
     {
-      label: "핵심 성분",
+      label: t("핵심 성분"),
       render: (p) => (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {p.ingredientTags.slice(0, 3).map((t) => (
-            <span key={t.name} style={miniTag}>{t.name}</span>
+          {p.ingredientTags.slice(0, 3).map((tag) => (
+            <span key={tag.name} style={miniTag}>{t(tag.name)}</span>
           ))}
         </div>
       ),
     },
     {
-      label: "제외 성분 반영",
+      label: t("제외 성분 반영"),
       render: (p) =>
         p.avoidedClear ? (
-          <span style={{ color: "var(--success)", fontWeight: 700 }} aria-label="반영됨">✓ 반영</span>
+          <span style={{ color: "var(--success)", fontWeight: 700 }} aria-label={t("반영됨")}>{t("✓ 반영")}</span>
         ) : (
-          <span style={{ color: "var(--text-muted)" }} aria-label="미반영">— 확인 필요</span>
+          <span style={{ color: "var(--text-muted)" }} aria-label={t("미반영")}>{t("— 확인 필요")}</span>
         ),
     },
   ];
@@ -65,8 +66,8 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
                 <div style={{ width: 40, height: 40, margin: "0 auto 6px" }}>
                   <ProductVisual category={p.sku.category} brand={p.sku.brand} />
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>{i + 1}순위 · {p.sku.brand}</div>
-                <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.25, marginTop: 2 }}>{p.sku.name}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>{t("{rank}순위", { rank: i + 1 })} · {t(p.sku.brand)}</div>
+                <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.25, marginTop: 2 }}>{t(p.sku.name)}</div>
               </th>
             ))}
           </tr>

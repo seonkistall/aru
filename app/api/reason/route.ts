@@ -12,14 +12,22 @@ type Item = {
   fallback: string;
 };
 
+const LANG_NAMES: Record<string, string> = {
+  ko: "한국어",
+  en: "영어(English)",
+  ja: "일본어(日本語)",
+  zh: "중국어 간체(简体中文)",
+};
+
 export async function POST(req: Request) {
-  const { items } = (await req.json()) as { items: Item[] };
+  const { items, lang } = (await req.json()) as { items: Item[]; lang?: string };
   const key = process.env.OPENAI_API_KEY;
   if (!key) return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
 
+  const langName = LANG_NAMES[lang ?? "ko"] ?? LANG_NAMES.ko;
   const sys =
-    "너는 한국어 화장품 추천 카피라이터다. 제품이 왜 사용자 조건에 맞는지 1문장으로 쓴다. " +
-    "진단, 치료, 개선, 완화, 효능, 효과, 보장 표현은 금지한다. JSON 배열 형태로만 답한다.";
+    `너는 화장품 추천 카피라이터다. 제품이 왜 사용자 조건에 맞는지 반드시 ${langName}로 1문장씩 쓴다. ` +
+    "진단, 치료, 개선, 완화, 효능, 효과, 보장 표현(각 언어의 동등한 표현 포함)은 금지한다. JSON 배열 형태로만 답한다.";
 
   const user = items
     .map(

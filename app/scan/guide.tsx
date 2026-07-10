@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { t } from "@/lib/i18n/core";
 import { coverCropFractions } from "@/lib/scan-geometry";
 import { SAMPLING_LANDMARKS } from "@/lib/skin";
 import { modeButtonStyle, modePanelStyle } from "./scan-styles";
@@ -33,12 +34,12 @@ export function ScanModePicker({ mode, onChange }: { mode: CaptureMode; onChange
                 borderColor: selected ? "var(--plum)" : "var(--line)",
               }}
             >
-              {CAPTURE_PROFILES[item].label}
+              {t(CAPTURE_PROFILES[item].label)}
             </button>
           );
         })}
       </div>
-      <p style={{ marginTop: 8, color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.45 }}>{active.hint}</p>
+      <p style={{ marginTop: 8, color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.45 }}>{t(active.hint)}</p>
     </div>
   );
 }
@@ -51,7 +52,7 @@ export function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: 
       <div style={{ position: "absolute", inset: "8% 12% 17%", border: `2px solid ${border}`, borderRadius: "48% 48% 45% 45%", boxShadow: "0 0 0 999px rgba(0,0,0,.18)" }} />
       {!zones && <div style={{ position: "absolute", top: "11%", bottom: "20%", left: "50%", width: 1, background: "rgba(255,255,255,.62)" }} />}
       <div style={{ position: "absolute", top: 14, right: 14, background: "rgba(255,255,255,.9)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 999, color: "var(--ink)", fontSize: 11, fontWeight: 800, padding: "5px 9px" }}>
-        {CAPTURE_PROFILES[mode].label}
+        {t(CAPTURE_PROFILES[mode].label)}
       </div>
       {zones ? (
         <>
@@ -72,20 +73,20 @@ export function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: 
               }}
             />
           ))}
-          <TrackedZone label="이마·T존" rect={zones.tzone} locked={locked} />
-          <TrackedZone label="왼볼 결" rect={zones.leftCheek} locked={locked} />
-          <TrackedZone label="오른볼 결" rect={zones.rightCheek} locked={locked} />
+          <TrackedZone label={t("이마·T존")} rect={zones.tzone} locked={locked} />
+          <TrackedZone label={t("왼볼 결")} rect={zones.leftCheek} locked={locked} />
+          <TrackedZone label={t("오른볼 결")} rect={zones.rightCheek} locked={locked} />
         </>
       ) : (
         <>
-          <GuideZone label="이마/T존" style={{ top: "18%", left: "36%", width: "28%", height: "12%" }} />
-          <GuideZone label="왼볼 결" style={{ top: "45%", left: "21%", width: "22%", height: "15%" }} />
-          <GuideZone label="오른볼 결" style={{ top: "45%", right: "21%", width: "22%", height: "15%" }} />
+          <GuideZone label={t("이마/T존")} style={{ top: "18%", left: "36%", width: "28%", height: "12%" }} />
+          <GuideZone label={t("왼볼 결")} style={{ top: "45%", left: "21%", width: "22%", height: "15%" }} />
+          <GuideZone label={t("오른볼 결")} style={{ top: "45%", right: "21%", width: "22%", height: "15%" }} />
         </>
       )}
       <div style={{ position: "absolute", left: 18, right: 18, bottom: 18, display: "flex", justifyContent: "center" }}>
         <span style={{ background: "rgba(255,255,255,.9)", color: "var(--ink)", border: "1px solid rgba(0,0,0,.12)", borderRadius: 8, padding: "8px 12px", fontSize: 13, lineHeight: 1.35, textAlign: "center" }}>
-          {quality.message}
+          {t(quality.message)}
         </span>
       </div>
     </div>
@@ -241,7 +242,7 @@ export function QualityPanel({ quality, requireSteady, zonesReady }: { quality: 
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${checks.length}, 1fr)`, gap: 5, marginTop: 10 }}>
       {checks.map(([label, ok]) => (
         <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 2px", textAlign: "center", fontSize: 11, fontWeight: ok ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden" }}>
-          {ok ? "✓ " : ""}{label}
+          {ok ? "✓ " : ""}{t(label)}
         </div>
       ))}
     </div>

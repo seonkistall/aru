@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react";
 import type { SkinReads } from "@/lib/skin";
+import { t } from "@/lib/i18n/core";
 
 export type CardRead = { label: string; value: string; calm?: boolean };
 
@@ -13,22 +14,22 @@ export const ShareCard = forwardRef<HTMLDivElement, { headline: string; reads: C
     return (
       <div ref={ref} style={cardPreview}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>아루</span>
+          <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>{t("아루")}</span>
           <span style={miniLabel}>skin mood</span>
         </div>
-        <h2 style={cardHeadline}>{headline}</h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>보이는 특징만 정직하게 읽었어요.</p>
+        <h2 style={cardHeadline}>{t(headline)}</h2>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>{t("보이는 특징만 정직하게 읽었어요.")}</p>
         <div style={{ borderTop: "1px solid var(--line)" }}>
           {reads.map((read) => (
             <div key={read.label} style={rowStyle}>
-              <span style={{ fontSize: 14, color: "var(--ink)" }}>{read.label}</span>
-              <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{read.value}</span>
+              <span style={{ fontSize: 14, color: "var(--ink)" }}>{t(read.label)}</span>
+              <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{t(read.value)}</span>
             </div>
           ))}
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ height: 1, width: 34, background: "var(--bronze)", margin: "0 auto 16px", opacity: 0.75 }} />
-        <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>30초 피부 스캔</p>
+        <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>{t("30초 피부 스캔")}</p>
       </div>
     );
   }
@@ -74,8 +75,8 @@ export async function shareCardImage(
       // loop); platforms that ignore url alongside files still share the image.
       await navigator.share({
         files: [file],
-        title: "아루 피부 카드",
-        ...(opts?.shareUrl ? { text: "내 피부 무드 — 아루", url: opts.shareUrl } : {}),
+        title: t("아루 피부 카드"),
+        ...(opts?.shareUrl ? { text: t("내 피부 무드 — 아루"), url: opts.shareUrl } : {}),
       });
       opts?.onShare?.("web-share");
       return "web-share";

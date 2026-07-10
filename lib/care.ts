@@ -2,6 +2,7 @@ import type { RecoResult, Survey } from "./recommend";
 import type { SkinReads } from "./skin";
 import type { Sku } from "./skus";
 import { commerceOutHref, type MerchantId } from "./commerce";
+import { t } from "./i18n/core";
 
 export type CareLocale = "ko" | "en";
 export type CareIntentKind = "purchase" | "clinic" | "tourist";
@@ -40,15 +41,15 @@ export function clinicLinks(locale: CareLocale): CareLink[] {
   return locale === "ko"
     ? [
         {
-          label: "근처 피부과 찾기",
+          label: t("근처 피부과 찾기"),
           href: "https://www.google.com/maps/search/%ED%94%BC%EB%B6%80%EA%B3%BC",
-          note: "현재 위치 주변 피부과를 지도에서 찾아요.",
+          note: t("현재 위치 주변 피부과를 지도에서 찾아요."),
           kind: "clinic",
         },
         {
-          label: "피부 상담 검색",
+          label: t("피부 상담 검색"),
           href: "https://search.naver.com/search.naver?query=%ED%94%BC%EB%B6%80%EA%B3%BC%20%EC%83%81%EB%8B%B4",
-          note: "상담 가능한 병원과 정보를 검색해요.",
+          note: t("상담 가능한 병원과 정보를 검색해요."),
           kind: "clinic",
         },
       ]
@@ -85,10 +86,10 @@ export function careSummary(survey: Survey | null, reads: SkinReads | null, resu
   }
 
   return {
-    title: top ? `${top.name} 다음 단계` : "다음 케어 단계",
+    title: top ? t("{name} 다음 단계", { name: top.name }) : t("다음 케어 단계"),
     body: needsClinic
-      ? "제품 비교와 함께, 붉은기나 트러블이 계속되면 피부과 상담 연결도 열어둘게요."
-      : "추천 제품을 먼저 비교하고, 사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요.",
+      ? t("제품 비교와 함께, 붉은기나 트러블이 계속되면 피부과 상담 연결도 열어둘게요.")
+      : t("추천 제품을 먼저 비교하고, 사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요."),
     clinicPriority: needsClinic,
   };
 }

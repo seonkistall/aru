@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { t } from "@/lib/i18n/core";
 
 // The product journey in the xiaohei voice: 촬영 → 분석 → 추천 → 케어.
 // Past steps stay tappable links; the current one is inked; future ones quiet.
@@ -15,9 +18,9 @@ const STEPS: Array<{ key: FlowKey; label: string; href: string }> = [
 export function FlowSteps({ current }: { current: FlowKey }) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
   return (
-    <nav aria-label="진행 단계" style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
-      <Link href="/" aria-label="홈으로" style={{ fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
-        아루
+    <nav aria-label={t("진행 단계")} style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
+      <Link href="/" aria-label={t("홈으로")} style={{ fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
+        {t("아루")}
       </Link>
       <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", marginRight: 2 }} />
       {STEPS.map((step, index) => {
@@ -34,7 +37,7 @@ export function FlowSteps({ current }: { current: FlowKey }) {
               paddingBottom: 2,
             }}
           >
-            {step.label}
+            {t(step.label)}
           </span>
         );
         return (

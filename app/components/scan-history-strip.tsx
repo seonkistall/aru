@@ -5,6 +5,7 @@
 // mount; renders nothing until there are at least 2 scans to compare.
 import { useEffect, useState } from "react";
 import { getScanHistory, type ScanHistoryEntry } from "@/lib/scan-history";
+import { t } from "@/lib/i18n/core";
 
 const LEVEL_COLOR = ["var(--success)", "var(--bronze)", "var(--plum)"];
 
@@ -27,29 +28,29 @@ export function ScanHistoryStrip() {
     const day = new Date(ts);
     day.setHours(0, 0, 0, 0);
     const days = Math.round((startOfToday.getTime() - day.getTime()) / 86400000);
-    return days <= 0 ? "오늘" : `${days}일 전`;
+    return days <= 0 ? t("오늘") : t("{days}일 전", { days });
   };
 
   return (
     <section style={wrap}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-        <p style={label}>내 기록</p>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>최근 {history.length}회 스캔</span>
+        <p style={label}>{t("내 기록")}</p>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("최근 {n}회 스캔", { n: history.length })}</span>
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", height: 44 }}>
         {recent.map((entry) => {
           const overall = Math.max(entry.oil, entry.redness, entry.pores); // 0-2
           const h = 14 + overall * 13;
-          const level = ["잔잔", "보통", "뚜렷"][overall];
+          const level = [t("잔잔"), t("보통"), t("뚜렷")][overall];
           return (
             <div key={entry.ts} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <div role="img" aria-label={`${dayLabel(entry.ts)}, 신호 ${level}`} style={{ width: "100%", maxWidth: 26, height: h, borderRadius: 5, background: LEVEL_COLOR[overall] }} />
+              <div role="img" aria-label={t("{day}, 신호 {level}", { day: dayLabel(entry.ts), level })} style={{ width: "100%", maxWidth: 26, height: h, borderRadius: 5, background: LEVEL_COLOR[overall] }} />
               <span style={{ fontSize: 10, color: "var(--faint)" }}>{dayLabel(entry.ts)}</span>
             </div>
           );
         })}
       </div>
-      <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>막대가 낮을수록 신호가 잔잔해요 · 참고용 흐름이에요</p>
+      <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>{t("막대가 낮을수록 신호가 잔잔해요 · 참고용 흐름이에요")}</p>
     </section>
   );
 }

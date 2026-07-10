@@ -7,6 +7,7 @@ import { FlowSteps } from "@/app/components/flow-steps";
 import { recordFunnelEvent } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
+import { t } from "@/lib/i18n/core";
 
 const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성", "중성"];
 const CONCERNS: Concern[] = ["모공", "블랙헤드", "붉은기", "건조", "수분부족", "유분", "트러블", "잡티", "칙칙함", "각질", "탄력", "민감"];
@@ -33,15 +34,15 @@ function loadScanHint(): ScanHint {
     if (!raw) return null;
     const scan = JSON.parse(raw) as ScanReads;
     if (!scan || scan.retakeRecommended || (scan.confidence ?? 0) < 0.58) {
-      return { concerns: [], text: "촬영 조건이 애매해서 설문 답변을 중심으로 추천할게요." };
+      return { concerns: [], text: t("촬영 조건이 애매해서 설문 답변을 중심으로 추천할게요.") };
     }
     const concerns: Concern[] = [];
     if (scan.oil >= 2) concerns.push("유분");
     if (scan.redness >= 1) concerns.push("붉은기");
     if (scan.pores >= 1) concerns.push("모공");
     return concerns.length
-      ? { concerns, text: `스캔에서 ${concerns.join("·")} 신호가 보여 고민에 미리 담았어요.` }
-      : { concerns: [], text: "스캔에서는 크게 도드라진 신호가 적어 기본 설문을 중심으로 볼게요." };
+      ? { concerns, text: t("스캔에서 {signals} 신호가 보여 고민에 미리 담았어요.", { signals: concerns.map((c) => t(c)).join("·") }) }
+      : { concerns: [], text: t("스캔에서는 크게 도드라진 신호가 적어 기본 설문을 중심으로 볼게요.") };
   } catch {
     return null;
   }
@@ -80,7 +81,7 @@ export default function Survey() {
     try {
       sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
     } catch {
-      setSaveErr("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.");
+      setSaveErr(t("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요."));
       return;
     }
     recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: Boolean(scanHint?.concerns.length) });
@@ -90,17 +91,17 @@ export default function Survey() {
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>몇 가지만 더 알려주세요</p>
+        <p style={eyebrow}>{t("몇 가지만 더 알려주세요")}</p>
         <FlowSteps current="survey" />
-        <h1 style={titleStyle}>추천을 더 정확하게 맞춰볼게요</h1>
+        <h1 style={titleStyle}>{t("추천을 더 정확하게 맞춰볼게요")}</h1>
 
         {(() => {
           const done = [Boolean(category), Boolean(type), Boolean(budget)].filter(Boolean).length;
           return (
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--text-muted)", marginBottom: 6 }}>
-                <span>필수 항목 {done}/3</span>
-                <span>{done === 3 ? "리포트를 볼 수 있어요" : "제품·타입·예산을 골라주세요"}</span>
+                <span>{t("필수 항목 {done}/3", { done })}</span>
+                <span>{done === 3 ? t("리포트를 볼 수 있어요") : t("제품·타입·예산을 골라주세요")}</span>
               </div>
               <div style={{ height: 6, background: "var(--surface-tint)", borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(done / 3) * 100}%`, background: "var(--plum)", borderRadius: 3, transition: "width .3s ease" }} />
@@ -112,7 +113,7 @@ export default function Survey() {
         {scanHint && (
           <div style={scanHintStyle}>
             <p style={{ margin: 0 }}>{scanHint.text}</p>
-            <Link href="/scan" style={retakeLinkStyle}>스캔 다시 하기</Link>
+            <Link href="/scan" style={retakeLinkStyle}>{t("스캔 다시 하기")}</Link>
           </div>
         )}
 
@@ -136,11 +137,11 @@ export default function Survey() {
           <Chips options={AVOIDS} selected={avoid} onPick={(v) => toggle(avoid, v, setAvoid)} />
         </Section>
 
-        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>내 추천 보기</button>
+        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>{t("내 추천 보기")}</button>
         {saveErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{saveErr}</p>}
         {!ready && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
-            제품 종류·피부 타입·예산을 고르면 리포트를 볼 수 있어요
+            {t("제품 종류·피부 타입·예산을 고르면 리포트를 볼 수 있어요")}
           </p>
         )}
       </div>
@@ -152,8 +153,8 @@ function Section({ title, required, hint, children }: { title: string; required?
   return (
     <section style={{ marginBottom: 22 }}>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
-        {title}{required && <span style={{ color: "var(--plum)" }}> *</span>}
-        {hint && <span style={{ color: "var(--faint)", fontWeight: 400 }}> · {hint}</span>}
+        {t(title)}{required && <span style={{ color: "var(--plum)" }}> *</span>}
+        {hint && <span style={{ color: "var(--faint)", fontWeight: 400 }}> · {t(hint)}</span>}
       </p>
       {children}
     </section>
@@ -167,7 +168,7 @@ function Chips<T extends string>({ options, selected, onPick }: { options: T[]; 
         const on = selected.includes(option);
         return (
           <button key={option} onClick={() => onPick(option)} aria-pressed={on} style={chipStyle(on)}>
-            {option}
+            {t(option)}
           </button>
         );
       })}
