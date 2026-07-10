@@ -67,3 +67,11 @@ body {
   font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* i18n text safety: EN/JA/ZH strings run longer than the Korean the layout was
+   designed around — break long words instead of overflowing fixed boxes, and
+   keep Korean phrase-level wrapping. min-width:0 lets flex text children
+   shrink instead of pushing outside their card. */
+body { word-break: keep-all; overflow-wrap: break-word; }
+button, a { overflow-wrap: break-word; word-break: keep-all; min-width: 0; }
+p, h1, h2, h3, span, small, label { overflow-wrap: break-word; }

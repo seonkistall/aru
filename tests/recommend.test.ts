@@ -11,14 +11,15 @@ const baseSurvey: Survey = {
 
 describe("budgetLabel", () => {
   it("maps chip won values back to their bucket label", () => {
-    expect(budgetLabel(15000)).toBe("1만원대");
-    expect(budgetLabel(25000)).toBe("2만원대");
-    expect(budgetLabel(35000)).toBe("3만원대");
+    expect(budgetLabel(15000)).toBe("1만원");
+    expect(budgetLabel(25000)).toBe("2만원");
+    expect(budgetLabel(35000)).toBe("3만원");
+    expect(budgetLabel(49000)).toBe("4만원");
   });
 
-  it("collapses everything at/above 40k into the top bucket", () => {
-    expect(budgetLabel(40000)).toBe("4만원 이상");
-    expect(budgetLabel(60000)).toBe("4만원 이상");
+  it("collapses everything at/above 50k into the top bucket", () => {
+    expect(budgetLabel(50000)).toBe("5만원 이상");
+    expect(budgetLabel(60000)).toBe("5만원 이상");
   });
 });
 
@@ -104,7 +105,7 @@ describe("recommend()", () => {
     const result = recommend({ type: "복합성", concerns: [], budget: 19000, avoid: [], category: "토너" }, null);
     expect(result.relaxed).not.toBe("budget");
     expect(result.relaxed).not.toBe("both");
-    expect(budgetLabel(19000)).toBe("1만원대");
+    expect(budgetLabel(19000)).toBe("1만원");
   });
 
   it("keeps the budget-relaxation note even alongside a low-confidence scan", () => {

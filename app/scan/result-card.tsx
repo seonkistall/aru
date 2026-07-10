@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n/core";
-import type { SkinReads } from "@/lib/skin";
+import { localizedNarrative, type SkinReads } from "@/lib/skin";
 import { confidenceBox, eyebrow, resultCardStyle } from "./scan-styles";
 
 // The on-screen skin report shown after a successful scan (result phase).
@@ -17,7 +17,7 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
       <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 34, lineHeight: 1.2, color: "var(--ink)", margin: "10px 0 8px", whiteSpace: "pre-line" }}>
         {t(reads.headline)}
       </h2>
-      <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{t(reads.narrative)}</p>
+      <p style={{ fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 18 }}>{localizedNarrative(reads)}</p>
       <div style={confidenceBox(reads.retakeRecommended)}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <span style={{ fontSize: 13, fontWeight: 800, color: reads.retakeRecommended ? "var(--plum-press)" : "var(--success)" }}>

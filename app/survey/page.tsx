@@ -18,10 +18,11 @@ const AVOIDS: Avoid[] = ["향료", "알코올", "에센셜오일", "파라벤", 
 // product at 16,000 is "1만원대" by label yet over a 15,000 cap, producing a
 // false "budget stretched" note.
 const BUDGETS = [
-  { label: "1만원대", won: 19000 },
-  { label: "2만원대", won: 29000 },
-  { label: "3만원대", won: 39000 },
-  { label: "4만원 이상", won: 999999 },
+  { label: "1만원", won: 19000 },
+  { label: "2만원", won: 29000 },
+  { label: "3만원", won: 39000 },
+  { label: "4만원", won: 49000 },
+  { label: "5만원 이상", won: 999999 },
 ];
 const BUDGET_LABELS = BUDGETS.map((b) => b.label);
 
@@ -133,7 +134,7 @@ export default function Survey() {
             onPick={(label) => setBudget(BUDGETS.find((b) => b.label === label)?.won ?? null)}
           />
         </Section>
-        <Section title="피하고 싶은 성분" hint="화해 주의 성분 기준">
+        <Section title="피하고 싶은 성분">
           <Chips options={AVOIDS} selected={avoid} onPick={(v) => toggle(avoid, v, setAvoid)} />
         </Section>
 
