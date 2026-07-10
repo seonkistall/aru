@@ -29,16 +29,20 @@ export default function Home() {
         {/* 小黑 reading skin through a magnifier, with a red hand annotation */}
         <div style={{ position: "relative", marginBottom: 8 }}>
           <Xiaohei size={156} pose="magnify" bob />
+          {/* Anchored to the character's left edge and growing leftward, so
+              longer EN/JA/ZH strings never overlap the character. */}
           <span
             style={{
               position: "absolute",
-              left: -58,
-              top: 30,
+              right: "calc(100% - 14px)",
+              top: 28,
               fontFamily: "var(--font-hand)",
-              fontSize: 23,
+              fontSize: 21,
               color: "var(--plum)",
-              lineHeight: 1.05,
+              lineHeight: 1.1,
               transform: "rotate(-7deg)",
+              textAlign: "right",
+              whiteSpace: "nowrap",
             }}
           >
             {t("30초면")}<br />{t("읽어요")}
@@ -49,7 +53,7 @@ export default function Home() {
           </svg>
         </div>
 
-        <h1 style={{ fontFamily: "var(--font-hand)", fontSize: 54, lineHeight: 1.04, margin: "4px 0 2px" }}>
+        <h1 style={{ fontFamily: "var(--font-hand)", fontSize: "clamp(30px, 12vw, 54px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
           {t("과장 없이,")}
           <br />
           {t("너한테 딱 맞는 셋")}
