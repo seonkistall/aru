@@ -12,7 +12,7 @@ import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
 import { RoutineReminder } from "@/app/components/routine-reminder";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
-import type { SkinReads } from "@/lib/skin";
+import { localizedNarrative, type SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { ReengageOptIn } from "@/app/components/reengage-optin";
@@ -98,11 +98,14 @@ function loadInitialView(): InitialView | null {
   return { survey, reads, result: recommend(survey, scan) };
 }
 
+type ReportStep = "analysis" | "picks" | "routine";
+
 export default function Report() {
   const router = useRouter();
   const [initial, setInitial] = useState<InitialView | null>(null);
   const [result, setResult] = useState<RecoResult | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
 
   useEffect(() => {
     // sessionStorage is client-only; reading it during the first render caused
@@ -154,6 +157,19 @@ export default function Report() {
   if (!initial || !result) return <main style={{ minHeight: "100dvh", background: "var(--paper)" }} />;
 
   const { survey, reads } = initial;
+  // One screen per stage instead of one long page: analysis → picks → routine
+  // & follow-up. Survey-only visitors (no scan) start at picks.
+  const steps: ReportStep[] = reads ? ["analysis", "picks", "routine"] : ["picks", "routine"];
+  const step = steps[Math.min(stepIndex, steps.length - 1)];
+  const stepTitles: Record<ReportStep, string> = {
+    analysis: t("피부 분석"),
+    picks: t("추천 제품"),
+    routine: t("오늘의 루틴"),
+  };
+  const goStep = (next: number) => {
+    setStepIndex(Math.max(0, Math.min(steps.length - 1, next)));
+    window.scrollTo({ top: 0 });
+  };
   const top = result.picks[0];
   const topCommerce = top ? primaryCommerceLink(top.sku) : null;
   const concernText = survey.concerns.slice(0, 2).map((concern) => t(concern)).join("·") || t("{type} 피부", { type: t(survey.type) });
@@ -176,17 +192,28 @@ export default function Report() {
           <div>
             <p style={eyebrow}>{t("피부 리포트")}</p>
             <FlowSteps current="report" />
-            <h1 style={headlineStyle}>{reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })}</h1>
+            <h1 style={headlineStyle}>
+              {stepIndex === 0 ? (reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })) : stepTitles[step]}
+            </h1>
           </div>
           <Xiaohei size={60} pose="magnify" />
         </div>
-        <p style={subStyle}>{reads ? t("사진과 설문을 함께 읽었어요.") : t("설문 답변을 바탕으로 정리했어요.")}</p>
-        {reads?.narrative && <p style={narrativeStyle}>{t(reads.narrative)}</p>}
-        {reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
+        <div style={stepTabs} role="tablist" aria-label={t("진행 단계")}>
+          {steps.map((s, i) => (
+            <button key={s} type="button" role="tab" aria-selected={i === stepIndex} onClick={() => goStep(i)} style={stepTab(i === stepIndex, i < stepIndex)}>
+              {i + 1}. {stepTitles[s]}
+            </button>
+          ))}
+        </div>
+        {stepIndex === 0 && (
+          <p style={subStyle}>{reads ? t("사진과 설문을 함께 읽었어요.") : t("설문 답변을 바탕으로 정리했어요.")}</p>
+        )}
+        {step === "analysis" && reads?.narrative && <p style={narrativeStyle}>{localizedNarrative(reads)}</p>}
+        {step === "analysis" && reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
 
-        <ScanHistoryStrip />
+        {step === "analysis" && <ScanHistoryStrip />}
 
-        {reads && (
+        {step === "analysis" && reads && (
           <section style={card}>
             <h2 style={sectionLabel}>{t("피부 분석")}</h2>
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
@@ -209,6 +236,7 @@ export default function Report() {
           </section>
         )}
 
+        {step === "picks" && (
         <section style={{ margin: "30px 0 24px" }}>
           <h2 style={sectionLabel}>{t("추천 기준")}</h2>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
@@ -224,7 +252,9 @@ export default function Report() {
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>{t("제외 요청: {list}", { list: survey.avoid.map((item) => t(item)).join(" · ") })}</p>
           )}
         </section>
+        )}
 
+        {step === "routine" && (
         <details open style={card}>
           <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
             <h2 style={sectionLabel}>{t("오늘의 루틴")}</h2>
@@ -236,7 +266,9 @@ export default function Report() {
             <RoutineReminder label={t("{type} · {category} 루틴", { type: t(survey.type), category: t(survey.category) })} />
           </div>
         </details>
+        )}
 
+        {step === "routine" && (
         <section style={careCard}>
           <p style={sectionLabel}>{t("후속 연결")}</p>
           <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 6px" }}>
@@ -254,32 +286,52 @@ export default function Report() {
           </Link>
           <ReengageOptIn context={`${t(survey.type)}·${t(survey.category)}`} />
         </section>
-
-        {result.note && <p style={noteStyle}>{t(result.note)}</p>}
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-          <h2 style={{ ...sectionLabel, marginBottom: 0 }}>{t("추천 제품")}</h2>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("{category} · {n}개", { category: t(survey.category), n: result.picks.length })}</span>
-        </div>
-        <div style={{ display: "grid", gap: 12 }}>
-          {result.picks.map((pick, i) => (
-            <ProductCard key={pick.sku.id} pick={pick} placement="report_product" rank={i + 1} />
-          ))}
-        </div>
-
-        {result.picks.length >= 2 && (
-          <details style={{ ...card, marginTop: 16 }}>
-            <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
-              <span style={sectionLabel}>{t("추천 제품 비교")}</span>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("가격·평점·성분 한눈에")}</span>
-            </summary>
-            <div style={{ marginTop: 12 }}>
-              <ProductCompare picks={result.picks} />
-            </div>
-          </details>
         )}
+
+        {step === "picks" && (
+          <>
+            {result.note && <p style={noteStyle}>{t(result.note)}</p>}
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+              <h2 style={{ ...sectionLabel, marginBottom: 0 }}>{t("추천 제품")}</h2>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("{category} · {n}개", { category: t(survey.category), n: result.picks.length })}</span>
+            </div>
+            <div style={{ display: "grid", gap: 12 }}>
+              {result.picks.map((pick, i) => (
+                <ProductCard key={pick.sku.id} pick={pick} placement="report_product" rank={i + 1} />
+              ))}
+            </div>
+
+            {result.picks.length >= 2 && (
+              <details style={{ ...card, marginTop: 16 }}>
+                <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+                  <span style={sectionLabel}>{t("추천 제품 비교")}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("가격·평점·성분 한눈에")}</span>
+                </summary>
+                <div style={{ marginTop: 12 }}>
+                  <ProductCompare picks={result.picks} />
+                </div>
+              </details>
+            )}
+          </>
+        )}
+
+        <div style={stepNav}>
+          {stepIndex > 0 ? (
+            <button type="button" onClick={() => goStep(stepIndex - 1)} style={stepNavBtn(false)}>
+              ← {t("이전")}
+            </button>
+          ) : (
+            <span />
+          )}
+          {stepIndex < steps.length - 1 && (
+            <button type="button" onClick={() => goStep(stepIndex + 1)} style={stepNavBtn(true)}>
+              {t("다음")}: {stepTitles[steps[stepIndex + 1]]} →
+            </button>
+          )}
+        </div>
       </div>
 
-      {top && (
+      {top && step === "picks" && (
         <div style={stickyBar}>
           <div className="mx-auto" style={{ maxWidth: 420, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <a
@@ -388,6 +440,38 @@ const trustChip: React.CSSProperties = { border: "1px solid var(--line)", border
 const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px" };
 const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
+
+const stepTabs: React.CSSProperties = { display: "flex", gap: 6, marginTop: 12, marginBottom: 4 };
+function stepTab(active: boolean, done: boolean): React.CSSProperties {
+  return {
+    flex: 1,
+    minWidth: 0,
+    border: `1.5px solid ${active ? "var(--ink)" : "var(--line)"}`,
+    background: active ? "var(--surface-tint)" : "var(--surface)",
+    color: active ? "var(--ink)" : done ? "var(--ink-soft)" : "var(--text-muted)",
+    borderRadius: 999,
+    padding: "7px 4px",
+    fontSize: 12,
+    fontWeight: active ? 800 : 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+}
+const stepNav: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 28 };
+function stepNavBtn(primary: boolean): React.CSSProperties {
+  return {
+    border: primary ? "none" : "1.5px solid var(--line)",
+    background: primary ? "var(--ink)" : "var(--surface)",
+    color: primary ? "var(--paper)" : "var(--ink-soft)",
+    borderRadius: 10,
+    padding: "13px 18px",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+}
 
 function confidenceCard(retake: boolean): React.CSSProperties {
   return {

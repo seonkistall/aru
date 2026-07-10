@@ -18,9 +18,9 @@ function Arrow() {
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      <header className="flex items-center justify-between px-6 pt-7">
+      <header className="flex items-center justify-between px-6 pt-7" style={{ paddingRight: 118 }}>
         <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)" }}>{t("아름다움을, 매일의 루틴으로")}</span>
+        <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>
 
       <MoodFromLink />

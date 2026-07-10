@@ -136,11 +136,12 @@ function ingredientTagsFor(sku: Sku, concerns: Concern[]): IngredientTag[] {
   return tags.sort((a, b) => Number(Boolean(b.forConcern)) - Number(Boolean(a.forConcern))).slice(0, 3);
 }
 
-// Survey stores 15000/25000/35000/60000 for the chips 1/2/3만원대·4만원 이상 —
-// rounding won values mislabels every bucket, so map back to the chip label.
+// Survey stores each chip's band ceiling (19000/29000/39000/49000/999999 for
+// 1/2/3/4만원·5만원 이상) — rounding won values mislabels every bucket, so
+// floor back to the chip label.
 export function budgetLabel(won: number): string {
-  if (won >= 40000) return t("4만원 이상");
-  return t("{n}만원대", { n: Math.max(1, Math.floor(won / 10000)) });
+  if (won >= 50000) return t("5만원 이상");
+  return t("{n}만원", { n: Math.max(1, Math.floor(won / 10000)) });
 }
 
 function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean, avoidedClear: boolean): string {
