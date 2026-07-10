@@ -110,7 +110,7 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
             <span style={due ? weekBadge : softBadge}>{due ? t("{round}주차", { round }) : t("사용 중")}</span>
           </div>
-          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{purchase.name}</p>
+          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{t(purchase.name)}</p>
         </div>
       </div>
       {!due ? (

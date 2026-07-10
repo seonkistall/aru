@@ -160,8 +160,8 @@ export default function CarePage() {
                   <ProductVisual category={pick.sku.category} brand={pick.sku.brand} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{pick.sku.brand}</p>
-                  <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", marginBottom: 6 }}>{pick.sku.name}</h2>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t(pick.sku.brand)}</p>
+                  <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", marginBottom: 6 }}>{t(pick.sku.name)}</h2>
                   <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>{t(pick.reason)}</p>
                 </div>
               </div>

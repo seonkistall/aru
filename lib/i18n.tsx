@@ -2,20 +2,38 @@
 
 /**
  * React bindings for the i18n core (see lib/i18n/core.ts for the gettext-style
- * design). LanguageProvider remounts the subtree via key={lang} on change, so
- * plain t() calls anywhere (components or lib code running during render)
- * pick up the new language without subscribing to context.
+ * design). The language lives in localStorage and is read through
+ * useSyncExternalStore, so SSR/hydration always starts from Korean and the
+ * client re-renders once with the saved language. LanguageProvider remounts
+ * the subtree via key={lang} on change, so plain t() calls anywhere
+ * (components or lib code running during render) pick up the new language
+ * without subscribing to context.
  */
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 import { isLang, LANG_STORAGE_KEY, setCurrentLang, type Lang } from "./i18n/core";
 
 export { getLang, LANGS, t, type Lang } from "./i18n/core";
 
-function readStoredLang(): Lang {
-  if (typeof window === "undefined") return "ko";
+const LANG_EVENT = "aru:lang-change";
+
+// In-memory fallback so the switch still works when localStorage is
+// unavailable (private mode).
+let memoryLang: Lang | null = null;
+
+function subscribe(callback: () => void) {
+  window.addEventListener(LANG_EVENT, callback);
+  return () => window.removeEventListener(LANG_EVENT, callback);
+}
+
+function getSnapshot(): Lang {
+  if (memoryLang) return memoryLang;
   const v = window.localStorage.getItem(LANG_STORAGE_KEY);
   return isLang(v) ? v : "ko";
+}
+
+function getServerSnapshot(): Lang {
+  return "ko";
 }
 
 type LangContextValue = { lang: Lang; setLang: (lang: Lang) => void };
@@ -26,35 +44,25 @@ export function useLang(): LangContextValue {
   return useContext(LangContext);
 }
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("ko");
+function setLang(next: Lang) {
+  memoryLang = next;
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, next);
+  } catch {
+    // storage unavailable — memoryLang keeps the session working
+  }
+  window.dispatchEvent(new Event(LANG_EVENT));
+}
 
-  // Read the saved language after mount (SSR always renders Korean; the
-  // key={lang} remount below re-renders everything in the saved language).
-  useEffect(() => {
-    const saved = readStoredLang();
-    if (saved !== "ko") {
-      setCurrentLang(saved);
-      setLangState(saved);
-    }
-  }, []);
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const lang = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
+  // Keep the singleton in sync before children render.
+  setCurrentLang(lang);
 
   useEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
   }, [lang]);
-
-  const setLang = (next: Lang) => {
-    setCurrentLang(next);
-    try {
-      window.localStorage.setItem(LANG_STORAGE_KEY, next);
-    } catch {
-      // storage unavailable (private mode) — language still switches for the session
-    }
-    setLangState(next);
-  };
-
-  // Keep the singleton in sync before children render.
-  setCurrentLang(lang);
 
   return (
     <LangContext.Provider value={{ lang, setLang }}>
