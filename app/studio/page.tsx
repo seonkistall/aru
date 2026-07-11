@@ -32,8 +32,8 @@ const PRESETS: { name: string; headline: string; reads: Read[] }[] = [
 
 export default function Studio() {
   const cardRef = useRef<HTMLDivElement>(null);
-  const [headline, setHeadline] = useState(PRESETS[0].headline);
-  const [reads, setReads] = useState<Read[]>(PRESETS[0].reads);
+  const [headline, setHeadline] = useState(() => t(PRESETS[0].headline));
+  const [reads, setReads] = useState<Read[]>(() => PRESETS[0].reads.map((read) => ({ ...read, label: t(read.label), value: t(read.value) })));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fromScan, setFromScan] = useState(false);
@@ -53,20 +53,20 @@ export default function Studio() {
     if (!scan?.oil?.value) scan = loadLastResult()?.reads ?? null;
     if (!scan?.oil?.value) return;
     /* eslint-disable react-hooks/set-state-in-effect */
-    setHeadline(scan.headline || PRESETS[0].headline);
+    setHeadline(t(scan.headline || PRESETS[0].headline));
     setReads([
-      { label: "유분", value: scan.oil.value, calm: scan.oil.calm },
-      { label: "모공/결", value: scan.pores.value, calm: scan.pores.calm },
-      { label: "붉은기", value: scan.redness.value, calm: scan.redness.calm },
-      { label: "전반", value: scan.overall.value, calm: scan.overall.calm },
+      { label: t("유분"), value: t(scan.oil.value), calm: scan.oil.calm },
+      { label: t("모공/결"), value: t(scan.pores.value), calm: scan.pores.calm },
+      { label: t("붉은기"), value: t(scan.redness.value), calm: scan.redness.calm },
+      { label: t("전반"), value: t(scan.overall.value), calm: scan.overall.calm },
     ]);
     setFromScan(true);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   function applyPreset(i: number) {
-    setHeadline(PRESETS[i].headline);
-    setReads(PRESETS[i].reads.map((read) => ({ ...read })));
+    setHeadline(t(PRESETS[i].headline));
+    setReads(PRESETS[i].reads.map((read) => ({ ...read, label: t(read.label), value: t(read.value) })));
   }
 
   function setRead(i: number, patch: Partial<Read>) {
