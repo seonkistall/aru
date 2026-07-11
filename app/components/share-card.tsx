@@ -1,7 +1,6 @@
 "use client";
 
 import { forwardRef } from "react";
-import type { SkinReads } from "@/lib/skin";
 import { t } from "@/lib/i18n/core";
 
 export type CardRead = { label: string; value: string; calm?: boolean };
@@ -34,18 +33,6 @@ export const ShareCard = forwardRef<HTMLDivElement, { headline: string; reads: C
     );
   }
 );
-
-export function skinReadsToCard(reads: SkinReads): { headline: string; rows: CardRead[] } {
-  return {
-    headline: reads.headline,
-    rows: [
-      { label: "유분", value: reads.oil.value, calm: reads.oil.calm },
-      { label: "모공/결", value: reads.pores.value, calm: reads.pores.calm },
-      { label: "붉은기", value: reads.redness.value, calm: reads.redness.calm },
-      { label: "전반", value: reads.overall.value, calm: reads.overall.calm },
-    ],
-  };
-}
 
 export type ShareMode = "web-share" | "download";
 
@@ -104,6 +91,6 @@ export async function downloadCardImage(node: HTMLElement): Promise<void> {
 }
 
 const miniLabel: React.CSSProperties = { fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
-const cardPreview: React.CSSProperties = { width: 360, height: 640, background: "var(--paper)", padding: "34px 30px", display: "flex", flexDirection: "column", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" };
+const cardPreview: React.CSSProperties = { width: 360, maxWidth: "100%", height: 640, background: "var(--paper)", padding: "34px 30px", display: "flex", flexDirection: "column", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" };
 const cardHeadline: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 40, lineHeight: 1.2, color: "var(--ink)", margin: "30px 0 6px", whiteSpace: "pre-line" };
 const rowStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "13px 0", borderBottom: "1px solid var(--line)" };

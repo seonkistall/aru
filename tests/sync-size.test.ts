@@ -4,7 +4,9 @@ import { buildSyncRequestBody, syncRequestByteSize } from "@/lib/sync-size";
 describe("sync request sizing", () => {
   test("measures the exact UTF-8 body that ops will post", () => {
     const payload = {
-      schemaVersion: "2026-06-29.sync.v1",
+      schemaVersion: "2026-06-29.sync.v1" as const,
+      clientGeneratedAt: 1750000000000,
+      source: "ops-local" as const,
       labels: [],
       cropSamples: [],
       pilotNotes: [],

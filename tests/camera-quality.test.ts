@@ -27,9 +27,10 @@ describe("camera quality upgrade helpers", () => {
   test("falls back to the legacy camera request after a high-res failure", () => {
     const first: CameraAttempt = "high";
     const second = nextCameraAttempt(first);
+    expect(second).toBe("fallback");
+    if (second === null) throw new Error("unreachable: high must fall back");
     const constraints = cameraConstraintsForAttempt(second);
 
-    expect(second).toBe("fallback");
     expect(constraints.video).toMatchObject({
       facingMode: "user",
       width: { ideal: 720 },
