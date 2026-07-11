@@ -43,6 +43,8 @@ export function commitFeedbackSample(input: FeedbackSampleCommit, deps: Feedback
     cropSaved,
     labelCount,
     cropCount,
+    // Korean canonical, not rendered directly — the feedback UI composes its
+    // localized copy from ok/labelCount so translation stays at render time.
     message: ok ? `고마워요. ${labelCount}번째 피부 피드백이에요.` : "저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.",
   };
 }

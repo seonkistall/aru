@@ -41,15 +41,17 @@ export function clinicLinks(locale: CareLocale): CareLink[] {
   return locale === "ko"
     ? [
         {
-          label: t("근처 피부과 찾기"),
+          // Korean canonical — consumers translate at render (t(link.label));
+          // recordCareIntent persists these labels, so no t() here.
+          label: "근처 피부과 찾기",
           href: "https://www.google.com/maps/search/%ED%94%BC%EB%B6%80%EA%B3%BC",
-          note: t("현재 위치 주변 피부과를 지도에서 찾아요."),
+          note: "현재 위치 주변 피부과를 지도에서 찾아요.",
           kind: "clinic",
         },
         {
-          label: t("피부 상담 검색"),
+          label: "피부 상담 검색",
           href: "https://search.naver.com/search.naver?query=%ED%94%BC%EB%B6%80%EA%B3%BC%20%EC%83%81%EB%8B%B4",
-          note: t("상담 가능한 병원과 정보를 검색해요."),
+          note: "상담 가능한 병원과 정보를 검색해요.",
           kind: "clinic",
         },
       ]

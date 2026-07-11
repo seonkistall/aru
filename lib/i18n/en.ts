@@ -695,4 +695,12 @@ export const EN: Record<string, string> = {
   "이전": "Back",
   "참고용 분석": "Reference only",
   "링크가 복사됐어요! 붙여넣기만 하면 초대 완료": "Link copied! Just paste it to invite",
+  "결 약간": "Texture slightly visible",
+  "저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.": "Couldn't save. Please check your browser storage and try again.",
+  "재촬영하면 더 믿을 수 있어요": "A retake makes this more reliable",
+  "이번 추천은 스캔 신호를 무리하게 쓰지 않고 설문 답변을 중심으로 정리했어요. 빛, 각도, 흔들림을 맞춰 다시 찍으면 리포트와 추천 근거가 더 선명해집니다.": "This recommendation leans on your survey answers instead of stretching weak scan signals. Retake with better light, angle, and steadiness, and the report and its reasoning become much clearer.",
+  "스캔은 참고로만 반영했어요": "The scan was used as reference only",
+  "카메라 신호가 충분히 단단하지 않아 추천 점수에는 설문에서 고른 피부 타입, 고민, 예산을 더 크게 반영했어요.": "The camera signal wasn't solid enough, so the recommendation score leans more on the skin type, concerns, and budget you chose in the survey.",
+  "스캔 신호를 추천에 반영했어요": "Scan signals shaped these picks",
+  "촬영 프레임의 피부 신호와 설문 답변을 함께 보고 제품 추천, 루틴, 주의 성분을 연결했어요. 리포트는 의료 판단이 아니라 화장품 선택을 돕는 참고 결과입니다.": "We read the skin signals in your capture together with your survey answers to connect product picks, your routine, and ingredients to watch. This report is a reference for choosing cosmetics, not a medical judgment.",
 };
