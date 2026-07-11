@@ -72,6 +72,15 @@ body {
    designed around — break long words instead of overflowing fixed boxes, and
    keep Korean phrase-level wrapping. min-width:0 lets flex text children
    shrink instead of pushing outside their card. */
-body { word-break: keep-all; overflow-wrap: break-word; }
+body { word-break: keep-all; overflow-wrap: break-word; overflow-x: hidden; }
 button, a { overflow-wrap: break-word; word-break: keep-all; min-width: 0; }
 p, h1, h2, h3, span, small, label { overflow-wrap: break-word; }
+
+/* keep-all suits Korean (phrase-level wrapping at spaces) but Japanese and
+   Chinese have no spaces — keep-all forbids ALL breaks there, forcing
+   single-line overflow. Restore normal CJK breaking for those languages. */
+html[lang="ja"] body, html[lang="zh-CN"] body,
+html[lang="ja"] button, html[lang="zh-CN"] button,
+html[lang="ja"] a, html[lang="zh-CN"] a {
+  word-break: normal;
+}

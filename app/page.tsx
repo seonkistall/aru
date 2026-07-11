@@ -131,7 +131,7 @@ function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" 
           <span style={{ flexShrink: 0, marginLeft: -6 }}>
             <Xiaohei size={46} pose={pose} />
           </span>
-          <div style={{ textAlign: "left" }}>
+          <div style={{ textAlign: "left", minWidth: 0, flex: 1 }}>
             <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
             <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
           </div>

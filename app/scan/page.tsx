@@ -872,7 +872,7 @@ export default function Scan() {
         )}
 
         {(phase === "ready" || phase === "analyzing") && (
-          <div style={{ position: "sticky", bottom: 0, zIndex: 5, background: "var(--paper)", padding: "10px 0 8px", marginTop: 6 }}>
+          <div style={{ position: "sticky", bottom: 0, zIndex: 5, background: "var(--paper)", padding: "10px 0 calc(8px + env(safe-area-inset-bottom))", marginTop: 6 }}>
             <button
               onClick={capture}
               disabled={phase === "analyzing" || !canCapture || guideState !== "ready"}
