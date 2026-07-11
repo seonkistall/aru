@@ -95,7 +95,11 @@ export function Feedback({ reads, cropDataUrl, captureMeta }: { reads: SkinReads
       {stage === "done" && (
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: 14, color: saveResult?.ok === false ? "var(--plum-press)" : "var(--ink)" }}>
-            {saveResult?.message ? t(saveResult.message) : t("고마워요. {count}번째 피부 피드백이에요.", { count })}
+            {saveResult
+              ? saveResult.ok
+                ? t("고마워요. {count}번째 피부 피드백이에요.", { count: saveResult.labelCount })
+                : t("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.")
+              : t("고마워요. {count}번째 피부 피드백이에요.", { count })}
           </p>
           {cropDataUrl && saveResult?.cropSaved !== false && (
             <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{t("학습용 크롭 {count}개가 이 기기에 저장되어 있어요.", { count: cropCount })}</p>

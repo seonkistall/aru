@@ -320,7 +320,8 @@ export default function Report() {
             {t("추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.")}
           </p>
           <Link href="/care" style={careBtn}>{t("구매/상담 연결 보기")}</Link>
-          <ReengageOptIn context={`${t(survey.type)}·${t(survey.category)}`} />
+          {/* context is persisted (Supabase reengage_contacts) — keep Korean canonical, no t() */}
+          <ReengageOptIn context={`${survey.type}·${survey.category}`} />
         </section>
         )}
 

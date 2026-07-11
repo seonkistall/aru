@@ -39,8 +39,13 @@ function detectBrowserLang(): Lang {
 
 function getSnapshot(): Lang {
   if (memoryLang) return memoryLang;
-  const v = window.localStorage.getItem(LANG_STORAGE_KEY);
-  if (isLang(v)) return v;
+  try {
+    const v = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (isLang(v)) return v;
+  } catch {
+    // accessing localStorage itself can throw (cookies/site data blocked) —
+    // getSnapshot runs during render, so fall through to detection
+  }
   memoryLang = detectBrowserLang();
   return memoryLang;
 }
