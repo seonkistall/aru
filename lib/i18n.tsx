@@ -26,10 +26,23 @@ function subscribe(callback: () => void) {
   return () => window.removeEventListener(LANG_EVENT, callback);
 }
 
+// First visit (no saved choice): follow the browser language so international
+// testers land in a language they can read without hunting for the switcher.
+// Detected once per session (stable snapshot); only an explicit pick persists.
+function detectBrowserLang(): Lang {
+  const nav = (navigator.language || "").toLowerCase();
+  if (nav.startsWith("en")) return "en";
+  if (nav.startsWith("ja")) return "ja";
+  if (nav.startsWith("zh")) return "zh";
+  return "ko";
+}
+
 function getSnapshot(): Lang {
   if (memoryLang) return memoryLang;
   const v = window.localStorage.getItem(LANG_STORAGE_KEY);
-  return isLang(v) ? v : "ko";
+  if (isLang(v)) return v;
+  memoryLang = detectBrowserLang();
+  return memoryLang;
 }
 
 function getServerSnapshot(): Lang {

@@ -19,6 +19,20 @@ const LANG_NAMES: Record<string, string> = {
   zh: "중국어 간체(简体中文)",
 };
 
+// efficacyClean() covers the Korean banned-claims list; non-Korean output needs
+// its own guard or medical/efficacy wording would slip past the compliance gate.
+const BANNED_BY_LANG: Record<string, RegExp> = {
+  en: /\b(cures?|treats?|treatment|heals?|healing|whitening|clinically|guaranteed?|medical|prescription|anti-aging|erases?|eliminates?)\b/i,
+  ja: /(治療|治す|治る|効能|効果|美白|保証|医療|処方|改善|完治)/,
+  zh: /(治疗|治愈|疗效|功效|美白|保证|医疗|处方|改善|根治)/,
+};
+
+function reasonClean(candidate: string, lang: string): boolean {
+  if (!efficacyClean(candidate).ok) return false;
+  const banned = BANNED_BY_LANG[lang];
+  return banned ? !banned.test(candidate) : true;
+}
+
 export async function POST(req: Request) {
   const { items, lang } = (await req.json()) as { items: Item[]; lang?: string };
   const key = process.env.OPENAI_API_KEY;
@@ -58,7 +72,7 @@ export async function POST(req: Request) {
     const out: string[] = Array.isArray(parsed.reasons) ? parsed.reasons : [];
     const reasons = items.map((item, i) => {
       const candidate = typeof out[i] === "string" ? out[i].trim() : "";
-      return candidate && efficacyClean(candidate).ok ? candidate : item.fallback;
+      return candidate && reasonClean(candidate, lang ?? "ko") ? candidate : item.fallback;
     });
     return NextResponse.json({ reasons, source: "llm" });
   } catch {
