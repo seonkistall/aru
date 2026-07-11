@@ -137,7 +137,17 @@ export default function Report() {
       fallback: pick.reason,
     }));
 
-    fetch("/api/reason", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, lang: getLang() }) })
+    // Template fallbacks are already on screen; a slow LLM upgrade that lands
+    // late (or after unmount) is worse than none, so cap it at 8s and abort
+    // on cleanup.
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    fetch("/api/reason", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, lang: getLang() }),
+      signal: controller.signal,
+    })
       .then((response) => response.json())
       .then((data: { reasons?: string[] }) => {
         if (cancelled || !data?.reasons) return;
@@ -145,10 +155,12 @@ export default function Report() {
           prev ? { ...prev, picks: prev.picks.map((pick, i) => ({ ...pick, reason: data.reasons?.[i] ?? pick.reason })) } : prev
         );
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => window.clearTimeout(timeout));
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [loaded, initial, router]);
 
@@ -491,7 +503,7 @@ const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", 
 const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };
 const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--ink)", fontWeight: 800, marginTop: 6 };
 const trustChip: React.CSSProperties = { border: "1px solid var(--line)", borderRadius: 999, padding: "4px 8px", color: "var(--ink-soft)", fontSize: 11.5, fontWeight: 700 };
-const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px" };
+const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px calc(12px + env(safe-area-inset-bottom))" };
 const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
 
