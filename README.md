@@ -3,7 +3,7 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v0.6.9** · 최종 업데이트 2026-07-08 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
+> **버전 v1.1.0** · 최종 업데이트 2026-07-11 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
@@ -19,12 +19,23 @@
 - **북극성:** 외국인 대상 **K뷰티 컨시어지**.
 - 설계 문서: `~/.gstack/projects/aru/`
 
-## 현재 버전 — v0.6.9
-- **촬영 옵션 UX 정리**: 자동 촬영, AI 분석 전송, 연구용 학습 crop 저장을 하나의 촬영 옵션 패널로 묶어 기본 처리 방식과 선택 동의를 더 명확히 표시.
-- **측정영역 게이트 정합**: 품질 체크의 `측정영역` 상태와 촬영 버튼/자동 촬영 조건을 같은 기준으로 맞춰, ROI가 준비되지 않은 상태에서는 촬영하지 않음.
-- **스캔 가이드 안정화**: cover-crop 보정 후 디버그 contour 점이 화면 밖으로 튀지 않도록 overlay 좌표를 안전 범위로 제한.
+## 현재 버전 — v1.1.0 (글로벌 검증판)
+- **다국어 4종 KO/EN/JA/ZH**: gettext식 i18n(한국어 원문=msgid, 사전 3종), 우측 상단 언어 스위처, 브라우저 언어 자동감지(첫 방문·세션 한정, 명시 선택만 영속).
+- **리포트 3단계 고정**: 분석 → 추천 → 루틴·후속연결. 스캔 없으면 분석탭=설문 요약+스캔 CTA. 영수증 스타일 스캔 리포트 + 해/달 루틴 타임라인.
+- **신뢰 게이트**: 촬영 거리 게이트 프로파일별 minFaceSize 강화, 원터치 클립보드 초대링크, OG 공유 카드(카톡/WhatsApp 미리보기).
+- **컴플라이언스**: `/api/reason` 비한국어 출력에 다국어 금지클레임 필터(en/ja/zh) 추가 — 한국어 `efficacyClean()` 게이트 위에 이중화.
 
 ## 버전 이력
+- **v1.1.0** (2026-07-10~11) — 글로벌 검증판: 다국어 + 리포트 재구성 + 신뢰/바이럴 (PR #32~#40)
+  - **i18n 4개국어**(PR #32·#33): `lib/i18n/core.ts` gettext식 t(), 사전 694항목×3(`lib/i18n/{en,ja,zh}.ts`), `useSyncExternalStore`+key 리마운트, `/api/reason` lang 지원. **불변식: 저장 문자열은 한국어 canonical, 번역은 렌더에서**(`localizedNarrative()`). 신규 문자열은 3사전 동시 추가.
+  - **문서 3종**(PR #34): `docs/i18n-prd.md` · `docs/i18n-spec.md` · `docs/i18n-ux-flow.md`.
+  - **영수증 리포트 + 타임라인 루틴**(PR #35): 절취선·도트리더·바코드 스타일 스캔 리포트, 아침/저녁 해·달 타임라인.
+  - **신뢰 게이트 + 바이럴 픽스**(PR #36): 거리 게이트 프로파일별 minFaceSize(0.40/0.48/0.42), 클립보드 초대링크(PNG 공유 폐기), 캘린더 리마인더 삭제.
+  - **JA/ZH 레이아웃 픽스**(PR #37): 홈 주석 겹침 수정, 설문-only 리포트 3단계 복원.
+  - **전면 감사**(PR #38): tsc 0에러, **CJK 랩핑 근본 수정**(`html[lang]` 셀렉터로 keep-all override), 이중언어 메타데이터, CDN preconnect, safe-area, reason 8s 타임아웃.
+  - **언어 자동감지 + OG 카드 + 다국어 클레임 필터**(PR #39): navigator.language 첫방문 감지(세션 한정), `public/og.png` 1200×630 공유카드+metadataBase, 비한국어 LLM 출력 금지클레임 regex 게이트.
+  - **스튜디오 언어 프리필**(PR #40): 편집 입력란도 활성 언어로 프리필(ZH 전 라우트 한국어 잔존 스윕 완료).
+  - **검증**: tsc 0 · vitest 93 · smoke 그린 · puppeteer 시각 스윕(7라우트×4언어) · 프로덕션 언어전환 실검증(데스크톱+iPhone 에뮬).
 - **v0.6.9** (2026-07-08) — Scan UX controls + guide gate cleanup
   - **촬영 옵션 패널**: 동의/자동촬영 체크박스를 별도 컴포넌트로 추출하고, 각 옵션의 결과를 한 줄 설명으로 표시.
   - **게이트 정합**: `scanCaptureReady`와 CTA label helper를 추가해 측정영역 준비 전 촬영 버튼과 자동 촬영을 차단.
