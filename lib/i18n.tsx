@@ -10,8 +10,14 @@
  * without subscribing to context.
  */
 
-import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import { isLang, LANG_STORAGE_KEY, setCurrentLang, type Lang } from "./i18n/core";
+
+// html[lang] must update before the swapped text paints — the CJK wrapping CSS
+// keys off html[lang], so a plain useEffect leaves ja/zh text one frame under
+// Korean keep-all rules. The server has no layout pass; fall back to useEffect
+// there to avoid the SSR warning.
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export { getLang, LANGS, t, type Lang } from "./i18n/core";
 
@@ -78,7 +84,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   // Keep the singleton in sync before children render.
   setCurrentLang(lang);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
   }, [lang]);
 

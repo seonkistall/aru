@@ -22,7 +22,12 @@ export default function Checkin() {
   const [done, setDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    Promise.all([getPurchases(), getCheckins()]).then(([nextPurchases, checkins]) => {
+    Promise.all([getPurchases(), getCheckins()]).then(([allPurchases, checkins]) => {
+      // getPurchases returns newest-first; recordPurchase fires on every buy-link
+      // tap, so collapse to one card per SKU (the latest) instead of a duplicate
+      // check-in card per click.
+      const seenSku = new Set<string>();
+      const nextPurchases = allPurchases.filter((p) => (seenSku.has(p.sku_id) ? false : seenSku.add(p.sku_id)));
       // Done is per round (2주/4주): a week-2 checkin must not block the
       // week-4 one the re-engagement email brings the user back for.
       const initial: Record<string, boolean> = {};

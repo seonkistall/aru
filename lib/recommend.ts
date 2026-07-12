@@ -144,26 +144,32 @@ export function budgetLabel(won: number): string {
   return t("{n}만원", { n: Math.max(1, Math.floor(won / 10000)) });
 }
 
-function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean, avoidedClear: boolean): string {
+function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean, avoidedClear: boolean, budgetRelaxed: boolean): string {
   const matched = concerns.filter((concern) => sku.concerns.includes(concern)).slice(0, 2);
   const budgetText = budgetLabel(survey.budget);
   const head = matched.length
     ? t("{concerns} 고민", { concerns: matched.map((concern) => t(concern)).join(", ") })
     : t("{type} 피부", { type: t(survey.type) });
-  let reason = scanApplied
-    ? t("오늘 스캔에서 보인 신호와 {head}, {budget} 예산을 함께 보고 고른 {category}예요.", { head, budget: budgetText, category: t(sku.category) })
-    : t("{head}, {budget} 예산을 함께 보고 고른 {category}예요.", { head, budget: budgetText, category: t(sku.category) });
+  // When the budget was relaxed to fill the category, the pick is over budget —
+  // don't claim it was "chosen to fit" the budget; say it's the closest instead.
+  let reason = budgetRelaxed
+    ? scanApplied
+      ? t("오늘 스캔에서 보인 신호와 {head}에 맞춰, {budget} 예산에 가장 가까운 {category}로 골랐어요.", { head, budget: budgetText, category: t(sku.category) })
+      : t("{head}에 맞춰, {budget} 예산에 가장 가까운 {category}로 골랐어요.", { head, budget: budgetText, category: t(sku.category) })
+    : scanApplied
+      ? t("오늘 스캔에서 보인 신호와 {head}, {budget} 예산을 함께 보고 고른 {category}예요.", { head, budget: budgetText, category: t(sku.category) })
+      : t("{head}, {budget} 예산을 함께 보고 고른 {category}예요.", { head, budget: budgetText, category: t(sku.category) });
   if (avoidedClear && survey.avoid.length) reason += ` ${t("요청한 제외 성분 조건도 반영했어요.")}`;
   if (!efficacyClean(reason).ok) reason = t("{type} 피부와 {budget} 예산에 맞춰 고른 {category}예요.", { type: t(survey.type), budget: budgetText, category: t(sku.category) });
   return reason;
 }
 
-function toRec(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean): Recommendation {
+function toRec(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: boolean, budgetRelaxed: boolean): Recommendation {
   const avoidedClear = survey.avoid.every((avoid) => sku.freeOf.includes(avoid));
   return {
     sku,
     toneLabel: TONE_LABEL[sku.tone],
-    reason: reasonFor(sku, survey, concerns, scanApplied, avoidedClear),
+    reason: reasonFor(sku, survey, concerns, scanApplied, avoidedClear, budgetRelaxed),
     matchedIngredients: sku.keyIngredients.slice(0, 2),
     matchedConcerns: concerns.filter((concern) => sku.concerns.includes(concern)),
     ingredientTags: ingredientTagsFor(sku, concerns),
@@ -329,12 +335,21 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
     },
   ];
 
+  // Categories that already own a dedicated step (선크림→am-protect, 크림→pm-seal).
+  // The am-/pm-hydrate steps borrow survey.category; when it is one of these, the
+  // hydrate step must NOT claim the product, or the sunscreen/cream lands on a
+  // "수분" step (mislabeled) and the real sun/seal step shows nothing.
+  const dedicatedCategories = new Set<Category>(["선크림", "크림"]);
   const attach = (steps: RoutineStep[]): RoutineStep[] => {
     const seen = new Set<string>();
     return steps.map((step) => {
+      const isHydrate = step.id === "am-hydrate" || step.id === "pm-hydrate";
       // pm-texture is interval-use guidance; attaching a daily product there
       // would contradict its own cadence, so it stays product-free.
-      const hero = step.id === "pm-texture" ? undefined : picks.find((pick) => pick.sku.category === step.category)?.sku;
+      const hero =
+        step.id === "pm-texture" || (isHydrate && dedicatedCategories.has(survey.category))
+          ? undefined
+          : picks.find((pick) => pick.sku.category === step.category)?.sku;
       if (!hero || seen.has(hero.id)) return step;
       seen.add(hero.id);
       // Tie the step to the hero product's actual ingredients (from the catalog),
@@ -384,7 +399,8 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
     if (pool.length) relaxed = "both";
   }
 
-  const picks = diversify(rank(pool)).map((sku) => toRec(sku, survey, concerns, scanApplied));
+  const budgetRelaxed = relaxed === "budget" || relaxed === "both";
+  const picks = diversify(rank(pool)).map((sku) => toRec(sku, survey, concerns, scanApplied, budgetRelaxed));
   // Compose the note from every applicable signal — a low-confidence scan must
   // NOT suppress the budget/avoid relaxation disclosure (they can co-occur).
   const noteParts: string[] = [];

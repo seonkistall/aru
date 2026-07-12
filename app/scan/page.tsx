@@ -98,6 +98,7 @@ export default function Scan() {
   const countdownRef = useRef<number | null>(null);
   const autoHoldUntilRef = useRef(0);
   const capturingRef = useRef(false);
+  const captureLockRef = useRef(false);
   const autoCaptureRef = useRef(true);
   const disposedRef = useRef(false);
   const prevQualityKeyRef = useRef("");
@@ -108,6 +109,7 @@ export default function Scan() {
   const cropSizeRef = useRef<{ ai?: string; learning?: string; model?: string }>({});
 
   const [phase, setPhase] = useState<Phase>("init");
+  const [deniedReason, setDeniedReason] = useState<"permission" | "busy" | "notfound">("permission");
   const [reads, setReads] = useState<SkinReads | null>(null);
   const [err, setErr] = useState("");
   const [shareCopied, setShareCopied] = useState(false);
@@ -204,16 +206,23 @@ export default function Scan() {
 
     let attempt: CameraAttempt | null = "high";
     let stream: MediaStream | null = null;
+    let lastError: unknown = null;
     while (attempt) {
       try {
         stream = await navigator.mediaDevices.getUserMedia(cameraConstraintsForAttempt(attempt));
         cameraAttemptRef.current = attempt;
         break;
-      } catch {
+      } catch (e) {
+        lastError = e;
         attempt = nextCameraAttempt(attempt);
       }
     }
     if (!stream) {
+      // Not every getUserMedia failure is a permission denial — a camera held by
+      // another app (NotReadableError) or a missing device (NotFound/Overconstr.)
+      // needs its own message and a retry, not "grant permission".
+      const name = (lastError as { name?: string } | null)?.name;
+      setDeniedReason(name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission");
       setPhase("denied");
       return;
     }
@@ -242,7 +251,7 @@ export default function Scan() {
     }
   }, []);
 
-  const ensureLandmarker = useCallback(async () => {
+  const ensureLandmarker = useCallback(async (): Promise<FaceLandmarker | null> => {
     if (landmarkerRef.current) return landmarkerRef.current;
     const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
     const fileset = await FilesetResolver.forVisionTasks(WASM);
@@ -252,19 +261,28 @@ export default function Scan() {
         runningMode: "VIDEO",
         numFaces: 1,
       });
+    let landmarker: FaceLandmarker;
     if (forceCpuRef.current) {
       // A prior GPU run emitted corrupt (non-normalized) landmarks on this
       // device — CPU delegate is slower but always correct.
-      landmarkerRef.current = await create("CPU");
-      return landmarkerRef.current;
+      landmarker = await create("CPU");
+    } else {
+      try {
+        landmarker = await create("GPU");
+      } catch {
+        // Some mobile GPUs fail delegate init — CPU is slower but always works.
+        landmarker = await create("CPU");
+      }
     }
-    try {
-      landmarkerRef.current = await create("GPU");
-    } catch {
-      // Some mobile GPUs fail delegate init — CPU is slower but always works.
-      landmarkerRef.current = await create("CPU");
+    // The WASM fileset + ~3MB model can take seconds on mobile; if the user
+    // navigated away meanwhile, the unmount cleanup already ran (ref was still
+    // null), so close the now-orphaned landmarker instead of leaking it.
+    if (disposedRef.current) {
+      landmarker.close?.();
+      return null;
     }
-    return landmarkerRef.current;
+    landmarkerRef.current = landmarker;
+    return landmarker;
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -436,7 +454,7 @@ export default function Scan() {
     }
     ensureLandmarker()
       .then((landmarker) => {
-        if (!mounted) return;
+        if (!mounted || !landmarker) return;
         setGuideState("ready");
         // Self-scheduling instead of setInterval: waits for each measureQuality
         // to finish (no overlap) and paces adaptively — on a slow CPU-delegate
@@ -504,7 +522,11 @@ export default function Scan() {
 
   async function capture() {
     const video = videoRef.current;
-    if (!video) return;
+    // Reentrancy guard: the manual shutter stays enabled through the countdown,
+    // so a tap landing the same frame auto-capture fires would run two pipelines
+    // (double /api/analyze, duplicated funnel + scan-history, fighting phases).
+    if (!video || captureLockRef.current) return;
+    captureLockRef.current = true;
     setCountdownSafe(null);
     passStreakRef.current = 0;
     setPhase("analyzing");
@@ -526,6 +548,7 @@ export default function Scan() {
 
     try {
       const landmarker = await ensureLandmarker();
+      if (!landmarker) return;
       const w = video.videoWidth || 720;
       const h = video.videoHeight || 960;
       const canvas = document.createElement("canvas");
@@ -630,18 +653,26 @@ export default function Scan() {
 
       let final = out;
       if (aiAllowed && aiCrop) {
+        // On-device `out` is already complete; a hung LLM upstream (Wi-Fi→cellular
+        // handoff, black-holed TCP) must not freeze the analyzing overlay forever.
+        // Cap at 8s like /report and fall through to the on-device result.
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
         try {
           const resp = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image: aiCrop.dataUrl }),
+            signal: controller.signal,
           });
           if (resp.ok) {
             const v = await resp.json();
             if (v?.ok) final = mergeVisionAnalysis(out, v);
           }
         } catch {
-          /* Keep on-device result. */
+          /* Timed out or failed — keep on-device result. */
+        } finally {
+          window.clearTimeout(timeout);
         }
       }
 
@@ -701,6 +732,8 @@ export default function Scan() {
       autoHoldUntilRef.current = performance.now() + 4000;
       setErr(t("분석 중 문제가 생겼어요. 다시 시도해 주세요."));
       setPhase("ready");
+    } finally {
+      captureLockRef.current = false;
     }
   }
   useEffect(() => {
@@ -831,7 +864,14 @@ export default function Scan() {
             )}
             {phase === "denied" && (
               <Center>
-                <p style={fallbackText}>{t("카메라 권한이 필요해요.")}</p>
+                <p style={fallbackText}>
+                  {deniedReason === "busy"
+                    ? t("카메라를 다른 앱이 사용 중이에요. 다른 앱을 닫고 다시 시도해 주세요.")
+                    : deniedReason === "notfound"
+                      ? t("연결된 카메라를 찾지 못했어요.")
+                      : t("카메라 권한이 필요해요.")}
+                </p>
+                <button onClick={() => void startCamera()} style={primaryBtn}>{t("다시 시도")}</button>
                 <a href="/survey" style={ghostLink}>{t("사진 없이 추천받기")}</a>
               </Center>
             )}
@@ -971,7 +1011,9 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
         ? "glare"
         : !steady
           ? "movement"
-          : undefined;
+          : !centered
+            ? "center"
+            : undefined;
   return {
     face: true,
     centered,

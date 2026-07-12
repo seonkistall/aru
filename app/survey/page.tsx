@@ -64,6 +64,19 @@ export default function Survey() {
     // sessionStorage is client-only; reading it in the initial render caused an
     // SSR hydration mismatch, so the one-time post-mount cascade is intentional.
     /* eslint-disable react-hooks/set-state-in-effect */
+    // Rehydrate a previously submitted survey so returning from /report (its
+    // scan nudge routes scan→survey) doesn't wipe every answer.
+    try {
+      const raw = sessionStorage.getItem("gyeol_survey");
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<SurveyT>;
+        if (saved.type) setType(saved.type);
+        if (Array.isArray(saved.concerns)) setConcerns(saved.concerns);
+        if (saved.category) setCategory(saved.category);
+        if (typeof saved.budget === "number") setBudget(saved.budget);
+        if (Array.isArray(saved.avoid)) setAvoid(saved.avoid);
+      }
+    } catch {}
     const hint = loadScanHint();
     if (!hint) return;
     setScanHint(hint);

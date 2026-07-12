@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { efficacyClean } from "@/lib/recommend";
 import { SKIN_LABELS, type SkinAttr, type SkinLevel } from "@/lib/skin";
 import { openAiVisionUserContent } from "@/lib/vision-payload";
+import { clientIp, rateLimit, type RateBucket } from "@/lib/rate-limit";
+
+// Public endpoint that calls a paid vision model on every request — cap per IP.
+const rate = new Map<string, RateBucket>();
+// A 640px jpeg crop is a few hundred KB; reject anything far larger before it
+// reaches the provider.
+const MAX_IMAGE_CHARS = 2_000_000;
 
 const ATTRS = ["oil", "redness", "pores"] as const satisfies readonly SkinAttr[];
 
@@ -56,6 +63,9 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
 }
 
 export async function POST(req: Request) {
+  if (!rateLimit(rate, clientIp(req), { max: 20 })) {
+    return NextResponse.json({ ok: false, reason: "rate limited" }, { status: 429 });
+  }
   let image: string | undefined;
   try {
     ({ image } = (await req.json()) as { image: string });
@@ -63,6 +73,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: "invalid JSON" }, { status: 400 });
   }
   if (!image?.startsWith("data:image")) return NextResponse.json({ ok: false }, { status: 400 });
+  if (image.length > MAX_IMAGE_CHARS) return NextResponse.json({ ok: false, reason: "too large" }, { status: 413 });
 
   const provider = process.env.VISION_PROVIDER ?? "gemini";
   try {

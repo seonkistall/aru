@@ -133,7 +133,10 @@ export default function Report() {
       type: initial.survey.type,
       matched: initial.survey.concerns.filter((concern) => pick.sku.concerns.includes(concern)),
       budgetText: budgetLabel(initial.survey.budget),
-      freeOf: pick.sku.freeOf,
+      // Only send the user's real avoid list when this pick actually satisfies
+      // all of it — otherwise the LLM frames the SKU's generic freeOf as honored
+      // avoid conditions, a false compliance claim the template path guards against.
+      freeOf: pick.avoidedClear && initial.survey.avoid.length ? initial.survey.avoid : [],
       fallback: pick.reason,
     }));
 
@@ -283,12 +286,18 @@ export default function Report() {
         <section style={{ margin: "30px 0 24px" }}>
           <h2 style={sectionLabel}>{t("추천 기준")}</h2>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
-            {t("{type} 피부, {concerns} 고민, {budget} 예산에 맞춰 {category}를 골랐어요.", {
-              type: t(survey.type),
-              concerns: concernText,
-              budget: t(budgetLabel(survey.budget)),
-              category: t(survey.category),
-            })}
+            {result.relaxed === "budget" || result.relaxed === "both"
+              ? t("{type} 피부, {concerns} 고민에 맞춰 {category}를 골랐어요.", {
+                  type: t(survey.type),
+                  concerns: concernText,
+                  category: t(survey.category),
+                })
+              : t("{type} 피부, {concerns} 고민, {budget} 예산에 맞춰 {category}를 골랐어요.", {
+                  type: t(survey.type),
+                  concerns: concernText,
+                  budget: t(budgetLabel(survey.budget)),
+                  category: t(survey.category),
+                })}
             {result.scanApplied && reads ? ` ${t("스캔에서 보인 {signals} 신호도 함께 반영했어요.", { signals: scanSignalText(reads) })}` : ""}
           </p>
           {survey.avoid.length > 0 && (
