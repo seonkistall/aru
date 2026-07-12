@@ -130,6 +130,16 @@ alter table crop_samples add column if not exists capture_mode text;
 alter table crop_samples add column if not exists quality jsonb;
 alter table crop_samples add column if not exists metadata jsonb;
 
+-- recordCareIntent (lib/store.ts) inserts these commerce fields for purchase
+-- clicks; without them PostgREST rejects the insert (PGRST204) and the server
+-- copy of every product-purchase intent is silently lost (the BD/commerce
+-- signal). Clinic clicks leave them undefined so they inserted regardless.
+alter table care_intents add column if not exists sku_id text;
+alter table care_intents add column if not exists merchant text;
+alter table care_intents add column if not exists placement text;
+alter table care_intents add column if not exists partner_ready boolean;
+alter table care_intents add column if not exists region text;
+
 -- Create a private bucket for crops in Supabase Storage before enabling upload:
 -- insert into storage.buckets (id, name, public)
 -- values ('gyeol-crop-samples', 'gyeol-crop-samples', false)

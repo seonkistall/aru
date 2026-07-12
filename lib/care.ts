@@ -79,7 +79,7 @@ export function careSummary(survey: Survey | null, reads: SkinReads | null, resu
 
   if (locale === "en") {
     return {
-      title: top ? `Next step for ${top.name}` : "Your next K-beauty step",
+      title: top ? `Next step for ${t(top.name)}` : "Your next K-beauty step",
       body: needsClinic
         ? "You can compare products first, and consider a clinic consultation if sensitivity or breakouts continue."
         : "Start with the recommended product search, then save a check-in after trying it.",
@@ -88,7 +88,7 @@ export function careSummary(survey: Survey | null, reads: SkinReads | null, resu
   }
 
   return {
-    title: top ? t("{name} 다음 단계", { name: top.name }) : t("다음 케어 단계"),
+    title: top ? t("{name} 다음 단계", { name: t(top.name) }) : t("다음 케어 단계"),
     body: needsClinic
       ? t("제품 비교와 함께, 붉은기나 트러블이 계속되면 피부과 상담 연결도 열어둘게요.")
       : t("추천 제품을 먼저 비교하고, 사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요."),

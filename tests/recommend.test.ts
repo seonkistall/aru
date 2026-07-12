@@ -119,4 +119,29 @@ describe("recommend()", () => {
     expect(result.note).toContain("스캔"); // scan-ambiguous line present
     expect(result.note).toContain("예산"); // budget relaxation NOT suppressed
   });
+
+  it("attaches the chosen sunscreen to the sun step, not a hydration step", () => {
+    // survey.category 선크림 collides with the dedicated am-protect step; the
+    // hydrate steps must not claim it (else the sunscreen shows on a 수분 step
+    // and the real sun step is product-less).
+    const result = recommend({ type: "지성", concerns: ["유분"], category: "선크림", budget: 25000, avoid: [] }, null);
+    expect(result.relaxed).toBeNull();
+    const amProtect = result.routine.am.find((s) => s.id === "am-protect");
+    const amHydrate = result.routine.am.find((s) => s.id === "am-hydrate");
+    const pmHydrate = result.routine.pm.find((s) => s.id === "pm-hydrate");
+    expect(amProtect?.heroSku?.category).toBe("선크림");
+    expect(amHydrate?.heroSku).toBeUndefined();
+    expect(pmHydrate?.heroSku).toBeUndefined();
+  });
+
+  it("does not claim budget-fit in pick reasons when the budget was relaxed", () => {
+    const result = recommend({ type: "지성", concerns: [], category: "세럼", budget: 19000, avoid: [] }, null);
+    expect(result.relaxed).toBe("budget");
+    for (const pick of result.picks) {
+      // over-budget picks must not assert they were chosen to fit the budget
+      expect(pick.reason).not.toContain("예산을 함께 보고 고른");
+      expect(pick.reason).toContain("가장 가까운");
+      expect(efficacyClean(pick.reason).ok, `reason: ${pick.reason}`).toBe(true);
+    }
+  });
 });

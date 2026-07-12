@@ -703,4 +703,9 @@ export const EN: Record<string, string> = {
   "카메라 신호가 충분히 단단하지 않아 추천 점수에는 설문에서 고른 피부 타입, 고민, 예산을 더 크게 반영했어요.": "The camera signal wasn't solid enough, so the recommendation score leans more on the skin type, concerns, and budget you chose in the survey.",
   "스캔 신호를 추천에 반영했어요": "Scan signals shaped these picks",
   "촬영 프레임의 피부 신호와 설문 답변을 함께 보고 제품 추천, 루틴, 주의 성분을 연결했어요. 리포트는 의료 판단이 아니라 화장품 선택을 돕는 참고 결과입니다.": "We read the skin signals in your capture together with your survey answers to connect product picks, your routine, and ingredients to watch. This report is a reference for choosing cosmetics, not a medical judgment.",
+  "카메라를 다른 앱이 사용 중이에요. 다른 앱을 닫고 다시 시도해 주세요.": "Another app is using the camera. Close it and try again.",
+  "연결된 카메라를 찾지 못했어요.": "No camera was found.",
+  "오늘 스캔에서 보인 신호와 {head}에 맞춰, {budget} 예산에 가장 가까운 {category}로 골랐어요.": "Based on today's scan signals and {head}, we picked the {category} closest to your {budget} budget.",
+  "{head}에 맞춰, {budget} 예산에 가장 가까운 {category}로 골랐어요.": "Based on {head}, we picked the {category} closest to your {budget} budget.",
+  "{type} 피부, {concerns} 고민에 맞춰 {category}를 골랐어요.": "We picked {category} for {type} skin and {concerns} concerns.",
 };

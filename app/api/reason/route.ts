@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { reasonClean } from "@/lib/claim-filter";
+import { clientIp, rateLimit, type RateBucket } from "@/lib/rate-limit";
 
 type Item = {
   brand: string;
@@ -19,8 +20,26 @@ const LANG_NAMES: Record<string, string> = {
   zh: "중국어 간체(简体中文)",
 };
 
+// Public endpoint that calls the paid OpenAI chat model — cap per IP, and cap
+// the items array so the prompt cost can't scale with attacker input (the real
+// client sends 3 picks).
+const rate = new Map<string, RateBucket>();
+const MAX_ITEMS = 12;
+
 export async function POST(req: Request) {
-  const { items, lang } = (await req.json()) as { items: Item[]; lang?: string };
+  if (!rateLimit(rate, clientIp(req), { max: 30 })) {
+    return NextResponse.json({ reasons: [], source: "rate-limited" }, { status: 429 });
+  }
+  let items: Item[];
+  let lang: string | undefined;
+  try {
+    ({ items, lang } = (await req.json()) as { items: Item[]; lang?: string });
+  } catch {
+    return NextResponse.json({ reasons: [], source: "bad-request" }, { status: 400 });
+  }
+  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITEMS) {
+    return NextResponse.json({ reasons: [], source: "bad-request" }, { status: 400 });
+  }
   const key = process.env.OPENAI_API_KEY;
   if (!key) return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
 
