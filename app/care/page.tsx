@@ -51,6 +51,7 @@ export default function CarePage() {
   const { lang } = useLanguage();
   const [view, setView] = useState<CareView | null>(null);
   const [viewLoaded, setViewLoaded] = useState(false);
+  const [expandedMerchants, setExpandedMerchants] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     // sessionStorage is client-only; reading it during the first render caused
@@ -137,7 +138,13 @@ export default function CarePage() {
               <Xiaohei size={54} pose="carry" />
             </span>
           </div>
-          {topPicks.map((pick) => (
+          {topPicks.map((pick) => {
+            const links = productSearchLinks(pick.sku, `care_${lang}`);
+            const expanded = Boolean(expandedMerchants[pick.sku.id]);
+            const visibleLinks = expanded ? links : links.slice(0, 1);
+            const merchantPanelId = `care-merchants-${pick.sku.id}`;
+
+            return (
             <div key={pick.sku.id} style={productRow}>
               <div style={{ display: "flex", gap: 12 }}>
                 <div style={{ width: 54, height: 54, flexShrink: 0 }}>
@@ -149,16 +156,29 @@ export default function CarePage() {
                   <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>{t(pick.reason)}</p>
                 </div>
               </div>
-              <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
-                {productSearchLinks(pick.sku, `care_${lang}`).map((link) => (
+              <div id={merchantPanelId} style={{ display: "grid", gap: 7, marginTop: 12 }}>
+                {visibleLinks.map((link) => (
                   <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
                     <span>{t(link.label)}</span>
                     <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
                   </button>
                 ))}
+                {links.length > 1 && (
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={merchantPanelId}
+                    onClick={() => setExpandedMerchants((current) => ({ ...current, [pick.sku.id]: !expanded }))}
+                    style={otherMerchantsBtn}
+                  >
+                    {expanded ? t("다른 판매처 닫기") : t("다른 판매처 보기")}
+                    <span aria-hidden>{expanded ? "↑" : "↓"}</span>
+                  </button>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </section>
 
         <section style={sectionStyle}>
@@ -210,9 +230,10 @@ const commerceIntro: React.CSSProperties = { fontSize: 13, color: "var(--ink-sof
 const productRow: React.CSSProperties = { borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 };
 const badge: React.CSSProperties = { fontSize: 12, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum-press)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
-const outlineBtn: React.CSSProperties = { background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
-const linkBtn: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "10px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };
-const clinicBtn: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--paper)", padding: "12px 14px", cursor: "pointer", width: "100%" };
+const outlineBtn: React.CSSProperties = { minHeight: "var(--tap-min)", background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
+const linkBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "9px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };
+const otherMerchantsBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: "none", background: "transparent", color: "var(--ink-soft)", padding: "8px 2px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" };
+const clinicBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--paper)", padding: "12px 14px", cursor: "pointer", width: "100%" };
 const safetyCard: React.CSSProperties = { display: "flex", gap: 10, alignItems: "flex-start", background: "color-mix(in srgb, var(--plum) 6%, var(--paper))", border: "1px solid color-mix(in srgb, var(--plum) 28%, var(--line))", borderLeft: "3px solid var(--plum)", borderRadius: 10, padding: "12px 13px" };
 const safetyMark: React.CSSProperties = { flexShrink: 0, width: 20, height: 20, borderRadius: 999, background: "var(--plum)", color: "var(--on-plum)", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 };
 const tipList: React.CSSProperties = { margin: "12px 0 0", paddingLeft: 18, color: "var(--ink-soft)", fontSize: 13.5, lineHeight: 1.65 };

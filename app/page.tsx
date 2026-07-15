@@ -53,7 +53,7 @@ export default function Home() {
           </svg>
         </div>
 
-        <h1 style={{ fontFamily: "var(--font-hand)", fontSize: "clamp(30px, 12vw, 54px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
+        <h1 className="locale-display" style={{ fontFamily: "var(--font-hand)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
           {t("과장 없이,")}
           <br />
           {t("너한테 맞는 최대 셋")}
@@ -68,6 +68,27 @@ export default function Home() {
           <span>{t("분석")}</span>
           <Arrow />
           <span>{t("추천")}</span>
+        </div>
+
+        <div style={{ width: "100%", maxWidth: 420, paddingTop: 24 }}>
+          <Link href="/scan" data-primary-action="scan" style={{ display: "block", textDecoration: "none" }}>
+            <div style={{ position: "relative", minHeight: "var(--tap-min)", padding: "17px 16px" }}>
+              <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
+              <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
+                <span className="locale-display" style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
+                <span style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--orange)" }}>→</span>
+              </div>
+            </div>
+          </Link>
+          <Link
+            href="/survey"
+            style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 8 }}
+          >
+            {t("카메라 없이 설문만 할래요 →")}
+          </Link>
+          <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--text-muted)", marginTop: 4 }}>
+            {t("기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요")}
+          </p>
         </div>
 
         <ReturnBanner />
@@ -97,26 +118,6 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="px-6" style={{ paddingBottom: 32, paddingTop: 18 }}>
-        <Link href="/scan" style={{ display: "block", textDecoration: "none" }}>
-          <div style={{ position: "relative", padding: "17px 16px" }}>
-            <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
-            <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-              <span style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
-              <span style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--orange)" }}>→</span>
-            </div>
-          </div>
-        </Link>
-        <Link
-          href="/survey"
-          style={{ display: "block", textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 14 }}
-        >
-          {t("카메라 없이 설문만 할래요 →")}
-        </Link>
-        <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--text-muted)", marginTop: 11 }}>
-          {t("기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요")}
-        </p>
-      </div>
     </main>
   );
 }

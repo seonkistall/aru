@@ -24,6 +24,7 @@
   --peach: #f5f5f5;
   --on-plum: #ffffff;
   --success: #2f7d4f;
+  --tap-min: 44px;
 }
 
 @theme inline {
@@ -84,4 +85,14 @@ html[lang="ja"] body, html[lang="zh-CN"] body,
 html[lang="ja"] button, html[lang="zh-CN"] button,
 html[lang="ja"] a, html[lang="zh-CN"] a {
   word-break: normal;
+}
+
+/* The sketch display face is part of the Korean brand voice. For translated
+   UI, use the body sans so Latin and CJK headings stay legible and compact. */
+html[lang="en"] .locale-display,
+html[lang="ja"] .locale-display,
+html[lang="zh-CN"] .locale-display {
+  font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif !important;
+  font-weight: 800;
+  letter-spacing: -0.025em;
 }

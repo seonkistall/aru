@@ -19,7 +19,7 @@ export function FlowSteps({ current }: { current: FlowKey }) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
   return (
     <nav aria-label={t("진행 단계")} style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
-      <Link href="/" aria-label={t("홈으로")} style={{ fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
+      <Link href="/" aria-label={t("홈으로")} style={{ minWidth: "var(--tap-min)", minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
         {t("아루")}
       </Link>
       <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", marginRight: 2 }} />
@@ -48,7 +48,7 @@ export function FlowSteps({ current }: { current: FlowKey }) {
               </svg>
             )}
             {state === "done" ? (
-              <Link href={step.href} style={{ textDecoration: "none" }}>
+              <Link href={step.href} style={{ minWidth: "var(--tap-min)", minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
                 {label}
               </Link>
             ) : (

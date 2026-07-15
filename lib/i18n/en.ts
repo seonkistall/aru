@@ -144,6 +144,8 @@ export const EN: Record<string, string> = {
   "다시 스캔하기": "Scan again",
   "다시 시도": "Try again",
   "다시 찍기": "Retake",
+  "다른 판매처 닫기": "Hide other sellers",
+  "다른 판매처 보기": "See other sellers",
   "다음 케어 단계": "Next care step",
   "다이브인 저분자 히알루론산 세럼": "DIVE-IN Low Molecular Hyaluronic Acid Serum",
   "닥터지": "Dr.G",
