@@ -45,3 +45,6 @@ next-env.d.ts
 
 # local dev/server logs
 *.log
+
+# isolated implementation worktrees
+/.worktrees/
