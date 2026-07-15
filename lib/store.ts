@@ -1,4 +1,3 @@
-import { getSupabase, hasSupabase } from "./supabase";
 import type { CareIntentKind, CareLocale } from "./care";
 import type { MerchantId } from "./commerce";
 
@@ -63,61 +62,29 @@ function lsPush<T>(key: string, value: T, max = 500) {
   }
 }
 
-async function insertOrLocal<T>(table: string, key: string, value: T) {
-  const supabase = await getSupabase();
-  if (hasSupabase && supabase) {
-    try {
-      const { error } = await supabase.from(table).insert(value as never);
-      if (!error) return;
-    } catch {}
-  }
-  lsPush(key, value);
-}
-
 export async function recordPurchase(purchase: Omit<Purchase, "id" | "ts">): Promise<Purchase> {
   const rec: Purchase = { ...purchase, id: uid(), ts: Date.now() };
-  await insertOrLocal("purchases", "gyeol_purchases", rec);
+  lsPush("gyeol_purchases", rec);
   return rec;
 }
 
 export async function getPurchases(): Promise<Purchase[]> {
-  const supabase = await getSupabase();
-  if (hasSupabase && supabase) {
-    const { data, error } = await supabase.from("purchases").select("*").order("ts", { ascending: false });
-    if (!error) return (data as Purchase[]) ?? [];
-  }
   return lsGet<Purchase>("gyeol_purchases").reverse();
 }
 
 export async function recordCheckin(checkin: Omit<Checkin, "id" | "ts">): Promise<Checkin> {
   const rec: Checkin = { ...checkin, id: uid(), ts: Date.now() };
-  await insertOrLocal("checkins", "gyeol_checkins", rec);
+  lsPush("gyeol_checkins", rec);
   return rec;
 }
 
 export async function getCheckins(): Promise<Checkin[]> {
-  const supabase = await getSupabase();
-  if (hasSupabase && supabase) {
-    const { data, error } = await supabase.from("checkins").select("*");
-    if (!error) return (data as Checkin[]) ?? [];
-  }
   return lsGet<Checkin>("gyeol_checkins");
 }
 
 export async function recordCareIntent(intent: Omit<CareIntent, "id" | "ts">): Promise<CareIntent> {
   const rec: CareIntent = { ...intent, id: uid(), ts: Date.now() };
-  // Always store locally: getCareIntents/careIntentCount/clearCareIntents (the
-  // privacy page's source of truth) read/delete localStorage only, so a
-  // Supabase-first write would make the count wrong and "delete" a no-op.
   lsPush("gyeol_care_intents", rec);
-  const supabase = await getSupabase();
-  if (hasSupabase && supabase) {
-    try {
-      await supabase.from("care_intents").insert(rec as never);
-    } catch {
-      // Best-effort server copy; local record above is authoritative for the UI.
-    }
-  }
   return rec;
 }
 

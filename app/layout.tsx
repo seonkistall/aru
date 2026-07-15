@@ -1,18 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Nanum_Pen_Script } from "next/font/google";
 import "./globals.css";
 import { SketchDefs } from "./components/sketch";
 import { LanguageProvider } from "../lib/i18n";
 import { LanguageSwitcher } from "./components/language-switcher";
 
 // Hand-drawn pen handwriting — the xiaohei "spontaneous sketch on white paper" voice.
-const hand = Nanum_Pen_Script({
-  subsets: ["latin"],
-  weight: ["400"],
-  variable: "--font-hand",
-  display: "swap",
-  preload: false,
-});
 
 // Bilingual so international testers see a legible tab title / link preview
 // before the client-side language switch kicks in.
@@ -48,12 +40,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className={`${hand.variable} h-full antialiased`}>
-      <head>
-        {/* Warm up the MediaPipe CDN + model host so the scan guide loads faster. */}
-        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://storage.googleapis.com" crossOrigin="anonymous" />
-      </head>
+    <html lang="ko" className="h-full antialiased">
       <body className="min-h-full">
         <SketchDefs />
         <LanguageProvider>
