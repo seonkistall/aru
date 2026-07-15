@@ -78,7 +78,7 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
       <div style={{ background: "var(--surface)", borderLeft: "1.6px solid var(--ink)", borderRight: "1.6px solid var(--ink)", padding: "20px 22px 16px", position: "relative" }}>
         {/* receipt header */}
         <div style={{ textAlign: "center" }}>
-          <p style={{ fontFamily: "var(--font-hand)", fontSize: 30, lineHeight: 1, color: "var(--ink)", margin: 0 }}>{t("아루")}</p>
+          <p style={{ fontFamily: "var(--font-display)", fontSize: 30, lineHeight: 1, color: "var(--ink)", margin: 0 }}>{t("아루")}</p>
           <p style={{ ...eyebrow, marginTop: 6 }}>{t("오늘의 피부 리포트")}</p>
           <p style={{ fontFeatureSettings: '"tnum"', fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, letterSpacing: "0.06em" }}>
             {dateLine} · {timeLine}
@@ -111,7 +111,7 @@ export function ResultCard({ reads }: { reads: SkinReads }) {
             <span style={{ fontSize: 14, fontWeight: 800, color: reads.retakeRecommended ? "var(--plum-press)" : "var(--ink)" }}>
               {t("분석 신뢰도 {level}", { level: t(reads.confidenceLabel) })}
             </span>
-            <span style={{ fontFeatureSettings: '"tnum"', fontFamily: "var(--font-hand)", fontSize: 30, lineHeight: 1, color: reads.retakeRecommended ? "var(--plum)" : "var(--ink)" }}>
+            <span style={{ fontFeatureSettings: '"tnum"', fontFamily: "var(--font-display)", fontSize: 30, lineHeight: 1, color: reads.retakeRecommended ? "var(--plum)" : "var(--ink)" }}>
               {confidencePct}%
             </span>
           </div>

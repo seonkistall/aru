@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import "@fontsource/nanum-pen-script";
 import "./globals.css";
 import { SketchDefs } from "./components/sketch";
 import { LanguageProvider } from "../lib/i18n";
 import { LanguageSwitcher } from "./components/language-switcher";
 
-// Hand-drawn pen handwriting — the xiaohei "spontaneous sketch on white paper" voice.
+// Self-hosted Korean display handwriting — used only for short brand moments.
 
 // Bilingual so international testers see a legible tab title / link preview
 // before the client-side language switch kicks in.

@@ -13,7 +13,7 @@ export const ShareCard = forwardRef<HTMLDivElement, { headline: string; reads: C
     return (
       <div ref={ref} style={cardPreview}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>{t("아루")}</span>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>{t("아루")}</span>
           <span style={miniLabel}>skin mood</span>
         </div>
         <h2 style={cardHeadline}>{t(headline)}</h2>

@@ -436,7 +436,7 @@ function RoutineHalf({ label, steps, half }: { label: string; steps: RoutineStep
         <span aria-hidden style={{ position: "absolute", left: 13, top: 10, bottom: 14, borderLeft: "2px dotted var(--line)" }} />
         {steps.map((step, index) => (
           <div key={step.id} style={{ position: "relative", paddingBottom: index === steps.length - 1 ? 4 : 18 }}>
-            <span style={{ ...routineIndex, position: "absolute", left: -40, top: 0, fontFamily: "var(--font-hand)", fontSize: 16, filter: "url(#sketch-soft)" }}>
+            <span style={{ ...routineIndex, position: "absolute", left: -40, top: 0, fontFamily: "var(--font-display)", fontSize: 16, filter: "url(#sketch-soft)" }}>
               {index + 1}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -503,7 +503,7 @@ const card: React.CSSProperties = { background: "var(--surface)", border: "1px s
 const careCard: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px", margin: "24px 0 28px" };
 const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
-const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
+const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-display)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
 const routineWhy: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 4 };
 const cadenceChip: React.CSSProperties = { fontSize: 11, border: "1px solid var(--line)", color: "var(--bronze)", borderRadius: 999, padding: "2px 8px", fontWeight: 700, whiteSpace: "nowrap" };
 const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--paper)", border: "1.5px solid var(--ink)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };

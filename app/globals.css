@@ -41,10 +41,11 @@
   --color-blue: var(--blue);
   --color-line: var(--line);
   --color-success: var(--success);
-  /* repoint all display roles to the hand font; body stays Pretendard */
-  --font-hand: "Segoe Print", "Comic Sans MS", cursive;
-  --font-serif: var(--font-hand);
-  --font-ko-serif: var(--font-hand);
+  /* Korean brand moments use a self-hosted pen face; body and controls stay Pretendard. */
+  --font-hand-ko: "Nanum Pen Script", "Pretendard Variable", sans-serif;
+  --font-display: var(--font-hand-ko);
+  --font-serif: var(--font-display);
+  --font-ko-serif: var(--font-display);
   --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
 }
@@ -87,12 +88,8 @@ html[lang="ja"] a, html[lang="zh-CN"] a {
   word-break: normal;
 }
 
-/* The sketch display face is part of the Korean brand voice. For translated
-   UI, use the body sans so Latin and CJK headings stay legible and compact. */
-html[lang="en"] .locale-display,
-html[lang="ja"] .locale-display,
-html[lang="zh-CN"] .locale-display {
-  font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif !important;
-  font-weight: 800;
-  letter-spacing: -0.025em;
+/* Keep the hand-drawn display face Korean-only. Latin and CJK translations use
+   the compact sans token so long headings remain legible. */
+html[lang="en"], html[lang="ja"], html[lang="zh-CN"] {
+  --font-display: var(--font-sans);
 }

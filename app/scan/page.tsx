@@ -814,7 +814,7 @@ export default function Scan() {
             {phase === "ready" && guideState === "loading" && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(255,255,255,.78)" }}>
                 <Xiaohei size={64} pose="magnify" bob />
-                <p style={{ fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--ink)" }}>{t("얼굴 가이드 불러오는 중…")}</p>
+                <p style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--ink)" }}>{t("얼굴 가이드 불러오는 중…")}</p>
               </div>
             )}
             {phase === "ready" && guideState === "failed" && (
@@ -827,7 +827,7 @@ export default function Scan() {
             {phase === "init" && (
               <Center>
                 <div style={{ maxWidth: 320, background: "rgba(0,0,0,.58)", borderRadius: 14, padding: "20px 18px" }}>
-                  <p style={{ fontFamily: "var(--font-hand)", fontSize: 25, color: "#fff", marginBottom: 12 }}>{t("30초 피부 스캔, 시작할까요?")}</p>
+                  <p style={{ fontFamily: "var(--font-display)", fontSize: 25, color: "#fff", marginBottom: 12 }}>{t("30초 피부 스캔, 시작할까요?")}</p>
                   <div style={{ display: "grid", gap: 9, marginBottom: 16, textAlign: "left" }}>
                     {[
                       ["📷", "가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 자동으로 찍혀요."],
@@ -860,8 +860,8 @@ export default function Scan() {
             )}
             {phase === "ready" && countdown !== null && (
               <div role="status" aria-live="polite" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, pointerEvents: "none" }}>
-                <span style={{ fontFamily: "var(--font-hand)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
-                <span style={{ fontFamily: "var(--font-hand)", fontSize: 21, color: "#fff", textShadow: "0 1px 10px rgba(0,0,0,.55)" }}>{t("그대로 계세요")}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 96, lineHeight: 1, color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.5)" }}>{countdown}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 21, color: "#fff", textShadow: "0 1px 10px rgba(0,0,0,.55)" }}>{t("그대로 계세요")}</span>
               </div>
             )}
             {phase === "denied" && (

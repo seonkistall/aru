@@ -103,8 +103,8 @@ export default function CarePage() {
             <div style={{ position: "relative", padding: "15px 16px" }}>
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-                <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>{t("스캔 시작")}</span>
-                <span style={{ fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--orange)" }}>→</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>{t("스캔 시작")}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--orange)" }}>→</span>
               </div>
             </div>
           </Link>

@@ -19,8 +19,8 @@ export default function Home() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7" style={{ paddingRight: 118 }}>
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>
 
       <MoodFromLink />
@@ -36,7 +36,7 @@ export default function Home() {
               position: "absolute",
               right: "calc(100% - 14px)",
               top: 28,
-              fontFamily: "var(--font-hand)",
+              fontFamily: "var(--font-display)",
               fontSize: 21,
               color: "var(--plum)",
               lineHeight: 1.1,
@@ -53,7 +53,7 @@ export default function Home() {
           </svg>
         </div>
 
-        <h1 className="locale-display" style={{ fontFamily: "var(--font-hand)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
+        <h1 className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
           {t("과장 없이,")}
           <br />
           {t("너한테 맞는 최대 셋")}
@@ -62,7 +62,7 @@ export default function Home() {
           {t("4만원짜리 실패는 그만. 카메라로 피부를 읽고 솔직하게 골라드려요.")}
         </p>
 
-        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>
+        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>
           <span>{t("촬영")}</span>
           <Arrow />
           <span>{t("분석")}</span>
@@ -75,18 +75,18 @@ export default function Home() {
             <div style={{ position: "relative", minHeight: "var(--tap-min)", padding: "17px 16px" }}>
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-                <span className="locale-display" style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
-                <span style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--orange)" }}>→</span>
+                <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--orange)" }}>→</span>
               </div>
             </div>
           </Link>
           <Link
             href="/survey"
-            style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 8 }}
+            style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 8 }}
           >
             {t("카메라 없이 설문만 할래요 →")}
           </Link>
-          <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--text-muted)", marginTop: 4 }}>
+          <p style={{ textAlign: "center", fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text-muted)", marginTop: 4 }}>
             {t("기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요")}
           </p>
         </div>
@@ -95,7 +95,7 @@ export default function Home() {
       </section>
 
       <section className="px-6" style={{ paddingBottom: 6 }}>
-        <h2 style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
         <div style={{ display: "grid", gap: 10 }}>
           <HowCard
             index={1}
@@ -128,12 +128,12 @@ function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" 
       <div style={{ position: "relative", padding: "13px 14px" }}>
         <div style={{ position: "absolute", inset: 0, border: "1.8px solid var(--ink)", borderRadius: 4, filter: "url(#sketch-soft)" }} aria-hidden />
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontFamily: "var(--font-hand)", fontSize: 26, color: "var(--orange)", width: 18, textAlign: "center", flexShrink: 0 }}>{index}</span>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--orange)", width: 18, textAlign: "center", flexShrink: 0 }}>{index}</span>
           <span style={{ flexShrink: 0, marginLeft: -6 }}>
             <Xiaohei size={46} pose={pose} />
           </span>
           <div style={{ textAlign: "left", minWidth: 0, flex: 1 }}>
-            <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
+            <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
             <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
           </div>
         </div>

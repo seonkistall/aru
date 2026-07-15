@@ -26,7 +26,7 @@ ARU는 선택형 온디바이스 카메라 관찰과 짧은 설문으로 K-뷰�
 - Resend — 명시적으로 구독한 2·4주 리마인더
 - Vitest, ESLint, production route/auth smoke
 
-제품 폰트는 npm 패키지로 self-host하는 Pretendard Variable을 본문과 번역 UI에 사용합니다. 한국어 브랜드 display에는 기존 손글씨 계열을 제한적으로 사용하며, EN/JA/ZH 제목은 읽기 쉬운 Pretendard로 자동 전환합니다.
+제품 폰트는 npm 패키지로 self-host하는 Pretendard Variable을 본문과 번역 UI에 사용합니다. 한국어의 짧은 브랜드 display에는 OFL-1.1의 Nanum Pen Script 5.2.7만 제한적으로 사용하며, EN/JA/ZH 제목은 읽기 쉬운 Pretendard로 자동 전환합니다. 런타임 폰트 CDN 요청은 없습니다.
 
 ## 로컬 실행
 
