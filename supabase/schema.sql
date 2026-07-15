@@ -73,10 +73,10 @@ create table if not exists pilot_notes (
 
 -- Privacy-clean funnel analytics. Anonymous visitor/session ids only (random,
 -- not derived from any user attribute); no images, no free text. Used to track
--- the failure-prevention conversion north-star. Synced via /api/sync.
+-- scan and survey journey diagnostics. Synced via /api/sync.
 create table if not exists funnel_events (
   id text primary key,
-  kind text not null,          -- scan_started | scan_completed | survey_completed | reco_viewed | share_clicked | commerce_clicked
+  kind text not null,          -- scan_started | scan_completed | survey_viewed | survey_completed | reco_viewed | share_clicked | commerce_clicked
   visitor_id text not null,
   session_id text not null,
   props jsonb,

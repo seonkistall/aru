@@ -1,120 +1,119 @@
-# 아루 ARU — 작업 상황 (STATUS)
+# ARU 출시 준비 상태
 
-> 최종 업데이트: **2026-07-11** · 버전: **v1.1.0** · 브랜치: `main` · 도식: [`architecture.md`](architecture.md) · 실행 큐: [`AUTOPILOT.md`](../AUTOPILOT.md)
+최종 갱신: 2026-07-16
 
-## 제품 정체성
-**셀피 → 피부 분석 → 화장품·루틴 추천** 앱. 브랜드명 **아루(ARU)** = Areumdaum + Routine + U. 구 브랜드 `gyeol`의 내부 키(`gyeol_*`)는 데이터 호환을 위해 유지한다.
+제품 계약: [PRD.md](PRD.md)
 
-이 제품은 **K뷰티 피부분석/추천** 제품이다. 다른 소셜앱이나 블로그 서비스와 혼동하지 않는다.
+출시 절차: [production-release-checklist.md](production-release-checklist.md)
 
-코드 수정 시 `AGENTS.md`의 Next.js 주의사항을 먼저 따른다. 이 레포는 Next.js 기반이지만 현재 버전의 API와 파일 구조가 일반적인 기억과 다를 수 있으므로, 관련 가이드를 `node_modules/next/dist/docs/`에서 확인한다.
+이 문서는 완료를 주장하는 릴리스 노트가 아니라, 재현 가능한 증거와 외부 차단 조건을 분리하는 현재 상태판이다. 제품 범위·지표·보존 정책은 PRD만 단일 기준으로 사용한다.
 
-## 전략 (2026-07-08 피벗 반영)
-- **스캔은 훅, "구매 순간"이 상품.** 카메라/ML 추가 심화는 낭비 — 검증·전환 인프라만 유지보수한다.
-- 실행 순서: **③수작업 컨시어지 먼저**(오너가 스캔 후 직접 소싱·주문·정산, 실결제/재구매 학습) → ①트랙션으로 제휴딜 협상 → ②분석 유료화 WTP 테스트 → ④외국인 컨시어지 확장.
-- 북극성은 **외국인 대상 K뷰티 컨시어지**. v1.1 다국어판 = 외국인 테스터 검증용.
-- 설계 문서는 `~/.gstack/projects/aru/`(최신: `ktykj-main-design-20260708-150528.md`).
+## 현재 판정
 
-## 현재 버전 — v1.1.0 (글로벌 검증판, PR #32~#40)
-- **다국어 4종 KO/EN/JA/ZH**: gettext식 i18n(한국어 원문=msgid, 사전 694항목×3), 언어 스위처 + 브라우저 언어 자동감지(세션 한정, 명시 선택만 영속).
-- **리포트 3단계**(분석→추천→루틴·후속연결) + 영수증 스타일 스캔 리포트 + 해/달 루틴 타임라인.
-- **신뢰/바이럴**: 거리 게이트 프로파일별 minFaceSize(0.40/0.48/0.42), 클립보드 초대링크, OG 공유카드(`public/og.png`).
-- **컴플라이언스**: `/api/reason` 비한국어 출력용 다국어 금지클레임 필터(en/ja/zh) — `efficacyClean()` 위에 이중화.
-- **불변식**: 저장 문자열=한국어 canonical(번역은 렌더에서), 신규 문자열=3사전 동시 추가, ja `{type}`에 肌 덧붙이기 금지.
+| 영역 | 상태 | 근거/다음 게이트 |
+|---|---|---|
+| 소비자 Web 코드 | 로컬 코드 검증 완료 | `npm run smoke` 통과; production canary 필요 |
+| 보안·데이터 경계 | 코드 완료, 운영 확인 필요 | RLS/권한 회귀 테스트 완료; production schema 적용·service-role dry-run 필요 |
+| 모바일 UI/UX | 로컬 QA 완료 | 390×844 홈·리포트·케어 오버플로 0, 핵심 터치 영역 44px 이상; 배포 후 재검증 필요 |
+| 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
+| 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
+| Android TWA/AAB | 미착수 | manifest/service worker/asset links/package/signing/내부 트랙 필요 |
+| Google Play | 차단 | 실제 개발자 정보, 지원 이메일, signing certificate, Data safety와 Console 접근 필요 |
 
-## 최근 완료 이력
-0. **v1.1.1** (2026-07-12) — 적대 헌트 2라운드 코드 픽스 (PR #42 후속)
-   - 스캔: `/api/analyze` 8s 타임아웃(무한 분석멈춤 방지), capture 재진입 가드(이중 파이프라인), landmarker 언마운트 누수 close, getUserMedia 오류 세분화(사용중/없음 메시지+재시도), 촬영 게이트 centered 거부사유 정합.
-   - 추천: 루틴 hero 오배치 수정(선크림/크림이 수분 스텝에 붙던 것→전용 스텝), 예산 완화 시 "예산 맞춤" 허위주장 제거(헤더·pick reason), `/api/reason` avoid payload가 sku.freeOf를 사용자 요청으로 오프레이밍하던 것 수정.
-   - i18n/데이터: care H1 제품명 미번역, care_intents 스키마 컬럼 누락(구매 인텐트 서버 유실)→ALTER, 설문 재진입 답변 소실, 체크인 SKU 중복카드.
-   - 보안: `/api/analyze`·`/api/reason` 무제한 유료호출→per-IP 레이트리밋+입력 상한(`lib/rate-limit.ts`).
-   - 검증: vitest 104 · smoke 그린. 미해결(오너 결정): 재유입 이메일 3자 등록(더블옵트인 필요), 브라우저-Supabase 활성 시 구매/체크인 크로스유저(인증 필요), care 로컬 KO/EN 토글 vs 글로벌 i18n 불일치(토글 제거 검토).
-1. **v1.1.0** (2026-07-10~11) — 글로벌 검증판 (PR #32~#40)
-   - i18n 4개국어(#32·#33) + i18n 문서 3종(#34: `i18n-prd.md`·`i18n-spec.md`·`i18n-ux-flow.md`).
-   - 영수증 리포트+타임라인(#35), 거리게이트·클립보드 초대(#36), JA/ZH 레이아웃 픽스(#37).
-   - 전면 감사(#38): tsc 0에러, CJK 랩핑 근본 수정(`html[lang]` override), 이중언어 메타데이터, reason 8s 타임아웃.
-   - 언어 자동감지+OG 카드+다국어 클레임 필터(#39), 스튜디오 언어 프리필(#40).
-   - 검증: vitest 93 · smoke 그린 · puppeteer 시각 스윕(7라우트×4언어) · 프로덕션 언어전환 실검증.
-2. **v0.6.9** (2026-07-08) — Scan UX controls + guide gate cleanup
-   - 촬영 옵션 패널을 별도 컴포넌트로 추출.
-   - 측정영역 준비 전 촬영 버튼과 자동 촬영을 차단.
-   - 불필요한 `qualityPassed` 래퍼 제거.
-3. **v0.6.8** (2026-07-07) — Adaptive skin ROI guide polish
-   - 얼굴 크기에 따라 ROI 가이드 패딩과 영역 크기를 비례값으로 조정.
-   - 좌우 볼 위치를 명시적 랜드마크 그룹으로 계산하도록 변경.
-   - 가이드 영역 테스트 추가.
-4. **v0.6.7** (2026-07-07) — Strict scan gate
-   - `face + centered + distance + brightness + noGlare + steady`를 모두 통과해야 수동 촬영 버튼과 자동 촬영 countdown이 시작된다.
-   - balanced/tone 모드에서도 움직임을 필수 차단 조건으로 적용.
-5. **v0.6.6** (2026-07-07) — Camera quality upgrade + crop/model path hardening
-   - 고해상도 카메라 우선 요청과 legacy fallback을 분리.
-   - AI 전송 crop과 학습 저장 crop의 품질·용도 경로를 정리.
-   - localStorage quota와 Supabase 5MB sync cap 리스크를 UI 흐름에서 사전 처리.
-6. **v0.6.5** (2026-07-07) — Moongi cosmetic character
-   - Moongi cosmetic helper 캐릭터와 앱 아이콘을 전면 적용.
-   - 레이아웃, 추천 알고리즘, ML/카메라 로직, 커머스 플로우는 변경하지 않음.
-7. **v0.6.4** (2026-07-07) — Camera ML 데이터 루프 강화 + 배포 복구
-   - 동의가 실제 저장된 경우에만 AI 분석 전송과 학습 crop 저장을 허용.
-   - 저신뢰/재촬영/판독불가 샘플을 calibration·training 기본 제외 대상으로 정리.
-   - Vercel framework/output 설정을 복구하고 `/`, `/scan` 200 OK를 확인.
+## 이번 production-readiness 트랙에서 완료한 코드
 
-## 현재 상태
-- 스택: Next.js 16.2.9 + React 19.2.4 + Tailwind CSS 4 + MediaPipe + Supabase
-- 비전 분석: Gemini/OpenAI 선택 가능. API 키가 없으면 온디바이스 휴리스틱으로 폴백한다.
-- 배포: **Vercel 라이브** https://aru-beauty.vercel.app (`aru-beauty`)
-- 브랜치: `main`, `origin/main`과 동기화됨
-- 워크트리: 깨끗함
-- 최신 커밋: 배포 전 로컬 변경분 포함 예정
+- Supabase 앱 테이블 RLS 활성화, 브라우저 역할 직접 권한 철회와 회귀 검증
+- `/api/analyze`, `/api/reason` body 크기·스키마·rate·timeout 경계
+- 파일럿 participant/session 범위 동의 fallback 제거
+- MediaPipe 모델/WASM same-origin 제공과 asset smoke
+- 리마인더 명시적 구독, 서명·만료 해지, 철회 제외, 30일 보존 정리
+- 내부 `/ops`, `/eval`, `/pilot` production 기본 차단
+- 전체 기기 데이터 키 등록·삭제 검증
+- 추천의 검증되지 않은 별점/리뷰/가격 표시 제거와 판매처 재확인 안내
+- 판매처 클릭과 실제 사용 시작 이벤트 분리
+- 홈 첫 화면 CTA, 리포트 고정 상업 바 제거, 케어 판매처 접기와 44px 터치 계약
+- 설문 조회 이벤트와 세션 기준 설문 완료율 추가
+- 제품·데이터·지표·Web/TWA/Play 게이트를 [PRD.md](PRD.md)로 통합
 
-## 검증
-- 2026-07-11 실행: `npm run smoke` 통과
-  - ESLint 통과
-  - Vitest 21 files / 93 tests 통과
-  - Next production build 통과
-  - ML Python scripts `py_compile` 통과
-  - Smoke routes 통과: `/scan`·`/privacy`·`/pilot`·`/ops`·`/eval` 200, `/api/out` 302, GET `/api/sync` 200, POST `/api/sync` 403(토큰 없음 → 정상 거부)
-- 2026-07-11 라이브 확인 (v1.1 배포)
-  - `https://aru-beauty.vercel.app` 전 라우트 200, 언어전환 프로덕션 실검증(데스크톱+iPhone 에뮬, ja/zh)
+## 현재 제품 흐름
 
-## 다음 필요한 작업
+- 카메라: `/` → `/scan` → `/survey` → `/report` → `/care` 또는 `/studio`
+- 설문 전용: `/` → `/survey` → `/report` → `/care` 또는 `/studio`
+- 연구 운영: 명시적으로 허용된 환경의 `/pilot` → `/ops` → `/eval`
+- 이메일: opt-in subscribe → 2주/4주 cron → 서명 unsubscribe → 30일 뒤 cleanup
 
-### P0 — 외국인 테스터 검증 + 수작업 컨시어지 (오너 액션, 2026-07-08 피벗)
-- **목표**: v1.1 다국어판으로 외국인(EN/JA/ZH) 테스터에게 스캔→추천을 검증하고, 스캔 후 "구매 순간"을 오너가 수작업으로 캡처한다(do things that don't scale).
-- **해야 할 일**: 10명에게 직접 팔기 — 스캔 후 오너가 상품 소싱·주문·정산. 스프레드시트(이름/주문/객단가/마진/재구매/안 산 이유) 기록.
-- **완료 기준(시드 게이트)**: 결제전환 ≥3/10 + 재구매 ≥1 → 제휴(B3) 착수.
+상세 구조와 데이터 경계는 [architecture.md](architecture.md)를 참고한다.
 
-### P0 — 실기기 스캔 QA
-- **목표**: v0.6.8의 strict gate와 adaptive ROI guide가 실제 모바일 카메라에서 너무 빡빡하거나 느슨하지 않은지 확인한다.
-- **해야 할 일**: `docs/mobile-camera-qa.md` 기준으로 iPhone Safari, Android Chrome, 노트북 카메라 최소 3조합을 점검한다.
-- **완료 기준**: `/scan?debug=1`에서 face, centered, distance, brightness, glare, steady, ROI가 의도대로 표시되고 자동/수동 촬영이 동일 기준으로 통과한다.
+## 검증 원칙
 
-### P0 — 골든셋 10장 확보
-- **목표**: 카메라 휴리스틱 변경이 개선인지 퇴행인지 수치로 비교할 최소 데이터셋을 만든다.
-- **해야 할 일**: `docs/golden-set.md` 기준으로 피부 톤, 조명, 반사, 거리 조건이 다른 첫 10장과 기대 판정 JSONL을 수집한다.
-- **완료 기준**: `/eval`에서 현재 파이프라인 결과와 baseline diff를 볼 수 있다.
+### 최신 로컬 증거
 
-### P1 — 골든셋 회귀 하네스 고정
-- **목표**: ROI/threshold 변경 전후를 사람이 눈으로만 판단하지 않게 만든다.
-- **해야 할 일**: `/eval`의 baseline export/import 흐름을 README와 `docs/golden-set.md`의 절차에 맞춰 점검한다.
-- **완료 기준**: 새 baseline 생성, 이전 baseline과 diff, 변경 건수 표시가 한 번에 재현된다.
+- 2026-07-16 `npm run smoke` 통과
+- Vitest 42개 파일, 219개 테스트 통과
+- ESLint, Next.js 16.2.9 production build와 TypeScript 통과
+- ML Python script compile 통과
+- `/scan`, `/privacy`, `/api/out`, `/api/sync` smoke 통과
+- production 기본 차단 대상 `/pilot`, `/ops`, `/eval` 404 확인
+- 인증 없는 `/api/sync` POST 401 확인
 
-### P1 — 30명 파일럿 준비
-- **목표**: B1 QA 통과 후 바로 참가자 수집을 시작할 수 있게 한다.
-- **해야 할 일**: `docs/pilot-ml-loop.md`와 `docs/pilot-participant-kit.md`를 기준으로 모집 문구, 동의서, P001-P030 운영 절차를 확정한다.
-- **완료 기준**: `/pilot`에서 참가자 세션 생성, `/ops`에서 label/crop/consent 집계, export가 정상 동작한다.
+코드 변경 묶음은 다음 순서를 따른다.
 
-### P1 — Supabase sync 리허설
-- **목표**: 파일럿 데이터를 로컬에만 묶어두지 않고 서버로 안전하게 올릴 수 있는지 확인한다.
-- **해야 할 일**: staging 또는 dev Supabase에서 `supabase/schema.sql` 적용 후 `npm run supabase:check`와 `/api/sync` POST dry-run을 실행한다.
-- **완료 기준**: consent_events, labels, crop metadata가 batch upload되고 rate limit/token rejection이 의도대로 동작한다.
+1. 재현 또는 계약 테스트를 먼저 실패시킨다.
+2. 최소 구현으로 대상 테스트를 통과시킨다.
+3. 전체 테스트, lint, production build와 `git diff --check`를 통과시킨다.
+4. 모바일 뷰포트와 브라우저 오류를 확인한다.
+5. production 배포 뒤 동일한 핵심 여정을 canary로 다시 확인한다.
 
-### P2 — 커머스 제휴 링크 준비
-- **목표**: 추천 결과가 실제 커머스 아웃링크/제휴 실험으로 이어지게 한다.
-- **해야 할 일**: `docs/commerce-partnership-playbook.md` 기준으로 1순위 파트너와 링크 구조를 정하고 `COMMERCE_LINK_OVERRIDES_JSON` 샘플을 만든다.
-- **완료 기준**: `/api/out` 클릭 추적과 merchant override가 smoke 가능한 상태다.
+실행 명령:
 
-### ~~P2 — 문서/버전 정합성 정리~~ (2026-07-11 완료)
-- `package.json` version을 릴리즈 버전 v1.1.0에 맞췄다. 정책: package version = 릴리즈 버전(README/STATUS 헤더와 동일).
+```bash
+npm test
+npm run lint
+npm run build
+npm run smoke
+```
 
-## 관련 문서
-`README.md` · `AGENTS.md` · `docs/i18n-prd.md` · `docs/i18n-spec.md` · `docs/i18n-ux-flow.md` · `docs/mobile-camera-qa.md` · `docs/golden-set.md` · `docs/pilot-ml-loop.md` · `docs/pilot-participant-kit.md` · `docs/supabase-sync-runbook.md` · `docs/commerce-partnership-playbook.md`
+실제 단말, 외부 provider, Vercel/Supabase/Resend와 Play Console 결과는 로컬 테스트로 대체하지 않는다.
+
+## 출시 전 남은 필수 작업
+
+### P0 — Web production
+
+- production Supabase에 최신 `supabase/schema.sql` 적용
+- `anon`/`authenticated` 거부와 service-role sync dry-run 확인
+- Vercel secrets·allowed origins·firewall/rate limits·비용 경보 확인
+- 실제 Resend 수신, 해지 링크, 철회 후 cron 제외와 만료 cleanup 확인
+- production URL에서 주요 페이지·API·MediaPipe asset canary 수행
+
+### P0 — Physical-device camera
+
+- Galaxy S25 Edge에서 정면광, 저조도, 직접 반사, 렌즈 오염, 한쪽 볼 가림과 background/resume 기록
+- Android Chrome과 TWA의 품질 게이트 결과가 같은지 확인
+- iPhone Safari에서 권한 거부/허용, 미러링, 자동·수동 촬영, 회전, 재촬영과 설문 fallback 확인
+- [mobile-camera-qa.md](mobile-camera-qa.md)의 필수 행과 증거를 채우기
+
+### P0 — Android/Play
+
+- production application ID와 release signing certificate 확정
+- 설치 아이콘·maskable icon, service worker/offline 정책, Digital Asset Links 구현
+- TWA back/navigation bar/orientation/camera/외부 링크 QA
+- AAB release build와 Play internal testing, pre-launch report 통과
+- 개인정보처리방침, Data safety, 카메라 권한, 콘텐츠 등급과 스토어 문구를 실제 제품과 일치시키기
+
+### P1 — 연구 운영
+
+- 골든셋 최소 10장과 기대 판정 확보
+- 동의한 파일럿에 한해 crop 만료·삭제 처리 운영 리허설
+- 모델 자동 승격 없이 calibration/평가 결과를 사람이 승인
+
+## 외부 오너 입력
+
+다음 값은 코드에서 추측하거나 임의 생성하지 않는다.
+
+- Play 개발자/법인명과 공개 지원 이메일
+- Android application ID, keystore 보관자와 release certificate SHA-256
+- Resend 검증 도메인, 발신 주소와 실제 수신 테스트 주소
+- production Supabase/Vercel/AI provider 접근과 지출 한도
+- 파일럿 데이터 삭제 요청을 처리할 실제 문의 채널
+
+이 입력 또는 실제 콘솔 증거가 없으면 “Web production 완료”나 “Play 제출 가능”으로 표시하지 않는다.

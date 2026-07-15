@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FlowSteps } from "@/app/components/flow-steps";
@@ -52,6 +52,7 @@ function loadScanHint(): ScanHint {
 
 export default function Survey() {
   const router = useRouter();
+  const surveyViewRecorded = useRef(false);
   const [scanHint, setScanHint] = useState<ScanHint>(null);
   const [type, setType] = useState<SkinType | null>(null);
   const [concerns, setConcerns] = useState<Concern[]>([]);
@@ -62,6 +63,10 @@ export default function Survey() {
   const ready = type && category && budget;
 
   useEffect(() => {
+    if (!surveyViewRecorded.current) {
+      surveyViewRecorded.current = true;
+      recordFunnelEvent("survey_viewed");
+    }
     // sessionStorage is client-only; reading it in the initial render caused an
     // SSR hydration mismatch, so the one-time post-mount cascade is intentional.
     /* eslint-disable react-hooks/set-state-in-effect */

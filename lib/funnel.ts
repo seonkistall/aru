@@ -6,13 +6,14 @@ import { DEVICE_DATA_KEY } from "./device-data";
 // a random anonymous visitor/session id. Props are coerced to primitives so a
 // caller can never accidentally log PII or a large blob.
 //
-// Purpose: measure the north-star "failure-prevention conversion" — of the
-// people who complete a scan, how many go on to an informed purchase intent
-// (commerce_clicked). That ratio is the kill-metric for the whole product.
+// Purpose: diagnose where sessions leave the scan and survey journeys. A
+// commerce click is only an outbound action; it does not prove a purchase,
+// product success, or a prevented failure.
 
 export type FunnelEventKind =
   | "scan_started"
   | "scan_completed"
+  | "survey_viewed"
   | "survey_completed"
   | "reco_viewed"
   | "share_clicked"
@@ -114,15 +115,17 @@ export type FunnelSummary = {
   events: number;
   sessions: number;
   steps: Record<FunnelEventKind, number>; // sessions that reached each step
-  // North-star: of sessions that completed a scan, the share that reached an
-  // informed purchase intent (a commerce click).
+  // Legacy property name: completed-scan sessions that opened a merchant link.
+  // Do not present this as a purchase or efficacy outcome.
   failurePreventionConversion: number;
+  surveyCompletion: number; // completed-survey sessions / survey-viewed sessions
   shareRate: number; // share clicks / completed scans
 };
 
-const ORDER: FunnelEventKind[] = [
+export const FUNNEL_ORDER: FunnelEventKind[] = [
   "scan_started",
   "scan_completed",
+  "survey_viewed",
   "survey_completed",
   "reco_viewed",
   "share_clicked",
@@ -135,7 +138,7 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
 
   const steps = {} as Record<FunnelEventKind, number>;
   const reachedSets = {} as Record<FunnelEventKind, Set<string>>;
-  for (const kind of ORDER) {
+  for (const kind of FUNNEL_ORDER) {
     const set = reached(kind);
     reachedSets[kind] = set;
     steps[kind] = set.size;
@@ -148,12 +151,15 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
   const completedSet = reachedSets.scan_completed;
   const withinCompleted = (kind: FunnelEventKind) => [...reachedSets[kind]].filter((id) => completedSet.has(id)).length;
   const ratio = (num: number) => (completedSet.size ? num / completedSet.size : 0);
+  const surveyViewedSet = reachedSets.survey_viewed;
+  const completedAfterView = [...reachedSets.survey_completed].filter((id) => surveyViewedSet.has(id)).length;
 
   return {
     events: events.length,
     sessions: sessions.size,
     steps,
     failurePreventionConversion: ratio(withinCompleted("commerce_clicked")),
+    surveyCompletion: surveyViewedSet.size ? completedAfterView / surveyViewedSet.size : 0,
     shareRate: ratio(withinCompleted("share_clicked")),
   };
 }
