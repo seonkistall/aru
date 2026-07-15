@@ -1,7 +1,7 @@
 # ARU Product Requirements Document
 
-Status: Production candidate  
-Owner: ARU product team  
+Status: Production candidate
+Owner: ARU product team
 Last updated: 2026-07-15
 
 ## Product promise
