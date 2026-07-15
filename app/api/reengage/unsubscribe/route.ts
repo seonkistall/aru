@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const status = error instanceof RequestGuardError ? error.status : 400;
     return Response.json({ ok: false, reason: status === 413 ? "request too large" : "invalid json" }, { status });
   }
-  const secret = process.env.UNSUBSCRIBE_SECRET || process.env.CRON_SECRET;
+  const secret = process.env.UNSUBSCRIBE_SECRET;
   if (!secret) return Response.json({ ok: false, reason: "not configured" }, { status: 503 });
   const verified = verifyUnsubscribeToken(token, secret);
   if (!verified) return Response.json({ ok: false, reason: "invalid token" }, { status: 400 });

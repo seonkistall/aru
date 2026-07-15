@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { isResendConfigured, sendReengageEmail } from "@/lib/reengage";
+import { reengageIdempotencyKey, reengageSecretsConfigured, sendReengageEmail } from "@/lib/reengage";
 import { parseManualReengageInput } from "@/lib/server/reengage-input";
 import { readBoundedJson, RequestGuardError } from "@/lib/server/request-guard";
+import { createUnsubscribeToken } from "@/lib/server/unsubscribe-token";
 
 /**
  * Manual single re-engagement send (2·4주 체크인 유도). Admin-only: gated behind
@@ -29,9 +30,16 @@ export async function POST(req: Request) {
     const status = error instanceof RequestGuardError ? error.status : 400;
     return NextResponse.json({ sent: false, reason: status === 413 ? "request too large" : "invalid JSON" }, { status });
   }
-  if (!isResendConfigured()) {
-    return NextResponse.json({ sent: false, reason: "RESEND_API_KEY not set" }, { status: 503 });
+  if (!reengageSecretsConfigured()) {
+    return NextResponse.json({ sent: false, reason: "email not fully configured" }, { status: 503 });
   }
-  const link = (process.env.REENGAGE_LINK_BASE || "https://aru-beauty.vercel.app") + "/checkin";
-  return NextResponse.json(await sendReengageEmail({ email: body.email, week: body.week, link }));
+  const base = process.env.REENGAGE_LINK_BASE!;
+  const token = createUnsubscribeToken(body.email, process.env.UNSUBSCRIBE_SECRET!, Date.now() + 180 * 24 * 60 * 60 * 1000);
+  return NextResponse.json(await sendReengageEmail({
+    email: body.email,
+    week: body.week,
+    link: base + "/checkin",
+    unsubscribeLink: `${base}/unsubscribe?token=${encodeURIComponent(token)}`,
+    idempotencyKey: reengageIdempotencyKey(body.email, body.week),
+  }));
 }
