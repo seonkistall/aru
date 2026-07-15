@@ -18,7 +18,7 @@ import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
-import { createVideoLandmarker } from "./create-landmarker";
+import { useLandmarker, type VideoFaceLandmarker } from "./use-landmarker";
 import { resolveCaptureConsent } from "./consent-authorization";
 import { openCamera, stopMediaStream } from "./camera-stream";
 import {
@@ -76,18 +76,13 @@ import {
 } from "./capture-analysis";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
-type FaceLandmarker = {
-  detectForVideo: (source: HTMLVideoElement | HTMLCanvasElement, timestampMs: number) => { faceLandmarks?: Landmark[][] };
-  close?: () => void;
-};
+type FaceLandmarker = VideoFaceLandmarker;
 
 const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
 export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const landmarkerRef = useRef<FaceLandmarker | null>(null);
-  const forceCpuRef = useRef(false);
   const lastCenterRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const qualityTimerRef = useRef<number | null>(null);
   const procCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -122,8 +117,15 @@ export default function Scan() {
   const [zones, setZones] = useState<GuideZones | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [guideState, setGuideState] = useState<"loading" | "ready" | "failed">("loading");
-  const [guideAttempt, setGuideAttempt] = useState(0);
+  const {
+    delegate: landmarkerDelegate,
+    guideState,
+    attempt: guideAttempt,
+    ensureLandmarker,
+    loadLandmarker,
+    reloadLandmarker,
+    forceCpuDelegate,
+  } = useLandmarker();
   const captureProfile = CAPTURE_PROFILES[captureMode];
   const [staffMode, setStaffMode] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
@@ -237,32 +239,6 @@ export default function Scan() {
     }
   }, []);
 
-  const ensureLandmarker = useCallback(async (): Promise<FaceLandmarker | null> => {
-    if (landmarkerRef.current) return landmarkerRef.current;
-    let landmarker: FaceLandmarker;
-    if (forceCpuRef.current) {
-      // A prior GPU run emitted corrupt (non-normalized) landmarks on this
-      // device — CPU delegate is slower but always correct.
-      landmarker = await createVideoLandmarker("CPU");
-    } else {
-      try {
-        landmarker = await createVideoLandmarker("GPU");
-      } catch {
-        // Some mobile GPUs fail delegate init — CPU is slower but always works.
-        landmarker = await createVideoLandmarker("CPU");
-      }
-    }
-    // The WASM fileset + ~3MB model can take seconds on mobile; if the user
-    // navigated away meanwhile, the unmount cleanup already ran (ref was still
-    // null), so close the now-orphaned landmarker instead of leaking it.
-    if (disposedRef.current) {
-      landmarker.close?.();
-      return null;
-    }
-    landmarkerRef.current = landmarker;
-    return landmarker;
-  }, []);
-
   const stopCamera = useCallback(() => {
     stopMediaStream(streamRef.current);
     streamRef.current = null;
@@ -326,14 +302,11 @@ export default function Scan() {
       // within [0,1]; anything wild means the GPU output is garbage — switch
       // to the CPU delegate once and reload. This also un-breaks the tracked
       // sampling zones, which need valid landmarks.
-      if (!forceCpuRef.current && !isNormalizedBox(box)) {
-        forceCpuRef.current = true;
-        landmarkerRef.current?.close?.();
-        landmarkerRef.current = null;
+      if (landmarkerDelegate !== "CPU" && !isNormalizedBox(box)) {
+        forceCpuDelegate();
         if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
         handleAutoTick(false);
-        setGuideState("loading");
-        setGuideAttempt((n) => n + 1);
+        reloadLandmarker();
         return;
       }
 
@@ -402,7 +375,7 @@ export default function Scan() {
       setZones(nextZones);
       if (debugRef.current) {
         setDebugInfo({
-          "delegate": forceCpuRef.current ? "CPU" : "GPU",
+          "delegate": landmarkerDelegate,
           ...buildCameraQualityDebug({
             attempt: cameraAttemptRef.current,
             videoWidth: video.videoWidth,
@@ -428,14 +401,12 @@ export default function Scan() {
         });
       }
     },
-    [captureMode, commitQuality, handleAutoTick, readFrame, detectLiveFace]
+    [captureMode, commitQuality, detectLiveFace, forceCpuDelegate, handleAutoTick, landmarkerDelegate, readFrame, reloadLandmarker]
   );
 
   useEffect(() => {
     if (phase !== "ready") return;
     let mounted = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setGuideState("loading");
     if (useWorkerRef.current && !workerRef.current) {
       // Spin up lazily; null (unsupported) just keeps the main-thread path.
       workerRef.current = createLandmarkerWorker();
@@ -443,12 +414,11 @@ export default function Scan() {
       // the main-thread landmarker, so pin it to CPU too — otherwise a GPU-buggy
       // device could pass the worker-driven gate and then fail every capture on
       // garbage GPU landmarks (which capture() doesn't self-heal).
-      if (workerRef.current) forceCpuRef.current = true;
+      if (workerRef.current) forceCpuDelegate();
     }
-    ensureLandmarker()
+    loadLandmarker()
       .then((landmarker) => {
         if (!mounted || !landmarker) return;
-        setGuideState("ready");
         // Self-scheduling instead of setInterval: waits for each measureQuality
         // to finish (no overlap) and paces adaptively — on a slow CPU-delegate
         // phone the next tick is 1.5x the last duration (650-1500ms) so the main
@@ -468,13 +438,6 @@ export default function Scan() {
           });
         };
         qualityTimerRef.current = window.setTimeout(tick, 0);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        // Model/WASM failed to load (offline, blocked CDN, GPU+CPU both fail).
-        // Never leave the user stuck on a live preview with a dead button.
-        landmarkerRef.current = null;
-        setGuideState("failed");
       });
     return () => {
       mounted = false;
@@ -482,12 +445,10 @@ export default function Scan() {
       passStreakRef.current = 0;
       setCountdownSafe(null);
     };
-  }, [ensureLandmarker, measureQuality, phase, setCountdownSafe, guideAttempt]);
+  }, [forceCpuDelegate, guideAttempt, loadLandmarker, measureQuality, phase, setCountdownSafe]);
 
   function retryGuide() {
-    landmarkerRef.current = null;
-    setGuideState("loading");
-    setGuideAttempt((n) => n + 1);
+    reloadLandmarker();
   }
 
   useEffect(() => {
@@ -495,8 +456,6 @@ export default function Scan() {
     return () => {
       disposedRef.current = true;
       stopCamera();
-      landmarkerRef.current?.close?.();
-      landmarkerRef.current = null;
       workerRef.current?.close();
       workerRef.current = null;
     };
