@@ -21,9 +21,9 @@ const mlFiles = [
 const routeChecks = [
   { method: "GET", path: "/scan", status: 200 },
   { method: "GET", path: "/privacy", status: 200 },
-  { method: "GET", path: "/pilot", status: 200 },
-  { method: "GET", path: "/ops", status: 200 },
-  { method: "GET", path: "/eval", status: 200 },
+  { method: "GET", path: "/pilot", status: 404 },
+  { method: "GET", path: "/ops", status: 404 },
+  { method: "GET", path: "/eval", status: 404 },
   { method: "GET", path: "/api/out?sku=tn1&merchant=oliveyoung&placement=smoke", status: 302, redirect: "manual", locationIncludes: "www.oliveyoung.co.kr" },
   { method: "GET", path: "/api/sync", status: 200 },
   // 401 when no sync token is configured; 403 when the env-based origin guard
