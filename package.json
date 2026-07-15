@@ -3,6 +3,8 @@
   "version": "1.1.0",
   "private": true,
   "scripts": {
+    "assets:mediapipe": "node scripts/copy-mediapipe-assets.mjs",
+    "postinstall": "npm run assets:mediapipe",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reasonClean } from "@/lib/claim-filter";
-import { clientIp, rateLimit, type RateBucket } from "@/lib/rate-limit";
+import { parseReasonInput } from "@/lib/server/ai-input";
+import { createRateLimiter, fetchWithTimeout, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 
 type Item = {
   brand: string;
@@ -20,26 +21,18 @@ const LANG_NAMES: Record<string, string> = {
   zh: "중국어 간체(简体中文)",
 };
 
-// Public endpoint that calls the paid OpenAI chat model — cap per IP, and cap
-// the items array so the prompt cost can't scale with attacker input (the real
-// client sends 3 picks).
-const rate = new Map<string, RateBucket>();
-const MAX_ITEMS = 12;
-
 export async function POST(req: Request) {
-  if (!rateLimit(rate, clientIp(req), { max: 30 })) {
-    return NextResponse.json({ reasons: [], source: "rate-limited" }, { status: 429 });
+  if (!reasonLimit(requestClientKey(req))) return NextResponse.json({ reasons: [], reason: "rate limited" }, { status: 429 });
+  let body: unknown;
+  try { body = await readBoundedJson(req, 32_768); }
+  catch (error) {
+    const status = error instanceof RequestGuardError ? error.status : 400;
+    return NextResponse.json({ reasons: [], reason: status === 413 ? "request too large" : "invalid JSON" }, { status });
   }
-  let items: Item[];
-  let lang: string | undefined;
-  try {
-    ({ items, lang } = (await req.json()) as { items: Item[]; lang?: string });
-  } catch {
-    return NextResponse.json({ reasons: [], source: "bad-request" }, { status: 400 });
-  }
-  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITEMS) {
-    return NextResponse.json({ reasons: [], source: "bad-request" }, { status: 400 });
-  }
+  const parsed = parseReasonInput(body);
+  if (!parsed.ok) return NextResponse.json({ reasons: [], reason: parsed.reason }, { status: 400 });
+  const items = parsed.value.items as Item[];
+  const lang = parsed.value.lang;
   const key = process.env.OPENAI_API_KEY;
   if (!key) return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
 
@@ -58,7 +51,7 @@ export async function POST(req: Request) {
     .join("\n");
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
@@ -70,7 +63,7 @@ export async function POST(req: Request) {
           { role: "user", content: `${user}\n\n{"reasons": ["..."]} 형태로 답해.` },
         ],
       }),
-    });
+    }, 15_000);
     if (!response.ok) throw new Error(`openai ${response.status}`);
     const json = await response.json();
     const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? "{}");
@@ -84,3 +77,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
   }
 }
+
+const reasonLimit = createRateLimiter({ max: 10, windowMs: 60_000, maxKeys: 10_000 });

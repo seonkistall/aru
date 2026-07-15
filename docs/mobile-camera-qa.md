@@ -145,3 +145,14 @@ responsive mode.
 - Report/care pages: 小黑 accents do not overlap text at 360px-width devices.
 - Fonts: body text renders as Pretendard (self-hosted); no FOUT flash longer than ~1s
   on first load over 4G.
+# Production release device matrix
+
+Automated camera lifecycle tests do not replace real-device evidence. Do not mark a row passed without recording the physical device, OS/browser version, date, and `/scan?debug=1` output.
+
+| Device class | Required browser | Status | Evidence |
+|---|---|---|---|
+| iPhone current | Safari | PENDING DEVICE VERIFICATION | Device, iOS, video/track/crop sizes, capture result |
+| iPhone previous major | Safari | PENDING DEVICE VERIFICATION | Device, iOS, video/track/crop sizes, capture result |
+| Samsung Galaxy current | Chrome | PENDING DEVICE VERIFICATION | Device, Android, GPU/CPU recovery, capture result |
+| Low/mid Android | Chrome | PENDING DEVICE VERIFICATION | Device, Android, gate latency, capture result |
+| Desktop webcam | Chrome or Edge | PENDING DEVICE VERIFICATION | Camera, OS/browser, fallback/capture result |

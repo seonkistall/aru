@@ -2,13 +2,8 @@ import { NextResponse } from "next/server";
 import { efficacyClean } from "@/lib/recommend";
 import { SKIN_LABELS, type SkinAttr, type SkinLevel } from "@/lib/skin";
 import { openAiVisionUserContent } from "@/lib/vision-payload";
-import { clientIp, rateLimit, type RateBucket } from "@/lib/rate-limit";
-
-// Public endpoint that calls a paid vision model on every request — cap per IP.
-const rate = new Map<string, RateBucket>();
-// A 640px jpeg crop is a few hundred KB; reject anything far larger before it
-// reaches the provider.
-const MAX_IMAGE_CHARS = 2_000_000;
+import { parseAnalyzeInput } from "@/lib/server/ai-input";
+import { createRateLimiter, fetchWithTimeout, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 
 const ATTRS = ["oil", "redness", "pores"] as const satisfies readonly SkinAttr[];
 
@@ -28,14 +23,14 @@ async function callGemini(image: string): Promise<Record<string, unknown> | null
   if (!key) return null;
   const b64 = image.split(",")[1] ?? "";
   const model = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+  const response = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${SYS}\n\n${USER}` }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }],
       generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
     }),
-  });
+  }, 15_000);
   if (!response.ok) throw new Error(`gemini ${response.status}`);
   const json = await response.json();
   return JSON.parse(json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
@@ -44,7 +39,7 @@ async function callGemini(image: string): Promise<Record<string, unknown> | null
 async function callOpenAI(image: string): Promise<Record<string, unknown> | null> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -56,24 +51,24 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
         { role: "user", content: openAiVisionUserContent(USER, image) },
       ],
     }),
-  });
+  }, 15_000);
   if (!response.ok) throw new Error(`openai ${response.status}`);
   const json = await response.json();
   return JSON.parse(json.choices?.[0]?.message?.content ?? "{}");
 }
 
 export async function POST(req: Request) {
-  if (!rateLimit(rate, clientIp(req), { max: 20 })) {
-    return NextResponse.json({ ok: false, reason: "rate limited" }, { status: 429 });
-  }
-  let image: string | undefined;
+  if (!analyzeLimit(requestClientKey(req))) return NextResponse.json({ ok: false, reason: "rate limited" }, { status: 429 });
+  let body: unknown;
   try {
-    ({ image } = (await req.json()) as { image: string });
-  } catch {
-    return NextResponse.json({ ok: false, reason: "invalid JSON" }, { status: 400 });
+    body = await readBoundedJson(req, 2_100_000);
+  } catch (error) {
+    const status = error instanceof RequestGuardError ? error.status : 400;
+    return NextResponse.json({ ok: false, reason: status === 413 ? "request too large" : "invalid JSON" }, { status });
   }
-  if (!image?.startsWith("data:image")) return NextResponse.json({ ok: false }, { status: 400 });
-  if (image.length > MAX_IMAGE_CHARS) return NextResponse.json({ ok: false, reason: "too large" }, { status: 413 });
+  const parsed = parseAnalyzeInput(body);
+  if (!parsed.ok) return NextResponse.json({ ok: false, reason: parsed.reason }, { status: parsed.reason.includes("large") ? 413 : 400 });
+  const { image } = parsed.value;
 
   const provider = process.env.VISION_PROVIDER ?? "gemini";
   try {
@@ -92,6 +87,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: "vision failed" }, { status: 502 });
   }
 }
+
+const analyzeLimit = createRateLimiter({ max: 10, windowMs: 60_000, maxKeys: 10_000 });
 
 function readLabels(payload: Record<string, unknown>): Record<SkinAttr, SkinLevel> | null {
   const src = typeof payload.labels === "object" && payload.labels ? payload.labels as Record<string, unknown> : payload;

@@ -166,24 +166,29 @@ create table if not exists reengage_contacts (
   week2_sent_at timestamptz,
   week4_sent_at timestamptz
 );
+alter table reengage_contacts add column if not exists consent_version text;
+alter table reengage_contacts add column if not exists consented_at timestamptz;
+alter table reengage_contacts add column if not exists revoked_at timestamptz;
+alter table reengage_contacts add column if not exists retention_until timestamptz;
 
--- RLS: enable + own-rows-only (uncomment once auth is wired).
--- alter table purchases enable row level security;
--- alter table checkins  enable row level security;
--- alter table care_intents enable row level security;
--- alter table labels    enable row level security;
--- alter table consent_events enable row level security;
--- alter table pilot_notes enable row level security;
--- alter table crop_samples enable row level security;
--- create policy "own rows" on purchases for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
--- create policy "own rows" on checkins  for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
--- create policy "own rows" on care_intents for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
--- create policy "own rows" on labels    for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
--- create policy "own rows" on consent_events for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
--- create policy "own rows" on pilot_notes for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
--- create policy "own rows" on crop_samples for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+-- Anonymous ARU use is local-first. Browser roles get no table access; the
+-- server-only service role used by sync and re-engagement bypasses RLS.
+alter table purchases enable row level security;
+alter table checkins enable row level security;
+alter table care_intents enable row level security;
+alter table labels enable row level security;
+alter table consent_events enable row level security;
+alter table pilot_notes enable row level security;
+alter table funnel_events enable row level security;
+alter table crop_samples enable row level security;
+alter table reengage_contacts enable row level security;
 
--- If your 2026 Supabase project has table auto-exposure disabled, grant only the
--- minimum roles you actually use after enabling RLS and policies above.
--- grant select, insert, update on purchases, checkins, care_intents to authenticated;
--- grant select, insert, update on labels, consent_events, pilot_notes, crop_samples to authenticated;
+revoke all on table purchases from anon, authenticated;
+revoke all on table checkins from anon, authenticated;
+revoke all on table care_intents from anon, authenticated;
+revoke all on table labels from anon, authenticated;
+revoke all on table consent_events from anon, authenticated;
+revoke all on table pilot_notes from anon, authenticated;
+revoke all on table funnel_events from anon, authenticated;
+revoke all on table crop_samples from anon, authenticated;
+revoke all on table reengage_contacts from anon, authenticated;

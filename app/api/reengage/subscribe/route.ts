@@ -12,6 +12,7 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 5;
 const RATE_MAX_KEYS = 10_000;
 const rate = new Map<string, { count: number; resetAt: number }>();
+const CONSENT_VERSION = "2026-07-15.v1";
 
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
 
   const { error } = await admin
     .from("reengage_contacts")
-    .upsert({ email, context: (body.context || "").slice(0, 200), consent: true }, { onConflict: "email" });
+    .upsert({ email, context: (body.context || "").slice(0, 200), consent: true, consent_version: CONSENT_VERSION, consented_at: new Date().toISOString(), revoked_at: null, retention_until: null }, { onConflict: "email" });
   if (error) return Response.json({ ok: false, reason: "store failed" }, { status: 500 });
 
   return Response.json({ ok: true });

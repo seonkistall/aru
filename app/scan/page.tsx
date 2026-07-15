@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/i18n/core";
-import { CONSENT_VERSION, latestConsent, recordConsentEvent } from "@/lib/consent";
+import { CONSENT_VERSION, getConsentEvents, recordConsentEvent } from "@/lib/consent";
 import {
   analyzeSkinBurst,
   classifyVisibleAttributes,
@@ -21,14 +21,15 @@ import { shouldKeepLearningCrop, shouldShowFeedback } from "@/lib/ml-collection"
 
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
+import { resolveCaptureConsent } from "./consent-authorization";
+import { openCamera, stopMediaStream } from "./camera-stream";
+import { MODEL, WASM } from "./landmarker-config";
 import {
   buildCameraQualityDebug,
-  cameraConstraintsForAttempt,
   captureGatePassed,
   cropOutputSize,
   cropPlanForPurpose,
   frameMovement,
-  nextCameraAttempt,
   scanCaptureButtonLabel,
   scanCaptureReady,
   type CameraAttempt,
@@ -81,9 +82,6 @@ type VisionAnalysis = {
 
 const ATTRS: SkinAttr[] = ["oil", "redness", "pores"];
 
-const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
-const MODEL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
 export default function Scan() {
@@ -204,35 +202,24 @@ export default function Scan() {
       return;
     }
 
-    let attempt: CameraAttempt | null = "high";
-    let stream: MediaStream | null = null;
-    let lastError: unknown = null;
-    while (attempt) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(cameraConstraintsForAttempt(attempt));
-        cameraAttemptRef.current = attempt;
-        break;
-      } catch (e) {
-        lastError = e;
-        attempt = nextCameraAttempt(attempt);
-      }
-    }
-    if (!stream) {
-      // Not every getUserMedia failure is a permission denial — a camera held by
-      // another app (NotReadableError) or a missing device (NotFound/Overconstr.)
-      // needs its own message and a retry, not "grant permission".
+    let opened: Awaited<ReturnType<typeof openCamera>>;
+    try {
+      opened = await openCamera((constraints) => navigator.mediaDevices.getUserMedia(constraints));
+    } catch (lastError) {
       const name = (lastError as { name?: string } | null)?.name;
       setDeniedReason(name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission");
       setPhase("denied");
       return;
     }
+    const { stream, attempt } = opened;
+    cameraAttemptRef.current = attempt;
 
     try {
       if (disposedRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
+        stopMediaStream(stream);
         return;
       }
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      stopMediaStream(streamRef.current);
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -286,7 +273,7 @@ export default function Scan() {
   }, []);
 
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    stopMediaStream(streamRef.current);
     streamRef.current = null;
     if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
   }, []);
@@ -600,10 +587,12 @@ export default function Scan() {
 
       const session = getCurrentPilotSession();
       const scope = session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined;
-      const aiEvent = latestConsent("ai_analysis", scope) ?? (scope ? latestConsent("ai_analysis") : null);
-      const cropEvent = latestConsent("learning_crop", scope) ?? (scope ? latestConsent("learning_crop") : null);
-      const aiAllowed = consent && Boolean(aiEvent?.granted);
-      const cropAllowed = datasetConsent && Boolean(cropEvent?.granted);
+      const consentEvents = getConsentEvents();
+      const exactScope = scope ? { participantId: scope.participantId, sessionId: scope.sessionId } : undefined;
+      const aiEvent = resolveCaptureConsent(consentEvents, "ai_analysis", consent, exactScope);
+      const cropEvent = resolveCaptureConsent(consentEvents, "learning_crop", datasetConsent, exactScope);
+      const aiAllowed = Boolean(aiEvent);
+      const cropAllowed = Boolean(cropEvent);
 
       // Crops come from this verified first frame (canvas still holds it).
       const aiCrop = aiAllowed ? cropFace(canvas, faces[0], cropPlanForPurpose("ai-analysis")) : null;

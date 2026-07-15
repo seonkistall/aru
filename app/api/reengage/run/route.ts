@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { isResendConfigured, sendReengageEmail } from "@/lib/reengage";
+import { isResendConfigured, retentionAfterWeekFour, sendReengageEmail } from "@/lib/reengage";
+import { createUnsubscribeToken } from "@/lib/server/unsubscribe-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,20 +28,29 @@ export async function GET(request: Request) {
 
   const now = Date.now();
   const link = (process.env.REENGAGE_LINK_BASE || "https://aru-beauty.vercel.app") + "/checkin";
+  const base = process.env.REENGAGE_LINK_BASE || "https://aru-beauty.vercel.app";
+  const unsubscribeSecret = process.env.UNSUBSCRIBE_SECRET || process.env.CRON_SECRET!;
   let sent = 0;
+
+  await admin.from("reengage_contacts").delete().lte("retention_until", new Date(now).toISOString());
 
   for (const week of [2, 4] as const) {
     const column = week === 2 ? "week2_sent_at" : "week4_sent_at";
     const { data } = await admin
       .from("reengage_contacts")
       .select(`email,${column}`)
+      .eq("consent", true)
+      .is("revoked_at", null)
       .is(column, null)
       .lte("created_at", new Date(now - week * WEEK_MS).toISOString())
       .limit(BATCH);
     for (const contact of data || []) {
-      const result = await sendReengageEmail({ email: contact.email as string, week, link });
+      const email = contact.email as string;
+      const token = createUnsubscribeToken(email, unsubscribeSecret, now + 180 * 24 * 60 * 60 * 1000);
+      const result = await sendReengageEmail({ email, week, link, unsubscribeLink: `${base}/unsubscribe?token=${encodeURIComponent(token)}` });
       if (result.sent) {
-        await admin.from("reengage_contacts").update({ [column]: new Date().toISOString() }).eq("email", contact.email);
+        const update = week === 4 ? { [column]: new Date().toISOString(), retention_until: new Date(retentionAfterWeekFour(now)).toISOString() } : { [column]: new Date().toISOString() };
+        await admin.from("reengage_contacts").update(update).eq("email", contact.email);
         sent += 1;
       }
     }

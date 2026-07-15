@@ -41,8 +41,9 @@
   --color-line: var(--line);
   --color-success: var(--success);
   /* repoint all display roles to the hand font; body stays Pretendard */
-  --font-serif: var(--font-hand), cursive;
-  --font-ko-serif: var(--font-hand), cursive;
+  --font-hand: "Segoe Print", "Comic Sans MS", cursive;
+  --font-serif: var(--font-hand);
+  --font-ko-serif: var(--font-hand);
   --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
 }
