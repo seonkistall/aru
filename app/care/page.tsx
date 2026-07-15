@@ -12,12 +12,13 @@ import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { ProductVisual } from "@/app/components/product-visual";
 import { t, useLanguage } from "@/lib/i18n";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
 function loadCareView(): CareView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionStorage.getItem("gyeol_survey");
+  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Returning visitor in a fresh tab (no sessionStorage): fall back to the
     // saved result, mirroring /report, so report's care CTA doesn't dead-end.
@@ -35,11 +36,11 @@ function loadCareView(): CareView | null {
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
-    const scanRaw = sessionStorage.getItem("gyeol_scan");
+    const scanRaw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
     if (scanRaw) scan = JSON.parse(scanRaw);
   } catch {}
   try {
-    const readsRaw = sessionStorage.getItem("gyeol_reads");
+    const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
     if (readsRaw) reads = JSON.parse(readsRaw);
   } catch {}
 

@@ -18,6 +18,7 @@ import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { pushScanHistory } from "@/lib/scan-history";
 import { shouldKeepLearningCrop, shouldShowFeedback } from "@/lib/ml-collection";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
@@ -717,7 +718,7 @@ export default function Scan() {
       // otherwise a completed scan would be mislabeled as an analysis failure.
       try {
         sessionStorage.setItem(
-          "gyeol_scan",
+          DEVICE_DATA_KEY.scan,
           JSON.stringify({
             oil: final.oil.level,
             redness: final.redness.level,
@@ -727,7 +728,7 @@ export default function Scan() {
             source: final.source,
           })
         );
-        sessionStorage.setItem("gyeol_reads", JSON.stringify(final));
+        sessionStorage.setItem(DEVICE_DATA_KEY.reads, JSON.stringify(final));
       } catch {
         /* result still renders from in-memory `final` below */
       }

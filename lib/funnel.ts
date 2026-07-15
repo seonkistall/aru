@@ -1,3 +1,5 @@
+import { DEVICE_DATA_KEY } from "./device-data";
+
 // Privacy-clean funnel analytics. First-party, on-device only: events live in
 // localStorage and leave the device solely through the gated /api/sync pipeline
 // (same as consent/pilot data). NO selfies, NO free text, NO identifiers beyond
@@ -27,9 +29,9 @@ export type FunnelEvent = {
   ts: number;
 };
 
-const KEY = "aru_funnel_events_v1";
-const VISITOR_KEY = "aru_funnel_visitor_v1";
-const SESSION_KEY = "aru_funnel_session_v1";
+const KEY = DEVICE_DATA_KEY.funnelEvents;
+const VISITOR_KEY = DEVICE_DATA_KEY.funnelVisitor;
+const SESSION_KEY = DEVICE_DATA_KEY.funnelSession;
 const MAX_EVENTS = 1000;
 
 function uid() {

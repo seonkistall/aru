@@ -1,5 +1,6 @@
 import type { CareIntentKind, CareLocale } from "./care";
 import type { MerchantId } from "./commerce";
+import { DEVICE_DATA_KEY } from "./device-data";
 
 export type Purchase = {
   id: string;
@@ -35,6 +36,10 @@ export type CareIntent = {
   ts: number;
 };
 
+const PURCHASES_KEY = DEVICE_DATA_KEY.purchases;
+const CHECKINS_KEY = DEVICE_DATA_KEY.checkins;
+const CARE_INTENTS_KEY = DEVICE_DATA_KEY.careIntents;
+
 function uid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
 }
@@ -64,36 +69,36 @@ function lsPush<T>(key: string, value: T, max = 500) {
 
 export async function recordPurchase(purchase: Omit<Purchase, "id" | "ts">): Promise<Purchase> {
   const rec: Purchase = { ...purchase, id: uid(), ts: Date.now() };
-  lsPush("gyeol_purchases", rec);
+  lsPush(PURCHASES_KEY, rec);
   return rec;
 }
 
 export async function getPurchases(): Promise<Purchase[]> {
-  return lsGet<Purchase>("gyeol_purchases").reverse();
+  return lsGet<Purchase>(PURCHASES_KEY).reverse();
 }
 
 export async function recordCheckin(checkin: Omit<Checkin, "id" | "ts">): Promise<Checkin> {
   const rec: Checkin = { ...checkin, id: uid(), ts: Date.now() };
-  lsPush("gyeol_checkins", rec);
+  lsPush(CHECKINS_KEY, rec);
   return rec;
 }
 
 export async function getCheckins(): Promise<Checkin[]> {
-  return lsGet<Checkin>("gyeol_checkins");
+  return lsGet<Checkin>(CHECKINS_KEY);
 }
 
 export async function recordCareIntent(intent: Omit<CareIntent, "id" | "ts">): Promise<CareIntent> {
   const rec: CareIntent = { ...intent, id: uid(), ts: Date.now() };
-  lsPush("gyeol_care_intents", rec);
+  lsPush(CARE_INTENTS_KEY, rec);
   return rec;
 }
 
 export function getCareIntents(): CareIntent[] {
-  return lsGet<CareIntent>("gyeol_care_intents").reverse();
+  return lsGet<CareIntent>(CARE_INTENTS_KEY).reverse();
 }
 
 export function careIntentCount(): number {
-  return lsGet<CareIntent>("gyeol_care_intents").length;
+  return lsGet<CareIntent>(CARE_INTENTS_KEY).length;
 }
 
 export function exportCareIntents() {
@@ -112,5 +117,5 @@ export function exportCareIntents() {
 
 export function clearCareIntents() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("gyeol_care_intents");
+  localStorage.removeItem(CARE_INTENTS_KEY);
 }

@@ -1,4 +1,5 @@
 import type { LabeledSample } from "./labels";
+import { DEVICE_DATA_KEY } from "./device-data";
 
 export type CropSample = {
   id: string;
@@ -10,7 +11,7 @@ export type CropSample = {
   ts: number;
 };
 
-const KEY = "gyeol_crop_samples_v1";
+const KEY = DEVICE_DATA_KEY.cropSamples;
 const MAX_LOCAL_CROPS = 120;
 
 function uid() {

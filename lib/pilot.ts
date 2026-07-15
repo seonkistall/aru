@@ -1,3 +1,5 @@
+import { DEVICE_DATA_KEY } from "./device-data";
+
 export type PilotLighting = "window" | "ceiling" | "dim" | "backlight" | "direct";
 export type PilotBrowser = "ios-safari" | "android-chrome" | "desktop" | "other";
 export type PilotStatus = "planned" | "consented" | "scanned" | "labeled" | "excluded";
@@ -35,8 +37,8 @@ export type PilotSession = {
   startedAt: number;
 };
 
-const KEY = "gyeol_pilot_notes_v1";
-const SESSION_KEY = "gyeol_current_pilot_session_v1";
+const KEY = DEVICE_DATA_KEY.pilotNotes;
+const SESSION_KEY = DEVICE_DATA_KEY.pilotSession;
 // Exactly P001-P030. The old 0[0-9][1-9] left the tens digit unconstrained and
 // also matched P031-P099, inflating the pilot participant count on ops typos.
 const PARTICIPANT_RE = /^P(00[1-9]|0[12][0-9]|030)$/;

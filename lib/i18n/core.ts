@@ -8,6 +8,7 @@
 import { EN } from "./en";
 import { JA } from "./ja";
 import { ZH } from "./zh";
+import { DEVICE_DATA_KEY } from "../device-data";
 
 export type Lang = "ko" | "en" | "ja" | "zh";
 
@@ -24,7 +25,7 @@ const DICTS: Partial<Record<Lang, Record<string, string>>> = {
   zh: ZH,
 };
 
-export const LANG_STORAGE_KEY = "aru.lang";
+export const LANG_STORAGE_KEY = DEVICE_DATA_KEY.language;
 
 // Module singleton set by LanguageProvider before children render.
 let currentLang: Lang = "ko";

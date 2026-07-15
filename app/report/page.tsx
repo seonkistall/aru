@@ -17,6 +17,7 @@ import { FlowSteps } from "@/app/components/flow-steps";
 import { ReengageOptIn } from "@/app/components/reengage-optin";
 import { buildReportTrust } from "@/lib/report-trust";
 import { getLang, t } from "@/lib/i18n/core";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -66,7 +67,7 @@ type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult
 
 function loadInitialView(): InitialView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionStorage.getItem("gyeol_survey");
+  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Fresh tab session: fall back to the last saved result so a returning
     // visitor re-enters their report instead of being bounced to the survey.
@@ -84,11 +85,11 @@ function loadInitialView(): InitialView | null {
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
-    const scanRaw = sessionStorage.getItem("gyeol_scan");
+    const scanRaw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
     if (scanRaw) scan = JSON.parse(scanRaw);
   } catch {}
   try {
-    const readsRaw = sessionStorage.getItem("gyeol_reads");
+    const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
     if (readsRaw) reads = JSON.parse(readsRaw);
   } catch {}
 

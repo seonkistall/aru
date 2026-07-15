@@ -7,6 +7,7 @@ import { clearCropSamples, cropSampleCount, exportCropSamples } from "@/lib/crop
 import { clearLabels, exportLabels, labelCount } from "@/lib/labels";
 import { careIntentCount, clearCareIntents } from "@/lib/store";
 import { t, useLanguage } from "@/lib/i18n";
+import { clearAllDeviceData } from "@/lib/device-data";
 
 export default function PrivacyPage() {
   useLanguage();
@@ -14,6 +15,7 @@ export default function PrivacyPage() {
   const [cropTotal, setCropTotal] = useState(0);
   const [consentTotal, setConsentTotal] = useState(0);
   const [careTotal, setCareTotal] = useState(0);
+  const [deleteState, setDeleteState] = useState<"idle" | "confirm" | "done" | "error">("idle");
 
   useEffect(() => {
     // localStorage counts are client-only; reading them during the first
@@ -41,6 +43,19 @@ export default function PrivacyPage() {
   function clearCommerceLog() {
     clearCareIntents();
     setCareTotal(careIntentCount());
+  }
+
+  function clearDeviceData() {
+    const remaining = clearAllDeviceData({ local: window.localStorage, session: window.sessionStorage });
+    if (remaining.length === 0) {
+      setLabelTotal(0);
+      setCropTotal(0);
+      setConsentTotal(0);
+      setCareTotal(0);
+      setDeleteState("done");
+      return;
+    }
+    setDeleteState("error");
   }
 
   return (
@@ -110,6 +125,50 @@ export default function PrivacyPage() {
           <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
             <button onClick={clearCommerceLog} disabled={careTotal === 0} style={{ ...dangerBtn, opacity: careTotal === 0 ? 0.5 : 1 }}>{t("구매/상담 클릭 기록 삭제")}</button>
           </div>
+        </section>
+
+        <section style={noticeStyle}>
+          <p style={sectionLabel}>{t("전체 기기 데이터")}</p>
+          <h2 style={sectionTitle}>{t("ARU 기기 데이터 전체 삭제")}</h2>
+          <p style={bodyText}>
+            {t("이 브라우저에 저장된 ARU 데이터를 한 번에 지울 수 있어요. 리마인더 이메일과 파일럿 서버 데이터는 포함되지 않습니다.")}
+          </p>
+          {deleteState === "idle" && (
+            <button type="button" onClick={() => setDeleteState("confirm")} style={{ ...dangerBtn, marginTop: 14 }}>
+              {t("모든 기기 데이터 삭제")}
+            </button>
+          )}
+          {deleteState === "confirm" && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+              <p style={{ ...bodyText, color: "var(--ink)" }}>
+                {t("스캔·리포트, 설문, 연구·동의, 활동·체크인, 언어 설정 데이터가 이 기기에서 삭제됩니다. 서버 데이터는 지워지지 않아요.")}
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                <button type="button" onClick={() => setDeleteState("idle")} style={outlineBtn}>{t("취소")}</button>
+                <button type="button" onClick={clearDeviceData} style={dangerBtn}>{t("기기 데이터 삭제 확인")}</button>
+              </div>
+            </div>
+          )}
+          {deleteState === "done" && <p role="status" style={{ ...bodyText, color: "var(--ink)", marginTop: 14 }}>{t("이 기기의 ARU 데이터를 모두 삭제했어요.")}</p>}
+          {deleteState === "error" && (
+            <div style={{ marginTop: 14 }}>
+              <p role="alert" style={{ ...bodyText, color: "var(--plum)" }}>{t("일부 데이터를 삭제하지 못했어요. 브라우저 저장공간 권한을 확인한 뒤 다시 시도해 주세요.")}</p>
+              <button type="button" onClick={clearDeviceData} style={{ ...dangerBtn, marginTop: 10 }}>{t("다시 삭제 시도")}</button>
+            </div>
+          )}
+        </section>
+
+        <section style={sectionStyle}>
+          <p style={sectionLabel}>{t("서버 보관과 삭제")}</p>
+          <h2 style={sectionTitle}>{t("선택한 기능만 서버를 사용합니다")}</h2>
+          <ul style={{ ...bodyText, margin: "8px 0 0", paddingLeft: 18 }}>
+            <li>{t("AI 분석에 동의한 촬영에서만 얼굴 크롭이 Gemini 또는 OpenAI로 전송되며 추천 응답을 만드는 데 사용됩니다.")}</li>
+            <li>{t("파일럿에서는 동의한 해당 세션의 연구 데이터만 비공개 Supabase로 동기화될 수 있고, 크롭 보존 기한은 기본 180일입니다.")}</li>
+            <li>{t("리마인더 이메일 기록에는 이메일, 동의 버전, 발송 시각이 저장됩니다. 해지하면 즉시 발송 대상에서 제외되고 기록은 30일 안에 삭제됩니다.")}</li>
+          </ul>
+          <p style={{ ...bodyText, marginTop: 10 }}>
+            {t("기기 데이터 삭제는 이 서버 기록을 삭제하지 않습니다. 리마인더는 받은 이메일의 해지 링크로, 연구 데이터는 파일럿 운영자에게 참여자·세션 ID로 요청해 주세요.")}
+          </p>
         </section>
 
         <section style={noticeStyle}>
