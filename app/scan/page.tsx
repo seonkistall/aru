@@ -6,14 +6,10 @@ import { CONSENT_VERSION, getConsentEvents, recordConsentEvent } from "@/lib/con
 import {
   analyzeSkinBurst,
   classifyVisibleAttributes,
-  SKIN_LABELS,
   VISIBLE_MODEL_CONTRACT,
-  type AnalysisSource,
-  type SkinAttr,
-  type SkinLevel,
   type SkinReads,
 } from "@/lib/skin";
-import { labelCount, type CaptureQualityMeta, type SampleMeta } from "@/lib/labels";
+import { labelCount, type SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { pushScanHistory } from "@/lib/scan-history";
@@ -27,20 +23,16 @@ import { resolveCaptureConsent } from "./consent-authorization";
 import { openCamera, stopMediaStream } from "./camera-stream";
 import {
   buildCameraQualityDebug,
-  captureGatePassed,
-  cropOutputSize,
   cropPlanForPurpose,
   frameMovement,
   scanCaptureButtonLabel,
   scanCaptureReady,
   type CameraAttempt,
-  type CropPlan,
 } from "./camera-quality";
 import {
   CAPTURE_PROFILES,
   initialQuality,
   type CaptureMode,
-  type CaptureProfile,
   type GuideZones,
   type Landmark,
   type Quality,
@@ -72,21 +64,22 @@ import {
   titleStyle,
   videoStyle,
 } from "./scan-styles";
+import {
+  captureGateDecision,
+  cropFace,
+  cropFaceImageData,
+  evaluateCapturedQuality,
+  exposureStats,
+  mergeVisionAnalysis,
+  predictionSnapshot,
+  qualityMeta,
+} from "./capture-analysis";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 type FaceLandmarker = {
   detectForVideo: (source: HTMLVideoElement | HTMLCanvasElement, timestampMs: number) => { faceLandmarks?: Landmark[][] };
   close?: () => void;
 };
-
-type VisionAnalysis = {
-  labels?: Partial<Record<SkinAttr, SkinLevel>>;
-  confidence?: Partial<Record<SkinAttr, number>>;
-  narrative?: string;
-  source?: string;
-};
-
-const ATTRS: SkinAttr[] = ["oil", "redness", "pores"];
 
 const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
@@ -525,7 +518,7 @@ export default function Scan() {
     // Reentrancy guard: the manual shutter stays enabled through the countdown,
     // so a tap landing the same frame auto-capture fires would run two pipelines
     // (double /api/analyze, duplicated funnel + scan-history, fighting phases).
-    if (!video || captureLockRef.current) return;
+    if (!video || captureLockRef.current || guideState !== "ready") return;
     captureLockRef.current = true;
     setCountdownSafe(null);
     passStreakRef.current = 0;
@@ -560,7 +553,7 @@ export default function Scan() {
 
       const res = landmarker.detectForVideo(canvas, performance.now());
       const faces = res.faceLandmarks ?? [];
-      if (!faces.length) {
+      if (captureGateDecision({ guideState, landmarks: faces[0] }) === "face") {
         autoHoldUntilRef.current = performance.now() + 4000;
         setPhase("noface");
         return;
@@ -591,7 +584,7 @@ export default function Scan() {
         movement: captureMovement,
       };
       commitQuality(verifiedQuality, true);
-      if (!captureGatePassed(verifiedQuality)) {
+      if (captureGateDecision({ guideState, landmarks: faces[0], quality: verifiedQuality }) === "quality") {
         autoHoldUntilRef.current = performance.now() + 4000;
         setErr(t("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요."));
         setPhase("ready");
@@ -987,208 +980,6 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
       </div>
     </main>
   );
-}
-
-function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], profile: CaptureProfile, previousSteady: boolean): Quality {
-  const box = faceBox(landmarks);
-  const centerX = (box.minX + box.maxX) / 2;
-  const centerY = (box.minY + box.maxY) / 2;
-  // Match the live gate: raw aspect-independent distance, centering advisory.
-  const { fx, fy } = coverCropFractions(imageData.width, imageData.height);
-  const centerOffsetX = (centerX - (1 - fx) / 2) / fx - 0.5;
-  const centerOffsetY = (centerY - (1 - fy) / 2) / fy - 0.48;
-  const rawSize = rawFaceSize(box);
-  const faceSize = rawSize;
-  const exposure = exposureStats(imageData, box);
-  const centered = Math.abs(centerOffsetX) < 0.28 && Math.abs(centerOffsetY) < 0.3;
-  const distance = rawSize > profile.minFaceSize && rawSize < 0.98;
-  const skinRegions = skinRoiRegionsFromLandmarks(landmarks);
-  const skinQuality = evaluateSkinRoiQuality(imageData, skinRegions ?? { tzone: null, leftCheek: null, rightCheek: null }, {
-    ...DEFAULT_SKIN_ROI_THRESHOLDS,
-    minMeanLuma: profile.minBrightness,
-    maxDarkRatio: profile.maxDarkRatio,
-    maxHotRatio: profile.maxHotRatio,
-  });
-  const brightness = skinQuality.exposure;
-  const noGlare = skinQuality.noGlare;
-  const skinReady = skinQuality.regionsReady && skinQuality.sharp;
-  const steady = previousSteady;
-  const rejectReason = !distance
-    ? "distance"
-    : !skinQuality.regionsReady
-      ? "skin-regions"
-      : !brightness
-      ? "brightness"
-      : !noGlare
-        ? "glare"
-        : !skinQuality.sharp
-          ? "skin-soft"
-          : !steady
-          ? "movement"
-          : !centered
-            ? "center"
-            : undefined;
-  return {
-    face: true,
-    centered,
-    distance,
-    brightness,
-    noGlare,
-    steady,
-    skinReady,
-    score: 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0),
-    message: rejectReason ? t("촬영 품질을 다시 맞춰주세요.") : t("촬영 품질이 확인됐어요."),
-    centerOffsetX,
-    centerOffsetY,
-    faceSize,
-    brightnessMean: exposure.mean,
-    darkRatio: exposure.darkRatio,
-    hotRatio: exposure.hotRatio,
-    rejectReason,
-  };
-}
-
-function qualityMeta(quality: Quality): CaptureQualityMeta {
-  return {
-    version: "2026-06-29.quality.v1",
-    score: quality.score,
-    face: quality.face,
-    centered: quality.centered,
-    distance: quality.distance,
-    brightness: quality.brightness,
-    noGlare: quality.noGlare,
-    steady: quality.steady,
-    centerOffsetX: quality.centerOffsetX,
-    centerOffsetY: quality.centerOffsetY,
-    faceSize: quality.faceSize,
-    brightnessMean: quality.brightnessMean,
-    darkRatio: quality.darkRatio,
-    hotRatio: quality.hotRatio,
-    movement: quality.movement,
-    rejectReason: quality.rejectReason,
-  };
-}
-
-function exposureStats(imageData: ImageData, box?: ReturnType<typeof faceBox>) {
-  const { data, width, height } = imageData;
-  const xStart = box ? Math.max(0, Math.floor(box.minX * width)) : 0;
-  const xEnd = box ? Math.min(width, Math.ceil(box.maxX * width)) : width;
-  const yStart = box ? Math.max(0, Math.floor(box.minY * height)) : 0;
-  const yEnd = box ? Math.min(height, Math.ceil(box.maxY * height)) : height;
-  let total = 0;
-  let count = 0;
-  let hot = 0;
-  let dark = 0;
-  for (let y = yStart; y < yEnd; y += 2) {
-    for (let x = xStart; x < xEnd; x += 2) {
-      const i = (y * width + x) * 4;
-      const L = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      total += L;
-      if (L > 232) hot++;
-      if (L < 42) dark++;
-      count++;
-    }
-  }
-  return { mean: total / Math.max(1, count), hotRatio: hot / Math.max(1, count), darkRatio: dark / Math.max(1, count) };
-}
-
-function cropFace(src: HTMLCanvasElement, landmarks: Landmark[], plan: CropPlan): { dataUrl: string; size: string } {
-  const w = src.width;
-  const h = src.height;
-  const box = faceBox(landmarks);
-  const pad = 0.14;
-  const x0 = Math.max(0, (box.minX - pad) * w);
-  const y0 = Math.max(0, (box.minY - pad) * h);
-  const cw = Math.min(w, (box.maxX + pad) * w) - x0;
-  const ch = Math.min(h, (box.maxY + pad) * h) - y0;
-  const size = cropOutputSize({ sourceWidth: cw, sourceHeight: ch, maxEdge: plan.maxEdge });
-  const out = document.createElement("canvas");
-  out.width = size.width;
-  out.height = size.height;
-  out.getContext("2d")?.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);
-  return { dataUrl: out.toDataURL(plan.mimeType, plan.quality), size: `${out.width}x${out.height}` };
-}
-
-function cropFaceImageData(src: HTMLCanvasElement, landmarks: Landmark[]): ImageData | null {
-  const w = src.width;
-  const h = src.height;
-  const box = faceBox(landmarks);
-  const pad = 0.14;
-  const x0 = Math.max(0, (box.minX - pad) * w);
-  const y0 = Math.max(0, (box.minY - pad) * h);
-  const cw = Math.min(w, (box.maxX + pad) * w) - x0;
-  const ch = Math.min(h, (box.maxY + pad) * h) - y0;
-  if (cw <= 0 || ch <= 0) return null;
-  const out = document.createElement("canvas");
-  const plan = cropPlanForPurpose("model-input");
-  out.width = plan.maxEdge;
-  out.height = plan.maxEdge;
-  const ctx = out.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(src, x0, y0, cw, ch, 0, 0, out.width, out.height);
-  return ctx.getImageData(0, 0, out.width, out.height);
-}
-
-function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): SkinReads {
-  const next: SkinReads = {
-    ...base,
-    oil: { ...base.oil },
-    redness: { ...base.redness },
-    pores: { ...base.pores },
-    narrative: payload.narrative || base.narrative,
-    source: "vision-api" satisfies AnalysisSource,
-  };
-
-  const confidenceValues: number[] = [];
-  for (const attr of ATTRS) {
-    const level = payload.labels?.[attr];
-    const confidence = payload.confidence?.[attr];
-    if (typeof confidence === "number" && Number.isFinite(confidence)) confidenceValues.push(confidence);
-    if (level !== 0 && level !== 1 && level !== 2) continue;
-    const current = next[attr];
-    const modelConfidence = typeof confidence === "number" && Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.52;
-    if (modelConfidence < 0.62 && modelConfidence < (current.confidence ?? 0.6)) continue;
-    next[attr] = {
-      value: SKIN_LABELS[attr][level],
-      level,
-      calm: level === 0,
-      confidence: Math.max(modelConfidence, current.confidence ?? 0.6),
-    };
-  }
-
-  if (confidenceValues.length) {
-    const visionConfidence = confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length;
-    next.confidence = Math.max(base.confidence, Math.min(0.86, visionConfidence * 0.9));
-    next.confidenceLabel = confidenceLabelFor(next.confidence);
-    next.retakeRecommended = next.confidence < 0.58 || next.retakeReasons.length >= 2;
-  }
-
-  return next;
-}
-
-function confidenceLabelFor(confidence: number): SkinReads["confidenceLabel"] {
-  if (confidence >= 0.78) return "높음";
-  if (confidence >= 0.58) return "보통";
-  return "낮음";
-}
-
-function predictionSnapshot(reads: SkinReads): Record<string, unknown> {
-  return {
-    source: reads.source,
-    confidence: Number(reads.confidence.toFixed(3)),
-    retakeRecommended: reads.retakeRecommended,
-    labels: {
-      oil: reads.oil.level,
-      redness: reads.redness.level,
-      pores: reads.pores.level,
-    },
-    values: {
-      oil: reads.oil.value,
-      redness: reads.redness.value,
-      pores: reads.pores.value,
-    },
-    featureVersion: VISIBLE_MODEL_CONTRACT.inputSchemaVersion,
-  };
 }
 
 // Presentational styles live in ./scan-styles.
