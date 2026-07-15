@@ -22,9 +22,9 @@ import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 import { moodShareUrl } from "@/lib/share-link";
 import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
+import { createVideoLandmarker } from "./create-landmarker";
 import { resolveCaptureConsent } from "./consent-authorization";
 import { openCamera, stopMediaStream } from "./camera-stream";
-import { MODEL, WASM } from "./landmarker-config";
 import {
   buildCameraQualityDebug,
   captureGatePassed,
@@ -246,25 +246,17 @@ export default function Scan() {
 
   const ensureLandmarker = useCallback(async (): Promise<FaceLandmarker | null> => {
     if (landmarkerRef.current) return landmarkerRef.current;
-    const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
-    const fileset = await FilesetResolver.forVisionTasks(WASM);
-    const create = (delegate: "GPU" | "CPU") =>
-      FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODEL, delegate },
-        runningMode: "VIDEO",
-        numFaces: 1,
-      });
     let landmarker: FaceLandmarker;
     if (forceCpuRef.current) {
       // A prior GPU run emitted corrupt (non-normalized) landmarks on this
       // device — CPU delegate is slower but always correct.
-      landmarker = await create("CPU");
+      landmarker = await createVideoLandmarker("CPU");
     } else {
       try {
-        landmarker = await create("GPU");
+        landmarker = await createVideoLandmarker("GPU");
       } catch {
         // Some mobile GPUs fail delegate init — CPU is slower but always works.
-        landmarker = await create("CPU");
+        landmarker = await createVideoLandmarker("CPU");
       }
     }
     // The WASM fileset + ~3MB model can take seconds on mobile; if the user

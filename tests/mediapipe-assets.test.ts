@@ -19,9 +19,12 @@ describe("MediaPipe production assets", () => {
     }
   });
 
-  it("does not duplicate remote model configuration in the page", () => {
-    const page = readFileSync(resolve(root, "app/scan/page.tsx"), "utf8");
-    expect(page).not.toContain("cdn.jsdelivr.net");
-    expect(page).not.toContain("storage.googleapis.com/mediapipe-models");
+  it("keeps every landmarker consumer on the shared same-origin path", () => {
+    for (const file of ["app/scan/page.tsx", "app/eval/page.tsx", "app/scan/landmarker.worker.ts"]) {
+      const source = readFileSync(resolve(root, file), "utf8");
+      expect(source, file).not.toContain("cdn.jsdelivr.net");
+      expect(source, file).not.toContain("storage.googleapis.com/mediapipe-models");
+    }
+    expect(readFileSync(resolve(root, "app/eval/page.tsx"), "utf8")).toContain("createImageLandmarker");
   });
 });
