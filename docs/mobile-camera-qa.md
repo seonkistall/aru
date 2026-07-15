@@ -153,6 +153,6 @@ Automated camera lifecycle tests do not replace real-device evidence. Do not mar
 |---|---|---|---|
 | iPhone current | Safari | PENDING DEVICE VERIFICATION | Device, iOS, video/track/crop sizes, capture result |
 | iPhone previous major | Safari | PENDING DEVICE VERIFICATION | Device, iOS, video/track/crop sizes, capture result |
-| Samsung Galaxy current | Chrome | PENDING DEVICE VERIFICATION | Device, Android, GPU/CPU recovery, capture result |
+| Samsung Galaxy current | Chrome | BASELINE PASS — ROI RETEST REQUIRED | Galaxy S25 Edge; Android 16; One UI 8.5; permission, front camera, mirroring, prior quality gate, capture, and retake passed on 2026-07-16. New skin-ROI gate still requires post-deploy physical verification. |
 | Low/mid Android | Chrome | PENDING DEVICE VERIFICATION | Device, Android, gate latency, capture result |
 | Desktop webcam | Chrome or Edge | PENDING DEVICE VERIFICATION | Camera, OS/browser, fallback/capture result |

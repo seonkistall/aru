@@ -46,7 +46,7 @@ export function ScanModePicker({ mode, onChange }: { mode: CaptureMode; onChange
 
 export function CameraGuide({ quality, mode, zones }: { quality: Quality; mode: CaptureMode; zones: GuideZones | null }) {
   const border = quality.score >= 6 ? "rgba(47,125,79,.95)" : quality.score >= 4 ? "rgba(239,138,31,.92)" : "rgba(224,56,44,.9)";
-  const locked = quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare;
+  const locked = quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && quality.skinReady;
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       <div style={{ position: "absolute", inset: "8% 12% 17%", border: `2px solid ${border}`, borderRadius: "48% 48% 45% 45%", boxShadow: "0 0 0 999px rgba(0,0,0,.18)" }} />
@@ -234,6 +234,7 @@ export function QualityPanel({ quality, requireSteady, zonesReady }: { quality: 
       ["거리", quality.distance],
       ["밝기", quality.brightness],
       ["반사 없음", quality.noGlare],
+      ["피부 선명도", quality.skinReady],
     ];
     if (requireSteady) base.push(["흔들림 없음", quality.steady]);
     return base;

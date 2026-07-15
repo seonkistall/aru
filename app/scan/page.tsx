@@ -55,6 +55,11 @@ import { Xiaohei } from "@/app/components/sketch";
 import { coverCropFractions, faceBox, isNormalizedBox, rawFaceSize } from "@/lib/scan-geometry";
 import { InfoSheet } from "./info-sheet";
 import {
+  DEFAULT_SKIN_ROI_THRESHOLDS,
+  evaluateSkinRoiQuality,
+  skinRoiRegionsFromLandmarks,
+} from "./skin-roi-quality";
+import {
   cameraFrame,
   debugStyle,
   eyebrow,
@@ -366,9 +371,17 @@ export default function Scan() {
       const visCenterY = (centerY - (1 - fy) / 2) / fy;
       const centered = Math.abs(visCenterX - 0.5) < 0.28 && Math.abs(visCenterY - 0.48) < 0.3;
 
-      const exposure = exposureStats(frame.ctx.getImageData(0, 0, frame.w, frame.h), box);
-      const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
-      const noGlare = exposure.hotRatio < profile.maxHotRatio;
+      const frameData = frame.ctx.getImageData(0, 0, frame.w, frame.h);
+      const exposure = exposureStats(frameData, box);
+      const skinRegions = skinRoiRegionsFromLandmarks(face);
+      const skinQuality = evaluateSkinRoiQuality(frameData, skinRegions ?? { tzone: null, leftCheek: null, rightCheek: null }, {
+        ...DEFAULT_SKIN_ROI_THRESHOLDS,
+        minMeanLuma: profile.minBrightness,
+        maxDarkRatio: profile.maxDarkRatio,
+        maxHotRatio: profile.maxHotRatio,
+      });
+      const brightness = skinQuality.exposure;
+      const noGlare = skinQuality.noGlare;
 
       const now = performance.now();
       const last = lastCenterRef.current;
@@ -377,23 +390,28 @@ export default function Scan() {
       const steady = !last || movement < profile.maxMovement;
 
       const nextZones = computeGuideZones(face, video.videoWidth, video.videoHeight);
-      const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady }, Boolean(nextZones));
+      const skinReady = skinQuality.regionsReady && skinQuality.sharp;
+      const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady, skinReady }, Boolean(nextZones));
       const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
       const message = !distance
         ? rawSize <= profile.minFaceSize
           ? t("얼굴이 작게 보여요. 조금 더 가까이 와주세요.")
           : t("너무 가까워요. 살짝 물러나 주세요.")
-        : !centered
-          ? t("얼굴을 윤곽선 중앙에 맞춰주세요.")
+        : !skinQuality.regionsReady
+          ? t("피부 영역을 가이드 안에 맞춰주세요.")
           : !brightness
-          ? t("빛이 부족해요. 창가처럼 밝고 부드러운 곳이 좋아요.")
+          ? t("피부가 어두워요. 부드러운 정면 빛 쪽으로 이동해주세요.")
           : !noGlare
-            ? t("반사가 강해요. 정면 조명이나 번들거림을 줄여주세요.")
+            ? t("피부 반사가 강해요. 직접 조명이나 번들거림을 줄여주세요.")
+            : !skinQuality.sharp
+              ? t("피부 결이 흐려요. 렌즈를 닦고 잠깐 멈춰주세요.")
+              : !centered
+                ? t("얼굴을 윤곽선 중앙에 맞춰주세요.")
             : !steady
               ? t("잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요.")
               : t("좋아요. 그대로 계세요.");
 
-      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
+      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, skinReady, score, message });
       handleAutoTick(pass);
       setZones(nextZones);
       if (debugRef.current) {
@@ -412,9 +430,11 @@ export default function Scan() {
           "box cx/cy": `${centerX.toFixed(2)}/${centerY.toFixed(2)}`,
           "vis cx/cy": `${visCenterX.toFixed(2)}/${visCenterY.toFixed(2)}`,
           "mean/dark/hot": `${Math.round(exposure.mean)}/${exposure.darkRatio.toFixed(2)}/${exposure.hotRatio.toFixed(3)}`,
+          "skin mean/dark/hot/detail": `${Math.round(skinQuality.meanLuma ?? 0)}/${(skinQuality.maxDarkRatio ?? 0).toFixed(2)}/${(skinQuality.maxHotRatio ?? 0).toFixed(3)}/${(skinQuality.minDetail ?? 0).toFixed(1)}`,
           "distance": distance,
           "brightness": brightness,
           "noGlare": noGlare,
+          "skinReady": skinReady,
           "steady": steady,
           "centered(adv)": centered,
           "zones": nextZones ? `${nextZones.tzone.width} / ${nextZones.leftCheek.width} / ${nextZones.rightCheek.width}` : "none",
@@ -989,16 +1009,28 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
   const exposure = exposureStats(imageData, box);
   const centered = Math.abs(centerOffsetX) < 0.28 && Math.abs(centerOffsetY) < 0.3;
   const distance = rawSize > profile.minFaceSize && rawSize < 0.98;
-  const brightness = exposure.mean > profile.minBrightness && exposure.darkRatio < profile.maxDarkRatio;
-  const noGlare = exposure.hotRatio < profile.maxHotRatio;
+  const skinRegions = skinRoiRegionsFromLandmarks(landmarks);
+  const skinQuality = evaluateSkinRoiQuality(imageData, skinRegions ?? { tzone: null, leftCheek: null, rightCheek: null }, {
+    ...DEFAULT_SKIN_ROI_THRESHOLDS,
+    minMeanLuma: profile.minBrightness,
+    maxDarkRatio: profile.maxDarkRatio,
+    maxHotRatio: profile.maxHotRatio,
+  });
+  const brightness = skinQuality.exposure;
+  const noGlare = skinQuality.noGlare;
+  const skinReady = skinQuality.regionsReady && skinQuality.sharp;
   const steady = previousSteady;
   const rejectReason = !distance
     ? "distance"
-    : !brightness
+    : !skinQuality.regionsReady
+      ? "skin-regions"
+      : !brightness
       ? "brightness"
       : !noGlare
         ? "glare"
-        : !steady
+        : !skinQuality.sharp
+          ? "skin-soft"
+          : !steady
           ? "movement"
           : !centered
             ? "center"
@@ -1010,6 +1042,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     brightness,
     noGlare,
     steady,
+    skinReady,
     score: 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0),
     message: rejectReason ? t("촬영 품질을 다시 맞춰주세요.") : t("촬영 품질이 확인됐어요."),
     centerOffsetX,
