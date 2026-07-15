@@ -3,12 +3,83 @@
 > **ARU = Areumdaum + Routine + U** · *ARU is your daily Korean beauty routine.*
 > 아름다움을 매일의 루틴으로 만들어주는 K뷰티 앱.
 
-> **버전 v1.1.0** · 최종 업데이트 2026-07-11 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
+> **버전 v1.1.0** · 최종 업데이트 2026-07-16 · 작업상황: [`docs/STATUS.md`](docs/STATUS.md) · **작동 원리 도식: [`docs/architecture.md`](docs/architecture.md)**
 > **정체성:** 셀피 → 피부 분석 → 화장품 추천 앱. 다른 소셜앱(밥로그/오뜨)과 혼동 금지.
 
 셀피 한 장으로 **피부를 분석**하고, 그에 맞는 **화장품·루틴을 추천**하는 K뷰티 앱. 브랜드명 **아루(ARU)** — 구 명칭 결(gyeol)·kbeauty-app에서 2026-07-03 통합 리브랜딩. (내부 저장 키 `gyeol_*`·Supabase 버킷명은 데이터 호환을 위해 유지)
 
 **라이브:** https://aru-beauty.vercel.app
+
+## 2026-07-16 Production Hardening + Skin ROI 업데이트
+
+### 피부 중심 촬영 품질 게이트
+
+- MediaPipe 얼굴 검출은 **프레이밍과 피부 위치 계산용 안전장치**로 유지합니다. 얼굴이 검출됐다는 사실만으로 촬영을 허용하지 않습니다.
+- 실제 촬영 준비 여부는 **T존·왼볼·오른볼 피부 ROI**가 모두 측정 가능한지 확인한 뒤 결정합니다.
+- 세 피부 영역에서 밝기, 어두운 픽셀 비율, 과노출·반사 비율, 국소 선명도를 평가합니다.
+- 라이브 미리보기와 촬영 버튼을 누른 최종 프레임이 같은 평가기를 사용합니다. 미리보기만 통과하고 흐린 최종 사진이 분석되는 경로를 차단합니다.
+- 실패 원인은 영역 정렬, 저조도, 강한 반사, 흐린 피부 결로 구분하고 한국어·영어 교정 안내를 제공합니다.
+- ROI 픽셀은 별도 배열로 복사하지 않고 한 번씩 순회합니다. 품질 틱마다 불필요한 대형 할당을 만들지 않습니다.
+- 이 기능은 브라우저 하드웨어 초점을 강제로 조정하지 않으며, 피부 질환 진단이나 치료 효능을 주장하지 않습니다.
+
+구현 명세와 계획:
+
+- [`docs/superpowers/specs/2026-07-16-skin-roi-quality-gate-design.md`](docs/superpowers/specs/2026-07-16-skin-roi-quality-gate-design.md)
+- [`docs/superpowers/plans/2026-07-16-skin-roi-quality-gate.md`](docs/superpowers/plans/2026-07-16-skin-roi-quality-gate.md)
+
+### 운영 보안 경계
+
+- Supabase 앱 테이블 9개는 RLS가 활성화돼 있으며 `anon`과 `authenticated`의 직접 테이블 권한을 철회했습니다.
+- 브라우저는 Supabase 앱 테이블을 직접 읽거나 쓰지 않습니다. 동기화와 리마인더 저장은 서버 전용 `service_role` 경로만 사용합니다.
+- 향후 `public` 스키마에 생성되는 테이블·시퀀스·함수도 브라우저 역할에 자동 노출되지 않도록 기본 권한을 차단했습니다.
+- `/api/analyze`와 `/api/reason`은 body 크기 제한, 스키마 검증, rate limit, provider timeout을 적용합니다.
+- 학습 crop과 AI 분석 동의는 목적별로 분리하며, 파일럿 세션에서는 participant/session이 정확히 일치해야 합니다.
+- MediaPipe WASM과 모델은 `public/vendor/mediapipe/`에서 same-origin으로 제공합니다.
+- 이메일 구독 해지는 서명·만료 토큰을 사용하고, 철회 및 보존 기한을 서버에서 관리합니다.
+
+### 검증 상태
+
+- `npm run smoke`: ESLint, Vitest, production build, TypeScript, ML Python 컴파일, 주요 라우트 및 인증 경계 통과.
+- Vitest: **32개 테스트 파일, 152개 테스트 통과**.
+- 모바일 브라우저 QA: 360×800 및 412×915에서 홈, 스캔 진입, 카메라 실패 fallback, 설문 제출, 리포트 3개 탭, 케어, 개인정보, 구독해지 상태 확인.
+- Galaxy S25 Edge / Android 16 / One UI 8.5 기준 기존 카메라 권한, 전면 카메라, 미러링, 촬영, 재촬영은 PASS입니다.
+- 새 피부 ROI 임곗값은 배포 후 Galaxy 실기기에서 정면광·저조도·직접 반사·렌즈 오염·한쪽 볼 가림 조건을 다시 검증해야 합니다.
+- iPhone Safari 실기기 검증과 Resend 실제 이메일/구독 해지 전달 검증은 아직 운영 체크 항목입니다.
+
+QA 보고서와 실기기 매트릭스:
+
+- [`.gstack/qa-reports/qa-report-aru-local-2026-07-16.md`](.gstack/qa-reports/qa-report-aru-local-2026-07-16.md)
+- [`docs/mobile-camera-qa.md`](docs/mobile-camera-qa.md)
+
+### Production 환경변수
+
+다음 값은 클라이언트 번들에 포함하지 말고 Vercel Production 환경에 등록합니다.
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_SYNC_TOKEN
+SUPABASE_CROP_BUCKET
+SUPABASE_CROP_RETENTION_DAYS
+SUPABASE_SYNC_ALLOWED_ORIGINS
+CRON_SECRET
+UNSUBSCRIBE_SECRET
+RESEND_API_KEY              # Resend 연결 전까지 리마인더는 안전하게 비활성
+REENGAGE_FROM               # 인증한 발신 도메인 주소
+REENGAGE_LINK_BASE=https://aru-beauty.vercel.app
+```
+
+`SUPABASE_SERVICE_ROLE_KEY`, sync/cron/unsubscribe secret, Resend API key에는 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다. 환경변수 변경은 기존 Vercel 배포에 소급 적용되지 않으므로 새 production deployment가 필요합니다.
+
+### 배포 전 체크
+
+```bash
+npm install
+npm run smoke
+git diff --check
+```
+
+배포 후 `/`, `/scan`, MediaPipe model/WASM, `/api/sync`, AI invalid-body 응답, cron 무인증 401, 잘못된 unsubscribe token 400을 canary로 확인합니다. 운영 체크리스트는 [`docs/production-release-checklist.md`](docs/production-release-checklist.md)를 따릅니다.
 
 ## ⚠️ 코드 작성 규칙 (필독)
 이 레포는 Next.js 기반이지만 **표준 Next.js가 아니다.** 루트 [`AGENTS.md`](AGENTS.md)에 따라 **코드를 쓰기 전 `node_modules/next/dist/docs/`의 해당 가이드를 먼저 확인**하고 deprecation 경고를 준수할 것.
