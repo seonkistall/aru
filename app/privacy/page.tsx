@@ -118,9 +118,12 @@ export default function PrivacyPage() {
 
         <section style={sectionStyle}>
           <p style={sectionLabel}>{t("구매/상담 클릭 기록")}</p>
-          <h2 style={sectionTitle}>{t("제휴 검증용 클릭 신호")}</h2>
+          <h2 style={sectionTitle}>{t("구매처·상담 연결 기록")}</h2>
           <p style={bodyText}>
             {t("제품 구매처나 상담 링크를 누르면 링크 종류, 판매처, 언어, 연결 위치가 이 브라우저에 기록됩니다. 실제 구매 여부나 결제 정보는 저장하지 않아요. 현재 클릭 기록은 {careTotal}개입니다.", { careTotal })}
+          </p>
+          <p style={{ ...bodyText, marginTop: 8 }}>
+            {t("제품 사용 시작을 직접 기록하면 제품 ID·이름·시작 시각이 2·4주 체크인을 위해 이 브라우저에 저장돼요.")}
           </p>
           <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
             <button onClick={clearCommerceLog} disabled={careTotal === 0} style={{ ...dangerBtn, opacity: careTotal === 0 ? 0.5 : 1 }}>{t("구매/상담 클릭 기록 삭제")}</button>

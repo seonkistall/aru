@@ -7,7 +7,6 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { loadLastResult, saveLastResult } from "@/lib/last-result";
-import { recordPurchase } from "@/lib/store";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
@@ -352,7 +351,7 @@ export default function Report() {
               <details style={{ ...card, marginTop: 16 }}>
                 <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
                   <span style={sectionLabel}>{t("추천 제품 비교")}</span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("가격·평점·성분 한눈에")}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("예산대·용량·성분 한눈에")}</span>
                 </summary>
                 <div style={{ marginTop: 12 }}>
                   <ProductCompare picks={result.picks} />
@@ -386,7 +385,6 @@ export default function Report() {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => {
-                recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price });
                 recordFunnelEvent("commerce_clicked", { placement: "report_sticky", merchant: topCommerce?.merchant ?? "search" });
               }}
               style={buyBtn}

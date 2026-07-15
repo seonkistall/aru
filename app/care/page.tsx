@@ -77,7 +77,6 @@ export default function CarePage() {
       sku_id: link.skuId,
       merchant: link.merchant,
       placement: link.placement,
-      partner_ready: link.partnerReady,
       region: link.region,
     });
     if (link.kind === "purchase") {
@@ -153,10 +152,7 @@ export default function CarePage() {
               <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
                 {productSearchLinks(pick.sku, `care_${lang}`).map((link) => (
                   <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {t(link.label)}
-                      {link.partnerReady && <small style={dealBadge}>{t("제휴 후보")}</small>}
-                    </span>
+                    <span>{t(link.label)}</span>
                     <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
                   </button>
                 ))}
@@ -213,7 +209,6 @@ const sectionLabel: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em
 const commerceIntro: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 14 };
 const productRow: React.CSSProperties = { borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 };
 const badge: React.CSSProperties = { fontSize: 12, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
-const dealBadge: React.CSSProperties = { fontSize: 10.5, background: "transparent", color: "var(--bronze)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 6px", fontWeight: 900 };
 const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum-press)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const outlineBtn: React.CSSProperties = { background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const linkBtn: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "10px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };

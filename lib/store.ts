@@ -2,14 +2,11 @@ import type { CareIntentKind, CareLocale } from "./care";
 import type { MerchantId } from "./commerce";
 import { DEVICE_DATA_KEY } from "./device-data";
 
-export type Purchase = {
+export type ProductUse = {
   id: string;
   sku_id: string;
   name: string;
-  price: number;
-  merchant?: MerchantId;
-  placement?: string;
-  href?: string;
+  confirmedUse: true;
   ts: number;
 };
 export type Checkin = {
@@ -36,7 +33,9 @@ export type CareIntent = {
   ts: number;
 };
 
-const PURCHASES_KEY = DEVICE_DATA_KEY.purchases;
+// Keep the legacy key so device-data deletion also clears older click-derived
+// rows. getProductUses excludes those rows because they lack confirmedUse.
+const PRODUCT_USES_KEY = DEVICE_DATA_KEY.purchases;
 const CHECKINS_KEY = DEVICE_DATA_KEY.checkins;
 const CARE_INTENTS_KEY = DEVICE_DATA_KEY.careIntents;
 
@@ -53,8 +52,8 @@ function lsGet<T>(key: string): T[] {
   }
 }
 
-function lsPush<T>(key: string, value: T, max = 500) {
-  if (typeof window === "undefined") return;
+function lsPush<T>(key: string, value: T, max = 500): boolean {
+  if (typeof window === "undefined") return false;
   const all = lsGet<T>(key);
   all.push(value);
   try {
@@ -62,19 +61,21 @@ function lsPush<T>(key: string, value: T, max = 500) {
     // reject into the caller's click handler, and these arrays must not grow
     // unbounded toward the quota.
     localStorage.setItem(key, JSON.stringify(all.slice(-max)));
+    return true;
   } catch {
-    /* best-effort */
+    return false;
   }
 }
 
-export async function recordPurchase(purchase: Omit<Purchase, "id" | "ts">): Promise<Purchase> {
-  const rec: Purchase = { ...purchase, id: uid(), ts: Date.now() };
-  lsPush(PURCHASES_KEY, rec);
-  return rec;
+export async function recordProductUse(input: Omit<ProductUse, "id" | "ts" | "confirmedUse">): Promise<ProductUse | null> {
+  const rec: ProductUse = { ...input, confirmedUse: true, id: uid(), ts: Date.now() };
+  return lsPush(PRODUCT_USES_KEY, rec) ? rec : null;
 }
 
-export async function getPurchases(): Promise<Purchase[]> {
-  return lsGet<Purchase>(PURCHASES_KEY).reverse();
+export async function getProductUses(): Promise<ProductUse[]> {
+  return lsGet<ProductUse>(PRODUCT_USES_KEY)
+    .filter((record) => record.confirmedUse === true)
+    .reverse();
 }
 
 export async function recordCheckin(checkin: Omit<Checkin, "id" | "ts">): Promise<Checkin> {

@@ -13,7 +13,6 @@ export type CareLink = {
   note: string;
   noteEn?: string;
   kind: CareIntentKind;
-  partnerReady?: boolean;
   merchant?: MerchantId;
   placement?: string;
   skuId?: string;
@@ -29,7 +28,6 @@ export function productSearchLinks(sku: Sku, placement = "care"): CareLink[] {
       note: link.note,
       noteEn: link.noteEn,
       kind: "purchase",
-      partnerReady: link.partnerReady,
       merchant: link.merchant,
       placement,
       skuId: sku.id,
@@ -71,11 +69,10 @@ export function clinicLinks(locale: CareLocale): CareLink[] {
       ];
 }
 
-export function careSummary(survey: Survey | null, reads: SkinReads | null, result: RecoResult | null) {
+export function careSummary(survey: Survey | null, _reads: SkinReads | null, result: RecoResult | null) {
   const top = result?.picks[0]?.sku;
-  const hasVisibleRedness = (reads?.redness.level ?? 0) >= 1 || survey?.concerns.includes("붉은기");
   const hasTroubleConcern = survey?.concerns.includes("트러블");
-  const needsClinic = Boolean(hasVisibleRedness || hasTroubleConcern);
+  const needsClinic = Boolean(hasTroubleConcern);
 
   return {
     title: top ? t("{name} 다음 단계", { name: t(top.name) }) : t("다음 케어 단계"),

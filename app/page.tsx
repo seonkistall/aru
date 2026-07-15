@@ -56,7 +56,7 @@ export default function Home() {
         <h1 style={{ fontFamily: "var(--font-hand)", fontSize: "clamp(30px, 12vw, 54px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
           {t("과장 없이,")}
           <br />
-          {t("너한테 딱 맞는 셋")}
+          {t("너한테 맞는 최대 셋")}
         </h1>
         <p style={{ fontSize: 14.5, color: "var(--text-muted)", maxWidth: 270, lineHeight: 1.6, marginTop: 12 }}>
           {t("4만원짜리 실패는 그만. 카메라로 피부를 읽고 솔직하게 골라드려요.")}
@@ -92,7 +92,7 @@ export default function Home() {
             index={3}
             pose="carry"
             title={t("아침·저녁 루틴과 제품")}
-            body={t("스캔과 설문을 함께 보고, 과장 없는 이유와 함께 딱 맞는 셋과 루틴을 골라드려요.")}
+            body={t("스캔과 설문을 함께 보고, 과장 없는 이유와 함께 최대 세 가지 선택과 루틴을 골라드려요.")}
           />
         </div>
       </section>
