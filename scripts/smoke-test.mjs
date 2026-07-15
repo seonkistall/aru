@@ -21,6 +21,8 @@ const mlFiles = [
 const routeChecks = [
   { method: "GET", path: "/scan", status: 200 },
   { method: "GET", path: "/privacy", status: 200 },
+  { method: "GET", path: "/offline.html", status: 200, bodyIncludes: "ARU needs a connection" },
+  { method: "GET", path: "/sw.js", status: 200, bodyIncludes: "aru-mediapipe-v1" },
   { method: "GET", path: "/pilot", status: 404 },
   { method: "GET", path: "/ops", status: 404 },
   { method: "GET", path: "/eval", status: 404 },
@@ -117,6 +119,13 @@ async function checkRoute(baseUrl, check) {
     const location = response.headers.get("location") || "";
     if (!location.includes(check.locationIncludes)) {
       throw new Error(`${check.method} ${check.path} redirected to ${location}, expected ${check.locationIncludes}`);
+    }
+  }
+
+  if (check.bodyIncludes) {
+    const body = await response.text();
+    if (!body.includes(check.bodyIncludes)) {
+      throw new Error(`${check.method} ${check.path} did not include ${check.bodyIncludes}`);
     }
   }
 

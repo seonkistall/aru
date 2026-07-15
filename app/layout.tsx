@@ -4,6 +4,7 @@ import "./globals.css";
 import { SketchDefs } from "./components/sketch";
 import { LanguageProvider } from "../lib/i18n";
 import { LanguageSwitcher } from "./components/language-switcher";
+import { ServiceWorkerRegistration } from "./components/service-worker-registration";
 
 // Self-hosted Korean display handwriting — used only for short brand moments.
 
@@ -43,6 +44,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full">
+        <ServiceWorkerRegistration />
         <SketchDefs />
         <LanguageProvider>
           <LanguageSwitcher />
