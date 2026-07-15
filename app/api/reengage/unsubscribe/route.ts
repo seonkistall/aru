@@ -1,11 +1,19 @@
 import { retentionAfterRevocation } from "@/lib/reengage";
+import { parseUnsubscribeInput } from "@/lib/server/reengage-input";
+import { readBoundedJson, RequestGuardError } from "@/lib/server/request-guard";
 import { verifyUnsubscribeToken } from "@/lib/server/unsubscribe-token";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(request: Request) {
   let token = "";
-  try { token = ((await request.json()) as { token?: string }).token || ""; }
-  catch { return Response.json({ ok: false }, { status: 400 }); }
+  try {
+    const parsed = parseUnsubscribeInput(await readBoundedJson(request, 4096));
+    if (!parsed.ok) return Response.json({ ok: false, reason: parsed.reason }, { status: 400 });
+    token = parsed.value.token;
+  } catch (error) {
+    const status = error instanceof RequestGuardError ? error.status : 400;
+    return Response.json({ ok: false, reason: status === 413 ? "request too large" : "invalid json" }, { status });
+  }
   const secret = process.env.UNSUBSCRIBE_SECRET || process.env.CRON_SECRET;
   if (!secret) return Response.json({ ok: false, reason: "not configured" }, { status: 503 });
   const verified = verifyUnsubscribeToken(token, secret);

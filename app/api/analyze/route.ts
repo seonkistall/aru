@@ -28,7 +28,7 @@ async function callGemini(image: string): Promise<Record<string, unknown> | null
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${SYS}\n\n${USER}` }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
+      generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 256 },
     }),
   }, 15_000);
   if (!response.ok) throw new Error(`gemini ${response.status}`);
@@ -45,6 +45,7 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
     body: JSON.stringify({
       model: process.env.OPENAI_VISION_MODEL ?? "gpt-4o-mini",
       temperature: 0.3,
+      max_tokens: 256,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYS },

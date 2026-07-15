@@ -57,6 +57,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         temperature: 0.6,
+        max_tokens: 256,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: sys },

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin, hasValidSyncToken, isSupabaseSyncConfigured } from "@/lib/supabase-admin";
+import { readBoundedJson, RequestGuardError } from "@/lib/server/request-guard";
 import { latestConsentGranted, SYNC_SCHEMA_VERSIONS, type GyeolSyncPayload, type SyncResult } from "@/lib/sync-payload";
 
 export const runtime = "nodejs";
@@ -42,9 +43,15 @@ export async function POST(request: Request) {
 
   let body: SyncRequest;
   try {
-    body = (await request.json()) as SyncRequest;
-  } catch {
-    return Response.json(result(false, ["Invalid JSON body."]), { status: 400 });
+    const parsed = await readBoundedJson(request, MAX_SYNC_BYTES);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return Response.json(result(false, ["Invalid JSON body."]), { status: 400 });
+    }
+    body = parsed as SyncRequest;
+  } catch (error) {
+    const status = error instanceof RequestGuardError ? error.status : 400;
+    const message = status === 413 ? `Sync payload is too large. Limit is ${MAX_SYNC_BYTES} bytes.` : "Invalid JSON body.";
+    return Response.json(result(false, [message]), { status });
   }
 
   const payload = body.payload;
