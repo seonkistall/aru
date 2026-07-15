@@ -377,7 +377,8 @@ export default function Scan() {
       const steady = !last || movement < profile.maxMovement;
 
       const nextZones = computeGuideZones(face, video.videoWidth, video.videoHeight);
-      const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady }, Boolean(nextZones));
+      const skinReady = Boolean(nextZones);
+      const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady, skinReady }, Boolean(nextZones));
       const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
       const message = !distance
         ? rawSize <= profile.minFaceSize
@@ -393,7 +394,7 @@ export default function Scan() {
               ? t("잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요.")
               : t("좋아요. 그대로 계세요.");
 
-      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, score, message });
+      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, skinReady, score, message });
       handleAutoTick(pass);
       setZones(nextZones);
       if (debugRef.current) {
@@ -1010,6 +1011,7 @@ function evaluateCapturedQuality(imageData: ImageData, landmarks: Landmark[], pr
     brightness,
     noGlare,
     steady,
+    skinReady: true,
     score: 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0),
     message: rejectReason ? t("촬영 품질을 다시 맞춰주세요.") : t("촬영 품질이 확인됐어요."),
     centerOffsetX,

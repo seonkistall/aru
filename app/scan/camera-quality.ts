@@ -11,6 +11,7 @@ export type CaptureGateQuality = {
   brightness: boolean;
   noGlare: boolean;
   steady: boolean;
+  skinReady: boolean;
 };
 export type FrameCenter = { x: number; y: number };
 export type ScanCaptureLabelInput = {
@@ -67,7 +68,7 @@ export function cropOutputSize(input: CropOutputSizeInput): { width: number; hei
 }
 
 export function captureGatePassed(quality: CaptureGateQuality): boolean {
-  return quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && quality.steady;
+  return quality.face && quality.centered && quality.distance && quality.brightness && quality.noGlare && quality.steady && quality.skinReady === true;
 }
 
 export function scanCaptureReady(quality: CaptureGateQuality, zonesReady: boolean): boolean {

@@ -92,6 +92,7 @@ describe("camera quality upgrade helpers", () => {
         brightness: true,
         noGlare: true,
         steady: true,
+        skinReady: true,
       })
     ).toBe(false);
   });
@@ -105,6 +106,7 @@ describe("camera quality upgrade helpers", () => {
         brightness: true,
         noGlare: true,
         steady: false,
+        skinReady: true,
       })
     ).toBe(false);
   });
@@ -117,10 +119,26 @@ describe("camera quality upgrade helpers", () => {
       brightness: true,
       noGlare: true,
       steady: true,
+      skinReady: true,
     };
 
     expect(scanCaptureReady(quality, false)).toBe(false);
     expect(scanCaptureReady(quality, true)).toBe(true);
+  });
+
+  test("keeps scan capture disabled until the skin regions are ready", () => {
+    const quality = {
+      face: true,
+      centered: true,
+      distance: true,
+      brightness: true,
+      noGlare: true,
+      steady: true,
+      skinReady: false,
+    };
+
+    expect(scanCaptureReady(quality, true)).toBe(false);
+    expect(scanCaptureReady({ ...quality, skinReady: true }, true)).toBe(true);
   });
 
   test("explains the exact scan capture blocker in the primary CTA", () => {

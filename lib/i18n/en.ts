@@ -1,6 +1,11 @@
 // English dictionary, keyed by the exact Korean source string (see lib/i18n/core.ts).
 // Product/brand names use official romanizations where they exist.
 export const EN: Record<string, string> = {
+  "피부 영역을 가이드 안에 맞춰주세요.": "Align the skin regions inside the guide.",
+  "피부가 어두워요. 부드러운 정면 빛 쪽으로 이동해주세요.": "The skin regions are too dark. Move toward soft, frontal light.",
+  "피부 반사가 강해요. 직접 조명이나 번들거림을 줄여주세요.": "Strong skin glare. Reduce direct light or visible shine.",
+  "피부 결이 흐려요. 렌즈를 닦고 잠깐 멈춰주세요.": "Skin detail looks soft. Clean the lens and hold still briefly.",
+  "피부 선명도": "Skin clarity",
   "* 조명, 각도, 메이크업에 따라 달라질 수 있는 참고용 분석이에요.": "* Reference analysis only — results can vary with lighting, angle, and makeup.",
   "1만원대": "₩10,000 range",
   "1매": "1 sheet",

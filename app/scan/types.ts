@@ -26,6 +26,7 @@ export type Quality = {
   brightness: boolean;
   noGlare: boolean;
   steady: boolean;
+  skinReady: boolean;
   score: number;
   message: string;
   centerOffsetX?: number;
@@ -53,6 +54,7 @@ export const initialQuality: Quality = {
   brightness: false,
   noGlare: false,
   steady: false,
+  skinReady: false,
   score: 0,
   message: "얼굴을 윤곽선 안에 맞춰주세요.",
 };
