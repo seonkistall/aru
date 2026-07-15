@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
   evaluateSkinRoiQuality,
+  skinRoiRegionsFromLandmarks,
   type SkinRoiRegions,
 } from "../app/scan/skin-roi-quality";
+import { SAMPLING_LANDMARKS } from "../lib/skin";
 
 type PixelFrame = { data: Uint8ClampedArray; width: number; height: number };
 
@@ -46,6 +48,33 @@ function paint(frameData: PixelFrame, region: SkinRoiRegions["tzone"], value: nu
 }
 
 describe("skin ROI quality", () => {
+  test("derives source-frame skin regions without display mirroring", () => {
+    const landmarks = Array.from({ length: 468 }, () => ({ x: 0.5, y: 0.5 }));
+    SAMPLING_LANDMARKS.tzone.forEach((index, offset) => {
+      landmarks[index] = { x: 0.44 + (offset % 3) * 0.06, y: 0.18 + Math.floor(offset / 3) * 0.06 };
+    });
+    SAMPLING_LANDMARKS.cheeks.slice(0, 7).forEach((index, offset) => {
+      landmarks[index] = { x: 0.22 + (offset % 3) * 0.05, y: 0.52 + Math.floor(offset / 3) * 0.05 };
+    });
+    SAMPLING_LANDMARKS.cheeks.slice(7).forEach((index, offset) => {
+      landmarks[index] = { x: 0.68 + (offset % 3) * 0.05, y: 0.52 + Math.floor(offset / 3) * 0.05 };
+    });
+
+    const result = skinRoiRegionsFromLandmarks(landmarks);
+
+    expect(result).not.toBeNull();
+    expect(result!.leftCheek!.x).toBeLessThan(result!.rightCheek!.x);
+    expect(result!.tzone).toMatchObject({ x: expect.any(Number), y: expect.any(Number) });
+    for (const region of Object.values(result!)) {
+      expect(region!.x).toBeGreaterThanOrEqual(0);
+      expect(region!.x + region!.width).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("fails source-region derivation when a required landmark group is absent", () => {
+    expect(skinRoiRegionsFromLandmarks([])).toBeNull();
+  });
+
   test("passes three measurable, well-lit, sharp skin regions", () => {
     expect(evaluateSkinRoiQuality(frame(132, 14), regions)).toMatchObject({
       regionsReady: true,

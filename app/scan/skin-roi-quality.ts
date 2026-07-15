@@ -38,6 +38,35 @@ export const DEFAULT_SKIN_ROI_THRESHOLDS: SkinRoiThresholds = {
   minDetail: 2.5,
 };
 
+const LEFT_CHEEK_LANDMARKS = SAMPLING_LANDMARKS.cheeks.slice(0, 7);
+const RIGHT_CHEEK_LANDMARKS = SAMPLING_LANDMARKS.cheeks.slice(7);
+
+function regionFromLandmarks(landmarks: Landmark[], indices: number[], padding: number): NormalizedSkinRoi | null {
+  const points = indices.map((index) => landmarks[index]).filter((point): point is Landmark => Boolean(point));
+  if (points.length !== indices.length || points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return null;
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const width = maxX - minX;
+  const height = maxY - minY;
+  if (width <= 0 || height <= 0) return null;
+  const x = Math.max(0, minX - width * padding);
+  const y = Math.max(0, minY - height * padding);
+  const right = Math.min(1, maxX + width * padding);
+  const bottom = Math.min(1, maxY + height * padding);
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+export function skinRoiRegionsFromLandmarks(landmarks: Landmark[]): SkinRoiRegions | null {
+  const tzone = regionFromLandmarks(landmarks, SAMPLING_LANDMARKS.tzone, 0.28);
+  const cheekA = regionFromLandmarks(landmarks, LEFT_CHEEK_LANDMARKS, 0.24);
+  const cheekB = regionFromLandmarks(landmarks, RIGHT_CHEEK_LANDMARKS, 0.24);
+  if (!tzone || !cheekA || !cheekB) return null;
+  const [leftCheek, rightCheek] = cheekA.x <= cheekB.x ? [cheekA, cheekB] : [cheekB, cheekA];
+  return { tzone, leftCheek, rightCheek };
+}
+
 function pixelBounds(frame: PixelFrame, roi: NormalizedSkinRoi | null): PixelBounds | null {
   if (!roi || ![roi.x, roi.y, roi.width, roi.height].every(Number.isFinite)) return null;
   const left = Math.max(0, Math.floor(roi.x * frame.width));
@@ -123,3 +152,5 @@ export function evaluateSkinRoiQuality(
     minDetail,
   };
 }
+import { SAMPLING_LANDMARKS } from "@/lib/skin";
+import type { Landmark } from "./types";
