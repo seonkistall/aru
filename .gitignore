@@ -49,3 +49,15 @@ next-env.d.ts
 # isolated implementation worktrees
 /.worktrees/
 .gstack/
+.toolchains/
+
+# Android local toolchain, signing secrets, and build outputs
+/.env.android.local
+/android/.gradle/
+/android/local.properties
+/android/app/build/
+/android/build/
+/android/*.jks
+/android/*.keystore
+*.aab
+*.apk

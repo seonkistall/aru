@@ -1,0 +1,40 @@
+{
+  "packageId": "com.seonkistall.aru",
+  "host": "aru-beauty.vercel.app",
+  "name": "ARU 아루",
+  "launcherName": "ARU",
+  "display": "standalone",
+  "themeColor": "#FFFDF8",
+  "themeColorDark": "#FFFDF8",
+  "navigationColor": "#FFFDF8",
+  "navigationColorDark": "#FFFDF8",
+  "navigationDividerColor": "#E7E0D8",
+  "navigationDividerColorDark": "#E7E0D8",
+  "backgroundColor": "#FFFDF8",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://aru-beauty.vercel.app/icon-512.png",
+  "maskableIconUrl": "https://aru-beauty.vercel.app/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./aru-upload.jks",
+    "alias": "aru-upload"
+  },
+  "appVersion": "1.1.0",
+  "appVersionCode": 11000,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://aru-beauty.vercel.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "orientation": "portrait",
+  "minSdkVersion": 23,
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "isChromeOSOnly": false,
+  "isMetaQuest": false
+}
