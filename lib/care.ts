@@ -2,9 +2,9 @@ import type { RecoResult, Survey } from "./recommend";
 import type { SkinReads } from "./skin";
 import type { Sku } from "./skus";
 import { commerceOutHref, type MerchantId } from "./commerce";
-import { t } from "./i18n/core";
+import { t, type Lang } from "./i18n/core";
 
-export type CareLocale = "ko" | "en";
+export type CareLocale = Lang;
 export type CareIntentKind = "purchase" | "clinic" | "tourist";
 
 export type CareLink = {
@@ -13,7 +13,6 @@ export type CareLink = {
   note: string;
   noteEn?: string;
   kind: CareIntentKind;
-  partnerReady?: boolean;
   merchant?: MerchantId;
   placement?: string;
   skuId?: string;
@@ -29,7 +28,6 @@ export function productSearchLinks(sku: Sku, placement = "care"): CareLink[] {
       note: link.note,
       noteEn: link.noteEn,
       kind: "purchase",
-      partnerReady: link.partnerReady,
       merchant: link.merchant,
       placement,
       skuId: sku.id,
@@ -57,35 +55,24 @@ export function clinicLinks(locale: CareLocale): CareLink[] {
       ]
     : [
         {
-          label: "Dermatology near me",
+          label: "근처 피부과 찾기",
           href: "https://www.google.com/maps/search/dermatology+clinic+near+me",
-          note: "Find clinics near your current location.",
+          note: "현재 위치 주변 피부과를 지도에서 찾아요.",
           kind: "clinic",
         },
         {
-          label: "English-speaking dermatology",
+          label: "영어 상담 가능한 피부과 찾기",
           href: "https://www.google.com/search?q=English-speaking+dermatology+clinic+Korea",
-          note: "Useful for travelers looking for English support.",
+          note: "영어 상담이 필요한 여행자에게 유용해요.",
           kind: "tourist",
         },
       ];
 }
 
-export function careSummary(survey: Survey | null, reads: SkinReads | null, result: RecoResult | null, locale: CareLocale) {
+export function careSummary(survey: Survey | null, _reads: SkinReads | null, result: RecoResult | null) {
   const top = result?.picks[0]?.sku;
-  const hasVisibleRedness = (reads?.redness.level ?? 0) >= 1 || survey?.concerns.includes("붉은기");
   const hasTroubleConcern = survey?.concerns.includes("트러블");
-  const needsClinic = Boolean(hasVisibleRedness || hasTroubleConcern);
-
-  if (locale === "en") {
-    return {
-      title: top ? `Next step for ${t(top.name)}` : "Your next K-beauty step",
-      body: needsClinic
-        ? "You can compare products first, and consider a clinic consultation if sensitivity or breakouts continue."
-        : "Start with the recommended product search, then save a check-in after trying it.",
-      clinicPriority: needsClinic,
-    };
-  }
+  const needsClinic = Boolean(hasTroubleConcern);
 
   return {
     title: top ? t("{name} 다음 단계", { name: t(top.name) }) : t("다음 케어 단계"),

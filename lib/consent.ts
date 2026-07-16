@@ -1,3 +1,5 @@
+import { DEVICE_DATA_KEY } from "./device-data";
+
 export const CONSENT_VERSION = "2026-07-02.v2";
 
 export type ConsentKind = "ai_analysis" | "learning_crop";
@@ -20,7 +22,7 @@ export const CONSENT_TEXT: Record<ConsentKind, string> = {
     "학습용 크롭 저장: 동의한 경우에만 얼굴 주변 크롭과 사용자가 확인한 라벨을 이 기기에 임시 저장하고, 내보낸 데이터만 ML 학습 검토에 사용합니다.",
 };
 
-const KEY = "gyeol_consent_events_v1";
+const KEY = DEVICE_DATA_KEY.consentEvents;
 
 function uid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);

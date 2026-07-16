@@ -3,6 +3,36 @@
 Use this checklist before each pilot round. Test on real devices, not only desktop
 responsive mode.
 
+## Recorded evidence — 2026-07-16
+
+### Owner-reported Galaxy baseline
+
+- Device: Samsung Galaxy S25 Edge
+- OS: Android 16; One UI 8.5
+- Enterprise stack reported by the owner: Knox 3.13, Knox API level 40,
+  DualDAR 1.8.0, HDM 2.0-1dd, Knox POS SDK 1.0
+- PASS: camera permission prompt, front-camera mirroring, quality gate,
+  capture completion, and retake
+- Evidence scope: owner-reported physical-device result before commit
+  `d687e8b`; it is not a post-deploy sign-off.
+
+### Automated mobile-browser evidence
+
+- Chromium 145 at 390 × 844 passed the KO/EN/JA/ZH route matrix with no
+  horizontal overflow and no unnamed interactive controls.
+- A synthetic camera loaded the same-origin MediaPipe model and WASM. After
+  the browser was switched offline, the three cached assets returned 200 with
+  their original byte sizes.
+- Full timings, defects and fixes are recorded in
+  `docs/qa/2026-07-16-web-performance.md`.
+
+### Required Galaxy post-deploy run
+
+Record Chrome version and `/scan?debug=1` output, then verify the skin-region
+guide, automatic capture, manual capture, quality rejection, result, retake,
+tab background/foreground recovery, and portrait/landscape recovery. Do not
+replace this run with desktop emulation or the synthetic-camera evidence above.
+
 ## Devices
 
 - iPhone Safari: latest iOS, front camera permission flow.

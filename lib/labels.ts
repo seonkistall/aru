@@ -1,3 +1,5 @@
+import { DEVICE_DATA_KEY } from "./device-data";
+
 /**
  * Local feedback storage for calibration.
  *
@@ -89,7 +91,7 @@ export type LabeledSample = {
   meta?: SampleMeta;
 };
 
-const KEY = "gyeol_labels_v1";
+const KEY = DEVICE_DATA_KEY.labels;
 const MAX_LOCAL_LABELS = 500;
 
 function uid() {

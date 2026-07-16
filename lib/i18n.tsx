@@ -64,9 +64,11 @@ type LangContextValue = { lang: Lang; setLang: (lang: Lang) => void };
 
 const LangContext = createContext<LangContextValue>({ lang: "ko", setLang: () => {} });
 
-export function useLang(): LangContextValue {
+export function useLanguage(): LangContextValue {
   return useContext(LangContext);
 }
+
+export const useLang = useLanguage;
 
 function setLang(next: Lang) {
   memoryLang = next;

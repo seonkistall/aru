@@ -6,6 +6,7 @@ import { downloadCardImage, ShareCard, shareCardImage, type CardRead as Read } f
 import { loadLastResult } from "@/lib/last-result";
 import type { SkinReads } from "@/lib/skin";
 import { t } from "@/lib/i18n/core";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 const PRESETS: { name: string; headline: string; reads: Read[] }[] = [
   {
@@ -45,7 +46,7 @@ export default function Studio() {
     // (sessionStorage is client-only; render-time reads break hydration).
     let scan: SkinReads | null = null;
     try {
-      const raw = sessionStorage.getItem("gyeol_reads");
+      const raw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
       if (raw) scan = JSON.parse(raw) as SkinReads;
     } catch {
       /* ignore */

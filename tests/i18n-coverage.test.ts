@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EN } from "@/lib/i18n/en";
 import { JA } from "@/lib/i18n/ja";
@@ -9,6 +11,7 @@ import { clinicLinks } from "@/lib/care";
 
 const DICTS: Record<string, Record<string, string>> = { en: EN, ja: JA, zh: ZH };
 const HANGUL = /[가-힣]/;
+const root = resolve(import.meta.dirname, "..");
 
 function expectCovered(msgid: string) {
   for (const [lang, dict] of Object.entries(DICTS)) {
@@ -54,16 +57,47 @@ describe("dictionary coverage for runtime-composed strings", () => {
     }
   });
 
-  it("covers clinic link labels/notes stored Korean-canonical", () => {
-    for (const link of clinicLinks("ko")) {
-      expect(link.label).toMatch(HANGUL); // stored canonical, not pre-translated
-      expectCovered(link.label);
-      expectCovered(link.note);
+  it("covers clinic link labels/notes stored Korean-canonical for every locale", () => {
+    for (const lang of ["ko", "en", "ja", "zh"] as const) {
+      for (const link of clinicLinks(lang)) {
+        expect(link.label).toMatch(HANGUL); // stored canonical, not pre-translated
+        expect(link.note).toMatch(HANGUL);
+        expectCovered(link.label);
+        expectCovered(link.note);
+      }
+    }
+  });
+
+  it("covers every consumer-page message id in every language", () => {
+    const paths = [
+      "app/page.tsx",
+      "app/care/page.tsx",
+      "app/checkin/page.tsx",
+      "app/components/product-card.tsx",
+      "app/components/product-compare.tsx",
+      "app/privacy/page.tsx",
+      "app/report/page.tsx",
+      "app/unsubscribe/unsubscribe-form.tsx",
+      "lib/care.ts",
+    ];
+
+    for (const path of paths) {
+      const source = readFileSync(resolve(root, path), "utf8");
+      const messageIds = [...source.matchAll(/\bt\(\"([^\"\r\n]*[가-힣][^\"\r\n]*)\"/g)].map((match) => match[1]);
+      for (const messageId of messageIds) expectCovered(messageId);
     }
   });
 
   it("covers both feedback save messages composed at render time", () => {
     expectCovered("고마워요. {count}번째 피부 피드백이에요.");
     expectCovered("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.");
+  });
+
+  it.each(["en", "ja", "zh"])("contains no duplicate keys in %s", (lang) => {
+    const source = readFileSync(resolve(root, `lib/i18n/${lang}.ts`), "utf8");
+    const keys = [...source.matchAll(/^\s*"((?:[^"\\]|\\.)*)":/gm)].map((match) => JSON.parse(`"${match[1]}"`) as string);
+    const seen = new Set<string>();
+    const duplicates = [...new Set(keys.filter((key) => seen.has(key) || !seen.add(key)))];
+    expect(duplicates).toEqual([]);
   });
 });

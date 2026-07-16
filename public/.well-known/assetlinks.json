@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.seonkistall.aru",
+      "sha256_cert_fingerprints": [
+        "03:BB:50:2D:02:E5:5B:A7:64:8C:20:3E:C2:00:06:49:74:EE:03:FE:80:C9:7B:10:1B:C5:15:99:54:99:60:2C"
+      ]
+    }
+  }
+]

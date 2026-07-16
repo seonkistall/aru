@@ -1,13 +1,21 @@
 # ARU Production Release Checklist
 
-Date: 2026-07-15
+Date: 2026-07-16
 
 ## Code gates
 
-- [ ] `npm run smoke` passes from a clean install.
-- [ ] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
-- [ ] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
-- [ ] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
+- [x] `npm run smoke` passes: 51 test files and 248 tests, lint, production build, ML compile, and route probes.
+- [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
+- [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
+- [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
+
+## Web performance and browser QA
+
+- [x] Complete the 390 × 844 route matrix in KO/EN/JA/ZH.
+- [x] Record Fast 4G cold/repeat Home and Scan measurements.
+- [x] Verify the same-origin MediaPipe model, JS, and WASM from cache while fully offline.
+- [x] Preserve real online 404 responses instead of masking them with the offline page.
+- Evidence: `docs/qa/2026-07-16-web-performance.md` at commit `d687e8b`.
 
 ## Supabase operations
 
@@ -36,5 +44,18 @@ Date: 2026-07-15
 - [ ] Confirm a revoked contact is excluded from the next scheduled run.
 - [ ] Confirm expired contacts are deleted in a bounded cron run.
 - [ ] Verify the privacy page clears all documented on-device keys.
+
+## Android and Google Play
+
+- [x] Bubblewrap 1.24.1 is exact-pinned; package `com.seonkistall.aru` targets API 36 with min SDK 23.
+- [x] Signed AAB/APK pass bundletool, package/version, permission, and APK v1/v2 signature checks.
+- [x] Upload certificate fingerprint matches the committed TWA manifest and Digital Asset Links.
+- [x] ko-KR/en-US listing copy, Data safety worksheet, content-rating notes, reviewer instructions, release notes, icon, feature graphic, and four real UI screenshots exist.
+- [ ] Back up the upload keystore and environment in an encrypted store before Play enrollment.
+- [ ] Add the Play App Signing distribution certificate fingerprint and redeploy Digital Asset Links.
+- [ ] Add the actual developer/legal name and public support email to the privacy policy and Play Console.
+- [ ] Pass Galaxy S25 Edge internal-track TWA QA and the Play pre-launch report.
+
+Evidence: `docs/qa/2026-07-16-android-artifact.md` and `docs/play-store/internal-test-checklist.md`.
 
 Production traffic must not be switched until every checkbox is complete. Code completion alone is not deployment approval.

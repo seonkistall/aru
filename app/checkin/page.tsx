@@ -2,69 +2,66 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getCheckins, getPurchases, recordCheckin, type Purchase } from "@/lib/store";
+import { getCheckins, getProductUses, recordCheckin, type ProductUse } from "@/lib/store";
 import { SKUS } from "@/lib/skus";
 import { ProductVisual } from "@/app/components/product-visual";
 import { Xiaohei } from "@/app/components/sketch";
 import { t } from "@/lib/i18n/core";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-// The check-in round from REAL elapsed time. 0 = not yet due — a purchase.ts is
-// stamped on a commerce-link click, so a just-clicked product must not claim
-// "2주차" / "써보니 어땠나요?" before any time has passed.
+// The check-in round from REAL elapsed time. 0 = not yet due after the user
+// explicitly records that they started using a product.
 const roundFor = (ts: number) => {
   const weeks = (Date.now() - ts) / WEEK_MS;
   return weeks >= 3 ? 4 : weeks >= 2 ? 2 : 0;
 };
 
 export default function Checkin() {
-  const [purchases, setPurchases] = useState<Purchase[] | null>(null);
+  const [productUses, setProductUses] = useState<ProductUse[] | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    Promise.all([getPurchases(), getCheckins()]).then(([allPurchases, checkins]) => {
-      // getPurchases returns newest-first; recordPurchase fires on every buy-link
-      // tap, so collapse to one card per SKU (the latest) instead of a duplicate
-      // check-in card per click.
+    Promise.all([getProductUses(), getCheckins()]).then(([allProductUses, checkins]) => {
+      // Keep only the latest explicitly confirmed use start for each product.
       const seenSku = new Set<string>();
-      const nextPurchases = allPurchases.filter((p) => (seenSku.has(p.sku_id) ? false : seenSku.add(p.sku_id)));
+      const nextProductUses = allProductUses.filter((use) => (seenSku.has(use.sku_id) ? false : seenSku.add(use.sku_id)));
       // Done is per round (2주/4주): a week-2 checkin must not block the
       // week-4 one the re-engagement email brings the user back for.
       const initial: Record<string, boolean> = {};
-      for (const p of nextPurchases) {
-        const round = roundFor(p.ts);
-        if (checkins.some((c) => c.sku_id === p.sku_id && c.week === round)) initial[p.id] = true;
+      for (const use of nextProductUses) {
+        const round = roundFor(use.ts);
+        if (checkins.some((c) => c.sku_id === use.sku_id && c.week === round)) initial[use.id] = true;
       }
       setDone(initial);
-      setPurchases(nextPurchases);
+      setProductUses(nextProductUses);
     });
   }, []);
 
-  if (purchases === null) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
+  if (productUses === null) return <main style={{ minHeight: "100vh", background: "var(--paper)" }} />;
 
-  const duePurchases = purchases.filter((p) => roundFor(p.ts) > 0);
-  const allDone = duePurchases.length > 0 && duePurchases.every((p) => done[p.id]);
+  const dueProductUses = productUses.filter((use) => roundFor(use.ts) > 0);
+  const allDone = dueProductUses.length > 0 && dueProductUses.every((use) => done[use.id]);
 
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <Link href="/" style={{ fontFamily: "var(--font-hand)", fontSize: 22, color: "var(--ink)", textDecoration: "none" }}>{t("아루")}</Link>
+            <Link href="/" style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--ink)", textDecoration: "none" }}>{t("아루")}</Link>
             <p style={{ ...eyebrow, marginTop: 8 }}>{t("사용 후 체크인")}</p>
             <h1 style={titleStyle}>{t("써보니 어땠나요?")}</h1>
           </div>
           <Xiaohei size={54} pose="carry" />
         </div>
         <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "6px 0 26px", lineHeight: 1.55 }}>
-          {t("구매 후 피드백을 남기면 다음 추천이 더 정확해져요.")}
+          {t("사용 후 피드백을 남기면 다음 추천이 더 정확해져요.")}
         </p>
 
-        {purchases.length === 0 ? (
+        {productUses.length === 0 ? (
           <div style={{ textAlign: "center", padding: "22px 18px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12 }}>
-            <p style={{ fontSize: 14.5, color: "var(--ink)", marginBottom: 6, fontWeight: 700 }}>{t("아직 기록된 구매가 없어요")}</p>
+            <p style={{ fontSize: 14.5, color: "var(--ink)", marginBottom: 6, fontWeight: 700 }}>{t("아직 기록된 사용 제품이 없어요")}</p>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.55 }}>
-              {t("추천 리포트에서 제품을 열어보면 여기에서 2·4주 후 사용감을 남길 수 있어요.")}
+              {t("추천 리포트에서 사용 시작을 기록하면 여기에서 2·4주 후 사용감을 남길 수 있어요.")}
             </p>
             <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
               <Link href="/report" style={ctaPrimary}>{t("내 리포트 보기")}</Link>
@@ -73,8 +70,8 @@ export default function Checkin() {
           </div>
         ) : (
           <>
-            {purchases.map((purchase) => (
-              <CheckinCard key={purchase.id} purchase={purchase} done={Boolean(done[purchase.id])} onDone={() => setDone((d) => ({ ...d, [purchase.id]: true }))} />
+            {productUses.map((productUse) => (
+              <CheckinCard key={productUse.id} productUse={productUse} done={Boolean(done[productUse.id])} onDone={() => setDone((d) => ({ ...d, [productUse.id]: true }))} />
             ))}
             {allDone && (
               <div style={{ textAlign: "center", padding: "18px", marginTop: 6 }}>
@@ -89,19 +86,19 @@ export default function Checkin() {
   );
 }
 
-function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boolean; onDone: () => void }) {
+function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; done: boolean; onDone: () => void }) {
   const [sat, setSat] = useState<number | null>(null);
   const [trouble, setTrouble] = useState<boolean | null>(null);
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
   const ready = sat !== null && trouble !== null && repurchase !== null;
 
-  const sku = SKUS.find((s) => s.id === purchase.sku_id);
-  const round = roundFor(purchase.ts);
+  const sku = SKUS.find((s) => s.id === productUse.sku_id);
+  const round = roundFor(productUse.ts);
   const due = round > 0;
 
   async function save() {
     if (!ready || !due) return;
-    await recordCheckin({ sku_id: purchase.sku_id, week: round === 4 ? 4 : 2, satisfaction: sat, trouble, repurchase });
+    await recordCheckin({ sku_id: productUse.sku_id, week: round === 4 ? 4 : 2, satisfaction: sat, trouble, repurchase });
     onDone();
   }
 
@@ -109,13 +106,13 @@ function CheckinCard({ purchase, done, onDone }: { purchase: Purchase; done: boo
     <div style={card}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: done || !due ? 0 : 14 }}>
         <div style={{ width: 46, height: 46, flexShrink: 0 }}>
-          <ProductVisual category={sku?.category ?? "세럼"} brand={sku?.brand ?? purchase.name} />
+          <ProductVisual category={sku?.category ?? "세럼"} brand={sku?.brand ?? productUse.name} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
             <span style={due ? weekBadge : softBadge}>{due ? t("{round}주차", { round }) : t("사용 중")}</span>
           </div>
-          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{t(purchase.name)}</p>
+          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{t(productUse.name)}</p>
         </div>
       </div>
       {!due ? (

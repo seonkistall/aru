@@ -7,7 +7,6 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { loadLastResult, saveLastResult } from "@/lib/last-result";
-import { recordPurchase } from "@/lib/store";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
@@ -17,6 +16,7 @@ import { FlowSteps } from "@/app/components/flow-steps";
 import { ReengageOptIn } from "@/app/components/reengage-optin";
 import { buildReportTrust } from "@/lib/report-trust";
 import { getLang, t } from "@/lib/i18n/core";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -66,7 +66,7 @@ type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult
 
 function loadInitialView(): InitialView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionStorage.getItem("gyeol_survey");
+  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Fresh tab session: fall back to the last saved result so a returning
     // visitor re-enters their report instead of being bounced to the survey.
@@ -84,11 +84,11 @@ function loadInitialView(): InitialView | null {
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
-    const scanRaw = sessionStorage.getItem("gyeol_scan");
+    const scanRaw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
     if (scanRaw) scan = JSON.parse(scanRaw);
   } catch {}
   try {
-    const readsRaw = sessionStorage.getItem("gyeol_reads");
+    const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
     if (readsRaw) reads = JSON.parse(readsRaw);
   } catch {}
 
@@ -201,7 +201,7 @@ export default function Report() {
     : [];
 
   return (
-    <main className="px-5 pt-9" style={{ background: "var(--paper)", minHeight: "100dvh", paddingBottom: 112 }}>
+    <main className="px-5 pt-9" style={{ background: "var(--paper)", minHeight: "100dvh", paddingBottom: 48 }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
@@ -308,7 +308,7 @@ export default function Report() {
 
         {step === "routine" && (
         <details open style={card}>
-          <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+          <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
             <h2 style={sectionLabel}>{t("오늘의 루틴")}</h2>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("아침 {am} · 저녁 {pm}단계", { am: result.routine.am.length, pm: result.routine.pm.length })}</span>
           </summary>
@@ -349,14 +349,31 @@ export default function Report() {
 
             {result.picks.length >= 2 && (
               <details style={{ ...card, marginTop: 16 }}>
-                <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+                <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
                   <span style={sectionLabel}>{t("추천 제품 비교")}</span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("가격·평점·성분 한눈에")}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("예산대·용량·성분 한눈에")}</span>
                 </summary>
                 <div style={{ marginTop: 12 }}>
                   <ProductCompare picks={result.picks} />
                 </div>
               </details>
+            )}
+
+            {top && (
+              <section style={reportCommerceAction}>
+                <a
+                  href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_summary") : top.sku.buyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    recordFunnelEvent("commerce_clicked", { placement: "report_summary", merchant: topCommerce?.merchant ?? "search" });
+                  }}
+                  style={buyBtn}
+                >
+                  {topCommerce ? t("{label} 보기", { label: t(topCommerce.label) }) : t("바로 검색")}
+                </a>
+                <Link href="/care" style={commerceCareBtn}>{t("구매/상담 연결")}</Link>
+              </section>
             )}
           </>
         )}
@@ -377,25 +394,6 @@ export default function Report() {
         </div>
       </div>
 
-      {top && step === "picks" && (
-        <div style={stickyBar}>
-          <div className="mx-auto" style={{ maxWidth: 420, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <a
-              href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_sticky") : top.sku.buyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => {
-                recordPurchase({ sku_id: top.sku.id, name: top.sku.name, price: top.sku.price });
-                recordFunnelEvent("commerce_clicked", { placement: "report_sticky", merchant: topCommerce?.merchant ?? "search" });
-              }}
-              style={buyBtn}
-            >
-              {topCommerce ? t("{label} 보기", { label: t(topCommerce.label) }) : t("바로 검색")}
-            </a>
-            <Link href="/care" style={stickyCareBtn}>{t("구매/상담 연결")}</Link>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
@@ -438,7 +436,7 @@ function RoutineHalf({ label, steps, half }: { label: string; steps: RoutineStep
         <span aria-hidden style={{ position: "absolute", left: 13, top: 10, bottom: 14, borderLeft: "2px dotted var(--line)" }} />
         {steps.map((step, index) => (
           <div key={step.id} style={{ position: "relative", paddingBottom: index === steps.length - 1 ? 4 : 18 }}>
-            <span style={{ ...routineIndex, position: "absolute", left: -40, top: 0, fontFamily: "var(--font-hand)", fontSize: 16, filter: "url(#sketch-soft)" }}>
+            <span style={{ ...routineIndex, position: "absolute", left: -40, top: 0, fontFamily: "var(--font-display)", fontSize: 16, filter: "url(#sketch-soft)" }}>
               {index + 1}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -505,7 +503,7 @@ const card: React.CSSProperties = { background: "var(--surface)", border: "1px s
 const careCard: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "20px 20px 18px", margin: "24px 0 28px" };
 const careBtn: React.CSSProperties = { display: "block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const noteStyle: React.CSSProperties = { fontSize: 13, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", marginBottom: 24 };
-const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-hand)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
+const routineHalfLabel: React.CSSProperties = { fontFamily: "var(--font-display)", fontSize: 21, lineHeight: 1, color: "var(--ink)", marginBottom: 10 };
 const routineWhy: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 4 };
 const cadenceChip: React.CSSProperties = { fontSize: 11, border: "1px solid var(--line)", color: "var(--bronze)", borderRadius: 999, padding: "2px 8px", fontWeight: 700, whiteSpace: "nowrap" };
 const routineIndex: React.CSSProperties = { width: 28, height: 28, borderRadius: 999, background: "var(--paper)", border: "1.5px solid var(--ink)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 };
@@ -513,9 +511,9 @@ const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", 
 const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };
 const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--ink)", fontWeight: 800, marginTop: 6 };
 const trustChip: React.CSSProperties = { border: "1px solid var(--line)", borderRadius: 999, padding: "4px 8px", color: "var(--ink-soft)", fontSize: 11.5, fontWeight: 700 };
-const stickyBar: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "12px 16px calc(12px + env(safe-area-inset-bottom))" };
-const buyBtn: React.CSSProperties = { flex: 1, background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
-const stickyCareBtn: React.CSSProperties = { flex: 1.3, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "13px 12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", whiteSpace: "nowrap" };
+const reportCommerceAction: React.CSSProperties = { display: "flex", alignItems: "stretch", gap: 10, marginTop: 18, padding: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 };
+const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
+const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 
 const stepTabs: React.CSSProperties = { display: "flex", gap: 6, marginTop: 12, marginBottom: 4 };
 function stepTab(active: boolean, done: boolean): React.CSSProperties {
@@ -526,6 +524,7 @@ function stepTab(active: boolean, done: boolean): React.CSSProperties {
     background: active ? "var(--surface-tint)" : "var(--surface)",
     color: active ? "var(--ink)" : done ? "var(--ink-soft)" : "var(--text-muted)",
     borderRadius: 999,
+    minHeight: "var(--tap-min)",
     padding: "7px 4px",
     fontSize: 12,
     fontWeight: active ? 800 : 600,
@@ -542,6 +541,7 @@ function stepNavBtn(primary: boolean): React.CSSProperties {
     background: primary ? "var(--ink)" : "var(--surface)",
     color: primary ? "var(--paper)" : "var(--ink-soft)",
     borderRadius: 10,
+    minHeight: "var(--tap-min)",
     padding: "13px 18px",
     fontSize: 14,
     fontWeight: 800,

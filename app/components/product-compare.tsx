@@ -1,37 +1,23 @@
 "use client";
 
-// Side-by-side comparison of the recommended products (price / rating / texture
-// / key ingredients / avoid-clear). Horizontal-scrolls on narrow screens. Helps
-// the user decide between picks without leaving the report.
+// Side-by-side comparison of stable catalog facts. Horizontal-scrolls on narrow
+// screens; live price, option, and ingredient changes are verified at merchant.
 import type { Recommendation } from "@/lib/recommend";
+import { budgetBand } from "@/lib/skus";
 import { ProductVisual } from "./product-visual";
 import { t } from "@/lib/i18n/core";
 
 export function ProductCompare({ picks }: { picks: Recommendation[] }) {
   if (picks.length < 2) return null;
 
-  const minPrice = Math.min(...picks.map((p) => p.sku.price));
-  const maxRating = Math.max(...picks.map((p) => p.sku.rating ?? 0));
-
   const rows: { label: string; render: (p: Recommendation) => React.ReactNode }[] = [
     {
-      label: t("가격"),
-      render: (p) => (
-        <span style={{ fontWeight: 800, color: p.sku.price === minPrice ? "var(--success)" : "var(--ink)" }}>
-          {t("{price}원", { price: p.sku.price.toLocaleString() })}{p.sku.price === minPrice && picks.length > 1 ? " ↓" : ""}
-        </span>
-      ),
+      label: t("예산대"),
+      render: (p) => <span style={{ fontWeight: 800, color: "var(--ink)" }}>{t(budgetBand(p.sku.price))}</span>,
     },
     {
-      label: t("평점"),
-      render: (p) =>
-        p.sku.rating ? (
-          <span style={{ color: p.sku.rating === maxRating ? "var(--bronze)" : "var(--ink-soft)", fontWeight: p.sku.rating === maxRating ? 800 : 500 }}>
-            ★ {p.sku.rating.toFixed(1)}
-          </span>
-        ) : (
-          <span style={{ color: "var(--faint)" }}>—</span>
-        ),
+      label: t("용량"),
+      render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.volume ?? "—"}</span>,
     },
     { label: t("제형"), render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.texture ? t(p.sku.texture) : "—"}</span> },
     {
@@ -83,6 +69,9 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
           ))}
         </tbody>
       </table>
+      <p style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45, margin: "10px 8px 0" }}>
+        {t("예산대는 추천 필터용 참고값이에요. 판매처에서 현재 가격·옵션·성분 확인")}
+      </p>
     </div>
   );
 }

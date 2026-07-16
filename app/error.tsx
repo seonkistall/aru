@@ -17,7 +17,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
       className="min-h-screen flex flex-col items-center justify-center px-6 text-center"
       style={{ background: "var(--paper)", color: "var(--ink)", gap: 14 }}
     >
-      <p style={{ fontFamily: "var(--font-hand)", fontSize: 40, lineHeight: 1.1 }}>{t("앗, 잠깐 멈췄어요")}</p>
+      <p style={{ fontFamily: "var(--font-display)", fontSize: 40, lineHeight: 1.1 }}>{t("앗, 잠깐 멈췄어요")}</p>
       <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, maxWidth: 320 }}>
         {t("일시적인 문제가 생겼어요. 다시 시도하면 대부분 해결돼요.")}
       </p>

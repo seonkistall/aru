@@ -21,9 +21,11 @@ const mlFiles = [
 const routeChecks = [
   { method: "GET", path: "/scan", status: 200 },
   { method: "GET", path: "/privacy", status: 200 },
-  { method: "GET", path: "/pilot", status: 200 },
-  { method: "GET", path: "/ops", status: 200 },
-  { method: "GET", path: "/eval", status: 200 },
+  { method: "GET", path: "/offline.html", status: 200, bodyIncludes: "ARU needs a connection" },
+  { method: "GET", path: "/sw.js", status: 200, bodyIncludes: "aru-mediapipe-v1" },
+  { method: "GET", path: "/pilot", status: 404 },
+  { method: "GET", path: "/ops", status: 404 },
+  { method: "GET", path: "/eval", status: 404 },
   { method: "GET", path: "/api/out?sku=tn1&merchant=oliveyoung&placement=smoke", status: 302, redirect: "manual", locationIncludes: "www.oliveyoung.co.kr" },
   { method: "GET", path: "/api/sync", status: 200 },
   // 401 when no sync token is configured; 403 when the env-based origin guard
@@ -117,6 +119,13 @@ async function checkRoute(baseUrl, check) {
     const location = response.headers.get("location") || "";
     if (!location.includes(check.locationIncludes)) {
       throw new Error(`${check.method} ${check.path} redirected to ${location}, expected ${check.locationIncludes}`);
+    }
+  }
+
+  if (check.bodyIncludes) {
+    const body = await response.text();
+    if (!body.includes(check.bodyIncludes)) {
+      throw new Error(`${check.method} ${check.path} did not include ${check.bodyIncludes}`);
     }
   }
 

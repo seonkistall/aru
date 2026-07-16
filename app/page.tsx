@@ -19,8 +19,8 @@ export default function Home() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7" style={{ paddingRight: 118 }}>
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
-        <span style={{ fontFamily: "var(--font-hand)", fontSize: 19, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>
 
       <MoodFromLink />
@@ -36,7 +36,7 @@ export default function Home() {
               position: "absolute",
               right: "calc(100% - 14px)",
               top: 28,
-              fontFamily: "var(--font-hand)",
+              fontFamily: "var(--font-display)",
               fontSize: 21,
               color: "var(--plum)",
               lineHeight: 1.1,
@@ -53,16 +53,16 @@ export default function Home() {
           </svg>
         </div>
 
-        <h1 style={{ fontFamily: "var(--font-hand)", fontSize: "clamp(30px, 12vw, 54px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
+        <h1 className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
           {t("과장 없이,")}
           <br />
-          {t("너한테 딱 맞는 셋")}
+          {t("너한테 맞는 최대 셋")}
         </h1>
         <p style={{ fontSize: 14.5, color: "var(--text-muted)", maxWidth: 270, lineHeight: 1.6, marginTop: 12 }}>
           {t("4만원짜리 실패는 그만. 카메라로 피부를 읽고 솔직하게 골라드려요.")}
         </p>
 
-        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-hand)", fontSize: 24, color: "var(--ink)" }}>
+        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-display)", fontSize: 24, lineHeight: 1.5, color: "var(--ink)" }}>
           <span>{t("촬영")}</span>
           <Arrow />
           <span>{t("분석")}</span>
@@ -70,11 +70,32 @@ export default function Home() {
           <span>{t("추천")}</span>
         </div>
 
+        <div style={{ width: "100%", maxWidth: 420, paddingTop: 24 }}>
+          <Link href="/scan" data-primary-action="scan" style={{ display: "block", textDecoration: "none" }}>
+            <div style={{ position: "relative", minHeight: "var(--tap-min)", padding: "17px 16px" }}>
+              <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
+              <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
+                <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.5, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--orange)" }}>→</span>
+              </div>
+            </div>
+          </Link>
+          <Link
+            href="/survey"
+            style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 8 }}
+          >
+            {t("카메라 없이 설문만 할래요 →")}
+          </Link>
+          <p style={{ textAlign: "center", fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text-muted)", marginTop: 4 }}>
+            {t("기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요")}
+          </p>
+        </div>
+
         <ReturnBanner />
       </section>
 
       <section className="px-6" style={{ paddingBottom: 6 }}>
-        <h2 style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.5, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
         <div style={{ display: "grid", gap: 10 }}>
           <HowCard
             index={1}
@@ -92,31 +113,11 @@ export default function Home() {
             index={3}
             pose="carry"
             title={t("아침·저녁 루틴과 제품")}
-            body={t("스캔과 설문을 함께 보고, 과장 없는 이유와 함께 딱 맞는 셋과 루틴을 골라드려요.")}
+            body={t("스캔과 설문을 함께 보고, 과장 없는 이유와 함께 최대 세 가지 선택과 루틴을 골라드려요.")}
           />
         </div>
       </section>
 
-      <div className="px-6" style={{ paddingBottom: 32, paddingTop: 18 }}>
-        <Link href="/scan" style={{ display: "block", textDecoration: "none" }}>
-          <div style={{ position: "relative", padding: "17px 16px" }}>
-            <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
-            <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-              <span style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
-              <span style={{ fontFamily: "var(--font-hand)", fontSize: 27, color: "var(--orange)" }}>→</span>
-            </div>
-          </div>
-        </Link>
-        <Link
-          href="/survey"
-          style={{ display: "block", textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 14 }}
-        >
-          {t("카메라 없이 설문만 할래요 →")}
-        </Link>
-        <p style={{ textAlign: "center", fontFamily: "var(--font-hand)", fontSize: 17, color: "var(--text-muted)", marginTop: 11 }}>
-          {t("기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요")}
-        </p>
-      </div>
     </main>
   );
 }
@@ -127,12 +128,12 @@ function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" 
       <div style={{ position: "relative", padding: "13px 14px" }}>
         <div style={{ position: "absolute", inset: 0, border: "1.8px solid var(--ink)", borderRadius: 4, filter: "url(#sketch-soft)" }} aria-hidden />
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontFamily: "var(--font-hand)", fontSize: 26, color: "var(--orange)", width: 18, textAlign: "center", flexShrink: 0 }}>{index}</span>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--orange)", width: 18, textAlign: "center", flexShrink: 0 }}>{index}</span>
           <span style={{ flexShrink: 0, marginLeft: -6 }}>
             <Xiaohei size={46} pose={pose} />
           </span>
           <div style={{ textAlign: "left", minWidth: 0, flex: 1 }}>
-            <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-hand)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
+            <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
             <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
           </div>
         </div>

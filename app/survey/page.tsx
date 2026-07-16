@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FlowSteps } from "@/app/components/flow-steps";
@@ -8,6 +8,7 @@ import { recordFunnelEvent } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 import { t } from "@/lib/i18n/core";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성", "중성"];
 const CONCERNS: Concern[] = ["모공", "블랙헤드", "붉은기", "건조", "수분부족", "유분", "트러블", "잡티", "칙칙함", "각질", "탄력", "민감"];
@@ -31,7 +32,7 @@ type ScanHint = { concerns: Concern[]; text: string } | null;
 function loadScanHint(): ScanHint {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem("gyeol_scan");
+  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
     if (!raw) return null;
     const scan = JSON.parse(raw) as ScanReads;
     if (!scan || scan.retakeRecommended || (scan.confidence ?? 0) < 0.58) {
@@ -51,6 +52,7 @@ function loadScanHint(): ScanHint {
 
 export default function Survey() {
   const router = useRouter();
+  const surveyViewRecorded = useRef(false);
   const [scanHint, setScanHint] = useState<ScanHint>(null);
   const [type, setType] = useState<SkinType | null>(null);
   const [concerns, setConcerns] = useState<Concern[]>([]);
@@ -61,13 +63,17 @@ export default function Survey() {
   const ready = type && category && budget;
 
   useEffect(() => {
+    if (!surveyViewRecorded.current) {
+      surveyViewRecorded.current = true;
+      recordFunnelEvent("survey_viewed");
+    }
     // sessionStorage is client-only; reading it in the initial render caused an
     // SSR hydration mismatch, so the one-time post-mount cascade is intentional.
     /* eslint-disable react-hooks/set-state-in-effect */
     // Rehydrate a previously submitted survey so returning from /report (its
     // scan nudge routes scan→survey) doesn't wipe every answer.
     try {
-      const raw = sessionStorage.getItem("gyeol_survey");
+    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SurveyT>;
         if (saved.type) setType(saved.type);
@@ -93,7 +99,7 @@ export default function Survey() {
     setSaveErr("");
     const survey: SurveyT = { type, concerns, category, budget, avoid };
     try {
-      sessionStorage.setItem("gyeol_survey", JSON.stringify(survey));
+      sessionStorage.setItem(DEVICE_DATA_KEY.survey, JSON.stringify(survey));
     } catch {
       setSaveErr(t("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요."));
       return;
@@ -198,6 +204,7 @@ const retakeLinkStyle: React.CSSProperties = { display: "inline-block", marginTo
 function chipStyle(on: boolean): React.CSSProperties {
   return {
     fontSize: 14,
+    minHeight: "var(--tap-min)",
     padding: "9px 15px",
     borderRadius: 8,
     border: on ? "1px solid var(--plum)" : "1px solid var(--line)",

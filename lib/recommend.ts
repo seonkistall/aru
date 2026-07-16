@@ -118,7 +118,6 @@ function scoreSku(sku: Sku, survey: Survey, concerns: Concern[]): number {
   }
   if (survey.avoid.every((avoid) => sku.freeOf.includes(avoid))) score += 1.5;
   if (sku.category === survey.category) score += 2;
-  if (sku.rating) score += (sku.rating - 4) * 0.6; // gentle popularity tiebreak
   return score;
 }
 

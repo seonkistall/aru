@@ -11,7 +11,7 @@ export default function NotFound() {
       className="min-h-screen flex flex-col items-center justify-center px-6 text-center"
       style={{ background: "var(--paper)", color: "var(--ink)", gap: 14 }}
     >
-      <p style={{ fontFamily: "var(--font-hand)", fontSize: 40, lineHeight: 1.1 }}>{t("여긴 아무것도 없어요")}</p>
+      <p style={{ fontFamily: "var(--font-display)", fontSize: 40, lineHeight: 1.1 }}>{t("여긴 아무것도 없어요")}</p>
       <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, maxWidth: 320 }}>
         {t("찾으시는 페이지가 사라졌거나 주소가 바뀌었어요.")}
       </p>

@@ -5,8 +5,9 @@
 // which is enough to reconstruct the report via recommend().
 import type { ScanReads, Survey } from "./recommend";
 import type { SkinReads } from "./skin";
+import { DEVICE_DATA_KEY } from "./device-data";
 
-const KEY = "aru_last_result";
+const KEY = DEVICE_DATA_KEY.lastResult;
 
 export type LastResult = { survey: Survey; scan: ScanReads; reads: SkinReads | null; ts: number };
 

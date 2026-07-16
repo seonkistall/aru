@@ -53,12 +53,14 @@ const emptyFunnel: FunnelSummary = {
   steps: {
     scan_started: 0,
     scan_completed: 0,
+    survey_viewed: 0,
     survey_completed: 0,
     reco_viewed: 0,
     share_clicked: 0,
     commerce_clicked: 0,
   },
   failurePreventionConversion: 0,
+  surveyCompletion: 0,
   shareRate: 0,
 };
 
@@ -200,8 +202,8 @@ export default function OpsPage() {
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>north-star funnel</p>
-          <h2 style={sectionTitle}>Failure-prevention conversion</h2>
+          <p style={sectionLabel}>scan journey diagnostic</p>
+          <h2 style={sectionTitle}>Scan-to-commerce action</h2>
           <p style={bodyText}>
             Of {snapshot.funnel.steps.scan_completed} completed scans, {snapshot.funnel.steps.commerce_clicked} reached an
             informed purchase intent.
@@ -226,6 +228,8 @@ export default function OpsPage() {
           </div>
           <div style={{ marginTop: 12 }}>
             <Row label="Sessions" value={`${snapshot.funnel.sessions}`} />
+            <Row label="Survey viewed" value={`${snapshot.funnel.steps.survey_viewed}`} />
+            <Row label="Survey completion" value={`${Math.round(snapshot.funnel.surveyCompletion * 100)}%`} />
             <Row label="Share clicked" value={`${snapshot.funnel.steps.share_clicked}`} />
             <Row label="Share rate" value={`${Math.round(snapshot.funnel.shareRate * 100)}%`} />
           </div>

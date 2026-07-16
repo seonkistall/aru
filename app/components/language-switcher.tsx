@@ -39,6 +39,7 @@ export function LanguageSwitcher() {
         style={{
           display: "flex",
           alignItems: "center",
+          minHeight: "var(--tap-min)",
           gap: 5,
           padding: "4px 10px",
           background: "var(--paper, #fff)",
@@ -81,6 +82,7 @@ export function LanguageSwitcher() {
               style={{
                 display: "block",
                 width: "100%",
+                minHeight: "var(--tap-min)",
                 textAlign: "left",
                 padding: "8px 12px",
                 fontSize: 13,

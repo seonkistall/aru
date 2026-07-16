@@ -1,6 +1,6 @@
-# 아루 ARU — 시스템 작동 원리 (파트별 도식)
+# 아루 ARU — 시스템 작동 원리
 
-> 코드 기준 문서 (2026-07-03, v0.4.3 / feature `roi-calibrated-2026-07-03`).
+> 코드 기준: 2026-07-16 production-readiness 브랜치. 제품 범위와 출시 조건은 [PRD.md](PRD.md)가 단일 기준입니다.
 > 다이어그램은 GitHub에서 Mermaid로 렌더됩니다.
 
 ## 1. 전체 구성도
@@ -23,18 +23,22 @@ flowchart LR
         REASON["/api/reason<br/>추천 카피 LLM"]
         OUT["/api/out<br/>커머스 클릭 추적"]
         SYNC["/api/sync<br/>파일럿 배치 업로드"]
+        REENGAGE["/api/reengage/*<br/>구독·발송·해지·정리"]
     end
 
     subgraph Ext["외부"]
         GEM[Gemini / OpenAI]
         SB[(Supabase<br/>테이블+크롭 버킷)]
         SHOP[올리브영 · 네이버 · 쿠팡]
+        EMAIL[Resend]
     end
 
-    SCAN -- "동의 시 얼굴 크롭" --> ANALYZE --> GEM
+    SCAN -- "동의 시 피부 ROI 크롭" --> ANALYZE --> GEM
     REPORT --> REASON --> GEM
     CARE & REPORT --> OUT -- "UTM + 허용목록 302" --> SHOP
     OPS -- "SYNC_TOKEN + 오리진 가드" --> SYNC --> SB
+    REPORT -- "명시적 이메일 구독" --> REENGAGE --> SB
+    REENGAGE --> EMAIL
 
     subgraph ML["🧪 오프라인 ML (ml/, Python)"]
         CAL[calibrate.py<br/>임계값 보정] --> TRAIN["train_visible_attributes.py<br/>--arch mobilenetv3 | efficientnet_b0"]
@@ -62,7 +66,7 @@ flowchart TD
     H --> I["capture()"]
     I --> J["풀해상도 프레임 + 재검출<br/>+ 촬영순간 steadiness 재계산"]
     J -->|검증 실패| K["재촬영 안내 + 4초 쿨다운"] --> B
-    J --> L["동의 시: 얼굴 크롭 생성"]
+    J --> L["목적별 동의 시: 피부 ROI 크롭 생성"]
     J --> M["버스트: +2프레임(140ms 간격)"]
     M --> N["analyzeSkinBurst"]
     N --> O["4단계 연출 (825ms×4 = 스캔바 1.1s×3회 왕복)<br/>정합→신호추출→판정→교차검증"]
@@ -93,15 +97,15 @@ flowchart TD
 flowchart LR
     subgraph Device["기기 내 저장"]
         SS["sessionStorage (새로고침 소멸)<br/>gyeol_scan · gyeol_reads · gyeol_survey"]
-        LS["localStorage<br/>라벨 · 크롭(최대120) · 동의로그 · 구매/클릭 기록"]
+        LS["localStorage<br/>라벨 · 크롭(최대120) · 동의로그<br/>사용 시작·체크인 · 익명 funnel"]
     end
 
-    CONSENT{"동의 2종 (촬영 전 기록)<br/>① AI 분석 전송(Gemini/OpenAI 명시)<br/>② 학습 크롭 저장"} -->|①| API1[/api/analyze/]
+    CONSENT{"동의 2종 (촬영 전 기록)<br/>① AI 분석 전송(Gemini/OpenAI 명시)<br/>② 학습 크롭 저장<br/>파일럿은 participant/session 정확 일치"} -->|①| API1[/api/analyze/]
     CONSENT -->|②| LS
     FEEDBACK["맞아요/조금 달라요 + 트러블 관찰"] --> LS
 
     LS --> EXPORT["/privacy · /ops 내보내기<br/>JSONL/CSV (수동 = 원본)"]
-    LS -- "/ops + SYNC_TOKEN<br/>오리진 가드 · 12회/60초" --> SYNC[/api/sync/] --> SB[(Supabase)]
+    LS -- "/ops + SYNC_TOKEN<br/>오리진 가드 · body/rate 제한" --> SYNC[/api/sync/] --> SB[(비공개 Supabase)]
 
     EXPORT --> PIPE["ML 파이프라인 (게이트)<br/>＜30 캘리브레이션만 → 100+ dry-run<br/>→ 300+ 학습·ONNX → 500+ 톤별 공정성(ITA)"]
     GOLD["/eval 골든셋 하네스<br/>브라우저 내 재판독 → 베이스라인 JSONL diff"] -.코드 변경마다 회귀 측정.-> PIPE
@@ -122,4 +126,4 @@ flowchart TD
 ```
 
 ## 관련 문서
-`analysis-performance-roadmap.md`(성능 로드맵) · `pilot-ml-loop.md`(파일럿 런북) · `golden-set.md`(회귀 프로토콜) · `commerce-partnership-playbook.md`(BM) · `mobile-camera-qa.md`(QA)
+[PRD.md](PRD.md)(제품·지표·출시 계약) · [STATUS.md](STATUS.md)(검증 상태) · [analysis-performance-roadmap.md](analysis-performance-roadmap.md)(성능 로드맵) · [pilot-ml-loop.md](pilot-ml-loop.md)(파일럿 런북) · [golden-set.md](golden-set.md)(회귀 프로토콜) · [mobile-camera-qa.md](mobile-camera-qa.md)(QA)

@@ -1,3 +1,5 @@
+import { DEVICE_DATA_KEY } from "./device-data";
+
 // Local scan history (MAU re-engagement). On-device only — a lightweight trail
 // of past scan levels so a returning user can see their skin over time without
 // an account or email. Same privacy posture as the other local stores.
@@ -10,7 +12,7 @@ export type ScanHistoryEntry = {
   ts: number;
 };
 
-const KEY = "aru_scan_history_v1";
+const KEY = DEVICE_DATA_KEY.scanHistory;
 const MAX = 30;
 
 export function getScanHistory(): ScanHistoryEntry[] {

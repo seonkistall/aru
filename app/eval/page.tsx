@@ -9,10 +9,11 @@
 
 import { useRef, useState } from "react";
 import { analyzeSkin, VISIBLE_MODEL_CONTRACT, type SkinReads } from "@/lib/skin";
+import { createImageLandmarker } from "@/app/scan/create-landmarker";
 
 type Landmark = { x: number; y: number; z?: number };
-type FaceLandmarker = {
-  detectForVideo: (source: HTMLVideoElement | HTMLCanvasElement, timestampMs: number) => { faceLandmarks?: Landmark[][] };
+type ImageLandmarker = {
+  detect: (source: HTMLCanvasElement) => { faceLandmarks?: Landmark[][] };
 };
 
 type EvalRow = {
@@ -29,31 +30,21 @@ type EvalRow = {
   toneIta?: number;
 };
 
-const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
-const MODEL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-
 export default function EvalPage() {
-  const landmarkerRef = useRef<FaceLandmarker | null>(null);
+  const landmarkerRef = useRef<ImageLandmarker | null>(null);
   const [rows, setRows] = useState<EvalRow[]>([]);
   const [baseline, setBaseline] = useState<Record<string, EvalRow>>({});
   const [labels, setLabels] = useState<Record<string, EvalRow>>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
 
-  async function ensureLandmarker(): Promise<FaceLandmarker> {
+  async function ensureLandmarker(): Promise<ImageLandmarker> {
     if (landmarkerRef.current) return landmarkerRef.current;
-    const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
-    const fileset = await FilesetResolver.forVisionTasks(WASM);
-    landmarkerRef.current = (await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL, delegate: "GPU" },
-      runningMode: "VIDEO",
-      numFaces: 1,
-    })) as unknown as FaceLandmarker;
+    landmarkerRef.current = await createImageLandmarker("GPU");
     return landmarkerRef.current;
   }
 
-  async function analyzeFile(file: File, landmarker: FaceLandmarker): Promise<EvalRow> {
+  async function analyzeFile(file: File, landmarker: ImageLandmarker): Promise<EvalRow> {
     const url = URL.createObjectURL(file);
     try {
       const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -70,7 +61,7 @@ export default function EvalPage() {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return { file: file.name, ok: false };
       ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const face = landmarker.detectForVideo(canvas, performance.now()).faceLandmarks?.[0];
+      const face = landmarker.detect(canvas).faceLandmarks?.[0];
       if (!face?.length) return { file: file.name, ok: false };
       const reads: SkinReads | null = analyzeSkin(ctx.getImageData(0, 0, canvas.width, canvas.height), face);
       if (!reads) return { file: file.name, ok: false };
@@ -107,7 +98,7 @@ export default function EvalPage() {
         setRows([...next]);
       }
     } catch {
-      setStatus("랜드마커 로드 실패 — 네트워크(CDN) 확인");
+      setStatus("랜드마커 로드 실패 — 네트워크 또는 로컬 모델 파일을 확인해 주세요");
     } finally {
       setBusy(false);
     }

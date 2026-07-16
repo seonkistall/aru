@@ -31,7 +31,7 @@ export function ReturnBanner() {
 }
 
 const primary: React.CSSProperties = {
-  fontFamily: "var(--font-hand)",
+  fontFamily: "var(--font-display)",
   fontSize: 19,
   color: "var(--plum)",
   textDecoration: "none",
@@ -40,7 +40,7 @@ const primary: React.CSSProperties = {
 };
 
 const ghost: React.CSSProperties = {
-  fontFamily: "var(--font-hand)",
+  fontFamily: "var(--font-display)",
   fontSize: 19,
   color: "var(--text-muted)",
   textDecoration: "none",

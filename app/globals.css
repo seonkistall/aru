@@ -1,6 +1,14 @@
 @import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "tailwindcss";
 
+/* Match the narrow Nanum Pen metrics before its Korean subsets arrive. This
+   keeps slow-network font swaps from rewrapping the hero and moving the CTA. */
+@font-face {
+  font-family: "ARU Display Fallback";
+  src: local("Noto Sans CJK KR"), local("Noto Sans KR"), local("Apple SD Gothic Neo"), local("Malgun Gothic");
+  size-adjust: 78%;
+}
+
 /* ── DESIGN.md tokens (xiaohei — 순백 손그림 + 절제된 주석색) ──────────────── */
 :root {
   --ink: #1a1a1a;          /* black line art / main */
@@ -24,6 +32,7 @@
   --peach: #f5f5f5;
   --on-plum: #ffffff;
   --success: #2f7d4f;
+  --tap-min: 44px;
 }
 
 @theme inline {
@@ -40,10 +49,11 @@
   --color-blue: var(--blue);
   --color-line: var(--line);
   --color-success: var(--success);
-  /* repoint all display roles to the hand font; body stays Pretendard */
-  --font-hand: "Segoe Print", "Comic Sans MS", cursive;
-  --font-serif: var(--font-hand);
-  --font-ko-serif: var(--font-hand);
+  /* Korean brand moments use a self-hosted pen face; body and controls stay Pretendard. */
+  --font-hand-ko: "Nanum Pen Script", "ARU Display Fallback", "Pretendard Variable", sans-serif;
+  --font-display: var(--font-hand-ko);
+  --font-serif: var(--font-display);
+  --font-ko-serif: var(--font-display);
   --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
 }
@@ -84,4 +94,10 @@ html[lang="ja"] body, html[lang="zh-CN"] body,
 html[lang="ja"] button, html[lang="zh-CN"] button,
 html[lang="ja"] a, html[lang="zh-CN"] a {
   word-break: normal;
+}
+
+/* Keep the hand-drawn display face Korean-only. Latin and CJK translations use
+   the compact sans token so long headings remain legible. */
+html[lang="en"], html[lang="ja"], html[lang="zh-CN"] {
+  --font-display: var(--font-sans);
 }

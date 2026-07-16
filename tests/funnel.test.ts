@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { funnelDropoff, summarizeFunnel, type FunnelEvent } from "@/lib/funnel";
+import { FUNNEL_ORDER, funnelDropoff, summarizeFunnel, type FunnelEvent } from "@/lib/funnel";
 
 function ev(sessionId: string, kind: FunnelEvent["kind"]): FunnelEvent {
   return { id: `${sessionId}-${kind}`, kind, visitorId: "v", sessionId, ts: 0 };
 }
 
 describe("summarizeFunnel", () => {
+  it("measures survey entry and completion as a separate journey", () => {
+    const events = [
+      ev("s1", "survey_viewed"),
+      ev("s1", "survey_completed"),
+      ev("s2", "survey_viewed"),
+    ];
+
+    expect(FUNNEL_ORDER).toContain("survey_viewed");
+    expect(summarizeFunnel(events).surveyCompletion).toBe(0.5);
+  });
+
   it("counts unique sessions reaching each step", () => {
     const events = [
       ev("s1", "scan_started"),

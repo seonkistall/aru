@@ -73,10 +73,10 @@ create table if not exists pilot_notes (
 
 -- Privacy-clean funnel analytics. Anonymous visitor/session ids only (random,
 -- not derived from any user attribute); no images, no free text. Used to track
--- the failure-prevention conversion north-star. Synced via /api/sync.
+-- scan and survey journey diagnostics. Synced via /api/sync.
 create table if not exists funnel_events (
   id text primary key,
-  kind text not null,          -- scan_started | scan_completed | survey_completed | reco_viewed | share_clicked | commerce_clicked
+  kind text not null,          -- scan_started | scan_completed | survey_viewed | survey_completed | reco_viewed | share_clicked | commerce_clicked
   visitor_id text not null,
   session_id text not null,
   props jsonb,
@@ -101,6 +101,15 @@ create table if not exists crop_samples (
   ts bigint not null,
   user_id uuid references auth.users (id) default auth.uid()
 );
+
+create index if not exists purchases_user_id_idx on purchases (user_id);
+create index if not exists checkins_user_id_idx on checkins (user_id);
+create index if not exists care_intents_user_id_idx on care_intents (user_id);
+create index if not exists labels_user_id_idx on labels (user_id);
+create index if not exists consent_events_user_id_idx on consent_events (user_id);
+create index if not exists pilot_notes_user_id_idx on pilot_notes (user_id);
+create index if not exists crop_samples_consent_event_id_idx on crop_samples (consent_event_id);
+create index if not exists crop_samples_user_id_idx on crop_samples (user_id);
 
 -- Pilot v2 traceability fields. These are safe to rerun on existing projects.
 alter table labels add column if not exists participant_id text;
@@ -140,11 +149,12 @@ alter table care_intents add column if not exists placement text;
 alter table care_intents add column if not exists partner_ready boolean;
 alter table care_intents add column if not exists region text;
 
--- Create a private bucket for crops in Supabase Storage before enabling upload:
--- insert into storage.buckets (id, name, public)
--- values ('gyeol-crop-samples', 'gyeol-crop-samples', false)
--- on conflict (id) do nothing;
---
+-- The research crop bucket is always private. Re-running the schema also fixes
+-- an accidentally public existing bucket.
+insert into storage.buckets (id, name, public)
+values ('gyeol-crop-samples', 'gyeol-crop-samples', false)
+on conflict (id) do update set public = false;
+
 -- The app's /api/sync route uploads with SUPABASE_SERVICE_ROLE_KEY and a private
 -- SUPABASE_SYNC_TOKEN. Do not expose service_role in client code.
 -- Recommended env:
@@ -192,3 +202,23 @@ revoke all on table pilot_notes from anon, authenticated;
 revoke all on table funnel_events from anon, authenticated;
 revoke all on table crop_samples from anon, authenticated;
 revoke all on table reengage_contacts from anon, authenticated;
+
+-- Storage is server-only through the platform-managed Storage RLS boundary.
+-- Keeping this private bucket policy-free denies anon/authenticated access.
+
+-- Reproduce the service-role path explicitly instead of relying on dashboard
+-- defaults. The service role still bypasses RLS, but also needs SQL privileges.
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+
+-- Future objects stay private until their access is granted explicitly.
+alter default privileges for role postgres in schema public
+  revoke select, insert, update, delete on tables from anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke usage, select on sequences from anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke execute on functions from anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke execute on functions from public;
