@@ -1,13 +1,21 @@
 # ARU Production Release Checklist
 
-Date: 2026-07-15
+Date: 2026-07-16
 
 ## Code gates
 
-- [ ] `npm run smoke` passes from a clean install.
-- [ ] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
-- [ ] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
-- [ ] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
+- [x] `npm run smoke` passes: 48 test files and 237 tests, lint, production build, ML compile, and route probes.
+- [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
+- [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
+- [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
+
+## Web performance and browser QA
+
+- [x] Complete the 390 × 844 route matrix in KO/EN/JA/ZH.
+- [x] Record Fast 4G cold/repeat Home and Scan measurements.
+- [x] Verify the same-origin MediaPipe model, JS, and WASM from cache while fully offline.
+- [x] Preserve real online 404 responses instead of masking them with the offline page.
+- Evidence: `docs/qa/2026-07-16-web-performance.md` at commit `d687e8b`.
 
 ## Supabase operations
 
