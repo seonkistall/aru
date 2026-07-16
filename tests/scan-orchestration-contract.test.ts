@@ -18,4 +18,13 @@ describe("scan orchestration seams", () => {
     expect(hook).toContain('createVideoLandmarker("CPU")');
     expect(hook).toContain("landmarker.close");
   });
+
+  it("delegates the live quality sampling loop to useQualityLoop", () => {
+    const hookPath = resolve(root, "app/scan/use-quality-loop.ts");
+    const page = readFileSync(resolve(root, "app/scan/page.tsx"), "utf8");
+    expect(existsSync(hookPath)).toBe(true);
+    expect(page).toContain("useQualityLoop");
+    expect(page).not.toContain("const measureQuality");
+    expect(page).not.toContain("qualityTimerRef");
+  });
 });

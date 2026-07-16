@@ -17,12 +17,12 @@ import { shouldKeepLearningCrop, shouldShowFeedback } from "@/lib/ml-collection"
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 import { moodShareUrl } from "@/lib/share-link";
-import { createLandmarkerWorker, type LandmarkerWorker } from "./landmarker-client";
-import { useLandmarker, type VideoFaceLandmarker } from "./use-landmarker";
+import type { LandmarkerWorker } from "./landmarker-client";
+import { useLandmarker } from "./use-landmarker";
+import { useQualityLoop } from "./use-quality-loop";
 import { resolveCaptureConsent } from "./consent-authorization";
 import { openCamera, stopMediaStream } from "./camera-stream";
 import {
-  buildCameraQualityDebug,
   cropPlanForPurpose,
   frameMovement,
   scanCaptureButtonLabel,
@@ -31,13 +31,11 @@ import {
 } from "./camera-quality";
 import {
   CAPTURE_PROFILES,
-  initialQuality,
   type CaptureMode,
-  type GuideZones,
   type Landmark,
   type Quality,
 } from "./types";
-import { CameraGuide, computeGuideZones, QualityPanel, ScanModePicker } from "./guide";
+import { CameraGuide, QualityPanel, ScanModePicker } from "./guide";
 import { ResultCard } from "./result-card";
 import { Feedback } from "./feedback";
 import { Scanning } from "./scanning";
@@ -45,13 +43,8 @@ import { ScanControls } from "./scan-controls";
 import { Center } from "./ui";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { Xiaohei } from "@/app/components/sketch";
-import { coverCropFractions, faceBox, isNormalizedBox, rawFaceSize } from "@/lib/scan-geometry";
+import { faceBox } from "@/lib/scan-geometry";
 import { InfoSheet } from "./info-sheet";
-import {
-  DEFAULT_SKIN_ROI_THRESHOLDS,
-  evaluateSkinRoiQuality,
-  skinRoiRegionsFromLandmarks,
-} from "./skin-roi-quality";
 import {
   cameraFrame,
   debugStyle,
@@ -69,31 +62,20 @@ import {
   cropFace,
   cropFaceImageData,
   evaluateCapturedQuality,
-  exposureStats,
   mergeVisionAnalysis,
   predictionSnapshot,
   qualityMeta,
 } from "./capture-analysis";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
-type FaceLandmarker = VideoFaceLandmarker;
 
 const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
 export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const lastCenterRef = useRef<{ x: number; y: number; t: number } | null>(null);
-  const qualityTimerRef = useRef<number | null>(null);
-  const procCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const passStreakRef = useRef(0);
-  const countdownRef = useRef<number | null>(null);
-  const autoHoldUntilRef = useRef(0);
-  const capturingRef = useRef(false);
   const captureLockRef = useRef(false);
-  const autoCaptureRef = useRef(true);
   const disposedRef = useRef(false);
-  const prevQualityKeyRef = useRef("");
   const captureRef = useRef<(() => Promise<void>) | null>(null);
   const workerRef = useRef<LandmarkerWorker | null>(null);
   const useWorkerRef = useRef(false);
@@ -109,12 +91,8 @@ export default function Scan() {
   const [consent, setConsent] = useState(false);
   const [datasetConsent, setDatasetConsent] = useState(false);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("balanced");
-  const [quality, setQuality] = useState<Quality>(initialQuality);
   const [cropDataUrl, setCropDataUrl] = useState<string | null>(null);
   const [captureMeta, setCaptureMeta] = useState<SampleMeta | null>(null);
-  const [autoCapture, setAutoCapture] = useState(true);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [zones, setZones] = useState<GuideZones | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [infoOpen, setInfoOpen] = useState(false);
   const {
@@ -130,7 +108,6 @@ export default function Scan() {
   const [staffMode, setStaffMode] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const debugRef = useRef(false);
-  const [debugInfo, setDebugInfo] = useState<Record<string, string | number | boolean> | null>(null);
   useEffect(() => {
     // URL is client-only context here; reading it during render breaks hydration.
     const params = new URLSearchParams(window.location.search);
@@ -145,59 +122,47 @@ export default function Scan() {
     useWorkerRef.current = params.get("worker") === "1";
   }, []);
 
+  const {
+    quality,
+    autoCapture,
+    countdown,
+    zones,
+    debugInfo,
+    lastCenterRef,
+    readFrame,
+    commitQuality,
+    resetQualityLoop,
+    resetAutoCaptureProgress,
+    holdAutoCapture,
+    toggleAutoCapture,
+    stopQualityLoop,
+  } = useQualityLoop({
+    active: phase === "ready",
+    captureMode,
+    videoRef,
+    streamRef,
+    captureRef,
+    workerRef,
+    useWorkerRef,
+    cameraAttemptRef,
+    cropSizeRef,
+    debugRef,
+    guideAttempt,
+    landmarkerDelegate,
+    loadLandmarker,
+    reloadLandmarker,
+    forceCpuDelegate,
+  });
+
   const zonesReady = Boolean(zones);
   const canCapture = phase === "ready" && scanCaptureReady(quality, zonesReady);
-
-  // Skip renders when nothing user-visible changed (ticks arrive every 650ms);
-  // qualityRef-independent auto-capture reads results via handleAutoTick instead.
-  const commitQuality = useCallback((next: Quality, force = false) => {
-    const key = `${next.face}|${next.centered}|${next.distance}|${next.brightness}|${next.noGlare}|${next.steady}|${next.message}`;
-    if (!force && key === prevQualityKeyRef.current) return;
-    prevQualityKeyRef.current = key;
-    setQuality(next);
-  }, []);
-
-  const setCountdownSafe = useCallback((value: number | null) => {
-    if (countdownRef.current === value) return;
-    countdownRef.current = value;
-    setCountdown(value);
-  }, []);
-
-  // Auto capture: two consecutive passing ticks arm a 3-2-1 countdown (one step
-  // per 650ms tick); any failing check cancels it. Runs off refs so the quality
-  // render bail-out above cannot stall it.
-  const handleAutoTick = useCallback((pass: boolean) => {
-    if (!autoCaptureRef.current || capturingRef.current) return;
-    if (!pass) {
-      passStreakRef.current = 0;
-      setCountdownSafe(null);
-      return;
-    }
-    if (performance.now() < autoHoldUntilRef.current) return;
-    passStreakRef.current += 1;
-    const current = countdownRef.current;
-    if (current === null) {
-      if (passStreakRef.current >= 2) setCountdownSafe(3);
-    } else if (current > 1) {
-      setCountdownSafe(current - 1);
-    } else {
-      setCountdownSafe(null);
-      capturingRef.current = true;
-      void captureRef.current?.().finally(() => {
-        capturingRef.current = false;
-      });
-    }
-  }, [setCountdownSafe]);
 
   const startCamera = useCallback(async () => {
     setErr("");
     setReads(null);
     setCropDataUrl(null);
     setCaptureMeta(null);
-    setQuality(initialQuality);
-    prevQualityKeyRef.current = "";
-    lastCenterRef.current = null;
-    passStreakRef.current = 0;
+    resetQualityLoop();
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("unsupported");
       return;
@@ -237,215 +202,13 @@ export default function Scan() {
     } catch {
       setPhase("denied");
     }
-  }, []);
+  }, [resetQualityLoop]);
 
   const stopCamera = useCallback(() => {
     stopMediaStream(streamRef.current);
     streamRef.current = null;
-    if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
-  }, []);
-
-  const readFrame = useCallback((maxSize = 360) => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) return null;
-    const ratio = video.videoWidth / video.videoHeight;
-    const h = video.videoHeight > video.videoWidth ? maxSize : Math.round(maxSize / ratio);
-    const w = Math.round(h * ratio);
-    const canvas = procCanvasRef.current ?? (procCanvasRef.current = document.createElement("canvas"));
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, w, h);
-    return { canvas, ctx, w, h };
-  }, []);
-
-  // Live-gate detection source. When the worker offload is enabled and healthy,
-  // run inference off the main thread; on any failure fall back to the trusted
-  // main-thread landmarker for that frame. Capture() never uses the worker.
-  const detectLiveFace = useCallback(async (landmarker: FaceLandmarker, video: HTMLVideoElement) => {
-    const worker = workerRef.current;
-    if (worker) {
-      try {
-        const bitmap = await createImageBitmap(video);
-        return await worker.detect(bitmap, performance.now());
-      } catch {
-        /* fall back to main-thread inference below */
-      }
-    }
-    return landmarker.detectForVideo(video, performance.now()).faceLandmarks?.[0] ?? null;
-  }, []);
-
-  const measureQuality = useCallback(
-    async (landmarker: FaceLandmarker) => {
-      const video = videoRef.current;
-      if (!video || !video.videoWidth || !video.videoHeight) return;
-
-      // VIDEO running mode tracks temporally and reads the element directly —
-      // the downscaled canvas below is only needed for exposure statistics.
-      const face = await detectLiveFace(landmarker, video);
-      if (!face?.length) {
-        lastCenterRef.current = null;
-        setZones(null);
-        commitQuality({ ...initialQuality, message: t("얼굴이 보이지 않아요. 정면을 향해주세요.") });
-        handleAutoTick(false);
-        return;
-      }
-
-      const frame = readFrame();
-      if (!frame) return;
-
-      const box = faceBox(face);
-
-      // Self-heal: some mobile GPU delegates (seen on Samsung) emit corrupt,
-      // non-normalized landmarks (values ~1e34). A real normalized box is
-      // within [0,1]; anything wild means the GPU output is garbage — switch
-      // to the CPU delegate once and reload. This also un-breaks the tracked
-      // sampling zones, which need valid landmarks.
-      if (landmarkerDelegate !== "CPU" && !isNormalizedBox(box)) {
-        forceCpuDelegate();
-        if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
-        handleAutoTick(false);
-        reloadLandmarker();
-        return;
-      }
-
-      const centerX = (box.minX + box.maxX) / 2;
-      const centerY = (box.minY + box.maxY) / 2;
-      const profile = CAPTURE_PROFILES[captureMode];
-
-      // Distance = the RAW normalized face box (aspect-independent). A real,
-      // reasonably-close face spans a good fraction of the frame in at least
-      // one axis, regardless of stream orientation. This drops the fragile
-      // cover-crop transform from the GATE, which is what kept blocking phones.
-      // The floor is per-profile: a face inside the guide but too far renders
-      // too few skin pixels for trustworthy texture/pore reads.
-      const rawSize = rawFaceSize(box);
-      const distance = rawSize > profile.minFaceSize && rawSize < 0.98;
-
-      // Centering stays ADVISORY only (landmark ROIs analyze off-center faces
-      // fine), so it never blocks auto-capture.
-      const { fx, fy } = coverCropFractions(video.videoWidth, video.videoHeight);
-      const visCenterX = (centerX - (1 - fx) / 2) / fx;
-      const visCenterY = (centerY - (1 - fy) / 2) / fy;
-      const centered = Math.abs(visCenterX - 0.5) < 0.28 && Math.abs(visCenterY - 0.48) < 0.3;
-
-      const frameData = frame.ctx.getImageData(0, 0, frame.w, frame.h);
-      const exposure = exposureStats(frameData, box);
-      const skinRegions = skinRoiRegionsFromLandmarks(face);
-      const skinQuality = evaluateSkinRoiQuality(frameData, skinRegions ?? { tzone: null, leftCheek: null, rightCheek: null }, {
-        ...DEFAULT_SKIN_ROI_THRESHOLDS,
-        minMeanLuma: profile.minBrightness,
-        maxDarkRatio: profile.maxDarkRatio,
-        maxHotRatio: profile.maxHotRatio,
-      });
-      const brightness = skinQuality.exposure;
-      const noGlare = skinQuality.noGlare;
-
-      const now = performance.now();
-      const last = lastCenterRef.current;
-      const movement = last ? frameMovement(last, { x: centerX, y: centerY }, now - last.t) : 0;
-      lastCenterRef.current = { x: centerX, y: centerY, t: now };
-      const steady = !last || movement < profile.maxMovement;
-
-      const nextZones = computeGuideZones(face, video.videoWidth, video.videoHeight);
-      const skinReady = skinQuality.regionsReady && skinQuality.sharp;
-      const pass = scanCaptureReady({ face: true, centered, distance, brightness, noGlare, steady, skinReady }, Boolean(nextZones));
-      const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
-      const message = !distance
-        ? rawSize <= profile.minFaceSize
-          ? t("얼굴이 작게 보여요. 조금 더 가까이 와주세요.")
-          : t("너무 가까워요. 살짝 물러나 주세요.")
-        : !skinQuality.regionsReady
-          ? t("피부 영역을 가이드 안에 맞춰주세요.")
-          : !brightness
-          ? t("피부가 어두워요. 부드러운 정면 빛 쪽으로 이동해주세요.")
-          : !noGlare
-            ? t("피부 반사가 강해요. 직접 조명이나 번들거림을 줄여주세요.")
-            : !skinQuality.sharp
-              ? t("피부 결이 흐려요. 렌즈를 닦고 잠깐 멈춰주세요.")
-              : !centered
-                ? t("얼굴을 윤곽선 중앙에 맞춰주세요.")
-            : !steady
-              ? t("잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요.")
-              : t("좋아요. 그대로 계세요.");
-
-      commitQuality({ face: true, centered, distance, brightness, noGlare, steady, skinReady, score, message });
-      handleAutoTick(pass);
-      setZones(nextZones);
-      if (debugRef.current) {
-        setDebugInfo({
-          "delegate": landmarkerDelegate,
-          ...buildCameraQualityDebug({
-            attempt: cameraAttemptRef.current,
-            videoWidth: video.videoWidth,
-            videoHeight: video.videoHeight,
-            trackSettings: streamRef.current?.getVideoTracks()[0]?.getSettings?.(),
-            cropSizes: cropSizeRef.current,
-          }),
-          "ratio": Number((video.videoWidth / video.videoHeight).toFixed(3)),
-          "fx/fy": `${fx.toFixed(2)}/${fy.toFixed(2)}`,
-          "rawSize": Number(rawSize.toFixed(3)),
-          "box cx/cy": `${centerX.toFixed(2)}/${centerY.toFixed(2)}`,
-          "vis cx/cy": `${visCenterX.toFixed(2)}/${visCenterY.toFixed(2)}`,
-          "mean/dark/hot": `${Math.round(exposure.mean)}/${exposure.darkRatio.toFixed(2)}/${exposure.hotRatio.toFixed(3)}`,
-          "skin mean/dark/hot/detail": `${Math.round(skinQuality.meanLuma ?? 0)}/${(skinQuality.maxDarkRatio ?? 0).toFixed(2)}/${(skinQuality.maxHotRatio ?? 0).toFixed(3)}/${(skinQuality.minDetail ?? 0).toFixed(1)}`,
-          "distance": distance,
-          "brightness": brightness,
-          "noGlare": noGlare,
-          "skinReady": skinReady,
-          "steady": steady,
-          "centered(adv)": centered,
-          "zones": nextZones ? `${nextZones.tzone.width} / ${nextZones.leftCheek.width} / ${nextZones.rightCheek.width}` : "none",
-          "AUTO PASS": pass,
-        });
-      }
-    },
-    [captureMode, commitQuality, detectLiveFace, forceCpuDelegate, handleAutoTick, landmarkerDelegate, readFrame, reloadLandmarker]
-  );
-
-  useEffect(() => {
-    if (phase !== "ready") return;
-    let mounted = true;
-    if (useWorkerRef.current && !workerRef.current) {
-      // Spin up lazily; null (unsupported) just keeps the main-thread path.
-      workerRef.current = createLandmarkerWorker();
-      // The worker uses the corruption-safe CPU delegate. capture() still runs
-      // the main-thread landmarker, so pin it to CPU too — otherwise a GPU-buggy
-      // device could pass the worker-driven gate and then fail every capture on
-      // garbage GPU landmarks (which capture() doesn't self-heal).
-      if (workerRef.current) forceCpuDelegate();
-    }
-    loadLandmarker()
-      .then((landmarker) => {
-        if (!mounted || !landmarker) return;
-        // Self-scheduling instead of setInterval: waits for each measureQuality
-        // to finish (no overlap) and paces adaptively — on a slow CPU-delegate
-        // phone the next tick is 1.5x the last duration (650-1500ms) so the main
-        // thread stays free to paint the preview + 3-2-1 countdown. Desktop ticks
-        // finish in a few ms, so it stays at the 650ms baseline.
-        const tick = () => {
-          if (!mounted) return;
-          if (document.hidden) {
-            qualityTimerRef.current = window.setTimeout(tick, 650);
-            return;
-          }
-          const started = performance.now();
-          void measureQuality(landmarker).finally(() => {
-            if (!mounted) return;
-            const delay = Math.max(650, Math.min(1500, Math.round((performance.now() - started) * 1.5)));
-            qualityTimerRef.current = window.setTimeout(tick, delay);
-          });
-        };
-        qualityTimerRef.current = window.setTimeout(tick, 0);
-      });
-    return () => {
-      mounted = false;
-      if (qualityTimerRef.current) window.clearTimeout(qualityTimerRef.current);
-      passStreakRef.current = 0;
-      setCountdownSafe(null);
-    };
-  }, [forceCpuDelegate, guideAttempt, loadLandmarker, measureQuality, phase, setCountdownSafe]);
+    stopQualityLoop();
+  }, [stopQualityLoop]);
 
   function retryGuide() {
     reloadLandmarker();
@@ -479,8 +242,7 @@ export default function Scan() {
     // (double /api/analyze, duplicated funnel + scan-history, fighting phases).
     if (!video || captureLockRef.current || guideState !== "ready") return;
     captureLockRef.current = true;
-    setCountdownSafe(null);
-    passStreakRef.current = 0;
+    resetAutoCaptureProgress();
     setPhase("analyzing");
     setAnalysisStep(0);
     setErr("");
@@ -513,7 +275,7 @@ export default function Scan() {
       const res = landmarker.detectForVideo(canvas, performance.now());
       const faces = res.faceLandmarks ?? [];
       if (captureGateDecision({ guideState, landmarks: faces[0] }) === "face") {
-        autoHoldUntilRef.current = performance.now() + 4000;
+        holdAutoCapture();
         setPhase("noface");
         return;
       }
@@ -544,7 +306,7 @@ export default function Scan() {
       };
       commitQuality(verifiedQuality, true);
       if (captureGateDecision({ guideState, landmarks: faces[0], quality: verifiedQuality }) === "quality") {
-        autoHoldUntilRef.current = performance.now() + 4000;
+        holdAutoCapture();
         setErr(t("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요."));
         setPhase("ready");
         return;
@@ -585,7 +347,7 @@ export default function Scan() {
           const extraCenter = { x: (extraBox.minX + extraBox.maxX) / 2, y: (extraBox.minY + extraBox.maxY) / 2 };
           const movement = frameMovement(previousBurstCenter, extraCenter, performance.now() - frameStartedAt);
           if (movement >= CAPTURE_PROFILES[captureMode].maxMovement) {
-            autoHoldUntilRef.current = performance.now() + 4000;
+            holdAutoCapture();
             setErr(t("스캔 중 얼굴이 움직였어요. 윤곽선 중앙에 맞추고 잠깐 멈춰주세요."));
             setPhase("ready");
             return;
@@ -683,7 +445,7 @@ export default function Scan() {
       setPhase("result");
     } catch (e) {
       console.error(e);
-      autoHoldUntilRef.current = performance.now() + 4000;
+      holdAutoCapture();
       setErr(t("분석 중 문제가 생겼어요. 다시 시도해 주세요."));
       setPhase("ready");
     } finally {
@@ -714,13 +476,6 @@ export default function Scan() {
     } catch {
       setShareErr(t("공유에 실패했어요. 잠시 후 다시 시도해 주세요."));
     }
-  }
-
-  function toggleAutoCapture(next: boolean) {
-    autoCaptureRef.current = next;
-    setAutoCapture(next);
-    passStreakRef.current = 0;
-    setCountdownSafe(null);
   }
 
   function toggleAiConsent(next: boolean) {
