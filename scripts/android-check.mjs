@@ -4,7 +4,6 @@ import { platform } from "node:os";
 import { spawnSync } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
-const androidRoot = join(root, "android");
 const problems = [];
 
 function problem(name, cause, fix) {

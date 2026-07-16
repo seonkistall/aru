@@ -46,6 +46,7 @@ describe("Android Trusted Web Activity configuration", () => {
     expect(gitignore).toContain("*.aab");
     expect(gitignore).toContain("*.apk");
     expect(packageJson.scripts["android:check"]).toBe("node scripts/android-check.mjs");
+    expect(packageJson.devDependencies["@bubblewrap/cli"]).toBe("1.24.1");
   });
 
   it("loads release signing only from the environment", () => {
