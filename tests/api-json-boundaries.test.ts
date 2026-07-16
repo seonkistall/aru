@@ -3,6 +3,8 @@ import { POST as manualPost } from "@/app/api/reengage/route";
 import { POST as subscribePost } from "@/app/api/reengage/subscribe/route";
 import { POST as unsubscribePost } from "@/app/api/reengage/unsubscribe/route";
 import { POST as syncPost } from "@/app/api/sync/route";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const originalEnv = { ...process.env };
 
@@ -19,6 +21,12 @@ function jsonRequest(url: string, value: unknown, headers: Record<string, string
 }
 
 describe("remaining JSON API boundaries", () => {
+  it("uses the shared bounded limiter for authenticated sync attempts", () => {
+    const route = readFileSync(resolve(import.meta.dirname, "../app/api/sync/route.ts"), "utf8");
+    expect(route).toContain("createRateLimiter");
+    expect(route).not.toContain("const rateLimit = new Map");
+  });
+
   it("rejects an oversized subscription body using actual bytes", async () => {
     const response = await subscribePost(jsonRequest("http://localhost/api/reengage/subscribe", {
       email: "a@example.com",

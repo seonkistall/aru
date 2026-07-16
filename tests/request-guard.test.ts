@@ -22,4 +22,12 @@ describe("request guard", () => {
     expect(limit("a", 2)).toBe(false);
     expect(limit("a", 1001)).toBe(true);
   });
+
+  it("refuses new keys when every bounded bucket is still active", () => {
+    const limit = createRateLimiter({ max: 2, windowMs: 1000, maxKeys: 2 });
+    expect(limit("a", 0)).toBe(true);
+    expect(limit("b", 0)).toBe(true);
+    expect(limit("c", 1)).toBe(false);
+    expect(limit("c", 1001)).toBe(true);
+  });
 });

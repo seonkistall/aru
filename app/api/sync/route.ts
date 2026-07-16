@@ -1,5 +1,5 @@
 import { getSupabaseAdmin, hasValidSyncToken, isSupabaseSyncConfigured } from "@/lib/supabase-admin";
-import { readBoundedJson, RequestGuardError } from "@/lib/server/request-guard";
+import { createRateLimiter, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 import { latestConsentGranted, SYNC_SCHEMA_VERSIONS, type GyeolSyncPayload, type SyncResult } from "@/lib/sync-payload";
 
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const MAX_SYNC_BYTES = 5 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 12;
-const rateLimit = new Map<string, { count: number; resetAt: number }>();
+const syncLimit = createRateLimiter({ max: RATE_LIMIT_MAX, windowMs: RATE_LIMIT_WINDOW_MS, maxKeys: 10_000 });
 
 type SyncRequest = {
   dryRun?: boolean;
@@ -36,10 +36,11 @@ export async function POST(request: Request) {
     return Response.json(result(false, ["Missing or invalid sync token."]), { status: 401 });
   }
 
-  // Rate-limit only AFTER auth so unauthenticated requests (with spoofable
-  // x-forwarded-for keys) can't grow the map unbounded.
-  const limited = rateLimitGuard(request);
-  if (limited) return limited;
+  // Rate-limit only after auth so unauthenticated requests with spoofed
+  // forwarding headers cannot consume limiter buckets.
+  if (!syncLimit(requestClientKey(request))) {
+    return Response.json(result(false, ["Too many sync attempts. Try again in a minute."]), { status: 429 });
+  }
 
   let body: SyncRequest;
   try {
@@ -225,30 +226,6 @@ function preflightGuard(request: Request) {
     return Response.json(result(false, ["Origin is not allowed for sync."]), { status: 403 });
   }
 
-  return null;
-}
-
-const RATE_LIMIT_MAX_KEYS = 10_000;
-
-function rateLimitGuard(request: Request) {
-  const key = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now();
-
-  // Sweep expired buckets so the map can't grow unbounded on a long-lived
-  // instance (keys are the client-supplied x-forwarded-for).
-  if (rateLimit.size > RATE_LIMIT_MAX_KEYS) {
-    for (const [k, v] of rateLimit) if (v.resetAt <= now) rateLimit.delete(k);
-  }
-
-  const bucket = rateLimit.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    rateLimit.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return null;
-  }
-  bucket.count += 1;
-  if (bucket.count > RATE_LIMIT_MAX) {
-    return Response.json(result(false, ["Too many sync attempts. Try again in a minute."]), { status: 429 });
-  }
   return null;
 }
 

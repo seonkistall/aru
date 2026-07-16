@@ -4,7 +4,7 @@ Date: 2026-07-16
 
 ## Code gates
 
-- [x] `npm run smoke` passes: 51 test files and 246 tests, lint, production build, ML compile, and route probes.
+- [x] `npm run smoke` passes: 51 test files and 248 tests, lint, production build, ML compile, and route probes.
 - [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
 - [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
 - [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.

@@ -52,7 +52,7 @@
 ### 최신 로컬 증거
 
 - 2026-07-16 `npm run smoke` 통과
-- Vitest 51개 파일, 246개 테스트 통과
+- Vitest 51개 파일, 248개 테스트 통과
 - ESLint, Next.js 16.2.9 production build와 TypeScript 통과
 - ML Python script compile 통과
 - `/scan`, `/privacy`, `/api/out`, `/api/sync` smoke 통과
