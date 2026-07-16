@@ -5,6 +5,12 @@ import { describe, expect, it } from "vitest";
 const root = resolve(import.meta.dirname, "..");
 
 describe("scan orchestration seams", () => {
+  it("keeps the page focused on UI orchestration", () => {
+    const page = readFileSync(resolve(root, "app/scan/page.tsx"), "utf8");
+    expect(page.split(/\r?\n/).length).toBeLessThan(800);
+    expect(page).not.toContain("FilesetResolver");
+  });
+
   it("delegates landmarker creation and cleanup to useLandmarker", () => {
     const hookPath = resolve(root, "app/scan/use-landmarker.ts");
     const page = readFileSync(resolve(root, "app/scan/page.tsx"), "utf8");
@@ -26,5 +32,13 @@ describe("scan orchestration seams", () => {
     expect(page).toContain("useQualityLoop");
     expect(page).not.toContain("const measureQuality");
     expect(page).not.toContain("qualityTimerRef");
+  });
+
+  it("delegates the verified capture and persistence flow to useCaptureAnalysis", () => {
+    const hookPath = resolve(root, "app/scan/use-capture-analysis.ts");
+    const page = readFileSync(resolve(root, "app/scan/page.tsx"), "utf8");
+    expect(existsSync(hookPath)).toBe(true);
+    expect(page).toContain("useCaptureAnalysis");
+    expect(page).not.toContain("async function capture()");
   });
 });

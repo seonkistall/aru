@@ -2,29 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/i18n/core";
-import { CONSENT_VERSION, getConsentEvents, recordConsentEvent } from "@/lib/consent";
-import {
-  analyzeSkinBurst,
-  classifyVisibleAttributes,
-  VISIBLE_MODEL_CONTRACT,
-  type SkinReads,
-} from "@/lib/skin";
-import { labelCount, type SampleMeta } from "@/lib/labels";
+import { recordConsentEvent } from "@/lib/consent";
+import type { SkinReads } from "@/lib/skin";
+import type { SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
-import { pushScanHistory } from "@/lib/scan-history";
-import { shouldKeepLearningCrop, shouldShowFeedback } from "@/lib/ml-collection";
-import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { shouldShowFeedback } from "@/lib/ml-collection";
 
 import { moodShareUrl } from "@/lib/share-link";
 import type { LandmarkerWorker } from "./landmarker-client";
 import { useLandmarker } from "./use-landmarker";
 import { useQualityLoop } from "./use-quality-loop";
-import { resolveCaptureConsent } from "./consent-authorization";
+import { useCaptureAnalysis } from "./use-capture-analysis";
 import { openCamera, stopMediaStream } from "./camera-stream";
 import {
-  cropPlanForPurpose,
-  frameMovement,
   scanCaptureButtonLabel,
   scanCaptureReady,
   type CameraAttempt,
@@ -32,8 +23,6 @@ import {
 import {
   CAPTURE_PROFILES,
   type CaptureMode,
-  type Landmark,
-  type Quality,
 } from "./types";
 import { CameraGuide, QualityPanel, ScanModePicker } from "./guide";
 import { ResultCard } from "./result-card";
@@ -43,7 +32,6 @@ import { ScanControls } from "./scan-controls";
 import { Center } from "./ui";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { Xiaohei } from "@/app/components/sketch";
-import { faceBox } from "@/lib/scan-geometry";
 import { InfoSheet } from "./info-sheet";
 import {
   cameraFrame,
@@ -57,15 +45,6 @@ import {
   titleStyle,
   videoStyle,
 } from "./scan-styles";
-import {
-  captureGateDecision,
-  cropFace,
-  cropFaceImageData,
-  evaluateCapturedQuality,
-  mergeVisionAnalysis,
-  predictionSnapshot,
-  qualityMeta,
-} from "./capture-analysis";
 
 type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
 
@@ -74,7 +53,6 @@ const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브�
 export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const captureLockRef = useRef(false);
   const disposedRef = useRef(false);
   const captureRef = useRef<(() => Promise<void>) | null>(null);
   const workerRef = useRef<LandmarkerWorker | null>(null);
@@ -210,6 +188,30 @@ export default function Scan() {
     stopQualityLoop();
   }, [stopQualityLoop]);
 
+  const capture = useCaptureAnalysis({
+    videoRef,
+    captureRef,
+    cropSizeRef,
+    lastCenterRef,
+    captureMode,
+    quality,
+    guideState,
+    consent,
+    datasetConsent,
+    ensureLandmarker,
+    readFrame,
+    commitQuality,
+    resetAutoCaptureProgress,
+    holdAutoCapture,
+    stopCamera,
+    setPhase,
+    setAnalysisStep,
+    setErr,
+    setCropDataUrl,
+    setCaptureMeta,
+    setReads,
+  });
+
   function retryGuide() {
     reloadLandmarker();
   }
@@ -235,228 +237,7 @@ export default function Scan() {
     }
   }, [phase]);
 
-  async function capture() {
-    const video = videoRef.current;
-    // Reentrancy guard: the manual shutter stays enabled through the countdown,
-    // so a tap landing the same frame auto-capture fires would run two pipelines
-    // (double /api/analyze, duplicated funnel + scan-history, fighting phases).
-    if (!video || captureLockRef.current || guideState !== "ready") return;
-    captureLockRef.current = true;
-    resetAutoCaptureProgress();
-    setPhase("analyzing");
-    setAnalysisStep(0);
-    setErr("");
-    setCropDataUrl(null);
-    recordFunnelEvent("scan_started", { mode: captureMode });
-
-    // Pace the four analysis stages so each is readable (825ms min = 3.3s
-    // total, i.e. three full down-up sweeps of the 1.1s scan bar); the real
-    // pipeline work runs inside the same awaits, so nothing is faked.
-    let stepStartedAt = performance.now();
-    const advanceStep = async (step: number) => {
-      const waitMs = 825 - (performance.now() - stepStartedAt);
-      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-      setAnalysisStep(step);
-      stepStartedAt = performance.now();
-    };
-
-    try {
-      const landmarker = await ensureLandmarker();
-      if (!landmarker) return;
-      const w = video.videoWidth || 720;
-      const h = video.videoHeight || 960;
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) throw new Error("canvas unavailable");
-      ctx.drawImage(video, 0, 0, w, h);
-
-      const res = landmarker.detectForVideo(canvas, performance.now());
-      const faces = res.faceLandmarks ?? [];
-      if (captureGateDecision({ guideState, landmarks: faces[0] }) === "face") {
-        holdAutoCapture();
-        setPhase("noface");
-        return;
-      }
-
-      const imageData = ctx.getImageData(0, 0, w, h);
-      // Steadiness from the capture frame itself when the baseline is long
-      // enough to estimate a per-250ms velocity; under 80ms the estimate is
-      // noise-dominated, so fall back to the (fresh) tick value instead.
-      const captureBox = faceBox(faces[0]);
-      const last = lastCenterRef.current;
-      const captureCenter = { x: (captureBox.minX + captureBox.maxX) / 2, y: (captureBox.minY + captureBox.maxY) / 2 };
-      const dtMs = last ? performance.now() - last.t : 0;
-      const captureMovement =
-        last && dtMs >= 80 ? frameMovement(last, captureCenter, dtMs) : undefined;
-      const captureSteady =
-        captureMovement !== undefined ? captureMovement < CAPTURE_PROFILES[captureMode].maxMovement : quality.steady;
-      // Verify exposure on the SAME ~360px downscale the live gate uses, not the
-      // full-res frame. Downscaling smooths specular glints, so full-res
-      // hot/dark ratios run higher than the gate's — with identical thresholds
-      // that let the gate green-light an exposure the full-res verify then
-      // rejected, causing an auto-capture->reject loop. (Skin analysis below
-      // still uses the full-res imageData.)
-      const verifyFrame = readFrame();
-      const verifyData = verifyFrame ? verifyFrame.ctx.getImageData(0, 0, verifyFrame.w, verifyFrame.h) : imageData;
-      const verifiedQuality: Quality = {
-        ...evaluateCapturedQuality(verifyData, faces[0], CAPTURE_PROFILES[captureMode], captureSteady),
-        movement: captureMovement,
-      };
-      commitQuality(verifiedQuality, true);
-      if (captureGateDecision({ guideState, landmarks: faces[0], quality: verifiedQuality }) === "quality") {
-        holdAutoCapture();
-        setErr(t("촬영 순간 품질이 흔들렸어요. 얼굴을 윤곽선에 맞추고 다시 찍어주세요."));
-        setPhase("ready");
-        return;
-      }
-
-      const session = getCurrentPilotSession();
-      const scope = session ? { participantId: session.participantId, sessionId: session.sessionId } : undefined;
-      const consentEvents = getConsentEvents();
-      const exactScope = scope ? { participantId: scope.participantId, sessionId: scope.sessionId } : undefined;
-      const aiEvent = resolveCaptureConsent(consentEvents, "ai_analysis", consent, exactScope);
-      const cropEvent = resolveCaptureConsent(consentEvents, "learning_crop", datasetConsent, exactScope);
-      const aiAllowed = Boolean(aiEvent);
-      const cropAllowed = Boolean(cropEvent);
-
-      // Crops come from this verified first frame (canvas still holds it).
-      const aiCrop = aiAllowed ? cropFace(canvas, faces[0], cropPlanForPurpose("ai-analysis")) : null;
-      const learningCrop = cropAllowed ? cropFace(canvas, faces[0], cropPlanForPurpose("learning-crop")) : null;
-      const modelCrop = process.env.NEXT_PUBLIC_VISIBLE_ATTR_MODEL === "on" ? cropFaceImageData(canvas, faces[0]) : null;
-      cropSizeRef.current = {
-        ai: aiCrop?.size,
-        learning: learningCrop?.size,
-        model: modelCrop ? `${modelCrop.width}x${modelCrop.height}` : undefined,
-      };
-      setCropDataUrl(shouldKeepLearningCrop({ datasetConsent: cropAllowed }) ? learningCrop?.dataUrl ?? null : null);
-
-      // Burst: two extra frames ~140ms apart; the per-feature median suppresses
-      // one-frame glare/motion spikes, and cross-frame agreement feeds the
-      // confidence/retake decision (recorded in labels for ML calibration).
-      const burstFrames: Array<{ imageData: ImageData; landmarks: Landmark[] }> = [{ imageData, landmarks: faces[0] }];
-      let previousBurstCenter = captureCenter;
-      for (let i = 1; i < 3; i += 1) {
-        const frameStartedAt = performance.now();
-        await new Promise((resolve) => setTimeout(resolve, 140));
-        ctx.drawImage(video, 0, 0, w, h);
-        const extra = landmarker.detectForVideo(canvas, performance.now()).faceLandmarks?.[0];
-        if (extra?.length) {
-          const extraBox = faceBox(extra);
-          const extraCenter = { x: (extraBox.minX + extraBox.maxX) / 2, y: (extraBox.minY + extraBox.maxY) / 2 };
-          const movement = frameMovement(previousBurstCenter, extraCenter, performance.now() - frameStartedAt);
-          if (movement >= CAPTURE_PROFILES[captureMode].maxMovement) {
-            holdAutoCapture();
-            setErr(t("스캔 중 얼굴이 움직였어요. 윤곽선 중앙에 맞추고 잠깐 멈춰주세요."));
-            setPhase("ready");
-            return;
-          }
-          previousBurstCenter = extraCenter;
-          burstFrames.push({ imageData: ctx.getImageData(0, 0, w, h), landmarks: extra });
-        }
-      }
-
-      await advanceStep(1);
-      const mlPrediction = modelCrop ? await classifyVisibleAttributes(modelCrop) : null;
-      const out = analyzeSkinBurst(burstFrames, mlPrediction);
-      if (!out) {
-        setPhase("noface");
-        return;
-      }
-      await advanceStep(2);
-      await advanceStep(3);
-
-      let final = out;
-      if (aiAllowed && aiCrop) {
-        // On-device `out` is already complete; a hung LLM upstream (Wi-Fi→cellular
-        // handoff, black-holed TCP) must not freeze the analyzing overlay forever.
-        // Cap at 8s like /report and fall through to the on-device result.
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 8000);
-        try {
-          const resp = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: aiCrop.dataUrl }),
-            signal: controller.signal,
-          });
-          if (resp.ok) {
-            const v = await resp.json();
-            if (v?.ok) final = mergeVisionAnalysis(out, v);
-          }
-        } catch {
-          /* Timed out or failed — keep on-device result. */
-        } finally {
-          window.clearTimeout(timeout);
-        }
-      }
-
-      setCaptureMeta({
-        schemaVersion: "2026-06-29.label.v2",
-        participantId: session?.participantId,
-        sessionId: session?.sessionId,
-        round: session?.round,
-        deviceId: session?.deviceId,
-        reviewerId: session?.reviewerId,
-        scanIndex: labelCount() + 1,
-        captureMode,
-        quality: qualityMeta(verifiedQuality),
-        consentVersion: CONSENT_VERSION,
-        consentEventIds: {
-          aiAnalysis: aiAllowed && aiEvent?.granted ? aiEvent.id : undefined,
-          learningCrop: cropAllowed && cropEvent?.granted ? cropEvent.id : undefined,
-        },
-        predictionSource: final.source,
-        modelVersion: final.source === "ml-model" && mlPrediction?.modelVersion ? mlPrediction.modelVersion : VISIBLE_MODEL_CONTRACT.fallbackVersion,
-        inputSchemaVersion: mlPrediction?.inputSchemaVersion ?? VISIBLE_MODEL_CONTRACT.inputSchemaVersion,
-        analysisConfidence: final.confidence,
-        retakeRecommended: final.retakeRecommended,
-        burst: final.burst,
-        initialPrediction: predictionSnapshot(out),
-        finalPrediction: predictionSnapshot(final),
-      });
-
-      await advanceStep(4);
-      // Persist immediately so /survey, /report, and /studio all see this scan
-      // even if the user navigates without tapping the recommendation CTA.
-      // Best-effort: a blocked/full store must NOT abort the success path below —
-      // otherwise a completed scan would be mislabeled as an analysis failure.
-      try {
-        sessionStorage.setItem(
-          DEVICE_DATA_KEY.scan,
-          JSON.stringify({
-            oil: final.oil.level,
-            redness: final.redness.level,
-            pores: final.pores.level,
-            confidence: final.confidence,
-            retakeRecommended: final.retakeRecommended,
-            source: final.source,
-          })
-        );
-        sessionStorage.setItem(DEVICE_DATA_KEY.reads, JSON.stringify(final));
-      } catch {
-        /* result still renders from in-memory `final` below */
-      }
-      recordFunnelEvent("scan_completed", { retake: final.retakeRecommended, source: final.source });
-      pushScanHistory({ oil: final.oil.level, redness: final.redness.level, pores: final.pores.level, confidence: final.confidence, ts: Date.now() });
-      setReads(final);
-      stopCamera();
-      setPhase("result");
-    } catch (e) {
-      console.error(e);
-      holdAutoCapture();
-      setErr(t("분석 중 문제가 생겼어요. 다시 시도해 주세요."));
-      setPhase("ready");
-    } finally {
-      captureLockRef.current = false;
-    }
-  }
-  useEffect(() => {
-    captureRef.current = capture;
-  });
-
-  function reset() {
+ function reset() {
     setReads(null);
     setShareErr("");
     void startCamera();
