@@ -20,7 +20,7 @@ export default function Home() {
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7" style={{ paddingRight: 118 }}>
         <span style={{ fontFamily: "var(--font-display)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>
 
       <MoodFromLink />
@@ -62,7 +62,7 @@ export default function Home() {
           {t("4만원짜리 실패는 그만. 카메라로 피부를 읽고 솔직하게 골라드려요.")}
         </p>
 
-        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>
+        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-display)", fontSize: 24, lineHeight: 1.5, color: "var(--ink)" }}>
           <span>{t("촬영")}</span>
           <Arrow />
           <span>{t("분석")}</span>
@@ -75,7 +75,7 @@ export default function Home() {
             <div style={{ position: "relative", minHeight: "var(--tap-min)", padding: "17px 16px" }}>
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-                <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
+                <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.5, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--orange)" }}>→</span>
               </div>
             </div>
@@ -95,7 +95,7 @@ export default function Home() {
       </section>
 
       <section className="px-6" style={{ paddingBottom: 6 }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.5, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
         <div style={{ display: "grid", gap: 10 }}>
           <HowCard
             index={1}

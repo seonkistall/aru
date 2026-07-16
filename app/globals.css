@@ -1,6 +1,14 @@
 @import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "tailwindcss";
 
+/* Match the narrow Nanum Pen metrics before its Korean subsets arrive. This
+   keeps slow-network font swaps from rewrapping the hero and moving the CTA. */
+@font-face {
+  font-family: "ARU Display Fallback";
+  src: local("Noto Sans CJK KR"), local("Noto Sans KR"), local("Apple SD Gothic Neo"), local("Malgun Gothic");
+  size-adjust: 78%;
+}
+
 /* ── DESIGN.md tokens (xiaohei — 순백 손그림 + 절제된 주석색) ──────────────── */
 :root {
   --ink: #1a1a1a;          /* black line art / main */
@@ -42,7 +50,7 @@
   --color-line: var(--line);
   --color-success: var(--success);
   /* Korean brand moments use a self-hosted pen face; body and controls stay Pretendard. */
-  --font-hand-ko: "Nanum Pen Script", "Pretendard Variable", sans-serif;
+  --font-hand-ko: "Nanum Pen Script", "ARU Display Fallback", "Pretendard Variable", sans-serif;
   --font-display: var(--font-hand-ko);
   --font-serif: var(--font-display);
   --font-ko-serif: var(--font-display);

@@ -25,6 +25,8 @@ describe("safe ARU service worker", () => {
     expect(worker).toContain('url.pathname.startsWith("/api/")');
     expect(worker).toContain('url.origin === self.location.origin');
     expect(worker).toContain('url.pathname.startsWith("/vendor/mediapipe/")');
+    expect(worker).not.toContain("response.status === 404");
+    expect(worker).not.toContain("response.status >= 500");
     expect(worker).not.toMatch(/cache\.put\([^)]*api/i);
   });
 

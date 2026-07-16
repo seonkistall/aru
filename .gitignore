@@ -48,3 +48,4 @@ next-env.d.ts
 
 # isolated implementation worktrees
 /.worktrees/
+.gstack/

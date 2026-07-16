@@ -24,12 +24,6 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
-        .then(async (response) => {
-          if (response.status === 404 || response.status >= 500) {
-            return (await caches.match("/offline.html")) || response;
-          }
-          return response;
-        })
         .catch(async () => (await caches.match("/offline.html")) || Response.error()),
     );
     return;

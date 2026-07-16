@@ -204,6 +204,7 @@ const retakeLinkStyle: React.CSSProperties = { display: "inline-block", marginTo
 function chipStyle(on: boolean): React.CSSProperties {
   return {
     fontSize: 14,
+    minHeight: "var(--tap-min)",
     padding: "9px 15px",
     borderRadius: 8,
     border: on ? "1px solid var(--plum)" : "1px solid var(--line)",

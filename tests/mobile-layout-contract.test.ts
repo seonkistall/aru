@@ -44,5 +44,15 @@ describe("mobile journey layout contract", () => {
     expect(source("app/components/flow-steps.tsx")).toContain('minWidth: "var(--tap-min)"');
     expect(source("app/components/product-card.tsx")).toContain('minHeight: "var(--tap-min)"');
     expect(source("app/report/page.tsx")).toContain('<summary style={{ minHeight: "var(--tap-min)"');
+    expect(source("app/survey/page.tsx")).toContain('minHeight: "var(--tap-min)"');
+    expect(source("app/scan/page.tsx")).toContain('minHeight: "var(--tap-min)"');
+    expect(source("app/unsubscribe/unsubscribe-form.tsx")).toContain('minWidth: "var(--tap-min)"');
+  });
+
+  it("uses a metric-adjusted Korean fallback to avoid display-font layout shifts", () => {
+    const css = source("app/globals.css");
+    expect(css).toContain('font-family: "ARU Display Fallback"');
+    expect(css).toContain("size-adjust: 78%");
+    expect(css).toContain('"Nanum Pen Script", "ARU Display Fallback"');
   });
 });

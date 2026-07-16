@@ -39,7 +39,7 @@ export function UnsubscribeForm({ token }: { token: string }) {
           </>
         )}
         <nav aria-label={t("관련 링크")} style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 28 }}>
-          <Link href="/" style={{ color: "var(--ink-soft)", minHeight: 44, display: "inline-flex", alignItems: "center" }}>{t("홈으로")}</Link>
+          <Link href="/" style={{ color: "var(--ink-soft)", minWidth: "var(--tap-min)", minHeight: 44, display: "inline-flex", alignItems: "center" }}>{t("홈으로")}</Link>
           <Link href="/privacy" style={{ color: "var(--ink-soft)", minHeight: 44, display: "inline-flex", alignItems: "center" }}>{t("개인정보와 동의")}</Link>
         </nav>
       </div>
