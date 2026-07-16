@@ -87,6 +87,8 @@ OPENAI_API_KEY
 - Supabase 앱 테이블은 RLS를 켜고 `anon`/`authenticated` 직접 권한을 철회합니다.
 - service-role, sync token, cron/unsubscribe secret과 Resend key는 서버에서만 사용합니다.
 - `/api/analyze`와 `/api/reason`은 byte·schema·rate·timeout 제한을 통과해야 provider를 호출합니다.
+- Vercel Firewall은 `/api/analyze`, `/api/reason`, `/api/reengage/subscribe` POST를 IP당 합산 20회/60초로 제한하며, 각 route의 app-level limiter를 2차 방어로 유지합니다.
+- 모든 route는 same-origin asset 정책을 enforced CSP로 적용합니다. Next.js hydration, service worker와 self-hosted MediaPipe는 실제 Chromium 회귀 검증을 통과해야 합니다.
 - 카메라 실패나 저장소/네트워크 오류가 설문 추천 경로를 막지 않아야 합니다.
 - 판매처 클릭은 구매나 사용으로 기록하지 않습니다. 사용 시작은 사용자의 별도 동작으로만 기록합니다.
 - 검증되지 않은 가격·재고·별점·리뷰 수·제휴 배지를 표시하지 않습니다.
@@ -111,7 +113,7 @@ docs/                 PRD, 구조, QA, 운영 runbook
 
 1. clean install에서 `npm run smoke`를 통과합니다.
 2. production Supabase에 `supabase/schema.sql`을 적용하고 브라우저 역할 거부를 재현합니다.
-3. Vercel secrets, 허용 origin, firewall/rate limit과 provider 비용 한도를 확인합니다.
+3. Vercel secrets·허용 origin·provider 비용 한도와 live Firewall rule 상태를 확인합니다.
 4. 실제 Resend 메일과 서명된 구독 해지·보존 정리를 검증합니다.
 5. physical-device 카메라 매트릭스를 완료합니다.
 6. production 배포 후 페이지/API/MediaPipe asset canary를 수행합니다.

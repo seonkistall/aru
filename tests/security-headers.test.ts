@@ -22,13 +22,13 @@ describe("browser security headers", () => {
     expect(headers["Permissions-Policy"]).toContain("geolocation=()");
   });
 
-  it("starts CSP in report-only mode with local assets", async () => {
+  it("enforces CSP after production compatibility verification", async () => {
     const groups = await nextConfig.headers?.();
     const headers = Object.fromEntries((groups?.[0].headers ?? []).map(({ key, value }) => [key, value]));
-    expect(headers["Content-Security-Policy"]).toBeUndefined();
-    expect(headers["Content-Security-Policy-Report-Only"]).toContain("default-src 'self'");
-    expect(headers["Content-Security-Policy-Report-Only"]).toContain("worker-src 'self' blob:");
-    expect(headers["Content-Security-Policy-Report-Only"]).toContain("object-src 'none'");
+    expect(headers["Content-Security-Policy-Report-Only"]).toBeUndefined();
+    expect(headers["Content-Security-Policy"]).toContain("default-src 'self'");
+    expect(headers["Content-Security-Policy"]).toContain("worker-src 'self' blob:");
+    expect(headers["Content-Security-Policy"]).toContain("object-src 'none'");
   });
 });
 

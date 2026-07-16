@@ -1,6 +1,6 @@
 # ARU Production Release Checklist
 
-Date: 2026-07-16
+Date: 2026-07-17
 
 ## Code gates
 
@@ -8,6 +8,7 @@ Date: 2026-07-16
 - [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
 - [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
 - [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
+- [x] Enforced CSP passes the real Chromium hydration, service-worker, and same-origin MediaPipe regression matrix.
 
 ## Web performance and browser QA
 
@@ -16,6 +17,7 @@ Date: 2026-07-16
 - [x] Verify the same-origin MediaPipe model, JS, and WASM from cache while fully offline.
 - [x] Preserve real online 404 responses instead of masking them with the offline page.
 - Evidence: `docs/qa/2026-07-16-web-performance.md` at commit `d687e8b`.
+- Security evidence: `docs/qa/2026-07-17-post-deploy-security.md`.
 
 ## Supabase operations
 
@@ -29,7 +31,7 @@ Date: 2026-07-16
 
 - [ ] Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SYNC_TOKEN`, and allowed origins.
 - [ ] Set a distinct high-entropy `UNSUBSCRIBE_SECRET` and `CRON_SECRET`.
-- [ ] Configure distributed firewall/rate limits for `/api/analyze`, `/api/reason`, and `/api/reengage/subscribe`.
+- [x] Configure a live Vercel Firewall fixed-window limit for `/api/analyze`, `/api/reason`, and `/api/reengage/subscribe` POST: 20 requests per IP per 60 seconds, default 429 action.
 - [ ] Verify AI provider and Resend spending limits/alerts.
 
 ## Physical-device release gate
@@ -43,7 +45,7 @@ Date: 2026-07-16
 - [ ] Send a real week-2 test email and verify its unsubscribe link.
 - [ ] Confirm a revoked contact is excluded from the next scheduled run.
 - [ ] Confirm expired contacts are deleted in a bounded cron run.
-- [ ] Verify the privacy page clears all documented on-device keys.
+- [x] Verify the privacy page clears all 17 registered local/session keys through its two-step delete UI.
 
 ## Android and Google Play
 
@@ -58,4 +60,4 @@ Date: 2026-07-16
 
 Evidence: `docs/qa/2026-07-16-android-artifact.md` and `docs/play-store/internal-test-checklist.md`.
 
-Production traffic must not be switched until every checkbox is complete. Code completion alone is not deployment approval.
+Do not enable a gated Supabase, Resend, physical-device, or Play capability until its corresponding section is complete. The public local-only web path may remain live while those external gates stay visibly pending.
