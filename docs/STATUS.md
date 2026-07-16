@@ -1,6 +1,6 @@
 # ARU 출시 준비 상태
 
-최종 갱신: 2026-07-16
+최종 갱신: 2026-07-17
 
 제품 계약: [PRD.md](PRD.md)
 
@@ -12,8 +12,8 @@
 
 | 영역 | 상태 | 근거/다음 게이트 |
 |---|---|---|
-| 소비자 Web 코드 | 로컬 코드 검증 완료 | `npm run smoke` 통과; production canary 필요 |
-| 보안·데이터 경계 | 코드 완료, 운영 확인 필요 | RLS/권한 회귀 테스트 완료; production schema 적용·service-role dry-run 필요 |
+| 소비자 Web 코드 | production 배포·canary 완료 | `npm run smoke`와 10분 production canary 통과; CSP enforcement 후 재검증 포함 |
+| 보안·데이터 경계 | CSP·Firewall 완료, DB 운영 확인 필요 | enforced CSP와 전역 provider rate limit 검증; production schema 적용·service-role dry-run 필요 |
 | 모바일 UI/UX | 로컬 QA 완료 | 390×844 홈·리포트·케어 오버플로 0, 핵심 터치 영역 44px 이상; 배포 후 재검증 필요 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
@@ -24,6 +24,7 @@
 
 - Supabase 앱 테이블 RLS 활성화, 브라우저 역할 직접 권한 철회와 회귀 검증
 - `/api/analyze`, `/api/reason` body 크기·스키마·rate·timeout 경계
+- enforced CSP와 Vercel Firewall provider 경로 합산 20회/60초 전역 제한
 - 파일럿 participant/session 범위 동의 fallback 제거
 - MediaPipe 모델/WASM same-origin 제공과 asset smoke
 - 리마인더 명시적 구독, 서명·만료 해지, 철회 제외, 30일 보존 정리
@@ -58,6 +59,8 @@
 - `/scan`, `/privacy`, `/api/out`, `/api/sync` smoke 통과
 - production 기본 차단 대상 `/pilot`, `/ops`, `/eval` 404 확인
 - 인증 없는 `/api/sync` POST 401 확인
+- enforced CSP 아래 Chromium hydration·설문 이벤트·service worker·MediaPipe model/WASM 200, console/network 오류 0 확인
+- Vercel Firewall이 AI·구독 provider POST의 21번째 요청부터 429를 반환하는 것 확인
 
 코드 변경 묶음은 다음 순서를 따른다.
 
@@ -84,7 +87,7 @@ npm run smoke
 
 - production Supabase에 최신 `supabase/schema.sql` 적용
 - `anon`/`authenticated` 거부와 service-role sync dry-run 확인
-- Vercel secrets·allowed origins·firewall/rate limits·비용 경보 확인
+- Vercel secrets·allowed origins와 AI/Resend 비용 경보 확인
 - 실제 Resend 수신, 해지 링크, 철회 후 cron 제외와 만료 cleanup 확인
 - production URL에서 주요 페이지·API·MediaPipe asset canary 수행
 
