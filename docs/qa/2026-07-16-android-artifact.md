@@ -2,7 +2,7 @@
 
 ## Source and toolchain
 
-- Source commit: `3b5f25f` (`feat: secure Android release signing`)
+- Source commit: `429d6be` (`fix: rotate Android upload association`)
 - Package: `com.seonkistall.aru`
 - Version: `1.1.0` (`versionCode 11000`)
 - JDK: Temurin 17.0.19
@@ -21,8 +21,8 @@ remained.
 
 | Artifact | Size | SHA-256 |
 |---|---:|---|
-| `app-release.aab` | 1,264,403 B | `B8D54EB9F6335D4FEB396FD5C55655B720EC6874E9E5BA0237A0798C322542B9` |
-| `app-release.apk` | 1,158,460 B | `D9631A0A51220EF43FB210E6A1EA014BD2700BD09C1CD5FFE357B4EB224EB604` |
+| `app-release.aab` | 1,264,398 B | `9B5F637A7D340D192F48BF7B9B2DB4B79194CC26E407523A59D9EDD9FA2D96E7` |
+| `app-release.apk` | 1,158,463 B | `12630801B89590F9BB833DF9B9C134D6FD7EF0439DFFEDFF4F39FB4C9AA1673F` |
 
 The files remain ignored under `android/app/build/outputs/`; the hashes, not
 the binaries, are committed.
@@ -49,7 +49,7 @@ permission. Camera permission remains a browser-origin prompt inside Chrome.
 
 - Upload certificate: RSA 4096-bit
 - Subject: `CN=ARU Upload, OU=Mobile, O=ARU, L=Seoul, ST=Seoul, C=KR`
-- SHA-256: `91:9A:F5:1A:A1:9E:2C:6C:17:E8:28:D9:5C:EA:54:77:90:8D:53:CB:A8:36:A4:75:38:AB:83:EE:D4:82:67:FC`
+- SHA-256: `03:BB:50:2D:02:E5:5B:A7:64:8C:20:3E:C2:00:06:49:74:EE:03:FE:80:C9:7B:10:1B:C5:15:99:54:99:60:2C`
 - APK v1 verification: PASS
 - APK v2 verification: PASS
 - AAB JAR verification: `jar verified`
@@ -62,6 +62,10 @@ timestamp, and that AAB ZIP/POSIX metadata is interpreted differently by
 Bundletool validation passed, Gradle's `signReleaseBundle` passed, and the
 certificate extracted from the AAB matches the published upload fingerprint.
 Play will re-sign distributed APKs with its distribution certificate.
+
+The earlier local preparation key was replaced before any Play Console
+enrollment or artifact upload. Only the fingerprint and hashes in this
+document are valid for the current upload-key backup and internal-test build.
 
 ## Gates not closed by artifact verification
 

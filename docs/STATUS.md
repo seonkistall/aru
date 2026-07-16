@@ -17,8 +17,8 @@
 | 모바일 UI/UX | 로컬 QA 완료 | 390×844 홈·리포트·케어 오버플로 0, 핵심 터치 영역 44px 이상; 배포 후 재검증 필요 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
-| Android TWA/AAB | 미착수 | manifest/service worker/asset links/package/signing/내부 트랙 필요 |
-| Google Play | 차단 | 실제 개발자 정보, 지원 이메일, signing certificate, Data safety와 Console 접근 필요 |
+| Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 AAB/APK와 upload association 검증; Play distribution certificate·내부 트랙 실기기 QA 필요 |
+| Google Play | 제출 패키지 완료, Console 차단 | ko/en 등록정보·Data safety·등급·reviewer 문서·실제 스크린샷 완료; 실제 개발자 정보, 지원 이메일과 Console 입력 필요 |
 
 ## 이번 production-readiness 트랙에서 완료한 코드
 
@@ -34,6 +34,9 @@
 - 홈 첫 화면 CTA, 리포트 고정 상업 바 제거, 케어 판매처 접기와 44px 터치 계약
 - 설문 조회 이벤트와 세션 기준 설문 완료율 추가
 - 제품·데이터·지표·Web/TWA/Play 게이트를 [PRD.md](PRD.md)로 통합
+- `com.seonkistall.aru` API 36 TWA, 환경변수 전용 release signing과 Digital Asset Links 구현
+- signed AAB/APK의 bundletool·aapt2·APK v1/v2 검증과 권한 감사 완료
+- Google Play ko/en 등록정보, Data safety·개인정보·등급·reviewer 작업표와 실제 UI 자산 생성
 
 ## 현재 제품 흐름
 
@@ -49,7 +52,7 @@
 ### 최신 로컬 증거
 
 - 2026-07-16 `npm run smoke` 통과
-- Vitest 42개 파일, 219개 테스트 통과
+- Vitest 51개 파일, 246개 테스트 통과
 - ESLint, Next.js 16.2.9 production build와 TypeScript 통과
 - ML Python script compile 통과
 - `/scan`, `/privacy`, `/api/out`, `/api/sync` smoke 통과
@@ -92,13 +95,13 @@ npm run smoke
 - iPhone Safari에서 권한 거부/허용, 미러링, 자동·수동 촬영, 회전, 재촬영과 설문 fallback 확인
 - [mobile-camera-qa.md](mobile-camera-qa.md)의 필수 행과 증거를 채우기
 
-### P0 — Android/Play
+### P0 — Android/Play owner gates
 
-- production application ID와 release signing certificate 확정
-- 설치 아이콘·maskable icon, service worker/offline 정책, Digital Asset Links 구현
-- TWA back/navigation bar/orientation/camera/외부 링크 QA
-- AAB release build와 Play internal testing, pre-launch report 통과
-- 개인정보처리방침, Data safety, 카메라 권한, 콘텐츠 등급과 스토어 문구를 실제 제품과 일치시키기
+- 업로드 키·환경 파일을 암호화된 외부 저장소에 백업
+- 실제 개발자/법인명과 공개 지원 이메일을 개인정보처리방침·Console에 입력
+- Play App Signing distribution certificate를 Digital Asset Links에 추가하고 재배포
+- Galaxy S25 Edge internal-track TWA에서 back/navigation/orientation/camera/외부 링크 QA
+- Play internal testing과 pre-launch report를 통과하고 Data safety·등급 작업표를 Console에 확정
 
 ### P1 — 연구 운영
 

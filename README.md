@@ -46,6 +46,8 @@ npm test
 npm run lint
 npm run build
 npm run smoke
+npm run android:check
+npm audit --omit=dev
 git diff --check
 ```
 
@@ -123,11 +125,40 @@ docs/                 PRD, 구조, QA, 운영 runbook
 Bubblewrap 1.24.1 TWA 프로젝트입니다. `npm run android:check`는 package/origin,
 API 36, 권한, 버전, 로컬 toolchain과 Git secret 누출을 함께 검사합니다.
 
+- package/version: `com.seonkistall.aru` / `1.1.0 (11000)`
+- Android: min SDK 23, compile/target SDK 36, portrait
+- 설치 권한: camera/storage/media/location/microphone/contacts/AD_ID 없음
+- 웹 시작 URL: `https://aru-beauty.vercel.app/`
+- release signing: ignored keystore와 process 환경변수만 사용
+- 산출물: ignored `app-release.aab`, `app-release.apk`
+
+재현 가능한 설정·빌드·검증 명령은
+[Android release build runbook](docs/android-build-runbook.md), 최신 해시와 권한·서명
+증거는 [Android artifact QA](docs/qa/2026-07-16-android-artifact.md)를 따릅니다.
+업로드 키는 Play 등록 전에 반드시 암호화된 외부 저장소에 백업해야 합니다.
+
 업로드 키와 `.env.android.local`은 Git에서 제외됩니다. 현재 공개 upload
 certificate fingerprint는 `public/.well-known/assetlinks.json`과
 `android/twa-manifest.json`에 동일하게 기록되어 있습니다. Play App Signing을
 활성화하면 Play Console이 제공하는 distribution certificate fingerprint를
 기존 값에 추가하고 웹을 재배포한 뒤 association을 다시 확인해야 합니다.
+
+## Google Play 제출 자료
+
+`docs/play-store/`에는 ko-KR/en-US 등록정보, Data safety 작업표, 개인정보처리방침
+검토, 콘텐츠 등급, reviewer 안내, 릴리스 노트, 내부 테스트 체크리스트가 있습니다.
+스토어 아이콘·1024×500 feature graphic과 실제 설문 플로우에서 캡처한
+1080×2160 phone screenshot 4장도 같은 폴더에 있습니다.
+
+```bash
+npm test -- tests/play-store-pack.test.ts
+node scripts/generate-play-assets.mjs
+```
+
+Play Console 제출 전에는 실제 개발자/법인명, 공개 지원 이메일, Play App Signing
+distribution certificate SHA-256을 입력해야 합니다. 이 세 값은 저장소에서 추측하지
+않으며, distribution fingerprint를 `assetlinks.json`에 추가해 production 재배포 후
+Galaxy 실기기 TWA에서 주소창이 사라지는지 확인해야 합니다.
 
 ## 주요 문서
 
@@ -139,3 +170,5 @@ certificate fingerprint는 `public/.well-known/assetlinks.json`과
 - [Supabase sync runbook](docs/supabase-sync-runbook.md) — RLS·sync·삭제 운영
 - [Re-engagement setup](docs/reengage-setup.md) — Resend·해지·보존
 - [Golden set](docs/golden-set.md) — 카메라 판독 회귀 프로토콜
+- [Android build runbook](docs/android-build-runbook.md) — TWA 서명 빌드·검증
+- [Google Play submission pack](docs/play-store/internal-test-checklist.md) — Console·내부 트랙 게이트
