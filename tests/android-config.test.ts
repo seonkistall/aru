@@ -28,6 +28,7 @@ describe("Android Trusted Web Activity configuration", () => {
     expect(androidManifest).not.toMatch(
       /READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|RECORD_AUDIO|READ_CONTACTS|AD_ID/,
     );
+    expect(androidManifest).not.toMatch(/<manifest[^>]*\spackage=/s);
   });
 
   it("keeps generated resources reproducible and local secrets out of Git", () => {
@@ -45,5 +46,25 @@ describe("Android Trusted Web Activity configuration", () => {
     expect(gitignore).toContain("*.aab");
     expect(gitignore).toContain("*.apk");
     expect(packageJson.scripts["android:check"]).toBe("node scripts/android-check.mjs");
+  });
+
+  it("loads release signing only from the environment", () => {
+    const gradle = read("android/app/build.gradle");
+    const rootGradle = read("android/build.gradle");
+
+    for (const name of [
+      "ARU_KEYSTORE_PATH",
+      "ARU_KEYSTORE_PASSWORD",
+      "ARU_KEY_ALIAS",
+      "ARU_KEY_PASSWORD",
+    ]) {
+      expect(gradle).toContain(`System.getenv('${name}')`);
+    }
+    expect(gradle).toContain("Missing Android release signing environment");
+    expect(gradle).toContain("signingConfig signingConfigs.release");
+    expect(gradle).not.toMatch(/storePassword\s+["'][^$]/);
+    expect(gradle).not.toMatch(/keyPassword\s+["'][^$]/);
+    expect(rootGradle).not.toContain("jcenter()");
+    expect(rootGradle.match(/mavenCentral\(\)/g)).toHaveLength(2);
   });
 });

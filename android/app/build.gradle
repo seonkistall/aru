@@ -50,9 +50,34 @@ def twaManifest = [
     orientation: 'portrait',
 ]
 
+def releaseSigning = [
+    keystorePath: System.getenv('ARU_KEYSTORE_PATH'),
+    keystorePassword: System.getenv('ARU_KEYSTORE_PASSWORD'),
+    keyAlias: System.getenv('ARU_KEY_ALIAS'),
+    keyPassword: System.getenv('ARU_KEY_PASSWORD'),
+]
+def missingReleaseSigning = releaseSigning.findAll { key, value -> !value }.keySet()
+def releaseArtifactRequested = gradle.startParameter.taskNames.any { taskName ->
+    def normalized = taskName.toLowerCase()
+    normalized.endsWith('bundlerelease') || normalized.endsWith('assemblerelease')
+}
+if (releaseArtifactRequested && !missingReleaseSigning.isEmpty()) {
+    throw new GradleException("Missing Android release signing environment: " + missingReleaseSigning.join(', '))
+}
+
 android {
     compileSdkVersion 36
     namespace "com.seonkistall.aru"
+    signingConfigs {
+        release {
+            if (missingReleaseSigning.isEmpty()) {
+                storeFile file(releaseSigning.keystorePath)
+                storePassword releaseSigning.keystorePassword
+                keyAlias releaseSigning.keyAlias
+                keyPassword releaseSigning.keyPassword
+            }
+        }
+    }
     defaultConfig {
         applicationId "com.seonkistall.aru"
         minSdkVersion 23
@@ -150,6 +175,9 @@ android {
     buildTypes {
         release {
             minifyEnabled true
+            if (missingReleaseSigning.isEmpty()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
