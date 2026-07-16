@@ -117,6 +117,18 @@ docs/                 PRD, 구조, QA, 운영 runbook
 
 체크박스와 외부 오너 입력이 남아 있으면 production/Play 준비 완료로 표시하지 않습니다.
 
+## Android TWA와 도메인 연결
+
+`android/`는 `com.seonkistall.aru`가 `https://aru-beauty.vercel.app`만 여는
+Bubblewrap 1.24.1 TWA 프로젝트입니다. `npm run android:check`는 package/origin,
+API 36, 권한, 버전, 로컬 toolchain과 Git secret 누출을 함께 검사합니다.
+
+업로드 키와 `.env.android.local`은 Git에서 제외됩니다. 현재 공개 upload
+certificate fingerprint는 `public/.well-known/assetlinks.json`과
+`android/twa-manifest.json`에 동일하게 기록되어 있습니다. Play App Signing을
+활성화하면 Play Console이 제공하는 distribution certificate fingerprint를
+기존 값에 추가하고 웹을 재배포한 뒤 association을 다시 확인해야 합니다.
+
 ## 주요 문서
 
 - [PRD](docs/PRD.md) — 제품 약속, 경계, 데이터, 지표, 출시 게이트

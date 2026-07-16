@@ -33,7 +33,12 @@
   "enableSiteSettingsShortcut": true,
   "orientation": "portrait",
   "minSdkVersion": 23,
-  "fingerprints": [],
+  "fingerprints": [
+    {
+      "name": "upload",
+      "value": "91:9A:F5:1A:A1:9E:2C:6C:17:E8:28:D9:5C:EA:54:77:90:8D:53:CB:A8:36:A4:75:38:AB:83:EE:D4:82:67:FC"
+    }
+  ],
   "additionalTrustedOrigins": [],
   "isChromeOSOnly": false,
   "isMetaQuest": false
