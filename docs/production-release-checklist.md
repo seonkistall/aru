@@ -55,6 +55,7 @@ Date: 2026-07-18
 
 ## Android and Google Play
 
+- [ ] Complete the Play Console developer identity verification and resolve the urgent payment-account alert; app creation is currently disabled.
 - [x] Bubblewrap 1.24.1 is exact-pinned; package `com.seonkistall.aru` targets API 36 with min SDK 23.
 - [x] Signed AAB/APK pass bundletool, package/version, permission, and APK v1/v2 signature checks.
 - [x] Upload certificate fingerprint matches the committed TWA manifest and Digital Asset Links.

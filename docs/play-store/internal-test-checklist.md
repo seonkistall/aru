@@ -4,6 +4,7 @@
 
 ## Console owner gates
 
+- [ ] Play Console 개발자 신원 확인 완료 및 결제 계정 긴급 알림 해결
 - [ ] 실제 개발자/법인명과 공개 지원 이메일 입력
 - [ ] 앱 생성 후 Play App Signing 활성화
 - [ ] Play Console의 **App signing key certificate** SHA-256을 `public/.well-known/assetlinks.json`에 추가
