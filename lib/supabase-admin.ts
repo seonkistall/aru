@@ -36,7 +36,7 @@ function getSupabaseUrl() {
 function getServiceRoleKey() {
   const value = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!value) return undefined;
-  const modern = /^sb_secret_[A-Za-z0-9_-]{32,}$/.test(value);
+  const modern = /^sb_secret_\S+$/.test(value);
   const legacy = value.startsWith("eyJ") && value.length >= 100 && value.split(".").length === 3;
   return modern || legacy ? value : undefined;
 }

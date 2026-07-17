@@ -29,6 +29,14 @@ describe("Supabase server environment guard", () => {
     expect(isSupabaseSyncConfigured()).toBe(true);
   });
 
+  it("treats modern secret keys as opaque instead of assuming an undocumented length", () => {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_opaque-value";
+    process.env.SUPABASE_SYNC_TOKEN = "s".repeat(32);
+
+    expect(isSupabaseSyncConfigured()).toBe(true);
+  });
+
   it("keeps legacy service-role JWTs compatible during key migration", () => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = `eyJ${"a".repeat(64)}.${"b".repeat(64)}.${"c".repeat(43)}`;
