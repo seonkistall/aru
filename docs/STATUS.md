@@ -18,7 +18,7 @@
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
 | Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 AAB/APK와 upload association 검증; Play distribution certificate·내부 트랙 실기기 QA 필요 |
-| Google Play | 제출 패키지 완료, Console 차단 | ko/en 등록정보·Data safety·등급·reviewer 문서·실제 스크린샷 완료; 실제 개발자 정보, 지원 이메일과 Console 입력 필요 |
+| Google Play | 제출 패키지 완료, 계정 검증 차단 | ko/en 등록정보·Data safety·등급·reviewer 문서·실제 스크린샷 완료; `Sean_AI` 개발자 신원 확인 미완료로 앱 만들기 비활성화, 결제 계정 긴급 알림 해결 필요 |
 
 ## 이번 production-readiness 트랙에서 완료한 코드
 
@@ -108,6 +108,7 @@ npm run smoke
 
 ### P0 — Android/Play owner gates
 
+- Play Console `Sean_AI` 계정의 개발자 신원 확인과 결제 계정 긴급 문제 해결
 - 업로드 키·환경 파일을 암호화된 외부 저장소에 백업
 - 실제 개발자/법인명과 공개 지원 이메일을 개인정보처리방침·Console에 입력
 - Play App Signing distribution certificate를 Digital Asset Links에 추가하고 재배포
