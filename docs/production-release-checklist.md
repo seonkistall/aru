@@ -27,12 +27,12 @@ Date: 2026-07-18
 - [x] Confirm anon and authenticated roles cannot select, insert, update, or delete application rows.
 - [x] Confirm the service role can insert inside a transaction and the rollback leaves no row.
 - [x] Confirm `gyeol-crop-samples` exists and is private.
-- [ ] Restore a modern production secret key, then confirm authenticated `/api/sync` dry-run and Storage access through the deployed route.
+- [ ] A modern production secret key is registered; confirm authenticated `/api/sync` dry-run and Storage access through the new deployment.
 - Evidence: `docs/qa/2026-07-18-supabase-production.md`.
 
 ## Vercel and secrets
 
-- [ ] Restore `SUPABASE_SERVICE_ROLE_KEY`; URL, high-entropy sync token, bucket, retention, and allowed origins are set.
+- [x] Register a modern `SUPABASE_SERVICE_ROLE_KEY`; URL, high-entropy sync token, bucket, retention, and allowed origins are set.
 - [x] Set a distinct high-entropy `UNSUBSCRIBE_SECRET` and `CRON_SECRET`.
 - [x] Reject Vercel secret-mask placeholders and weak sync tokens at runtime.
 - [x] Configure a live Vercel Firewall fixed-window limit for `/api/analyze`, `/api/reason`, and `/api/reengage/subscribe` POST: 20 requests per IP per 60 seconds, default 429 action.

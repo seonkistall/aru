@@ -45,8 +45,11 @@ Read-only production canary on 2026-07-18 showed `GET /api/sync` reporting all
 three configuration flags as true. The old snapshot accepted
 `https://kbeauty-ai-camera.vercel.app` as a sync origin but rejected the
 canonical `https://aru-beauty.vercel.app` with 403. The corrected project
-environment is intentionally not active until the service key is restored and a
-new deployment is verified.
+environment was completed after this snapshot: the project owner created a
+modern key named `aru_vercel_production` and stored it as the Sensitive,
+Production-only Vercel `SUPABASE_SERVICE_ROLE_KEY` without sharing the value.
+The new environment is intentionally not treated as active until a new
+deployment is verified.
 
 The repository now rejects masked values and weak sync tokens instead of
 reporting Supabase sync as configured. The 2026-07-18 local smoke passed 52 test
@@ -56,7 +59,7 @@ compile, and route probes.
 Do not redeploy production until this recovery sequence is complete:
 
 1. In Supabase Dashboard, open Project Settings → API Keys.
-2. Create a modern secret key named `aru-vercel-production`.
+2. Create a modern secret key named `aru_vercel_production`.
 3. Store it as Vercel production `SUPABASE_SERVICE_ROLE_KEY` with Sensitive
    enabled. Never paste it into Git, docs, shell history, or an issue.
 4. Redeploy the existing `main` production deployment.

@@ -13,7 +13,7 @@
 | 영역 | 상태 | 근거/다음 게이트 |
 |---|---|---|
 | 소비자 Web 코드 | production 배포·canary 완료 | `npm run smoke`와 10분 production canary 통과; CSP enforcement 후 재검증 포함 |
-| 보안·데이터 경계 | CSP·Firewall·DB 권한 검증 완료, runtime key 복구 필요 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel secret key 복구 전 재배포 금지 |
+| 보안·데이터 경계 | CSP·Firewall·DB 권한 검증 완료, runtime 재검증 필요 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel modern secret 등록 완료, 새 배포 canary 대기 |
 | 모바일 UI/UX | 로컬 QA 완료 | 390×844 홈·리포트·케어 오버플로 0, 핵심 터치 영역 44px 이상; 배포 후 재검증 필요 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
@@ -91,10 +91,10 @@ npm run smoke
 ### P0 — Web production
 
 - production Supabase schema·RLS·직접 권한·비공개 bucket 검증 완료; [운영 증거](qa/2026-07-18-supabase-production.md) 유지
-- Supabase modern secret key를 Vercel에 복구한 뒤 `/api/sync` 인증 dry-run과 bucket 접근 canary 수행
-- Vercel allowed origins는 설정됨; Supabase service key 복구와 AI/Resend 비용 경보 확인
+- Supabase modern secret key의 Vercel Production 등록 완료; 새 배포에서 `/api/sync` 인증 dry-run과 bucket 접근 canary 수행
+- Vercel allowed origins는 설정됨; 새 배포 runtime 확인과 AI/Resend 비용 경보 확인
 - 실제 Resend 수신, 해지 링크, 철회 후 cron 제외와 만료 cleanup 확인
-- secret key 복구 후 새 production 배포에서 주요 페이지·API·MediaPipe asset canary 재수행
+- 새 production 배포에서 주요 페이지·API·MediaPipe asset canary 재수행
 
 ### P0 — Physical-device camera
 
