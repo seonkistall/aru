@@ -3,8 +3,8 @@
 Project: `gyeol-pilot` (`zayyhjsppoybprvwdddj`, Seoul)
 
 This report records direct production database evidence without storing any
-credential. It separates the verified database boundary from the still-pending
-Vercel runtime secret recovery.
+credential. It separates the verified database boundary from runtime checks
+that require an authenticated sync token.
 
 ## Verified database boundary
 
@@ -32,43 +32,42 @@ table privileges and no allow policies. Performance advisors reported unused
 indexes on empty pilot tables and the absolute Auth connection strategy; neither
 changes the current launch boundary.
 
-## Vercel runtime state
+## Vercel runtime recovery
 
 Vercel masks pulled sensitive values rather than returning plaintext secrets.
 The mask was initially mistaken for an invalid stored value, and the production
 `SUPABASE_SERVICE_ROLE_KEY` project variable was removed before that behavior
-was confirmed. The currently serving deployment retains its immutable prior
-environment snapshot and was not redeployed, so the public local-only product
-remains unchanged.
+was confirmed. The project owner then created the modern Supabase secret
+`aru_vercel_production` and registered it as the Sensitive, Production-only
+Vercel variable without sharing the value.
 
-Read-only production canary on 2026-07-18 showed `GET /api/sync` reporting all
-three configuration flags as true. The old snapshot accepted
-`https://kbeauty-ai-camera.vercel.app` as a sync origin but rejected the
-canonical `https://aru-beauty.vercel.app` with 403. The corrected project
-environment was completed after this snapshot: the project owner created a
-modern key named `aru_vercel_production` and stored it as the Sensitive,
-Production-only Vercel `SUPABASE_SERVICE_ROLE_KEY` without sharing the value.
-The new environment is intentionally not treated as active until a new
-deployment is verified.
+The corrected project environment is active in Production deployment
+`dpl_TA7wP6c7mmtWrpvKNH2prn9NRP1o`. A fresh canonical-origin canary reported
+`configured: true`, `cropBucketConfigured: true`, and
+`originGuardConfigured: true`. An unauthenticated sync POST returned 401.
 
-The repository now rejects masked values and weak sync tokens instead of
-reporting Supabase sync as configured. The 2026-07-18 local smoke passed 52 test
-files and 252 tests, ESLint, the Next.js production build, TypeScript, ML Python
-compile, and route probes.
+The repository rejects masked values and weak sync tokens instead of reporting
+Supabase sync as configured. Modern `sb_secret_*` values are treated as opaque
+credentials rather than being constrained by an undocumented suffix length.
+The 2026-07-18 local smoke passed 52 test files and 254 tests, ESLint, the
+Next.js production build, TypeScript, ML Python compile, and route probes.
 
-Do not redeploy production until this recovery sequence is complete:
+The recovery sequence is complete through unauthenticated runtime verification:
 
-1. In Supabase Dashboard, open Project Settings → API Keys.
-2. Create a modern secret key named `aru_vercel_production`.
-3. Store it as Vercel production `SUPABASE_SERVICE_ROLE_KEY` with Sensitive
-   enabled. Never paste it into Git, docs, shell history, or an issue.
-4. Redeploy the existing `main` production deployment.
-5. Confirm `GET /api/sync` reports `configured: true`,
-   `cropBucketConfigured: true`, and `originGuardConfigured: true`.
-6. Confirm an unauthenticated sync POST returns 401 and an authenticated empty
-   `dryRun` returns 200 without database writes.
-7. Run the production page/API/MediaPipe canary and inspect runtime errors
-   before promoting any pilot upload.
+1. Create the modern secret `aru_vercel_production`. **Complete.**
+2. Store it as the Sensitive, Production-only Vercel
+   `SUPABASE_SERVICE_ROLE_KEY`. **Complete.**
+3. Redeploy `main` and confirm all three `/api/sync` configuration flags.
+   **Complete.**
+4. Confirm an unauthenticated canonical-origin sync POST returns 401.
+   **Complete.**
+5. Run the production page/API/MediaPipe canary and inspect runtime errors.
+   **Complete; see `2026-07-18-post-deploy-canary.md`.**
+
+The remaining promotion gate is an authenticated empty `dryRun` returning 200
+without database writes, followed by authenticated private-bucket access. It was
+not simulated with a guessed or recovered token. Pilot upload remains disabled
+until an authorized operator performs that check.
 
 ## References
 

@@ -43,6 +43,7 @@ describe("mobile journey layout contract", () => {
     expect(source("app/components/flow-steps.tsx")).toContain('minHeight: "var(--tap-min)"');
     expect(source("app/components/flow-steps.tsx")).toContain('minWidth: "var(--tap-min)"');
     expect(source("app/components/product-card.tsx")).toContain('minHeight: "var(--tap-min)"');
+    expect(source("app/components/return-banner.tsx")).toContain('minHeight: "var(--tap-min)"');
     expect(source("app/report/page.tsx")).toContain('<summary style={{ minHeight: "var(--tap-min)"');
     expect(source("app/survey/page.tsx")).toContain('minHeight: "var(--tap-min)"');
     expect(source("app/scan/page.tsx")).toContain('minHeight: "var(--tap-min)"');

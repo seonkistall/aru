@@ -31,6 +31,9 @@ export function ReturnBanner() {
 }
 
 const primary: React.CSSProperties = {
+  minHeight: "var(--tap-min)",
+  display: "inline-flex",
+  alignItems: "center",
   fontFamily: "var(--font-display)",
   fontSize: 19,
   color: "var(--plum)",
@@ -40,6 +43,9 @@ const primary: React.CSSProperties = {
 };
 
 const ghost: React.CSSProperties = {
+  minHeight: "var(--tap-min)",
+  display: "inline-flex",
+  alignItems: "center",
   fontFamily: "var(--font-display)",
   fontSize: 19,
   color: "var(--text-muted)",
