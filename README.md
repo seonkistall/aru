@@ -128,7 +128,7 @@ Bubblewrap 1.24.1 TWA 프로젝트입니다. `npm run android:check`는 package/
 API 36, 권한, 버전, 로컬 toolchain과 Git secret 누출을 함께 검사합니다.
 
 - package/version: `com.seonkistall.aru` / `1.1.0 (11000)`
-- Android: min SDK 23, compile/target SDK 36, portrait
+- Android: min SDK 23, compile/target SDK 36, adaptive orientation
 - 설치 권한: camera/storage/media/location/microphone/contacts/AD_ID 없음
 - 웹 시작 URL: `https://aru-beauty.vercel.app/`
 - release signing: ignored keystore와 process 환경변수만 사용

@@ -1,8 +1,8 @@
-# Signed Android artifact verification — 2026-07-16
+# Signed Android artifact verification — 2026-07-18
 
 ## Source and toolchain
 
-- Source commit: `429d6be` (`fix: rotate Android upload association`)
+- Source commit: `7951a55` (`Allow adaptive Android orientation`)
 - Package: `com.seonkistall.aru`
 - Version: `1.1.0` (`versionCode 11000`)
 - JDK: Temurin 17.0.19
@@ -21,8 +21,8 @@ remained.
 
 | Artifact | Size | SHA-256 |
 |---|---:|---|
-| `app-release.aab` | 1,264,398 B | `9B5F637A7D340D192F48BF7B9B2DB4B79194CC26E407523A59D9EDD9FA2D96E7` |
-| `app-release.apk` | 1,158,463 B | `12630801B89590F9BB833DF9B9C134D6FD7EF0439DFFEDFF4F39FB4C9AA1673F` |
+| `app-release.aab` | 1,264,353 B | `532731EB753341607E9E4034FC67F5EFE79BE5C2E7A22290F9928013450092B2` |
+| `app-release.apk` | 1,158,424 B | `438B86205EEFB9E390E1A1B0EE429ABE8FD27F6061B55FE3A3D8A8C1F632501A` |
 
 The files remain ignored under `android/app/build/outputs/`; the hashes, not
 the binaries, are committed.
@@ -35,6 +35,7 @@ both reported:
 - package `com.seonkistall.aru`
 - versionName `1.1.0`; versionCode `11000`
 - compileSdk/targetSdk `36`; minSdk `23`
+- adaptive orientation (`any`) with no portrait lock
 - application label `ARU 아루`; launcher label `ARU`
 - launch URL `https://aru-beauty.vercel.app/`
 - web manifest `https://aru-beauty.vercel.app/manifest.webmanifest`
