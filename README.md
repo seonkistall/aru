@@ -86,6 +86,7 @@ OPENAI_API_KEY
 
 - Supabase 앱 테이블은 RLS를 켜고 `anon`/`authenticated` 직접 권한을 철회합니다.
 - service-role, sync token, cron/unsubscribe secret과 Resend key는 서버에서만 사용합니다.
+- Supabase runtime은 유효한 HTTPS/loopback URL, modern 또는 legacy service-role key, 32자 이상 sync token만 설정 완료로 인정하며 Vercel 마스킹 문자열은 거부합니다.
 - `/api/analyze`와 `/api/reason`은 byte·schema·rate·timeout 제한을 통과해야 provider를 호출합니다.
 - Vercel Firewall은 `/api/analyze`, `/api/reason`, `/api/reengage/subscribe` POST를 IP당 합산 20회/60초로 제한하며, 각 route의 app-level limiter를 2차 방어로 유지합니다.
 - 모든 route는 same-origin asset 정책을 enforced CSP로 적용합니다. Next.js hydration, service worker와 self-hosted MediaPipe는 실제 Chromium 회귀 검증을 통과해야 합니다.
