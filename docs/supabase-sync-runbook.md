@@ -40,6 +40,17 @@ SUPABASE_SYNC_ALLOWED_ORIGINS=https://your-domain.com
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Never prefix it with
 `NEXT_PUBLIC_`.
 
+Runtime validation requires:
+
+- an HTTPS Supabase URL, except loopback HTTP for local development;
+- a modern `sb_secret_...` key or a legacy three-part service-role JWT while migrating;
+- a sync token of at least 32 characters with no surrounding whitespace.
+
+`vercel env pull` writes placeholders for sensitive values. Values such as
+`[sensitive]`, `[encrypted]`, or `[redacted]` are masks, not credentials. Never
+upload a pulled mask back to Vercel and never use it to decide whether a secret
+is valid.
+
 Then verify the connection:
 
 ```bash
@@ -48,6 +59,10 @@ npm run supabase:check
 
 The check confirms that the server-only Supabase key can reach every pilot table
 and that the crop bucket exists and is private.
+
+After changing a Vercel production secret, create a new production deployment.
+Then verify `GET /api/sync` reports `configured: true`, an unauthenticated POST
+returns 401, and an authenticated empty `dryRun` succeeds before enabling upload.
 
 ## 4. Dry-run from `/ops`
 
