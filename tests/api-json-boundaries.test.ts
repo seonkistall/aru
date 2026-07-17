@@ -70,12 +70,12 @@ describe("remaining JSON API boundaries", () => {
   });
 
   it("rejects actual oversized sync bytes when content-length is unavailable", async () => {
-    process.env.SUPABASE_SYNC_TOKEN = "sync-test-secret";
+    process.env.SUPABASE_SYNC_TOKEN = "s".repeat(32);
     delete process.env.SUPABASE_SYNC_ALLOWED_ORIGINS;
     const body = JSON.stringify({ padding: "가".repeat(1_750_000) });
     const request = new Request("http://localhost/api/sync", {
       method: "POST",
-      headers: { authorization: "Bearer sync-test-secret" },
+      headers: { authorization: `Bearer ${"s".repeat(32)}` },
       body,
     });
 

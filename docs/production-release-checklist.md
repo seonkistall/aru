@@ -1,10 +1,10 @@
 # ARU Production Release Checklist
 
-Date: 2026-07-17
+Date: 2026-07-18
 
 ## Code gates
 
-- [x] `npm run smoke` passes: 51 test files and 248 tests, lint, production build, ML compile, and route probes.
+- [x] `npm run smoke` passes: 52 test files and 252 tests, lint, production build, ML compile, and route probes.
 - [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
 - [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
 - [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
@@ -22,15 +22,19 @@ Date: 2026-07-17
 ## Supabase operations
 
 - [ ] Back up the production project.
-- [ ] Apply `supabase/schema.sql` in the production SQL editor.
-- [ ] Confirm RLS is enabled for all application tables.
-- [ ] Confirm anon and authenticated roles cannot select, insert, update, or delete application rows.
-- [ ] Confirm the service role can run a dry-run sync and access the private crop bucket.
+- [x] Confirm migration `20260715153303 harden_aru_data_api_permissions` and all nine application tables exist in production.
+- [x] Confirm RLS is enabled for all application tables.
+- [x] Confirm anon and authenticated roles cannot select, insert, update, or delete application rows.
+- [x] Confirm the service role can insert inside a transaction and the rollback leaves no row.
+- [x] Confirm `gyeol-crop-samples` exists and is private.
+- [ ] Restore a modern production secret key, then confirm authenticated `/api/sync` dry-run and Storage access through the deployed route.
+- Evidence: `docs/qa/2026-07-18-supabase-production.md`.
 
 ## Vercel and secrets
 
-- [ ] Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SYNC_TOKEN`, and allowed origins.
-- [ ] Set a distinct high-entropy `UNSUBSCRIBE_SECRET` and `CRON_SECRET`.
+- [ ] Restore `SUPABASE_SERVICE_ROLE_KEY`; URL, high-entropy sync token, bucket, retention, and allowed origins are set.
+- [x] Set a distinct high-entropy `UNSUBSCRIBE_SECRET` and `CRON_SECRET`.
+- [x] Reject Vercel secret-mask placeholders and weak sync tokens at runtime.
 - [x] Configure a live Vercel Firewall fixed-window limit for `/api/analyze`, `/api/reason`, and `/api/reengage/subscribe` POST: 20 requests per IP per 60 seconds, default 429 action.
 - [ ] Verify AI provider and Resend spending limits/alerts.
 
