@@ -11,7 +11,7 @@ describe("Android Trusted Web Activity configuration", () => {
       packageId: "com.seonkistall.aru",
       host: "aru-beauty.vercel.app",
       startUrl: "/",
-      orientation: "portrait",
+      orientation: "any",
       minSdkVersion: 23,
       appVersion: "1.1.0",
       appVersionCode: 11000,
@@ -29,6 +29,15 @@ describe("Android Trusted Web Activity configuration", () => {
       /READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|RECORD_AUDIO|READ_CONTACTS|AD_ID/,
     );
     expect(androidManifest).not.toMatch(/<manifest[^>]*\spackage=/s);
+  });
+
+  it("does not lock target API 36 devices to portrait", () => {
+    const launcher = read("android/app/src/main/java/com/seonkistall/aru/LauncherActivity.java");
+    const gradle = read("android/app/build.gradle");
+
+    expect(launcher).not.toMatch(/SCREEN_ORIENTATION_(?:USER_|REVERSE_)?(?:PORTRAIT|LANDSCAPE)/);
+    expect(launcher).toContain("SCREEN_ORIENTATION_UNSPECIFIED");
+    expect(gradle).toContain("orientation: 'any'");
   });
 
   it("keeps generated resources reproducible and local secrets out of Git", () => {

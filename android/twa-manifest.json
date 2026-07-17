@@ -31,7 +31,7 @@
     "enabled": false
   },
   "enableSiteSettingsShortcut": true,
-  "orientation": "portrait",
+  "orientation": "any",
   "minSdkVersion": 23,
   "fingerprints": [
     {

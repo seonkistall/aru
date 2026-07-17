@@ -32,7 +32,7 @@ const gitignore = read(".gitignore");
 expectValue(twaManifest.packageId === "com.seonkistall.aru", "wrong package", "The TWA package ID changed.", "Restore com.seonkistall.aru before creating the Play app.");
 expectValue(twaManifest.host === "aru-beauty.vercel.app", "wrong origin", "The wrapper points at a non-production host.", "Restore aru-beauty.vercel.app.");
 expectValue(twaManifest.startUrl === "/", "wrong launch path", "The app no longer opens the consumer entry route.", "Restore startUrl to /.");
-expectValue(twaManifest.orientation === "portrait", "wrong orientation", "The wrapper is not portrait-first.", "Restore orientation to portrait.");
+expectValue(twaManifest.orientation === "any", "wrong orientation", "The wrapper still locks a target API 36 app to one orientation.", "Set orientation to any and rerun rotation QA.");
 expectValue(twaManifest.minSdkVersion === 23, "wrong minimum SDK", "The supported-device floor changed.", "Restore minSdkVersion to 23 and rerun device QA.");
 expectValue(twaManifest.appVersion === packageJson.version, "version mismatch", `Android ${twaManifest.appVersion ?? "missing"} differs from package.json ${packageJson.version ?? "missing"}.`, "Update both release versions together.");
 expectValue(Number.isInteger(twaManifest.appVersionCode) && twaManifest.appVersionCode >= 11000, "invalid version code", "Android versionCode is missing or lower than the first release.", "Use a monotonically increasing integer, starting at 11000.");
