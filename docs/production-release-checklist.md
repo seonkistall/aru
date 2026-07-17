@@ -4,7 +4,7 @@ Date: 2026-07-18
 
 ## Code gates
 
-- [x] `npm run smoke` passes: 52 test files and 252 tests, lint, production build, ML compile, and route probes.
+- [x] `npm run smoke` passes: 52 test files and 254 tests, lint, production build, ML compile, and route probes.
 - [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
 - [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
 - [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
@@ -18,6 +18,7 @@ Date: 2026-07-18
 - [x] Preserve real online 404 responses instead of masking them with the offline page.
 - Evidence: `docs/qa/2026-07-16-web-performance.md` at commit `d687e8b`.
 - Security evidence: `docs/qa/2026-07-17-post-deploy-security.md`.
+- Current production canary: `docs/qa/2026-07-18-post-deploy-canary.md`.
 
 ## Supabase operations
 
@@ -27,7 +28,8 @@ Date: 2026-07-18
 - [x] Confirm anon and authenticated roles cannot select, insert, update, or delete application rows.
 - [x] Confirm the service role can insert inside a transaction and the rollback leaves no row.
 - [x] Confirm `gyeol-crop-samples` exists and is private.
-- [ ] A modern production secret key is registered; confirm authenticated `/api/sync` dry-run and Storage access through the new deployment.
+- [x] A modern production secret key is registered and the new deployment reports valid runtime configuration.
+- [ ] Confirm an authenticated `/api/sync` dry-run and Storage access without exposing the production sync token.
 - Evidence: `docs/qa/2026-07-18-supabase-production.md`.
 
 ## Vercel and secrets

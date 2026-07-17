@@ -168,6 +168,7 @@ Galaxy 실기기 TWA에서 주소창이 사라지는지 확인해야 합니다.
 - [PRD](docs/PRD.md) — 제품 약속, 경계, 데이터, 지표, 출시 게이트
 - [Architecture](docs/architecture.md) — 브라우저·API·데이터·ML 구조
 - [Status](docs/STATUS.md) — 증거 기반 현재 상태와 차단 조건
+- [Production canary](docs/qa/2026-07-18-post-deploy-canary.md) — 모바일 퍼널·API·MediaPipe 실배포 검증
 - [Mobile camera QA](docs/mobile-camera-qa.md) — 실기기 카메라 매트릭스
 - [Production release checklist](docs/production-release-checklist.md) — Web production 절차
 - [Supabase sync runbook](docs/supabase-sync-runbook.md) — RLS·sync·삭제 운영
