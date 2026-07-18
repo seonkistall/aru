@@ -13,7 +13,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // explicitly records that they started using a product.
 const roundFor = (ts: number) => {
   const weeks = (Date.now() - ts) / WEEK_MS;
-  return weeks >= 3 ? 4 : weeks >= 2 ? 2 : 0;
+  return weeks >= 4 ? 4 : weeks >= 2 ? 2 : 0;
 };
 
 export default function Checkin() {
