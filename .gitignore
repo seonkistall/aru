@@ -61,3 +61,7 @@ next-env.d.ts
 /android/*.keystore
 *.aab
 *.apk
+
+# local browser regression artifacts
+/test-results/
+/playwright-report/

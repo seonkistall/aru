@@ -50,17 +50,17 @@ export function ReengageOptIn({ context }: { context?: string }) {
           placeholder={t("이메일 주소")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={{ flex: 1, minWidth: 0, fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" }}
+          style={{ flex: 1, minWidth: 0, minHeight: "var(--tap-min)", fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" }}
         />
         <button
           onClick={submit}
           disabled={!consent || !email.trim() || state === "sending"}
-          style={{ flexShrink: 0, background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !consent || !email.trim() || state === "sending" ? 0.5 : 1 }}
+          style={{ flexShrink: 0, minHeight: "var(--tap-min)", background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !consent || !email.trim() || state === "sending" ? 0.5 : 1 }}
         >
           {state === "sending" ? "…" : t("신청")}
         </button>
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, fontSize: 12.5, color: "var(--text-muted)", cursor: "pointer" }}>
+      <label style={{ display: "flex", alignItems: "center", minHeight: "var(--tap-min)", gap: 8, marginTop: 9, fontSize: 12.5, color: "var(--text-muted)", cursor: "pointer" }}>
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ accentColor: "var(--ink)", width: 15, height: 15 }} />
         <span>{t("리마인드 발송을 위해 이메일 저장에 동의해요")}</span>
       </label>

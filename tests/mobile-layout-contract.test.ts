@@ -50,6 +50,37 @@ describe("mobile journey layout contract", () => {
     expect(source("app/unsubscribe/unsubscribe-form.tsx")).toContain('minWidth: "var(--tap-min)"');
   });
 
+  it("keeps the camera fallback action at least 44px high", () => {
+    const scanStyles = source("app/scan/scan-styles.ts");
+    expect(scanStyles).toMatch(
+      /export const ghostLink:[\s\S]*?display: "inline-flex"[\s\S]*?minHeight: "var\(--tap-min\)"/,
+    );
+  });
+
+  it("keeps every reminder opt-in control at least 44px high", () => {
+    const reengage = source("app/components/reengage-optin.tsx");
+    expect(reengage.match(/minHeight: "var\(--tap-min\)"/g)).toHaveLength(3);
+  });
+
+  it("lets studio editor rows shrink without clipping accessible controls", () => {
+    const studio = source("app/studio/page.tsx");
+    expect(studio).toContain('style={{ ...inputStyle, flex: 1, minWidth: 0 }}');
+    expect(studio).toMatch(
+      /const presetBtn:[\s\S]*?minHeight: "var\(--tap-min\)"/,
+    );
+    expect(studio).toMatch(
+      /const inputStyle:[\s\S]*?minHeight: "var\(--tap-min\)"/,
+    );
+    expect(studio).toMatch(
+      /function toggleBtn[\s\S]*?minWidth: "var\(--tap-min\)"[\s\S]*?minHeight: "var\(--tap-min\)"/,
+    );
+  });
+
+  it("keeps the localized hero callout inside a 360px viewport", () => {
+    const home = source("app/page.tsx");
+    expect(home).toContain('right: "calc(100% - 28px)"');
+  });
+
   it("uses a metric-adjusted Korean fallback to avoid display-font layout shifts", () => {
     const css = source("app/globals.css");
     expect(css).toContain('font-family: "ARU Display Fallback"');

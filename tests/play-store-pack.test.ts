@@ -75,4 +75,30 @@ describe("Google Play submission pack", () => {
       expect(Math.max(width, height)).toBeLessThanOrEqual(Math.min(width, height) * 2);
     }
   });
+
+  it("keeps reviewer steps aligned with the production UI labels", () => {
+    const reviewer = readFileSync(file("reviewer-instructions.md"), "utf8");
+    const home = readFileSync(resolve(root, "app", "page.tsx"), "utf8");
+    const report = readFileSync(resolve(root, "app", "report", "page.tsx"), "utf8");
+    expect(reviewer).toContain("카메라 없이 설문만 할래요");
+    expect(reviewer).toContain("내 피부 결, 보러 가기");
+    expect(reviewer).toContain("개인정보와 동의");
+    expect(reviewer).toContain("`/privacy`");
+    expect(home).toContain('t("카메라 없이 설문만 할래요 →")');
+    expect(home).toContain('t("내 피부 결, 보러 가기")');
+    expect(report).toContain('t("개인정보와 동의")');
+    expect(reviewer).not.toContain("설문으로 시작");
+    expect(reviewer).not.toContain("카메라로 시작");
+  });
+
+  it("records the conditional new-personal-account Play gates", () => {
+    const checklist = readFileSync(file("internal-test-checklist.md"), "utf8");
+    expect(checklist).toContain(
+      "2023-11-13 이후 생성된 개인 계정이면 Play Console 모바일 앱에서 실제 Android 기기 접근 검증",
+    );
+    expect(checklist).toContain(
+      "같은 조건의 개인 계정이면 closed test에 12명이 14일 연속 opt-in한 뒤 production access 신청",
+    );
+    expect(checklist).toContain("16 KB");
+  });
 });

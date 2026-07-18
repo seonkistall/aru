@@ -5,6 +5,9 @@
 ## Console owner gates
 
 - [ ] Play Console 개발자 신원 확인 완료 및 결제 계정 긴급 알림 해결
+- [ ] 계정 유형과 생성일 확인
+- [ ] 2023-11-13 이후 생성된 개인 계정이면 Play Console 모바일 앱에서 실제 Android 기기 접근 검증
+- [ ] 같은 조건의 개인 계정이면 closed test에 12명이 14일 연속 opt-in한 뒤 production access 신청
 - [ ] 실제 개발자/법인명과 공개 지원 이메일 입력
 - [ ] 앱 생성 후 Play App Signing 활성화
 - [ ] Play Console의 **App signing key certificate** SHA-256을 `public/.well-known/assetlinks.json`에 추가
@@ -18,6 +21,7 @@
 - [x] `bundletool validate` 통과
 - [x] release 서명 인증서와 upload fingerprint 일치
 - [x] camera/storage/media/location/microphone/contacts/AD_ID 권한 부재
+- [x] AAB native library 항목 0개로 16 KB page-size 호환성 확인
 - [ ] 새 assetlinks가 반영된 최종 web commit에서 AAB 재생성 및 SHA-256 기록
 
 ## Internal track device matrix
@@ -41,3 +45,10 @@
 - [ ] production rollout은 5% staged release로 시작
 - [ ] crash/ANR, HTTP 5xx, 카메라 실패율을 확인한 뒤 단계 확대
 - [ ] rollback 담당자와 이전 정상 AAB version code 기록
+
+## Current official references
+
+- [Target API level requirements](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en-GB_ALL)
+- [16 KB page-size compatibility](https://developer.android.com/guide/practices/page-sizes)
+- [New personal-account testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465)
+- [New personal-account device verification](https://support.google.com/googleplay/android-developer/answer/14316361)

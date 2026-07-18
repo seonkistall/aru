@@ -163,5 +163,13 @@ export function confidenceBox(retake: boolean): CSSProperties {
   };
 }
 
-export const ghostLink: CSSProperties = { color: "var(--text-muted)", fontSize: 13, marginTop: 8, textDecoration: "underline" };
+export const ghostLink: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "var(--tap-min)",
+  color: "var(--text-muted)",
+  fontSize: 13,
+  marginTop: 8,
+  textDecoration: "underline",
+};
 export const fallbackText: CSSProperties = { color: "var(--ink-soft)", fontSize: 14, textAlign: "center", lineHeight: 1.5 };
