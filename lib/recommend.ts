@@ -203,10 +203,10 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
   const scanOil = reads !== null && reads.oil >= 2;
   const scanRedness = reads !== null && reads.redness >= 2;
   const scanPores = reads !== null && reads.pores >= 1;
-  const saidOil = survey.concerns.includes("유분") || survey.type === "지성" || survey.type === "복합성";
-  const saidRedness = survey.concerns.includes("붉은기") || survey.type === "민감성";
-  const hasOil = scanOil || saidOil;
-  const hasRedness = scanRedness || saidRedness;
+  const saidOil = survey.concerns.includes("유분");
+  const saidRedness = survey.concerns.includes("붉은기");
+  const hasOil = scanOil || saidOil || survey.type === "지성" || survey.type === "복합성";
+  const hasRedness = scanRedness || saidRedness || survey.type === "민감성";
   const hasPores = scanPores || survey.concerns.includes("모공");
   const dry = survey.concerns.includes("건조") || survey.type === "건성";
   const budgetText = budgetLabel(survey.budget);
