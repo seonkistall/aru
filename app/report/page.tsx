@@ -287,12 +287,12 @@ export default function Report() {
           <h2 style={sectionLabel}>{t("추천 기준")}</h2>
           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
             {result.relaxed === "budget" || result.relaxed === "both"
-              ? t("{type} 피부, {concerns} 고민에 맞춰 {category}를 골랐어요.", {
+              ? t("{type} 피부와 {concerns} 고민을 기준으로 {category} 제품을 골랐어요.", {
                   type: t(survey.type),
                   concerns: concernText,
                   category: t(survey.category),
                 })
-              : t("{type} 피부, {concerns} 고민, {budget} 예산에 맞춰 {category}를 골랐어요.", {
+              : t("{type} 피부, {concerns} 고민, {budget} 예산을 기준으로 {category} 제품을 골랐어요.", {
                   type: t(survey.type),
                   concerns: concernText,
                   budget: t(budgetLabel(survey.budget)),

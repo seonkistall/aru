@@ -153,13 +153,13 @@ function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: b
   // don't claim it was "chosen to fit" the budget; say it's the closest instead.
   let reason = budgetRelaxed
     ? scanApplied
-      ? t("오늘 스캔에서 보인 신호와 {head}에 맞춰, {budget} 예산에 가장 가까운 {category}로 골랐어요.", { head, budget: budgetText, category: t(sku.category) })
-      : t("{head}에 맞춰, {budget} 예산에 가장 가까운 {category}로 골랐어요.", { head, budget: budgetText, category: t(sku.category) })
+      ? t("오늘 스캔과 설문 조건을 함께 보고, {budget} 예산에 가장 가까운 {category} 제품을 골랐어요. {head}도 반영했어요.", { head, budget: budgetText, category: t(sku.category) })
+      : t("설문 조건을 보고, {budget} 예산에 가장 가까운 {category} 제품을 골랐어요. {head}도 반영했어요.", { head, budget: budgetText, category: t(sku.category) })
     : scanApplied
-      ? t("오늘 스캔에서 보인 신호와 {head}, {budget} 예산을 함께 보고 고른 {category}예요.", { head, budget: budgetText, category: t(sku.category) })
-      : t("{head}, {budget} 예산을 함께 보고 고른 {category}예요.", { head, budget: budgetText, category: t(sku.category) });
+      ? t("오늘 스캔 신호와 {head}, {budget} 예산을 기준으로 {category} 제품을 골랐어요.", { head, budget: budgetText, category: t(sku.category) })
+      : t("{head}, {budget} 예산을 기준으로 {category} 제품을 골랐어요.", { head, budget: budgetText, category: t(sku.category) });
   if (avoidedClear && survey.avoid.length) reason += ` ${t("요청한 제외 성분 조건도 반영했어요.")}`;
-  if (!efficacyClean(reason).ok) reason = t("{type} 피부와 {budget} 예산에 맞춰 고른 {category}예요.", { type: t(survey.type), budget: budgetText, category: t(sku.category) });
+  if (!efficacyClean(reason).ok) reason = t("{type} 피부와 {budget} 예산을 기준으로 {category} 제품을 골랐어요.", { type: t(survey.type), budget: budgetText, category: t(sku.category) });
   return reason;
 }
 
