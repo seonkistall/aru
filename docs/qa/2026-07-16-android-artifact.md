@@ -39,6 +39,7 @@ both reported:
 - application label `ARU 아루`; launcher label `ARU`
 - launch URL `https://aru-beauty.vercel.app/`
 - web manifest `https://aru-beauty.vercel.app/manifest.webmanifest`
+- native library entries: `0`; this Java/Kotlin-only wrapper follows Android's automatic 16 KB page-size compatibility path
 
 The merged artifact declares only
 `com.seonkistall.aru.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, an AndroidX

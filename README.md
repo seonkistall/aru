@@ -43,6 +43,7 @@ npm run dev
 
 ```bash
 npm test
+npm run test:mobile-ui
 npm run lint
 npm run build
 npm run smoke
@@ -51,7 +52,15 @@ npm audit --omit=dev
 git diff --check
 ```
 
-`npm run smoke`는 lint, Vitest 전체 테스트, Next production build, TypeScript/ML Python compile, 주요 페이지와 인증 경계를 검사합니다. 코드가 통과해도 physical-device, production secret, 이메일 실발송과 Play Console 검증을 대신하지 않습니다.
+`npm run test:mobile-ui`는 Playwright Chromium을 사용해 360×800에서 KO/EN/JA/ZH
+홈, 카메라 권한 거부 fallback, Studio 편집기, 리마인더와 개인정보 경로의
+오버플로·44px 터치 타깃을 검사합니다. 최초 실행 전
+`npx playwright install chromium`으로 고정 브라우저를 설치합니다.
+
+`npm run smoke`는 lint, Vitest 전체 테스트, 위 모바일 실렌더 테스트,
+Next production build, TypeScript/ML Python compile, 주요 페이지와 인증 경계를
+검사합니다. 코드가 통과해도 physical-device, production secret, 이메일 실발송과
+Play Console 검증을 대신하지 않습니다.
 
 카메라 변경은 [docs/mobile-camera-qa.md](docs/mobile-camera-qa.md)의 Android Chrome·iOS Safari 실기기 행을 모두 채워야 합니다. 현재 Galaxy S25 Edge 기본 촬영 흐름의 사용자 확인 증거와 추가 ROI 조건은 [docs/STATUS.md](docs/STATUS.md)에 구분해 기록합니다.
 

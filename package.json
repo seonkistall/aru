@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:mobile-ui": "playwright test --config playwright.mobile.config.ts",
     "smoke": "node scripts/smoke-test.mjs",
     "supabase:check": "node scripts/supabase-check.mjs"
   },
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@bubblewrap/cli": "1.24.1",
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

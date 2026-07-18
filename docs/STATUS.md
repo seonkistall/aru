@@ -53,7 +53,8 @@
 ### 최신 로컬 증거
 
 - 2026-07-18 `npm run smoke` 통과
-- Vitest 52개 파일, 254개 테스트 통과
+- Vitest 52개 파일, 260개 테스트 통과
+- Playwright Chromium 360×800 실렌더 회귀 4개 통과
 - ESLint, Next.js 16.2.9 production build와 TypeScript 통과
 - ML Python script compile 통과
 - `npm audit --omit=dev` production 취약점 0건
@@ -67,6 +68,7 @@
 - `service_role` 트랜잭션 insert 후 rollback과 별도 조회 잔여 0, `gyeol-crop-samples` 비공개 bucket 확인
 - 새 Production 배포에서 `/api/sync` 구성 플래그 3종 true, 비인증 POST 401과 canonical origin 허용 확인
 - 390×844 홈→설문→리포트→케어, 카메라 권한 거부 fallback, 개인정보·해지 화면의 오버플로·콘솔 오류 0 확인
+- 360×800 KO/EN/JA/ZH callout, 카메라 fallback, Studio, 리마인더·개인정보 경로를 Playwright 회귀 게이트로 고정
 - same-origin MediaPipe 모델·JS·WASM 200과 `aru-mediapipe-v1` Service Worker 캐시 확인
 - Vercel Production 배포의 1시간 error-level runtime log 0건 확인
 
@@ -114,6 +116,7 @@ npm run smoke
 - Play App Signing distribution certificate를 Digital Asset Links에 추가하고 재배포
 - Galaxy S25 Edge internal-track TWA에서 back/navigation/orientation/camera/외부 링크 QA
 - Play internal testing과 pre-launch report를 통과하고 Data safety·등급 작업표를 Console에 확정
+- Play 계정 유형·생성일을 확인하고, 2023-11-13 이후 개인 계정이면 모바일 앱 기기 검증과 12명·14일 closed test 후 production access 신청
 
 ### P1 — 연구 운영
 

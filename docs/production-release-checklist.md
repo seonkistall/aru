@@ -4,7 +4,7 @@ Date: 2026-07-18
 
 ## Code gates
 
-- [x] `npm run smoke` passes: 52 test files and 254 tests, lint, production build, ML compile, and route probes.
+- [x] `npm run smoke` passes: 52 Vitest files and 260 tests, 4 Playwright 360×800 rendered-browser regressions, lint, production build, ML compile, and route probes.
 - [x] MediaPipe model size is exactly 3,758,596 bytes and WASM assets exist under `public/vendor/mediapipe/wasm`.
 - [x] No production scan code references jsDelivr or Google-hosted MediaPipe assets.
 - [x] AI validation, scoped consent, camera lifecycle, RLS, and unsubscribe tests pass.
@@ -58,12 +58,14 @@ Date: 2026-07-18
 - [ ] Complete the Play Console developer identity verification and resolve the urgent payment-account alert; app creation is currently disabled.
 - [x] Bubblewrap 1.24.1 is exact-pinned; package `com.seonkistall.aru` targets API 36 with min SDK 23.
 - [x] Signed AAB/APK pass bundletool, package/version, permission, and APK v1/v2 signature checks.
+- [x] AAB contains no native libraries, satisfying the Google Play 16 KB page-size compatibility path for Java/Kotlin-only apps.
 - [x] Upload certificate fingerprint matches the committed TWA manifest and Digital Asset Links.
 - [x] ko-KR/en-US listing copy, Data safety worksheet, content-rating notes, reviewer instructions, release notes, icon, feature graphic, and four real UI screenshots exist.
 - [ ] Back up the upload keystore and environment in an encrypted store before Play enrollment.
 - [ ] Add the Play App Signing distribution certificate fingerprint and redeploy Digital Asset Links.
 - [ ] Add the actual developer/legal name and public support email to the privacy policy and Play Console.
 - [ ] Pass Galaxy S25 Edge internal-track TWA QA and the Play pre-launch report.
+- [ ] Confirm the Play account type and creation date; if it is a personal account created after 2023-11-13, complete Android-device verification and a 12-tester/14-day closed test before requesting production access.
 
 Evidence: `docs/qa/2026-07-16-android-artifact.md` and `docs/play-store/internal-test-checklist.md`.
 

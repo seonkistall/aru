@@ -202,6 +202,7 @@ async function smokeHttp() {
 async function main() {
   await run(npmCmd, ["run", "lint"]);
   await run(npmCmd, ["test"]);
+  await run(npmCmd, ["run", "test:mobile-ui"]);
   await run(npmCmd, ["run", "build"]);
   await run(pythonCmd, ["-m", "py_compile", ...mlFiles]);
   await smokeHttp();

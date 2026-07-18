@@ -127,7 +127,7 @@ export default function Studio() {
         {reads.map((read, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
             <input aria-label={t("항목 {n} 이름", { n: i + 1 })} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, width: 96 }} />
-            <input aria-label={t("항목 {n} 값", { n: i + 1 })} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+            <input aria-label={t("항목 {n} 값", { n: i + 1 })} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
             <button onClick={() => setRead(i, { calm: !read.calm })} aria-pressed={read.calm} style={toggleBtn(read.calm)}>{read.calm ? t("차분") : t("강조")}</button>
           </div>
         ))}
@@ -153,12 +153,12 @@ export default function Studio() {
 
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 26, color: "var(--ink)", margin: "6px 0 4px" };
-const presetBtn: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", background: "var(--surface-tint)", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer" };
+const presetBtn: React.CSSProperties = { minHeight: "var(--tap-min)", fontSize: 12, color: "var(--text-muted)", background: "var(--surface-tint)", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 };
 const textareaStyle: React.CSSProperties = { width: "100%", fontFamily: "var(--font-ko-serif)", fontSize: 18, color: "var(--ink)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 13px", marginBottom: 18, resize: "vertical" };
-const inputStyle: React.CSSProperties = { fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" };
+const inputStyle: React.CSSProperties = { minHeight: "var(--tap-min)", fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" };
 const downloadBtn: React.CSSProperties = { width: "100%", marginTop: 18, background: "var(--plum)", color: "var(--on-plum)", border: "none", borderRadius: 8, padding: "15px 24px", fontSize: 15, fontWeight: 700, cursor: "pointer" };
 
 function toggleBtn(calm?: boolean): React.CSSProperties {
-  return { fontSize: 11, padding: "9px 10px", borderRadius: 8, border: "1px solid var(--line)", background: calm ? "var(--surface-tint)" : "transparent", color: "var(--text-muted)", cursor: "pointer", whiteSpace: "nowrap" };
+  return { minWidth: "var(--tap-min)", minHeight: "var(--tap-min)", fontSize: 11, padding: "9px 10px", borderRadius: 8, border: "1px solid var(--line)", background: calm ? "var(--surface-tint)" : "transparent", color: "var(--text-muted)", cursor: "pointer", whiteSpace: "nowrap" };
 }

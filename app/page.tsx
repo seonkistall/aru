@@ -32,9 +32,10 @@ export default function Home() {
           {/* Anchored to the character's left edge and growing leftward, so
               longer EN/JA/ZH strings never overlap the character. */}
           <span
+            data-testid="hero-callout"
             style={{
               position: "absolute",
-              right: "calc(100% - 14px)",
+              right: "calc(100% - 28px)",
               top: 28,
               fontFamily: "var(--font-display)",
               fontSize: 21,

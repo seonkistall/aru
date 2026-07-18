@@ -392,6 +392,7 @@ export default function Report() {
             </button>
           )}
         </div>
+        <Link href="/privacy" style={privacyLink}>{t("개인정보와 동의")}</Link>
       </div>
 
     </main>
@@ -514,6 +515,7 @@ const trustChip: React.CSSProperties = { border: "1px solid var(--line)", border
 const reportCommerceAction: React.CSSProperties = { display: "flex", alignItems: "stretch", gap: 10, marginTop: 18, padding: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 };
 const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
+const privacyLink: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 12, color: "var(--text-muted)", fontSize: 13, textDecoration: "underline" };
 
 const stepTabs: React.CSSProperties = { display: "flex", gap: 6, marginTop: 12, marginBottom: 4 };
 function stepTab(active: boolean, done: boolean): React.CSSProperties {

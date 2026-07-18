@@ -1,0 +1,86 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+const languages = ["ko", "en", "ja", "zh"] as const;
+const survey = {
+  type: "복합성",
+  concerns: ["모공", "유분"],
+  budget: 25000,
+  avoid: [],
+  category: "토너",
+};
+
+async function expectInsideViewport(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+}
+
+async function expectTapHeight(locator: Locator) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+}
+
+test("localized home callout stays inside a 360px viewport", async ({ browser }) => {
+  for (const lang of languages) {
+    const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
+    await context.addInitScript((nextLang) => localStorage.setItem("aru.lang", nextLang), lang);
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", lang === "zh" ? "zh-CN" : lang);
+    await expectInsideViewport(page, page.getByTestId("hero-callout"));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+    await context.close();
+  }
+});
+
+test("camera fallback remains an accessible touch target", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("aru.lang", "ko");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: () => Promise.reject(new DOMException("Denied for test", "NotAllowedError")),
+      },
+    });
+  });
+  await page.goto("/scan");
+  const start = page.getByRole("button", { name: "카메라 시작" });
+  await expect(start).toBeVisible();
+  await start.click();
+  const fallback = page.getByRole("link", { name: "사진 없이 추천받기" });
+  await expect(fallback).toBeVisible();
+  await expectTapHeight(fallback);
+});
+
+test("studio editor does not clip controls at 360px", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("aru.lang", "ko"));
+  await page.goto("/studio");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+
+  const controls = page.locator("main button, main input, main textarea");
+  for (let index = 0; index < await controls.count(); index += 1) {
+    const control = controls.nth(index);
+    await expectInsideViewport(page, control);
+    await expectTapHeight(control);
+  }
+});
+
+test("routine reminder and privacy path are usable in the TWA viewport", async ({ page }) => {
+  await page.addInitScript((value) => {
+    localStorage.setItem("aru.lang", "ko");
+    sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
+  }, survey);
+  await page.goto("/report");
+  await page.getByRole("tab", { name: /오늘의 루틴/ }).click();
+
+  await expectTapHeight(page.getByRole("textbox", { name: "이메일 주소" }));
+  await expectTapHeight(page.getByRole("button", { name: "신청" }));
+  await expectTapHeight(page.getByText("리마인드 발송을 위해 이메일 저장에 동의해요").locator(".."));
+
+  const privacy = page.getByRole("link", { name: "개인정보와 동의" });
+  await expect(privacy).toHaveAttribute("href", "/privacy");
+  await privacy.click();
+  await expect(page).toHaveURL(/\/privacy$/);
+});
