@@ -1,6 +1,6 @@
 # ARU 출시 준비 상태
 
-최종 갱신: 2026-07-18
+최종 갱신: 2026-07-19
 
 제품 계약: [PRD.md](PRD.md)
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | 소비자 Web 코드 | production 배포·canary 완료 | `npm run smoke`와 10분 production canary 통과; CSP enforcement 후 재검증 포함 |
 | 보안·데이터 경계 | CSP·Firewall·DB 권한과 runtime 구성 검증 완료 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel modern secret의 새 배포 `configured: true` 확인 |
-| 모바일 UI/UX | production canary와 재방문 회귀 수정 완료 | 390×844 전체 소비자 경로 오버플로·콘솔 오류 0; 재방문 홈 링크 31.5px 문제를 44px로 수정하고 계약 테스트 추가 |
+| 모바일 UI/UX | production canary와 렌더링 회귀 완료 | 360×800 KO/EN/JA/ZH callout, 카메라 fallback, Studio, 리마인더·개인정보 경로를 실제 Chromium으로 검증; 44px 미만·offscreen 0 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
 | Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 AAB/APK와 upload association 검증; Play distribution certificate·내부 트랙 실기기 QA 필요 |
@@ -69,6 +69,7 @@
 - 새 Production 배포에서 `/api/sync` 구성 플래그 3종 true, 비인증 POST 401과 canonical origin 허용 확인
 - 390×844 홈→설문→리포트→케어, 카메라 권한 거부 fallback, 개인정보·해지 화면의 오버플로·콘솔 오류 0 확인
 - 360×800 KO/EN/JA/ZH callout, 카메라 fallback, Studio, 리마인더·개인정보 경로를 Playwright 회귀 게이트로 고정
+- merge `1e884e6`의 Production 배포 `dpl_3YTFaCFcvjEyWHTWXXmC8PDDPsUr`에서 같은 360px 경로 재검증; console error·runtime error log 0
 - same-origin MediaPipe 모델·JS·WASM 200과 `aru-mediapipe-v1` Service Worker 캐시 확인
 - Vercel Production 배포의 1시간 error-level runtime log 0건 확인
 
@@ -84,6 +85,7 @@
 
 ```bash
 npm test
+npm run test:mobile-ui
 npm run lint
 npm run build
 npm run smoke
@@ -99,7 +101,7 @@ npm run smoke
 - Supabase modern secret key의 Vercel Production 등록과 새 배포 runtime 구성 확인 완료; `/api/sync` 인증 dry-run과 bucket 접근 canary 수행
 - Vercel allowed origins와 새 배포 runtime 확인 완료; AI/Resend 비용 경보 확인
 - 실제 Resend 수신, 해지 링크, 철회 후 cron 제외와 만료 cleanup 확인
-- production 페이지·API·MediaPipe asset canary 완료; [증거](qa/2026-07-18-post-deploy-canary.md) 유지
+- production 페이지·API·MediaPipe asset canary 완료; [최신 증거](qa/2026-07-19-release-completion-canary.md) 유지
 
 ### P0 — Physical-device camera
 
