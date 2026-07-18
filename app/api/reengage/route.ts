@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ sent: false, reason: "unauthorized" }, { status: 401 });
   }
-  let body: { email: string; week: 2 | 4 };
+  let body: { email: string; week: 2 | 4; locale: "ko" | "en" | "ja" | "zh" };
   try {
     const parsed = parseManualReengageInput(await readBoundedJson(req, 1024));
     if (!parsed.ok) return NextResponse.json({ sent: false, reason: parsed.reason }, { status: 400 });
@@ -41,5 +41,6 @@ export async function POST(req: Request) {
     link: base + "/checkin",
     unsubscribeLink: `${base}/unsubscribe?token=${encodeURIComponent(token)}`,
     idempotencyKey: reengageIdempotencyKey(body.email, body.week),
+    locale: body.locale,
   }));
 }

@@ -13,7 +13,7 @@ describe("re-engagement input validation", () => {
   it("normalizes a valid subscription", () => {
     expect(parseSubscribeInput({ email: "  Person@Example.COM ", consent: true, context: " serum " })).toEqual({
       ok: true,
-      value: { email: "person@example.com", consent: true, context: "serum" },
+      value: { email: "person@example.com", consent: true, context: "serum", locale: "ko" },
     });
   });
 
@@ -32,7 +32,7 @@ describe("re-engagement input validation", () => {
   it("accepts only a valid email and exact reminder week for manual sends", () => {
     expect(parseManualReengageInput({ email: " A@Example.com ", week: 4 })).toEqual({
       ok: true,
-      value: { email: "a@example.com", week: 4 },
+      value: { email: "a@example.com", week: 4, locale: "ko" },
     });
     expect(parseManualReengageInput({ email: "a@example.com", week: 3 })).toEqual({ ok: false, reason: "invalid week" });
     expect(parseManualReengageInput({ email: "a@example.com", week: 2, link: "https://evil.example" })).toEqual({ ok: false, reason: "invalid body" });

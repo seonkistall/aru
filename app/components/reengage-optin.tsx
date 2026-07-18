@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { t } from "@/lib/i18n/core";
+import { getLang, t } from "@/lib/i18n/core";
 
 // Opt-in for the 2/4-week routine reminder (the daily-routine re-entry hook).
 // Explicit consent, minimal PII, no dark patterns. Sending is owner-gated
@@ -19,7 +19,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
       const res = await fetch("/api/reengage/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), consent: true, context }),
+        body: JSON.stringify({ email: email.trim(), consent: true, context, locale: getLang() }),
       });
       setState(res.ok ? "done" : "error");
     } catch {

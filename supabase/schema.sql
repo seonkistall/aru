@@ -171,6 +171,7 @@ on conflict (id) do update set public = false;
 create table if not exists reengage_contacts (
   email text primary key,
   context text,
+  locale text not null default 'ko' check (locale in ('ko', 'en', 'ja', 'zh')),
   consent boolean not null default true,
   created_at timestamptz not null default now(),
   week2_sent_at timestamptz,
@@ -180,6 +181,7 @@ alter table reengage_contacts add column if not exists consent_version text;
 alter table reengage_contacts add column if not exists consented_at timestamptz;
 alter table reengage_contacts add column if not exists revoked_at timestamptz;
 alter table reengage_contacts add column if not exists retention_until timestamptz;
+alter table reengage_contacts add column if not exists locale text not null default 'ko' check (locale in ('ko', 'en', 'ja', 'zh'));
 update reengage_contacts
 set consented_at = created_at
 where consented_at is null;
