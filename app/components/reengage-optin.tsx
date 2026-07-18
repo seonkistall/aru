@@ -41,9 +41,16 @@ export function ReengageOptIn({ context }: { context?: string }) {
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 0 10px" }}>
         {t("루틴이 잘 맞았는지 2·4주 뒤 이메일로 딱 한 번씩만 알려드려요. 언제든 그만둘 수 있어요.")}
       </p>
-      <div style={{ display: "flex", gap: 8 }}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+        style={{ display: "flex", gap: 8 }}
+      >
         <input
           type="email"
+          required
           inputMode="email"
           autoComplete="email"
           aria-label={t("이메일 주소")}
@@ -53,13 +60,13 @@ export function ReengageOptIn({ context }: { context?: string }) {
           style={{ flex: 1, minWidth: 0, minHeight: "var(--tap-min)", fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" }}
         />
         <button
-          onClick={submit}
+          type="submit"
           disabled={!consent || !email.trim() || state === "sending"}
           style={{ flexShrink: 0, minHeight: "var(--tap-min)", background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !consent || !email.trim() || state === "sending" ? 0.5 : 1 }}
         >
           {state === "sending" ? "…" : t("신청")}
         </button>
-      </div>
+      </form>
       <label style={{ display: "flex", alignItems: "center", minHeight: "var(--tap-min)", gap: 8, marginTop: 9, fontSize: 12.5, color: "var(--text-muted)", cursor: "pointer" }}>
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ accentColor: "var(--ink)", width: 15, height: 15 }} />
         <span>{t("리마인드 발송을 위해 이메일 저장에 동의해요")}</span>
