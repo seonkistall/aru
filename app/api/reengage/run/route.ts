@@ -50,7 +50,7 @@ export async function GET(request: Request) {
       .eq("consent", true)
       .is("revoked_at", null)
       .is(column, null)
-      .lte("created_at", new Date(now - week * WEEK_MS).toISOString())
+      .lte("consented_at", new Date(now - week * WEEK_MS).toISOString())
       .limit(BATCH);
     if (error) {
       failed += 1;

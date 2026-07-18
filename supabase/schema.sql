@@ -180,6 +180,11 @@ alter table reengage_contacts add column if not exists consent_version text;
 alter table reengage_contacts add column if not exists consented_at timestamptz;
 alter table reengage_contacts add column if not exists revoked_at timestamptz;
 alter table reengage_contacts add column if not exists retention_until timestamptz;
+update reengage_contacts
+set consented_at = created_at
+where consented_at is null;
+alter table reengage_contacts alter column consented_at set default now();
+alter table reengage_contacts alter column consented_at set not null;
 
 -- Anonymous ARU use is local-first. Browser roles get no table access; the
 -- server-only service role used by sync and re-engagement bypasses RLS.
