@@ -15,6 +15,10 @@ physical iPhone Safari rows remain `PENDING DEVICE VERIFICATION`.
 - Branch: `codex/ios-safari-camera-lifecycle`
 - Code commit: `3149a5d`
 - Verification/docs commit: `6c2ad27`
+- Pull request: [#60](https://github.com/seonkistall/aru/pull/60)
+- Production merge: `ece4617`
+- Vercel deployment: `dpl_EZK8pi9EHAC75bZ2YwFKCBRZtLY9` (`READY`)
+- Production URL: `https://aru-beauty.vercel.app`
 - Framework: Next.js 16.2.9 / React 19.2.4
 - Playwright: 1.61.1
 - Safari engine proxy: WebKit 26.5, build `webkit-2311`
@@ -73,9 +77,31 @@ No threshold, capture timing, consent, crop, mirroring, or model behavior change
 | Full `npm run smoke` | PASS |
 | ML Python compile | PASS |
 | Route/auth smoke | PASS |
+| Production `/scan` and MediaPipe model | PASS — HTTP 200 |
+| Production Chromium browser canary | PASS — content rendered, console/page errors 0, 402px overflow 0 |
+| Production WebKit iPhone profile | PASS — 5 cases in 13.2s |
 
 MediaPipe emitted its expected native XNNPACK/OpenGL diagnostic warnings while
 the model initialized; no application console error or page exception occurred.
+
+## Production evidence
+
+PR #60 was squash-merged to `main` as `ece4617`. Vercel deployment
+`dpl_EZK8pi9EHAC75bZ2YwFKCBRZtLY9` reached `READY` and serves the public
+`aru-beauty.vercel.app` alias.
+
+- `/scan` returned 200 with `Permissions-Policy: camera=(self)`, CSP, HSTS,
+  `nosniff`, and same-origin frame protection.
+- `/vendor/mediapipe/face_landmarker.task` returned 200 with the expected
+  3,758,596-byte same-origin model.
+- The 402 × 681 production browser canary rendered the expected camera CTA,
+  reported zero console/page errors, and measured `scrollWidth=clientWidth=402`.
+- The same 5-case WebKit iPhone lifecycle suite was then run against the public
+  Production URL and passed in 13.2 seconds.
+- Production screenshot:
+  `.gstack/qa-reports/screenshots/2026-07-20-pr60-production-scan.png`.
+
+The deployment result does not change the physical-device gate below.
 
 ## Screenshot evidence
 
