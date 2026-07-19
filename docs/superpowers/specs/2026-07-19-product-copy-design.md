@@ -270,12 +270,16 @@ The Home anchors establish the voice for each dictionary:
 | Locale | Annotation | Headline | Primary CTA | Secondary CTA |
 |---|---|---|---|---|
 | EN | `Find skincare that fits you,` / `in just 30 seconds.` | `What skincare suits` / `your skin today?` | `Start my skin check` | `Start with the questionnaire` |
-| JA | `自分に合うコスメ探しは、` / `30秒から。` | `今日の肌には、` / `どんなスキンケアが合いそうですか？` | `肌をチェックする` | `カメラを使わず、質問から始める` |
-| ZH | `找到适合自己的护肤品，` / `30秒就够了。` | `今天的肌肤，` / `适合怎样的护肤方案？` | `看看我的肌肤状态` | `不用相机，从问卷开始` |
+| JA | `自分に合うコスメ探しは、` / `30秒から。` | `今日の肌には、` / `どんなケアが合いそうですか？` | `肌をチェックする` | `カメラを使わず、質問から始める` |
+| ZH | `找到适合自己的护肤品，` / `30秒就够了。` | `今天的肌肤，` / `适合怎么护理？` | `看看我的肌肤状态` | `不用相机，从问卷开始` |
 
 The remainder of each locale follows these anchors. Error messages preserve
 the local convention for polite recovery instructions. Privacy and medical
 copy stays calm and direct rather than becoming legalistic or playful.
+
+The compact header tagline is localized independently as
+`Beauty, part of every day`, `きれいを、毎日の習慣に`, and
+`让美，成为每天的习惯`.
 
 Dynamic interpolation must keep variables away from locale-sensitive
 particles and articles. Product and ingredient proper names continue to use

@@ -53,8 +53,13 @@ Locale anchors:
 |---|---|---|---|
 | KO | `오늘의 내 피부, 어떤 스킨케어가 좋을까요?` | `내 피부 살펴보기` | conversational honorific product voice |
 | EN | `What skincare suits your skin today?` | `Start my skin check` | short, warm, direct sentences |
-| JA | `今日の肌には、どんなスキンケアが合いそうですか？` | `肌をチェックする` | natural polite service language and Japanese order |
-| ZH | `今天的肌肤，适合怎样的护肤方案？` | `看看我的肌肤状态` | concise, courteous mobile-service wording |
+| JA | `今日の肌には、どんなケアが合いそうですか？` | `肌をチェックする` | natural polite service language and Japanese order |
+| ZH | `今天的肌肤，适合怎么护理？` | `看看我的肌肤状态` | concise, courteous mobile-service wording |
+
+The compact header tagline is also independently phrased as
+`Beauty, part of every day`, `きれいを、毎日の習慣に`, and
+`让美，成为每天的习惯` instead of carrying Korean noun order into the other
+locales.
 
 ## Test-driven fixes
 
@@ -65,6 +70,9 @@ During the text-fit RED run, three concrete defects were reproduced and fixed:
 2. the shared progress steps widened the document at 320 px;
 3. a multiline recommendation-basis key was missing in EN/JA/ZH and exposed
    Korean text.
+4. Production visual review found the Japanese `か？` and Chinese `案？`
+   endings isolated on their own 320 px line; shorter, natural locale
+   questions removed those typographic orphans.
 
 The smallest fixes let Report tabs wrap naturally, hide only decorative flow
 arrows below 360 px while retaining labels and 44 px targets, and add the
