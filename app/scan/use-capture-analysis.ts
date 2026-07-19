@@ -32,7 +32,7 @@ import { CAPTURE_PROFILES, type CaptureMode, type Landmark, type Quality } from 
 import type { VideoFaceLandmarker } from "./use-landmarker";
 
 type RefValue<T> = { current: T };
-type CapturePhase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
+type CapturePhase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported" | "interrupted";
 type Frame = {
   ctx: CanvasRenderingContext2D;
   w: number;
@@ -87,10 +87,18 @@ export function useCaptureAnalysis({
   setReads,
 }: UseCaptureAnalysisOptions) {
   const captureLockRef = useRef(false);
+  const captureRunRef = useRef(0);
+
+  const cancelCapture = useCallback(() => {
+    captureRunRef.current += 1;
+  }, []);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
     if (!video || captureLockRef.current || guideState !== "ready") return;
+    const runId = captureRunRef.current + 1;
+    captureRunRef.current = runId;
+    const cancelled = () => captureRunRef.current !== runId;
     captureLockRef.current = true;
     resetAutoCaptureProgress();
     setPhase("analyzing");
@@ -103,13 +111,15 @@ export function useCaptureAnalysis({
     const advanceStep = async (step: number) => {
       const waitMs = 825 - (performance.now() - stepStartedAt);
       if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      if (cancelled()) return false;
       setAnalysisStep(step);
       stepStartedAt = performance.now();
+      return true;
     };
 
     try {
       const landmarker = await ensureLandmarker();
-      if (!landmarker) return;
+      if (cancelled() || !landmarker) return;
       const w = video.videoWidth || 720;
       const h = video.videoHeight || 960;
       const canvas = document.createElement("canvas");
@@ -179,6 +189,7 @@ export function useCaptureAnalysis({
       for (let i = 1; i < 3; i += 1) {
         const frameStartedAt = performance.now();
         await new Promise((resolve) => setTimeout(resolve, 140));
+        if (cancelled()) return;
         ctx.drawImage(video, 0, 0, w, h);
         const extra = landmarker.detectForVideo(canvas, performance.now()).faceLandmarks?.[0];
         if (extra?.length) {
@@ -199,15 +210,16 @@ export function useCaptureAnalysis({
         }
       }
 
-      await advanceStep(1);
+      if (!(await advanceStep(1))) return;
       const mlPrediction = modelCrop ? await classifyVisibleAttributes(modelCrop) : null;
+      if (cancelled()) return;
       const out = analyzeSkinBurst(burstFrames, mlPrediction);
       if (!out) {
         setPhase("noface");
         return;
       }
-      await advanceStep(2);
-      await advanceStep(3);
+      if (!(await advanceStep(2))) return;
+      if (!(await advanceStep(3))) return;
 
       let final = out;
       if (aiAllowed && aiCrop) {
@@ -229,6 +241,7 @@ export function useCaptureAnalysis({
         } finally {
           window.clearTimeout(timeout);
         }
+        if (cancelled()) return;
       }
 
       setCaptureMeta({
@@ -258,7 +271,7 @@ export function useCaptureAnalysis({
         finalPrediction: predictionSnapshot(final),
       });
 
-      await advanceStep(4);
+      if (!(await advanceStep(4))) return;
       try {
         sessionStorage.setItem(
           DEVICE_DATA_KEY.scan,
@@ -287,6 +300,7 @@ export function useCaptureAnalysis({
       stopCamera();
       setPhase("result");
     } catch (error) {
+      if (cancelled()) return;
       console.error(error);
       holdAutoCapture();
       setErr(t("분석 중 문제가 생겼어요. 다시 시도해 주세요."));
@@ -320,9 +334,10 @@ export function useCaptureAnalysis({
   useEffect(() => {
     captureRef.current = capture;
     return () => {
+      cancelCapture();
       if (captureRef.current === capture) captureRef.current = null;
     };
-  }, [capture, captureRef]);
+  }, [cancelCapture, capture, captureRef]);
 
-  return capture;
+  return { capture, cancelCapture };
 }

@@ -1,6 +1,9 @@
 // Japanese dictionary, keyed by the exact Korean source string (see lib/i18n/core.ts).
 // Brand names stay in their official Latin-script forms common in cross-border K-beauty.
 export const JA: Record<string, string> = {
+  "카메라가 잠시 멈췄어요.": "カメラが一時停止しました。",
+  "계속하려면 카메라를 다시 켜주세요.": "続けるには、もう一度カメラをオンにしてください。",
+  "카메라 다시 켜기": "カメラをもう一度オンにする",
   "나에게 맞는 화장품 찾기,": "自分に合うコスメ探しは、",
   "30초면 충분해요.": "30秒から。",
   "오늘의 내 피부,": "今日の肌には、",

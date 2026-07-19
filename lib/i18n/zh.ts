@@ -1,6 +1,9 @@
 // Simplified Chinese dictionary, keyed by the exact Korean source string (see lib/i18n/core.ts).
 // Brand names stay in their official Latin-script forms common in cross-border K-beauty.
 export const ZH: Record<string, string> = {
+  "카메라가 잠시 멈췄어요.": "摄像头暂时停用了。",
+  "계속하려면 카메라를 다시 켜주세요.": "想继续的话，请重新打开摄像头。",
+  "카메라 다시 켜기": "重新打开摄像头",
   "나에게 맞는 화장품 찾기,": "找到适合自己的护肤品，",
   "30초면 충분해요.": "30秒就够了。",
   "오늘의 내 피부,": "今天的肌肤，",
