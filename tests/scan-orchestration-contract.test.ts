@@ -41,4 +41,21 @@ describe("scan orchestration seams", () => {
     expect(page).toContain("useCaptureAnalysis");
     expect(page).not.toContain("async function capture()");
   });
+
+  it("cancels interrupted Safari capture sessions before offering an explicit restart", () => {
+    const hook = readFileSync(resolve(root, "app/scan/use-capture-analysis.ts"), "utf8");
+    const page = readFileSync(resolve(root, "app/scan/page.tsx"), "utf8");
+
+    expect(hook).toContain("cancelCapture");
+    expect(hook).toContain("return { capture, cancelCapture }");
+    expect(hook).toContain("useEffect(() => () => cancelCapture(), [cancelCapture]);");
+    expect(page).toContain("watchCameraStream");
+    expect(page).toContain("cancelCapture();");
+    expect(page).toContain('"interrupted"');
+    expect(page).toContain("visibilitychange");
+    expect(page).toContain("pagehide");
+    expect(page).toContain("autoPlay");
+    expect(page).toContain("playsInline");
+    expect(page).toContain("muted");
+  });
 });

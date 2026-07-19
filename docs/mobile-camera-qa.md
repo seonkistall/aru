@@ -3,7 +3,7 @@
 Use this checklist before each pilot round. Test on real devices, not only desktop
 responsive mode.
 
-## Recorded evidence — 2026-07-16
+## Recorded evidence
 
 ### Owner-reported Galaxy baseline
 
@@ -26,6 +26,23 @@ responsive mode.
 - Full timings, defects and fixes are recorded in
   `docs/qa/2026-07-16-web-performance.md`.
 
+### Automated iPhone Safari lifecycle evidence — 2026-07-20
+
+- Playwright 1.61.1 WebKit 26.5 (`webkit-2311`) ran with the iPhone 17 Pro
+  device profile.
+- KO/EN/JA/ZH all passed inline, muted, autoplay, background interruption,
+  explicit restart, no horizontal overflow, 44px restart target, and separated
+  recovery actions.
+- A focused lifecycle case passed video-track `mute`, video-track `ended`, and
+  `pagehide`, including three fresh camera starts with no automatic foreground
+  reacquisition.
+- The full local gate passed 58 Vitest files / 290 tests, 41 Chromium mobile
+  cases, 5 WebKit iPhone cases, production build, ML compile, and route/auth
+  smoke.
+- This is engine/profile evidence only. It does not reproduce an iPhone lens,
+  the native iOS permission sheet, device rotation, heat, or memory pressure.
+  Full evidence is in `docs/qa/2026-07-20-ios-safari-camera.md`.
+
 ### Required Galaxy post-deploy run
 
 Record Chrome version and `/scan?debug=1` output, then verify the skin-region
@@ -35,14 +52,14 @@ replace this run with desktop emulation or the synthetic-camera evidence above.
 
 ## Devices
 
-- iPhone Safari: latest iOS, front camera permission flow.
+- iPhone Safari: current and previous supported iOS major, front camera permission flow.
 - Android Chrome: recent Samsung or Pixel class device, front camera permission flow.
 - Optional: low-end Android device for camera latency and memory checks.
 
 ## Entry flow
 
 - Open `/scan` from a fresh browser session.
-- Tap `카메라 시작`.
+- Tap `카메라로 살펴보기`.
 - Confirm that the camera permission prompt appears only when the user starts the scan.
 - Deny permission once and confirm the fallback route to `/survey` works.
 - Allow permission and confirm the front camera opens.
@@ -137,6 +154,9 @@ replace this run with desktop emulation or the synthetic-camera evidence above.
 - Test on HTTPS or localhost; real mobile browsers block camera APIs on insecure origins.
 - On iPhone Safari, test first permission grant, permission denial, page reload,
   tab background/foreground, and Settings reset.
+- After background/foreground, Safari capture pause, or a restored page,
+  confirm the stale stream is released and `카메라 다시 켜기` starts a fresh
+  preview only after the user taps it.
 - On Android Chrome, test first permission grant, permission denial, camera
   already in use, and browser site-settings reset.
 - Record whether `facingMode: user` selected the expected front camera.
@@ -181,8 +201,8 @@ Automated camera lifecycle tests do not replace real-device evidence. Do not mar
 
 | Device class | Required browser | Status | Evidence |
 |---|---|---|---|
-| iPhone current | Safari | PENDING DEVICE VERIFICATION | Device, iOS, video/track/crop sizes, capture result |
-| iPhone previous major | Safari | PENDING DEVICE VERIFICATION | Device, iOS, video/track/crop sizes, capture result |
+| iPhone current | Safari | PENDING DEVICE VERIFICATION | WebKit 26.5 lifecycle automation PASS; still needs device, iOS/Safari, permission UI, video/track/crop sizes, lens capture result |
+| iPhone previous major | Safari | PENDING DEVICE VERIFICATION | WebKit 26.5 lifecycle automation PASS; still needs previous-major physical Safari permission, rotation, background/resume and capture result |
 | Samsung Galaxy current | Chrome | BASELINE PASS — ROI RETEST REQUIRED | Galaxy S25 Edge; Android 16; One UI 8.5; permission, front camera, mirroring, prior quality gate, capture, and retake passed on 2026-07-16. New skin-ROI gate still requires post-deploy physical verification. |
 | Low/mid Android | Chrome | PENDING DEVICE VERIFICATION | Device, Android, gate latency, capture result |
 | Desktop webcam | Chrome or Edge | PENDING DEVICE VERIFICATION | Camera, OS/browser, fallback/capture result |

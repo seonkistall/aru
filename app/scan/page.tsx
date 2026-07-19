@@ -14,7 +14,7 @@ import type { LandmarkerWorker } from "./landmarker-client";
 import { useLandmarker } from "./use-landmarker";
 import { useQualityLoop } from "./use-quality-loop";
 import { useCaptureAnalysis } from "./use-capture-analysis";
-import { openCamera, stopMediaStream } from "./camera-stream";
+import { openCamera, stopMediaStream, watchCameraStream } from "./camera-stream";
 import {
   scanCaptureButtonLabel,
   scanCaptureReady,
@@ -46,13 +46,14 @@ import {
   videoStyle,
 } from "./scan-styles";
 
-type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported";
+type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "unsupported" | "interrupted";
 
 const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
 export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const phaseRef = useRef<Phase>("init");
   const disposedRef = useRef(false);
   const captureRef = useRef<(() => Promise<void>) | null>(null);
   const workerRef = useRef<LandmarkerWorker | null>(null);
@@ -73,6 +74,9 @@ export default function Scan() {
   const [captureMeta, setCaptureMeta] = useState<SampleMeta | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [infoOpen, setInfoOpen] = useState(false);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
   const {
     delegate: landmarkerDelegate,
     guideState,
@@ -183,12 +187,13 @@ export default function Scan() {
   }, [resetQualityLoop]);
 
   const stopCamera = useCallback(() => {
+    if (videoRef.current) videoRef.current.srcObject = null;
     stopMediaStream(streamRef.current);
     streamRef.current = null;
     stopQualityLoop();
   }, [stopQualityLoop]);
 
-  const capture = useCaptureAnalysis({
+  const { capture, cancelCapture } = useCaptureAnalysis({
     videoRef,
     captureRef,
     cropSizeRef,
@@ -212,9 +217,36 @@ export default function Scan() {
     setReads,
   });
 
+  const interruptCamera = useCallback(() => {
+    if (phaseRef.current !== "ready" && phaseRef.current !== "analyzing") return;
+    cancelCapture();
+    stopCamera();
+    setErr("");
+    setPhase("interrupted");
+  }, [cancelCapture, stopCamera]);
+
   function retryGuide() {
     reloadLandmarker();
   }
+
+  useEffect(() => {
+    const stream = streamRef.current;
+    if (!stream || (phase !== "ready" && phase !== "analyzing")) return;
+    return watchCameraStream(stream, interruptCamera);
+  }, [interruptCamera, phase]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) interruptCamera();
+    };
+    const handlePageHide = () => interruptCamera();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [interruptCamera]);
 
   useEffect(() => {
     disposedRef.current = false;
@@ -293,6 +325,7 @@ export default function Scan() {
           <div style={cameraFrame}>
             <video
               ref={videoRef}
+              autoPlay
               playsInline
               muted
               onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
@@ -363,6 +396,18 @@ export default function Scan() {
                 </p>
                 <button onClick={() => void startCamera()} style={primaryBtn}>{t("다시 시도")}</button>
                 <a href="/survey" style={ghostLink}>{t("카메라 없이 설문으로 시작하기")}</a>
+              </Center>
+            )}
+            {phase === "interrupted" && (
+              <Center>
+                <div style={{ maxWidth: 300, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+                  <p style={{ ...fallbackText, color: "var(--ink)", fontWeight: 700, marginBottom: 6 }}>
+                    {t("카메라가 잠시 멈췄어요.")}
+                  </p>
+                  <p style={{ ...fallbackText, marginBottom: 12 }}>{t("계속하려면 카메라를 다시 켜주세요.")}</p>
+                  <button onClick={() => void startCamera()} style={primaryBtn}>{t("카메라 다시 켜기")}</button>
+                  <a href="/survey" style={ghostLink}>{t("카메라 없이 설문으로 시작하기")}</a>
+                </div>
               </Center>
             )}
             {phase === "noface" && (

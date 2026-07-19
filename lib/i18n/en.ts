@@ -1,6 +1,9 @@
 // English dictionary, keyed by the exact Korean source string (see lib/i18n/core.ts).
 // Product/brand names use official romanizations where they exist.
 export const EN: Record<string, string> = {
+  "카메라가 잠시 멈췄어요.": "The camera paused for a moment.",
+  "계속하려면 카메라를 다시 켜주세요.": "Turn it back on when you're ready to continue.",
+  "카메라 다시 켜기": "Turn camera back on",
   "나에게 맞는 화장품 찾기,": "Find skincare that fits you,",
   "30초면 충분해요.": "in just 30 seconds.",
   "오늘의 내 피부,": "What skincare suits",
