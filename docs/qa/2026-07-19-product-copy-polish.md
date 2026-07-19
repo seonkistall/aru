@@ -7,7 +7,7 @@ Baseline: `origin/main` at `50ed8dca96ce405567208c505a46e90e0fc6b1ba`
 Release PR: [#57](https://github.com/seonkistall/aru/pull/57)
 
 Production visual-polish follow-up:
-[#58](https://github.com/seonkistall/aru/pull/58)
+[#59](https://github.com/seonkistall/aru/pull/59)
 
 This ledger records the pre-merge release gate. The authoritative merge SHA,
 Vercel deployment, canonical alias check, and Production canary are recorded
@@ -75,7 +75,7 @@ During the text-fit RED run, three concrete defects were reproduced and fixed:
    Korean text.
 4. Production visual review after PR #57 found the Japanese `か？` and Chinese `案？`
    endings isolated on their own 320 px line; shorter, natural locale
-   questions removed those typographic orphans in PR #58.
+   questions removed those typographic orphans in PR #59.
 
 The smallest fixes let Report tabs wrap naturally, hide only decorative flow
 arrows below 360 px while retaining labels and 44 px targets, and add the
