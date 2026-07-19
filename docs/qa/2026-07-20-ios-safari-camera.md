@@ -4,8 +4,8 @@
 
 ARU now releases a stale Safari camera stream and presents an explicit,
 localized restart state after background, `pagehide`, video-track `mute`, or
-video-track `ended`. The scoped automated health score moved from 93/100 to
-100/100 after three defects were closed.
+video-track `ended`. The scoped automated health score is 100/100 after all four
+discovered defects were closed.
 
 This result is WebKit engine/profile evidence. Current and previous-major
 physical iPhone Safari rows remain `PENDING DEVICE VERIFICATION`.
@@ -13,7 +13,8 @@ physical iPhone Safari rows remain `PENDING DEVICE VERIFICATION`.
 ## Release under test
 
 - Branch: `codex/ios-safari-camera-lifecycle`
-- Code commit: `4313bb1`
+- Code commit: `3149a5d`
+- Verification/docs commit: `6c2ad27`
 - Framework: Next.js 16.2.9 / React 19.2.4
 - Playwright: 1.61.1
 - Safari engine proxy: WebKit 26.5, build `webkit-2311`
@@ -48,6 +49,7 @@ listen for capture-track mute state, and the W3C MediaStream lifecycle:
 | IOS-CAMERA-001 | High | Safari `mute`/`ended` or background could leave a stale stream with no explicit recovery state | One-shot track observer, document lifecycle handling, stream detach/stop, explicit restart | Vitest plus WebKit background/track/pagehide cases |
 | IOS-CAMERA-002 | Medium | A denied permission request was retried through the resolution fallback | Treat permission/security errors as terminal | `camera-stream.test.ts` verifies one request |
 | IOS-CAMERA-003 | Medium | First recovery screenshot showed the restart button and questionnaire link overlapping | Recovery actions now use a centered column layout | Bounding-box separation assertion and inspected after screenshot |
+| IOS-CAMERA-004 | High | A capture callback refresh could cancel the active capture even though Safari had not interrupted it | Separate callback-ref cleanup from real unmount cancellation | Red/green orchestration contract, focused camera tests, full smoke and WebKit suite |
 
 No threshold, capture timing, consent, crop, mirroring, or model behavior changed.
 
@@ -104,5 +106,5 @@ iPhone matrix row passed until the physical evidence is recorded.
 
 ## PR summary
 
-QA found 3 iPhone Safari camera issues, fixed 3, and moved the scoped automated
-health score from 93 to 100; physical iPhone verification remains pending.
+QA found 4 iPhone Safari camera issues, fixed 4, and reached a scoped automated
+health score of 100; physical iPhone verification remains pending.

@@ -2,19 +2,20 @@
 
 - Date: 2026-07-20
 - Branch: `codex/ios-safari-camera-lifecycle`
-- Code commit: `4313bb1`
+- Code commit: `3149a5d`
 - Framework: Next.js 16.2.9 / React 19.2.4
 - Browser: Playwright 1.61.1 WebKit 26.5 (`webkit-2311`)
 - Device profile: iPhone 17 Pro, iPhone OS 18.7 user agent,
-  402 × 681 CSS viewport, device scale factor 3
+  402 x 681 CSS viewport, device scale factor 3
 
 ## Outcome
 
-Scoped health score: 93 → 100. Three reproducible issues were fixed:
+Scoped health score: 100/100. Four reproducible issues were fixed:
 
 1. Safari background, track `mute` and `ended` had no explicit stale-stream recovery.
 2. Permission denial was retried through the camera resolution fallback.
 3. The first recovery UI screenshot showed overlapping actions.
+4. A capture callback refresh could cancel an active capture without a Safari interruption.
 
 ## Final verification
 
@@ -46,5 +47,5 @@ video/track/crop sizes.
 
 ## PR summary
 
-QA found 3 issues, fixed 3, health score 93 → 100; physical iPhone verification
+QA found 4 issues, fixed 4, health score 100/100; physical iPhone verification
 remains pending.
