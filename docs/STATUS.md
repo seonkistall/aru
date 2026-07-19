@@ -12,7 +12,7 @@
 
 | 영역 | 상태 | 근거/다음 게이트 |
 |---|---|---|
-| 소비자 Web 코드 | Product polish release gate 통과, 배포 canary 대기 | 57개 파일/277개 테스트, 모바일 E2E 10개, 40개 route/viewport 조합과 production build 통과 |
+| 소비자 Web 코드 | Product polish Production 배포·canary 완료 | PR #55, merge `024784c`, deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`; 57개 파일/277개 테스트, 모바일 E2E 10개, 40개 pre-deploy 조합과 16개 post-deploy 모바일 route case 통과 |
 | 보안·데이터 경계 | CSP·Firewall·DB 권한과 runtime 구성 검증 완료 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel modern secret의 새 배포 `configured: true` 확인 |
 | 모바일 UI/UX | 두 번의 독립 브라우저 루프 완료 | 360/393/768/1440px 40개 경로 조합과 KO/EN/JA/ZH·카메라 오류 4종 검증; console/network/overflow/broken image/44px 미만 핵심 타깃 0 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |

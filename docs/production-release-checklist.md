@@ -20,8 +20,8 @@ Date: 2026-07-18
 - [x] Preserve real online 404 responses instead of masking them with the offline page.
 - Evidence: `docs/qa/2026-07-16-web-performance.md` at commit `d687e8b`.
 - Security evidence: `docs/qa/2026-07-17-post-deploy-security.md`.
-- Current production canary: `docs/qa/2026-07-19-release-completion-canary.md`.
-- Product polish release-candidate evidence: `docs/qa/2026-07-19-product-polish-loop.md`.
+- Previous production canary: `docs/qa/2026-07-19-release-completion-canary.md`.
+- Current Product polish Production canary: `docs/qa/2026-07-19-product-polish-loop.md`.
 
 ## Supabase operations
 
