@@ -1,6 +1,6 @@
 # iPhone Safari Camera Lifecycle Design
 
-Date: 2026-07-20  
+Date: 2026-07-20
 Repo: `seonkistall/aru`
 
 ## Goal

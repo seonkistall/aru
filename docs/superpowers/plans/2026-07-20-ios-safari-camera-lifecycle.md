@@ -45,7 +45,7 @@ expect(get).toHaveBeenCalledTimes(1);
 
 - [ ] **Step 2: Run the focused test and confirm failure**
 
-Run: `npm test -- tests/camera-stream.test.ts`  
+Run: `npm test -- tests/camera-stream.test.ts`
 Expected: FAIL because `watchCameraStream` is not exported and permission denial
 currently triggers the fallback attempt.
 
@@ -88,7 +88,7 @@ existing fallback for other failures.
 
 - [ ] **Step 4: Verify and commit the primitive**
 
-Run: `npm test -- tests/camera-stream.test.ts tests/camera-quality.test.ts`  
+Run: `npm test -- tests/camera-stream.test.ts tests/camera-quality.test.ts`
 Expected: PASS.
 
 Commit: `fix: observe Safari camera interruptions`
@@ -118,7 +118,7 @@ from its camera interruption path, and the video element to contain `autoPlay`,
 
 - [ ] **Step 2: Run and confirm the contract fails**
 
-Run: `npm test -- tests/scan-orchestration-contract.test.ts`  
+Run: `npm test -- tests/scan-orchestration-contract.test.ts`
 Expected: FAIL because the hook currently returns only `capture` and no
 interruption path exists.
 
@@ -156,7 +156,7 @@ ZH: 摄像头暂时停用了。 / 想继续的话，请重新打开摄像头。 
 
 - [ ] **Step 5: Verify focused behavior and commit**
 
-Run: `npm test -- tests/camera-stream.test.ts tests/camera-quality.test.ts tests/scan-orchestration-contract.test.ts tests/capture-analysis.test.ts`  
+Run: `npm test -- tests/camera-stream.test.ts tests/camera-quality.test.ts tests/scan-orchestration-contract.test.ts tests/capture-analysis.test.ts`
 Expected: PASS.
 
 Commit: `fix: recover iPhone Safari camera sessions`
@@ -193,12 +193,12 @@ overflow, and a second `getUserMedia` call only after tapping the restart CTA.
 
 - [ ] **Step 2: Install the matching WebKit runtime**
 
-Run: `npx playwright install webkit`  
+Run: `npx playwright install webkit`
 Expected: Playwright 1.61.1 WebKit is installed.
 
 - [ ] **Step 3: Run and verify the iPhone profile**
 
-Run: `npm run test:ios-safari`  
+Run: `npm run test:ios-safari`
 Expected: PASS under the iPhone 17 Pro WebKit project with no console errors.
 
 - [ ] **Step 4: Commit the regression suite**
