@@ -80,14 +80,14 @@ describe("Google Play submission pack", () => {
     const reviewer = readFileSync(file("reviewer-instructions.md"), "utf8");
     const home = readFileSync(resolve(root, "app", "page.tsx"), "utf8");
     const report = readFileSync(resolve(root, "app", "report", "page.tsx"), "utf8");
-    expect(reviewer).toContain("카메라 없이 설문만 할래요");
-    expect(reviewer).toContain("내 피부 결, 보러 가기");
+    expect(reviewer).toContain("카메라 없이 설문으로 시작하기");
+    expect(reviewer).toContain("내 피부 살펴보기");
     expect(reviewer).toContain("개인정보와 동의");
     expect(reviewer).toContain("`/privacy`");
-    expect(home).toContain('t("카메라 없이 설문만 할래요 →")');
-    expect(home).toContain('t("내 피부 결, 보러 가기")');
+    expect(home).toContain('t("카메라 없이 설문으로 시작하기")');
+    expect(home).toContain('t("내 피부 살펴보기")');
     expect(report).toContain('t("개인정보와 동의")');
-    expect(reviewer).not.toContain("설문으로 시작");
+    expect(reviewer).not.toContain("설문만 할래요");
     expect(reviewer).not.toContain("카메라로 시작");
   });
 
