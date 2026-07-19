@@ -8,7 +8,7 @@ distribution.
 ## Pinned release inputs
 
 - Web origin: `https://aru-beauty.vercel.app`
-- Bubblewrap: 1.24.1
+- Wrapper generator provenance: Bubblewrap 1.24.1
 - JDK: Temurin 17
 - Android compile/target SDK: 36
 - Android Build Tools: 36.0.0
@@ -29,13 +29,16 @@ install `platform-tools`, `platforms;android-36`, and `build-tools;36.0.0`.
 Set `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT`, or use the ignored
 `.toolchains/` layout consumed by `npm run android:check`.
 
+The checked-in wrapper is the release input. Bubblewrap is intentionally not
+installed in the root npm dependency graph because it is not needed for Gradle
+release builds and its latest dependency tree contains unresolved advisories.
+
 ```powershell
-npx.cmd bubblewrap --version
 npm.cmd run android:check
 ```
 
-Expected: Bubblewrap 1.24.1 and an `android:check` PASS for version 1.1.0,
-versionCode 11000, and target API 36.
+Expected: an `android:check` PASS for version 1.1.0, versionCode 11000, and
+target API 36.
 
 ## 2. Create or restore upload signing material
 
@@ -128,7 +131,10 @@ For each release:
    `public/.well-known/assetlinks.json`, redeploy, and verify HTTP 200 before
    device TWA QA.
 
-Bubblewrap `update` regenerates Android sources. It may restore API 35,
-`jcenter()`, localhost generation inputs, or remove environment-only signing.
-After any regeneration, review the Android diff and rerun all checks before
-building.
+Bubblewrap `update` is a separate maintenance operation, not part of a release
+build. Before regeneration, review the current generator and its complete
+dependency audit in a disposable environment. Regeneration may restore API 35,
+`jcenter()`, localhost generation inputs, obsolete resources, or remove
+environment-only signing. After any regeneration, review every Android diff,
+restore the monochrome launcher layer, require `lintRelease` to report
+`No issues found`, and rerun the complete audit and signed build.
