@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:mobile-ui": "playwright test --config playwright.mobile.config.ts",
+    "test:ios-safari": "playwright test --config playwright.ios.config.ts",
     "smoke": "node scripts/smoke-test.mjs",
     "supabase:check": "node scripts/supabase-check.mjs"
   },
