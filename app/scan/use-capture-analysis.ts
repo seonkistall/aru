@@ -334,10 +334,11 @@ export function useCaptureAnalysis({
   useEffect(() => {
     captureRef.current = capture;
     return () => {
-      cancelCapture();
       if (captureRef.current === capture) captureRef.current = null;
     };
-  }, [cancelCapture, capture, captureRef]);
+  }, [capture, captureRef]);
+
+  useEffect(() => () => cancelCapture(), [cancelCapture]);
 
   return { capture, cancelCapture };
 }

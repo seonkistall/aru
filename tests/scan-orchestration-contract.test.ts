@@ -48,6 +48,7 @@ describe("scan orchestration seams", () => {
 
     expect(hook).toContain("cancelCapture");
     expect(hook).toContain("return { capture, cancelCapture }");
+    expect(hook).toContain("useEffect(() => () => cancelCapture(), [cancelCapture]);");
     expect(page).toContain("watchCameraStream");
     expect(page).toContain("cancelCapture();");
     expect(page).toContain('"interrupted"');
