@@ -22,11 +22,11 @@ test("reminder opt-in sends the active locale", async ({ page }) => {
     sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
   }, survey);
   await page.goto("/report");
-  await page.getByRole("tab", { name: /Today's routine/ }).click();
+  await page.getByRole("tab", { name: /A simple routine to start today/ }).click();
 
   await page.getByRole("textbox", { name: "Email address" }).fill("person@example.com");
   await page.getByText("I agree to my email being stored for reminders").click();
-  await page.getByRole("button", { name: "Sign up" }).click();
+  await page.getByRole("button", { name: "Get email reminders" }).click();
 
   await expect(page.getByRole("status")).toBeVisible();
   expect(submittedBody?.locale).toBe("en");

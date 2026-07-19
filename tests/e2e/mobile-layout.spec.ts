@@ -97,7 +97,7 @@ test("routine reminder and privacy path are usable in the TWA viewport", async (
   await page.getByRole("tab", { name: /오늘부터 가볍게 시작할 루틴/ }).click();
 
   await expectTapHeight(page.getByRole("textbox", { name: "이메일 주소" }));
-  await expectTapHeight(page.getByRole("button", { name: "신청" }));
+  await expectTapHeight(page.getByRole("button", { name: "이메일로 알림 받기" }));
   await expectTapHeight(page.getByText("리마인드 발송을 위해 이메일 저장에 동의해요").locator(".."));
 
   const privacy = page.getByRole("link", { name: "개인정보와 동의" });

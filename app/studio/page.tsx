@@ -106,9 +106,9 @@ export default function Studio() {
     <main className="min-h-screen px-5 py-10" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <p style={eyebrow}>{t("카드 스튜디오")}</p>
-        <h1 style={titleStyle}>{t("피부 리포트 카드 만들기")}</h1>
+        <h1 style={titleStyle}>{t("공유할 문구 다듬기")}</h1>
         <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 22, lineHeight: 1.55 }}>
-          {t("스캔 결과를 숏폼이나 상담 공유용 이미지로 저장할 수 있어요.")}
+          {t("오늘의 피부 특징을 간단히 정리했어요.")} {t("원하는 문구로 바꾼 뒤 공유해 보세요.")}
         </p>
 
         <div className="flex justify-center mb-7">
@@ -134,7 +134,7 @@ export default function Studio() {
 
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={share} disabled={busy} style={{ ...downloadBtn, flex: 1, opacity: busy ? 0.6 : 1 }}>
-            {busy ? t("생성 중...") : t("공유하기")}
+            {busy ? t("생성 중...") : t("오늘의 피부 리포트 공유하기")}
           </button>
           <button
             onClick={download}
@@ -144,7 +144,7 @@ export default function Studio() {
             {t("PNG 저장")}
           </button>
         </div>
-        {fromScan && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>{t("오늘 스캔 결과를 불러왔어요. 문구는 자유롭게 고쳐도 돼요.")}</p>}
+        {fromScan && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>{t("오늘의 피부 리포트를 불러왔어요. 공유할 문구는 자유롭게 바꿀 수 있어요.")}</p>}
         {err && <p style={{ fontSize: 13, color: "var(--plum)", marginTop: 10, textAlign: "center" }}>{err}</p>}
       </div>
     </main>

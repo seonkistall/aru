@@ -113,4 +113,54 @@ describe("ARU consumer product copy", () => {
       expect(consumer).not.toContain(phrase);
     }
   });
+
+  it("uses the approved reminder, Check-in, Share, and Studio journey", () => {
+    const reminder = source("app/components/reengage-optin.tsx");
+    const checkin = source("app/checkin/page.tsx");
+    const share = [
+      source("app/components/share-card.tsx"),
+      source("app/scan/page.tsx"),
+      source("app/studio/page.tsx"),
+    ].join("\n");
+    const email = source("lib/reengage.ts");
+
+    for (const phrase of [
+      "2주 뒤, 루틴은 잘 맞는지 같이 확인해 볼까요?",
+      "2주와 4주 뒤에 한 번씩 이메일로 가볍게 알려드릴게요. 원할 때 언제든 그만 받을 수 있어요.",
+      "이메일로 알림 받기",
+      "알림을 신청했어요. 2주 뒤에 잊지 않도록 알려드릴게요.",
+    ]) {
+      expect(reminder).toContain(phrase);
+    }
+
+    for (const phrase of [
+      "스킨케어, 직접 써보니 어땠나요?",
+      "짧게 사용감을 남겨두면 내 루틴을 돌아보기 좋아요.",
+      "2주 정도 사용해 본 뒤에 다시 물어볼게요.",
+      "남겨주신 피드백을 저장했어요.",
+      "체크인을 모두 마쳤어요. 다음 스킨케어가 궁금할 때 다시 피부를 살펴보세요.",
+      "오늘 피부 다시 살펴보기",
+    ]) {
+      expect(checkin).toContain(phrase);
+    }
+
+    for (const phrase of [
+      "오늘의 피부 특징을 간단히 정리했어요.",
+      "오늘의 피부 리포트 공유하기",
+      "친구도 링크에서 30초 만에 자신의 피부를 살펴볼 수 있어요.",
+      "공유할 문구 다듬기",
+    ]) {
+      expect(share).toContain(phrase);
+    }
+
+    for (const phrase of [
+      "다음 추천이 더 정확해져요",
+      "다음 스캔에 더 정확히 반영할게요",
+      "Your feedback makes the next recommendation more accurate",
+      "次回のおすすめがより正確になります",
+      "下次推荐更准确",
+    ]) {
+      expect(`${checkin}\n${email}`).not.toContain(phrase);
+    }
+  });
 });

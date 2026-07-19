@@ -458,14 +458,14 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
                 ...(shareCopied ? { borderColor: "var(--success)", color: "var(--success)" } : null),
               }}
             >
-              {shareCopied ? t("링크가 복사됐어요! 붙여넣기만 하면 초대 완료") : t("친구에게 내 피부 무드 공유하기")}
+              {shareCopied ? t("공유 링크를 복사했어요.") : t("오늘의 피부 리포트 공유하기")}
             </button>
             <p role="status" aria-live="polite" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
-              {t("공유 링크를 열면 친구도 30초 스캔으로 이어져요")}
+              {t("친구도 링크에서 30초 만에 자신의 피부를 살펴볼 수 있어요.")}
             </p>
             {shareErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{shareErr}</p>}
             <a href="/studio" style={{ display: "block", textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-muted)", textDecoration: "underline" }}>
-              {t("카드 문구 직접 편집하기")}
+              {t("공유할 문구 다듬기")}
             </a>
             {shouldShowFeedback({ hasReads: Boolean(reads), staffMode, datasetConsent }) && (
               <Feedback reads={reads} cropDataUrl={cropDataUrl} captureMeta={captureMeta} />

@@ -17,7 +17,7 @@ export const ShareCard = forwardRef<HTMLDivElement, { headline: string; reads: C
           <span style={miniLabel}>skin mood</span>
         </div>
         <h2 style={cardHeadline}>{t(headline)}</h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>{t("보이는 특징만 정직하게 읽었어요.")}</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>{t("오늘의 피부 특징을 간단히 정리했어요.")}</p>
         <div style={{ borderTop: "1px solid var(--line)" }}>
           {reads.map((read) => (
             <div key={read.label} style={rowStyle}>
@@ -62,8 +62,8 @@ export async function shareCardImage(
       // loop); platforms that ignore url alongside files still share the image.
       await navigator.share({
         files: [file],
-        title: t("아루 피부 카드"),
-        ...(opts?.shareUrl ? { text: t("내 피부 무드 — 아루"), url: opts.shareUrl } : {}),
+        title: t("오늘의 피부 리포트"),
+        ...(opts?.shareUrl ? { text: t("친구도 링크에서 30초 만에 자신의 피부를 살펴볼 수 있어요."), url: opts.shareUrl } : {}),
       });
       opts?.onShare?.("web-share");
       return "web-share";

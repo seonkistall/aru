@@ -178,3 +178,117 @@ for (const [lang, copy] of Object.entries(reportCopy)) {
     await expect(page.getByText(copy.consultation, { exact: true })).toBeVisible();
   });
 }
+
+const followUpCopy = {
+  ko: {
+    routine: "오늘부터 가볍게 시작할 루틴",
+    reminderTitle: "2주 뒤, 루틴은 잘 맞는지 같이 확인해 볼까요?",
+    reminderLead: "2주와 4주 뒤에 한 번씩 이메일로 가볍게 알려드릴게요. 원할 때 언제든 그만 받을 수 있어요.",
+    reminderCta: "이메일로 알림 받기",
+    reminderSuccess: "알림을 신청했어요. 2주 뒤에 잊지 않도록 알려드릴게요.",
+    checkinTitle: "스킨케어, 직접 써보니 어땠나요?",
+    checkinLead: "짧게 사용감을 남겨두면 내 루틴을 돌아보기 좋아요.",
+    studioTitle: "공유할 문구 다듬기",
+    shareNote: "오늘의 피부 특징을 간단히 정리했어요.",
+    shareCta: "오늘의 피부 리포트 공유하기",
+  },
+  en: {
+    routine: "A simple routine to start today",
+    reminderTitle: "Let's check in on your routine in two weeks",
+    reminderLead: "We'll send a light check-in at two and four weeks. You can stop the emails at any time.",
+    reminderCta: "Get email reminders",
+    reminderSuccess: "You're signed up. We'll remind you in two weeks.",
+    checkinTitle: "How has your skincare felt so far?",
+    checkinLead: "A quick note about how it felt can help you look back on your routine.",
+    studioTitle: "Edit the text before sharing",
+    shareNote: "Here's a quick look at today's skin.",
+    shareCta: "Share today's skin report",
+  },
+  ja: {
+    routine: "今日から無理なく始めるルーティン",
+    reminderTitle: "2週間後、ルーティンの様子を一緒に確認しませんか？",
+    reminderLead: "2週間後と4週間後に一度ずつ、メールでそっとお知らせします。いつでも配信を停止できます。",
+    reminderCta: "メールでお知らせを受け取る",
+    reminderSuccess: "お知らせを受け付けました。2週間後にメールでご案内します。",
+    checkinTitle: "スキンケアを実際に使ってみて、いかがでしたか？",
+    checkinLead: "使用感を短く残しておくと、ルーティンを振り返るときに役立ちます。",
+    studioTitle: "共有する文を編集",
+    shareNote: "今日の肌の特徴を簡単にまとめました。",
+    shareCta: "今日の肌レポートを共有",
+  },
+  zh: {
+    routine: "今天开始的简单护肤步骤",
+    reminderTitle: "两周后，一起看看这套护肤步骤用得怎么样吧",
+    reminderLead: "我们会在第2周和第4周各发一封轻提醒邮件，随时都可以取消。",
+    reminderCta: "接收邮件提醒",
+    reminderSuccess: "提醒已开启。两周后会发邮件提醒你。",
+    checkinTitle: "这套护肤品实际用起来怎么样？",
+    checkinLead: "简单记录一下使用感受，回顾护肤步骤时会更方便。",
+    studioTitle: "调整分享文案",
+    shareNote: "简单整理了今天的肌肤特点。",
+    shareCta: "分享今日肌肤报告",
+  },
+} as const;
+
+for (const [lang, copy] of Object.entries(followUpCopy)) {
+  test(`follow-up uses natural ${lang} copy`, async ({ page }) => {
+    await page.route("**/api/reengage/subscribe", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }),
+    );
+    await page.addInitScript(({ nextLang, nextSurvey }) => {
+      localStorage.setItem("aru.lang", nextLang);
+      sessionStorage.setItem("gyeol_survey", JSON.stringify(nextSurvey));
+    }, { nextLang: lang, nextSurvey: survey });
+
+    await page.goto("/report");
+    await page.getByRole("tab", { name: new RegExp(copy.routine) }).click();
+    await expect(page.getByText(copy.reminderTitle, { exact: true })).toBeVisible();
+    await expect(page.getByText(copy.reminderLead, { exact: true })).toBeVisible();
+    await page.locator("input[type='email']").fill("person@example.com");
+    await page.locator("input[type='checkbox']").check();
+    await page.getByRole("button", { name: copy.reminderCta }).click();
+    await expect(page.getByRole("status")).toHaveText(copy.reminderSuccess);
+
+    await page.goto("/checkin");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.checkinTitle);
+    await expect(page.getByText(copy.checkinLead, { exact: true })).toBeVisible();
+
+    await page.goto("/studio");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.studioTitle);
+    await expect(page.getByText(copy.shareNote, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: copy.shareCta })).toBeVisible();
+  });
+}
+
+test("Check-in waiting, saved, and complete states keep their promise", async ({ page }) => {
+  const week = 7 * 24 * 60 * 60 * 1000;
+  await page.addInitScript(({ startedAt }) => {
+    localStorage.setItem("aru.lang", "ko");
+    if (localStorage.getItem("gyeol_purchases")) return;
+    localStorage.setItem("gyeol_purchases", JSON.stringify([{
+      id: "copy-checkin-use",
+      sku_id: "cr3",
+      name: "레드 블레미쉬 수분 크림",
+      confirmedUse: true,
+      ts: startedAt,
+    }]));
+  }, { startedAt: Date.now() - week });
+
+  await page.goto("/checkin");
+  await expect(page.getByText("2주 정도 사용해 본 뒤에 다시 물어볼게요.", { exact: true })).toBeVisible();
+
+  await page.evaluate((startedAt) => {
+    const uses = JSON.parse(localStorage.getItem("gyeol_purchases") ?? "[]");
+    localStorage.setItem("gyeol_purchases", JSON.stringify(uses.map((use: { ts: number }) => ({ ...use, ts: startedAt }))));
+  }, Date.now() - 3 * week);
+  await page.reload();
+
+  await page.getByRole("button", { name: "좋음" }).click();
+  await page.getByRole("button", { name: "없었어요" }).click();
+  await page.getByRole("button", { name: "할래요" }).click();
+  await page.getByRole("button", { name: "기록하기" }).click();
+
+  await expect(page.getByRole("status")).toHaveText("남겨주신 피드백을 저장했어요.");
+  await expect(page.getByText("체크인을 모두 마쳤어요. 다음 스킨케어가 궁금할 때 다시 피부를 살펴보세요.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "오늘 피부 다시 살펴보기" })).toHaveAttribute("href", "/scan");
+});
