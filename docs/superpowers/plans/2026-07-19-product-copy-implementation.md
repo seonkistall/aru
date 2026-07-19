@@ -5,8 +5,9 @@
 **Goal:** Replace ARU's awkward consumer copy with the approved friendly product voice in KO/EN/JA/ZH, preserve trust boundaries, prevent text clipping or corrupted characters, and deploy the verified result.
 
 **Execution status:** Tasks 1–6 are implemented and verified. Task 7 release
-tracking continues in [PR #57](https://github.com/seonkistall/aru/pull/57) and
-the [multilingual product copy QA ledger](../../qa/2026-07-19-product-copy-polish.md).
+tracking continues in [PR #57](https://github.com/seonkistall/aru/pull/57),
+the 320 px locale follow-up [PR #59](https://github.com/seonkistall/aru/pull/59),
+and the [multilingual product copy QA ledger](../../qa/2026-07-19-product-copy-polish.md).
 
 **Architecture:** Keep the existing Korean-message-ID `t()` architecture and update only consumer message IDs, the three dictionaries, user-visible templates, metadata, and the smallest layout rules exposed by longer copy. Each journey segment gets a red-green test cycle and a reviewable commit; one final cross-locale browser matrix validates text fit and character integrity.
 
@@ -146,8 +147,8 @@ import { expect, test } from "@playwright/test";
 const anchors = {
   ko: { heading: ["오늘의 내 피부,", "어떤 스킨케어가 좋을까요?"], cta: "내 피부 살펴보기" },
   en: { heading: ["What skincare suits", "your skin today?"], cta: "Start my skin check" },
-  ja: { heading: ["今日の肌には、", "どんなスキンケアが合いそうですか？"], cta: "肌をチェックする" },
-  zh: { heading: ["今天的肌肤，", "适合怎样的护肤方案？"], cta: "看看我的肌肤状态" },
+  ja: { heading: ["今日の肌には、", "どんなケアが合いそうですか？"], cta: "肌をチェックする" },
+  zh: { heading: ["今天的肌肤，", "适合怎么护理？"], cta: "看看我的肌肤状态" },
 } as const;
 
 for (const [lang, copy] of Object.entries(anchors)) {
@@ -257,7 +258,7 @@ include:
 "나에게 맞는 화장품 찾기,": "自分に合うコスメ探しは、",
 "30초면 충분해요.": "30秒から。",
 "오늘의 내 피부,": "今日の肌には、",
-"어떤 스킨케어가 좋을까요?": "どんなスキンケアが合いそうですか？",
+"어떤 스킨케어가 좋을까요?": "どんなケアが合いそうですか？",
 "내 피부 살펴보기": "肌をチェックする",
 "카메라 없이 설문으로 시작하기": "カメラを使わず、質問から始める",
 
@@ -265,7 +266,7 @@ include:
 "나에게 맞는 화장품 찾기,": "找到适合自己的护肤品，",
 "30초면 충분해요.": "30秒就够了。",
 "오늘의 내 피부,": "今天的肌肤，",
-"어떤 스킨케어가 좋을까요?": "适合怎样的护肤方案？",
+"어떤 스킨케어가 좋을까요?": "适合怎么护理？",
 "내 피부 살펴보기": "看看我的肌肤状态",
 "카메라 없이 설문으로 시작하기": "不用相机，从问卷开始",
 ```

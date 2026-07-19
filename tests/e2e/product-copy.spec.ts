@@ -2,19 +2,23 @@ import { expect, test } from "@playwright/test";
 
 const anchors = {
   ko: {
+    tagline: "아름다움을, 매일의 루틴으로",
     heading: ["오늘의 내 피부,", "어떤 스킨케어가 좋을까요?"],
     cta: "내 피부 살펴보기",
   },
   en: {
+    tagline: "Beauty, part of every day",
     heading: ["What skincare suits", "your skin today?"],
     cta: "Start my skin check",
   },
   ja: {
-    heading: ["今日の肌には、", "どんなスキンケアが合いそうですか？"],
+    tagline: "きれいを、毎日の習慣に",
+    heading: ["今日の肌には、", "どんなケアが合いそうですか？"],
     cta: "肌をチェックする",
   },
   zh: {
-    heading: ["今天的肌肤，", "适合怎样的护肤方案？"],
+    tagline: "让美，成为每天的习惯",
+    heading: ["今天的肌肤，", "适合怎么护理？"],
     cta: "看看我的肌肤状态",
   },
 } as const;
@@ -25,6 +29,7 @@ for (const [lang, copy] of Object.entries(anchors)) {
     await page.goto("/");
 
     const heading = page.getByRole("heading", { level: 1 });
+    await expect(page.getByText(copy.tagline, { exact: true })).toBeVisible();
     await expect(heading).toContainText(copy.heading[0]);
     await expect(heading).toContainText(copy.heading[1]);
     await expect(page.getByRole("link", { name: copy.cta })).toBeVisible();

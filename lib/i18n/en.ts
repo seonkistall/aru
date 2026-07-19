@@ -393,7 +393,7 @@ export const EN: Record<string, string> = {
   "아루 저녁 루틴": "ARU evening routine",
   "아루 추천 루틴: {label}. 앱에서 오늘의 단계를 확인하세요.": "ARU recommended routine: {label}. Check today's steps in the app.",
   "아루 피부 카드": "ARU skin card",
-  "아름다움을, 매일의 루틴으로": "Beauty, made a daily ritual",
+  "아름다움을, 매일의 루틴으로": "Beauty, part of every day",
   "아비브": "Abib",
   "아이소이": "isoi",
   "아이크림": "Eye cream",
