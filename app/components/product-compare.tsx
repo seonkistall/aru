@@ -70,7 +70,7 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
         </tbody>
       </table>
       <p style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45, margin: "10px 8px 0" }}>
-        {t("예산대는 추천 필터용 참고값이에요. 판매처에서 현재 가격·옵션·성분 확인")}
+        {t("현재 가격, 옵션, 전성분은 판매처에서 다시 확인해 주세요.")}
       </p>
     </div>
   );

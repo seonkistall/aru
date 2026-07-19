@@ -17,8 +17,8 @@ test("report summary uses a particle-neutral category sentence", async ({ page }
     sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
   }, survey);
   await page.goto("/report");
-  await page.getByRole("tab", { name: /추천 제품/ }).click();
+  await page.getByRole("tab", { name: /살펴볼 제품 후보/ }).click();
 
-  await expect(page.getByText(/크림 제품을 골랐어요/).first()).toBeVisible();
+  await expect(page.getByText(/크림 제품 후보/).first()).toBeVisible();
   await expect(page.getByText(/크림를/)).toHaveCount(0);
 });

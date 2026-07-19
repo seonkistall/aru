@@ -23,12 +23,12 @@ test("reminder opt-in blocks invalid email before the network", async ({ page })
     sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
   }, survey);
   await page.goto("/report");
-  await page.getByRole("tab", { name: /오늘의 루틴/ }).click();
+  await page.getByRole("tab", { name: /오늘부터 가볍게 시작할 루틴/ }).click();
 
   const email = page.getByRole("textbox", { name: "이메일 주소" });
   await email.fill("not-an-email");
   await page.getByText("리마인드 발송을 위해 이메일 저장에 동의해요").click();
-  await page.getByRole("button", { name: "신청" }).click();
+  await page.getByRole("button", { name: "이메일로 알림 받기" }).click();
 
   expect(await email.evaluate((input: HTMLInputElement) => input.validity.typeMismatch)).toBe(true);
   expect(subscribeRequests).toBe(0);

@@ -8,7 +8,7 @@ Login: none required
 
 ## Primary review path without camera
 
-1. Launch ARU and select **카메라 없이 설문만 할래요**.
+1. Launch ARU and select **카메라 없이 설문으로 시작하기**.
 2. Complete the short skin-preference survey.
 3. Review the report with up to three cosmetic options and routine guidance.
 4. At the bottom of the report, select **개인정보와 동의** to open `/privacy`,
@@ -18,7 +18,7 @@ This path is fully functional without granting camera permission or providing an
 
 ## Optional camera path
 
-1. From Home, select **내 피부 결, 보러 가기**.
+1. From Home, select **내 피부 살펴보기**.
 2. Read the pre-capture explanation, then choose the camera action.
 3. Chrome requests camera access for `https://aru-beauty.vercel.app`; the Android wrapper itself declares no native camera permission.
 4. Use the front camera in portrait orientation. The preview is mirrored for the user. Hold the face inside the guide in soft, even light.

@@ -69,16 +69,15 @@ export function clinicLinks(locale: CareLocale): CareLink[] {
       ];
 }
 
-export function careSummary(survey: Survey | null, _reads: SkinReads | null, result: RecoResult | null) {
-  const top = result?.picks[0]?.sku;
+export function careSummary(survey: Survey | null, _reads: SkinReads | null, _result: RecoResult | null) {
   const hasTroubleConcern = survey?.concerns.includes("트러블");
   const needsClinic = Boolean(hasTroubleConcern);
 
   return {
-    title: top ? t("{name} 다음 단계", { name: t(top.name) }) : t("다음 케어 단계"),
+    title: t("제품과 루틴 이어보기"),
     body: needsClinic
-      ? t("제품 비교와 함께, 붉은기나 트러블이 계속되면 피부과 상담 연결도 열어둘게요.")
-      : t("추천 제품을 먼저 비교하고, 사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요."),
+      ? t("추천 제품 정보를 확인하고, 붉은기나 트러블이 계속 신경 쓰이면 상담 정보도 살펴보세요.")
+      : t("추천 제품의 정보와 판매처를 비교하고, 루틴도 함께 확인해 보세요."),
     clinicPriority: needsClinic,
   };
 }

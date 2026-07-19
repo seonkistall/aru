@@ -150,16 +150,16 @@ function reasonFor(sku: Sku, survey: Survey, concerns: Concern[], scanApplied: b
     ? t("{concerns} 고민", { concerns: matched.map((concern) => t(concern)).join(", ") })
     : t("{type} 피부", { type: t(survey.type) });
   // When the budget was relaxed to fill the category, the pick is over budget —
-  // don't claim it was "chosen to fit" the budget; say it's the closest instead.
+  // don't claim it fits the budget; describe it as the closest candidate.
   let reason = budgetRelaxed
     ? scanApplied
-      ? t("오늘 스캔과 설문 조건을 함께 보고, {budget} 예산에 가장 가까운 {category} 제품을 골랐어요. {head}도 반영했어요.", { head, budget: budgetText, category: t(sku.category) })
-      : t("설문 조건을 보고, {budget} 예산에 가장 가까운 {category} 제품을 골랐어요. {head}도 반영했어요.", { head, budget: budgetText, category: t(sku.category) })
+      ? t("카메라에서 확인한 피부 특징과 설문 답변을 함께 살펴봤어요. {budget} 예산에 가장 가까운 {category} 제품 후보예요. {head}도 참고했어요.", { head, budget: budgetText, category: t(sku.category) })
+      : t("설문 답변을 살펴보고 {budget} 예산에 가장 가까운 {category} 제품 후보로 정리했어요. {head}도 참고했어요.", { head, budget: budgetText, category: t(sku.category) })
     : scanApplied
-      ? t("오늘 스캔 신호와 {head}, {budget} 예산을 기준으로 {category} 제품을 골랐어요.", { head, budget: budgetText, category: t(sku.category) })
-      : t("{head}, {budget} 예산을 기준으로 {category} 제품을 골랐어요.", { head, budget: budgetText, category: t(sku.category) });
+      ? t("카메라에서 확인한 피부 특징과 {head}, {budget} 예산을 함께 고려한 {category} 제품 후보예요.", { head, budget: budgetText, category: t(sku.category) })
+      : t("{head}, {budget} 예산을 함께 고려한 {category} 제품 후보예요.", { head, budget: budgetText, category: t(sku.category) });
   if (avoidedClear && survey.avoid.length) reason += ` ${t("요청한 제외 성분 조건도 반영했어요.")}`;
-  if (!efficacyClean(reason).ok) reason = t("{type} 피부와 {budget} 예산을 기준으로 {category} 제품을 골랐어요.", { type: t(survey.type), budget: budgetText, category: t(sku.category) });
+  if (!efficacyClean(reason).ok) reason = t("{type} 피부와 {budget} 예산을 함께 고려한 {category} 제품 후보예요.", { type: t(survey.type), budget: budgetText, category: t(sku.category) });
   return reason;
 }
 
@@ -222,11 +222,11 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
           ? t("아침에는 과하게 뽀득한 마무리보다 산뜻한 세안을 권장해요.")
           : t("세안 후 당김이 적은 제품을 먼저 보는 흐름이 좋아요."),
       why: scanRedness
-        ? t("오늘 스캔에서 볼 쪽 붉은기가 보여서 아침은 자극이 덜한 순서로 잡았어요.")
+        ? t("오늘 카메라에서 볼 쪽 붉은기가 보여 아침은 자극이 덜한 순서로 정리했어요.")
         : saidRedness
           ? t("설문에서 답해주신 붉은기·민감 고민에 맞춰 아침 세안을 부드럽게 잡았어요.")
           : scanOil
-            ? t("오늘 스캔에서 T존 번들거림이 보여서 가벼운 세안부터 시작해요.")
+            ? t("오늘 카메라에서 T존 번들거림이 보여 가벼운 세안부터 시작해요.")
             : saidOil
               ? t("설문에서 답해주신 유분 고민에 맞춰 아침을 산뜻하게 시작해요.")
               : t("{type} 피부라고 답해주셔서 당김 없는 세안부터 순서를 잡았어요.", { type: t(survey.type) }),
@@ -241,9 +241,9 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
           ? t("아침에는 무거운 마무리보다 가벼운 수분 한 겹이면 충분해요.")
           : t("가벼운 수분 단계를 아침 루틴의 중심에 두는 흐름이에요."),
       why: scanRedness
-        ? t("붉은기 신호가 보인 날이라 순한 선택 위주로 골랐어요.")
+        ? t("카메라에서 붉은기가 보여 순한 선택부터 살펴보도록 구성했어요.")
         : scanOil
-          ? t("스캔에 보인 T존 유분에 맞춰 아침 제형은 가볍게 골랐어요.")
+          ? t("카메라에서 확인한 T존 유분을 참고해 아침 제형은 가볍게 정리했어요.")
           : saidRedness
             ? t("민감·붉은기 답변에 맞춰 순한 수분 제품을 가운데 뒀어요.")
             : saidOil
@@ -260,7 +260,7 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
           ? t("붉은기 고민이 있을수록 낮 자외선 차단을 더 꼼꼼히 챙기는 편이 좋아요.")
           : t("피부 컨디션과 관계없이 낮 루틴은 자외선 차단제를 마지막 단계로 두는 편이 좋아요."),
       why: scanRedness
-        ? t("오늘 스캔의 붉은기 신호 때문에 아침 선케어를 가장 강조했어요.")
+        ? t("오늘 카메라에서 붉은기가 보여 아침 선케어를 먼저 챙겼어요.")
         : saidRedness
           ? t("붉은기 고민을 답해주셔서 아침 선케어를 강조했어요.")
           : t("계절과 상관없이 낮의 마지막 단계는 선케어로 두는 걸 권해요."),
@@ -279,7 +279,7 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
           ? t("이중 세안이 필요 없는 날은 순한 세안 한 번으로 충분해요.")
           : t("선크림이나 메이크업을 썼다면 저녁에 씻어내고 자는 흐름을 권해요."),
       why: scanOil
-        ? t("오늘 스캔에서 유분 신호가 뚜렷해서 저녁 세안에 비중을 뒀어요.")
+        ? t("오늘 카메라에서 유분이 뚜렷하게 보여 저녁 세안을 조금 더 꼼꼼하게 잡았어요.")
         : saidOil
           ? t("유분 고민 답변에 맞춰 저녁 세안에 비중을 뒀어요.")
           : scanRedness
@@ -298,7 +298,7 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
               ? t("붉은기가 신경 쓰이는 날은 건너뛰고, 컨디션 좋은 저녁에만 가볍게 써보세요.")
               : t("결 케어 제품은 매일보다 저녁에만, 간격을 두고 쓰는 편이 부담이 적어요."),
             why: scanPores
-              ? t("스캔에서 볼 쪽 결이 보여서 저녁 결 케어 단계를 넣었어요.")
+              ? t("카메라에서 볼 쪽 피부결이 보여 저녁 결 케어 단계를 넣었어요.")
               : t("모공 고민을 답해주셔서 저녁 결 케어 단계를 넣었어요."),
             cadence: t("주 2-3회"),
           },
@@ -312,7 +312,7 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
         ? t("저녁에는 순한 수분 제품을 얇게 두 번 나눠 발라도 좋아요.")
         : t("세안 직후 물기가 마르기 전에 수분 단계를 이어주는 흐름이 좋아요."),
       why: survey.avoid.length && picks.some((pick) => pick.avoidedClear)
-        ? t("피하고 싶다고 답해주신 성분을 뺀 제품 위주로 골라뒀어요.")
+        ? t("피하고 싶다고 답한 성분이 없는 제품을 우선 살펴봤어요.")
         : t("{budget} 예산과 {type} 피부 답변을 함께 보고 고른 단계예요.", { budget: budgetText, type: t(survey.type) }),
     },
     {
@@ -327,7 +327,7 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
       why: survey.concerns.includes("건조")
         ? t("건조 고민을 답해주셔서 밤 마무리 단계를 챙겼어요.")
         : scanOil
-          ? t("스캔에 보인 유분 신호에 맞춰 밤 마무리도 가벼운 제형을 권해요.")
+          ? t("카메라에서 확인한 유분을 참고해 밤 마무리도 가벼운 제형으로 정리했어요.")
           : saidOil
             ? t("유분 고민 답변에 맞춰 밤 마무리도 가볍게 잡았어요.")
             : t("{type} 피부 답변에 맞춰 밤 마무리 단계를 잡았어요.", { type: t(survey.type) }),
@@ -404,7 +404,7 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
   // NOT suppress the budget/avoid relaxation disclosure (they can co-occur).
   const noteParts: string[] = [];
   if (!scanApplied && scan) {
-    noteParts.push(t("촬영 상태가 애매해서 이번 추천은 설문 답변을 중심으로 골랐어요. 스캔 결과는 참고만 했습니다."));
+    noteParts.push(t("촬영 조건이 충족되지 않아 사진은 참고만 하고, 설문 답변을 중심으로 정리했어요."));
   }
   if (relaxed === "budget" || relaxed === "both") {
     noteParts.push(t("예산 안에서 조건을 모두 만족하는 제품이 적어, 가장 가까운 선택까지 함께 봤어요."));

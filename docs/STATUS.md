@@ -14,7 +14,7 @@
 |---|---|---|
 | 소비자 Web 코드 | Product polish Production 배포·canary 완료 | PR #55, merge `024784c`, deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`; 57개 파일/277개 테스트, 모바일 E2E 10개, 40개 pre-deploy 조합과 16개 post-deploy 모바일 route case 통과 |
 | 보안·데이터 경계 | CSP·Firewall·DB 권한과 runtime 구성 검증 완료 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel modern secret의 새 배포 `configured: true` 확인 |
-| 모바일 UI/UX | 두 번의 독립 브라우저 루프 완료 | 360/393/768/1440px 40개 경로 조합과 KO/EN/JA/ZH·카메라 오류 4종 검증; console/network/overflow/broken image/44px 미만 핵심 타깃 0 |
+| 모바일 UI/UX | 다국어 제품 카피와 텍스트 핏 release gate 통과 | [PR #57](https://github.com/seonkistall/aru/pull/57); 9개 핵심 route × KO/EN/JA/ZH × 320/360/393/768px 총 144개 조합과 320px 수동 브라우저 QA에서 깨진 문자·번역 누락·clipping·overflow·console 오류 0 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
 | Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 clean signed AAB, release lint `No issues found`, 전체 npm audit 0; Play distribution certificate·내부 트랙 실기기 QA 필요 |
@@ -38,6 +38,9 @@
 - `com.seonkistall.aru` API 36 TWA, 환경변수 전용 release signing과 Digital Asset Links 구현
 - signed AAB/APK의 bundletool·aapt2·APK v1/v2 검증과 권한 감사 완료
 - Google Play ko/en 등록정보, Data safety·개인정보·등급·reviewer 작업표와 실제 UI 자산 생성
+- 홈, 스캔, 설문, 리포트, Care, 리마인더, 체크인, 공유, 개인정보와 구독 해지의 소비자 카피를 하나의 친근한 보이스로 통합
+- 영어·일본어·중국어 간체를 한국어 어순의 직역이 아닌 각 locale의 자연스러운 서비스 문장으로 작성
+- 9개 핵심 route의 KO/EN/JA/ZH × 320/360/393/768px 텍스트 핏, 문자 무결성과 번역 키 누출을 자동 회귀로 고정
 
 ## 현재 제품 흐름
 
@@ -53,8 +56,9 @@
 ### 최신 로컬 증거
 
 - 2026-07-19 clean `npm ci`와 `npm run smoke` 통과
-- Vitest 57개 파일, 277개 테스트 통과
-- Playwright Chromium 360×800 실렌더 회귀 10개 통과
+- Vitest 58개 파일, 285개 테스트 통과
+- Playwright Chromium 모바일 E2E 36개 통과
+- 9개 route × 4개 locale × 4개 viewport, 총 144개 텍스트 핏 조합 통과
 - 10개 route × 4개 viewport 브라우저 매트릭스 40/40 통과
 - KO/EN/JA/ZH 리포트·Care·이메일 locale, 카메라 오류 4종, `/reco` 307, production CSP 집중 루프 통과
 - ESLint, Next.js 16.2.9 production build와 TypeScript 통과
@@ -76,6 +80,7 @@
 - same-origin MediaPipe 모델·JS·WASM 200과 `aru-mediapipe-v1` Service Worker 캐시 확인
 - Vercel Production 배포의 1시간 error-level runtime log 0건 확인
 - 세부 재현·수정·회귀 증거: [qa/2026-07-19-product-polish-loop.md](qa/2026-07-19-product-polish-loop.md)
+- 다국어 카피·텍스트 핏 증거: [qa/2026-07-19-product-copy-polish.md](qa/2026-07-19-product-copy-polish.md)
 
 코드 변경 묶음은 다음 순서를 따른다.
 

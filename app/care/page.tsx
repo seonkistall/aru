@@ -92,24 +92,24 @@ export default function CarePage() {
     return (
       <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
         <div className="mx-auto" style={{ maxWidth: 420 }}>
-          <p style={eyebrow}>care path</p>
+          <p style={eyebrow}>{t("제품과 루틴")}</p>
           <h1 style={titleStyle}>
-            {t("먼저 피부 스캔이나 설문을 진행해주세요")}
+            {t("아직 이어서 볼 리포트가 없어요.")}
           </h1>
           <p style={leadStyle}>
-            {t("분석 결과와 설문 답변이 있어야 구매처와 상담 연결을 자연스럽게 안내할 수 있어요.")}
+            {t("먼저 피부를 살펴보거나 설문을 완료하면 제품 정보와 루틴을 이어서 볼 수 있어요.")}
           </p>
           <Link href="/scan" style={{ display: "block", textDecoration: "none" }}>
             <div style={{ position: "relative", padding: "15px 16px" }}>
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>{t("스캔 시작")}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>{t("내 피부 살펴보기")}</span>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--orange)" }}>→</span>
               </div>
             </div>
           </Link>
           <Link href="/survey" style={{ ...outlineBtn, display: "block", textAlign: "center", marginTop: 12 }}>
-            {t("설문만 하기")}
+            {t("설문으로 시작하기")}
           </Link>
         </div>
       </main>
@@ -119,7 +119,7 @@ export default function CarePage() {
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>care path</p>
+        <p style={eyebrow}>{t("제품과 루틴")}</p>
         <FlowSteps current="care" />
 
         <h1 style={titleStyle}>{t(summary.title)}</h1>
@@ -127,12 +127,12 @@ export default function CarePage() {
 
         <section style={sectionStyle}>
           <div style={sectionHead}>
-            <p style={sectionLabel}>{t("제품 구매 연결")}</p>
+            <p style={sectionLabel}>{t("추천 제품 더 알아보기")}</p>
             <span style={badge}>{t(view.survey.category)}</span>
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
             <p style={{ ...commerceIntro, flex: 1, marginBottom: 0 }}>
-              {t("추천 제품은 올리브영·네이버 쇼핑·쿠팡·글로벌 검색에서 바로 찾아볼 수 있어요.")}
+              {t("궁금한 제품의 정보와 판매처를 한눈에 비교해 보세요.")}
             </p>
             <span style={{ marginLeft: -12 }}>
               <Xiaohei size={54} pose="carry" />
@@ -183,7 +183,7 @@ export default function CarePage() {
 
         <section style={sectionStyle}>
           <div style={sectionHead}>
-            <p style={sectionLabel}>{t("피부과 · 상담 연결")}</p>
+            <p style={sectionLabel}>{t("피부 고민이 계속 신경 쓰인다면")}</p>
             {summary.clinicPriority && <span style={warnBadge}>{t("상담 우선 고려")}</span>}
           </div>
 

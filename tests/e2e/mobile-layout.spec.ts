@@ -13,7 +13,7 @@ async function expectInsideViewport(page: Page, locator: Locator) {
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 }
 
 async function expectTapHeight(locator: Locator) {
@@ -22,16 +22,37 @@ async function expectTapHeight(locator: Locator) {
   expect(box!.height).toBeGreaterThanOrEqual(44);
 }
 
-test("localized home callout stays inside a 360px viewport", async ({ browser }) => {
-  for (const lang of languages) {
-    const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
-    await context.addInitScript((nextLang) => localStorage.setItem("aru.lang", nextLang), lang);
-    const page = await context.newPage();
-    await page.goto("/");
-    await expect(page.locator("html")).toHaveAttribute("lang", lang === "zh" ? "zh-CN" : lang);
-    await expectInsideViewport(page, page.getByTestId("hero-callout"));
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
-    await context.close();
+test("localized home copy stays inside required viewports", async ({ browser }) => {
+  test.setTimeout(120_000);
+  for (const width of [320, 360, 393, 768]) {
+    for (const lang of languages) {
+      const context = await browser.newContext({ viewport: { width, height: width === 768 ? 1024 : 800 } });
+      await context.addInitScript((nextLang) => localStorage.setItem("aru.lang", nextLang), lang);
+      const page = await context.newPage();
+      await page.goto("/");
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator("html")).toHaveAttribute("lang", lang === "zh" ? "zh-CN" : lang);
+      await expectInsideViewport(page, page.getByTestId("hero-callout"));
+      await expectInsideViewport(page, page.getByRole("heading", { level: 1 }));
+      const primary = page.locator("[data-primary-action='scan']");
+      await expectInsideViewport(page, primary);
+      await expectTapHeight(primary);
+      const layout = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        offenders: [...document.querySelectorAll("body *")]
+          .map((element) => ({
+            element: element.tagName.toLowerCase(),
+            text: element.textContent?.trim().slice(0, 80),
+            rect: element.getBoundingClientRect().toJSON(),
+          }))
+          .filter(({ rect }) => rect.left < -1 || rect.right > document.documentElement.clientWidth + 1),
+      }));
+      expect(
+        layout.scrollWidth,
+        JSON.stringify({ width, lang, offenders: layout.offenders }, null, 2),
+      ).toBeLessThanOrEqual(width);
+      await context.close();
+    }
   }
 });
 
@@ -46,10 +67,10 @@ test("camera fallback remains an accessible touch target", async ({ page }) => {
     });
   });
   await page.goto("/scan");
-  const start = page.getByRole("button", { name: "카메라 시작" });
+  const start = page.getByRole("button", { name: "카메라로 살펴보기" });
   await expect(start).toBeVisible();
   await start.click();
-  const fallback = page.getByRole("link", { name: "사진 없이 추천받기" });
+  const fallback = page.getByRole("link", { name: "카메라 없이 설문으로 시작하기" });
   await expect(fallback).toBeVisible();
   await expectTapHeight(fallback);
 });
@@ -73,10 +94,10 @@ test("routine reminder and privacy path are usable in the TWA viewport", async (
     sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
   }, survey);
   await page.goto("/report");
-  await page.getByRole("tab", { name: /오늘의 루틴/ }).click();
+  await page.getByRole("tab", { name: /오늘부터 가볍게 시작할 루틴/ }).click();
 
   await expectTapHeight(page.getByRole("textbox", { name: "이메일 주소" }));
-  await expectTapHeight(page.getByRole("button", { name: "신청" }));
+  await expectTapHeight(page.getByRole("button", { name: "이메일로 알림 받기" }));
   await expectTapHeight(page.getByText("리마인드 발송을 위해 이메일 저장에 동의해요").locator(".."));
 
   const privacy = page.getByRole("link", { name: "개인정보와 동의" });

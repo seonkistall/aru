@@ -18,7 +18,7 @@ const STEPS: Array<{ key: FlowKey; label: string; href: string }> = [
 export function FlowSteps({ current }: { current: FlowKey }) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
   return (
-    <nav aria-label={t("진행 단계")} style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
+    <nav className="aru-flow-steps" aria-label={t("진행 단계")} style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
       <Link href="/" aria-label={t("홈으로")} style={{ minWidth: "var(--tap-min)", minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
         {t("아루")}
       </Link>
@@ -41,9 +41,9 @@ export function FlowSteps({ current }: { current: FlowKey }) {
           </span>
         );
         return (
-          <span key={step.key} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span className="aru-flow-steps__item" key={step.key} style={{ display: "flex", alignItems: "center", gap: 7 }}>
             {index > 0 && (
-              <svg width="16" height="10" viewBox="0 0 16 10" aria-hidden style={{ filter: "url(#sketch-soft)" }}>
+              <svg className="aru-flow-steps__arrow" width="16" height="10" viewBox="0 0 16 10" aria-hidden style={{ filter: "url(#sketch-soft)" }}>
                 <path d="M1 5 L12 5 M12 5 L8.5 2.2 M12 5 L8.5 7.8" stroke="var(--orange)" strokeWidth="1.6" fill="none" strokeLinecap="round" />
               </svg>
             )}

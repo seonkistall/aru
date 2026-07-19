@@ -8,6 +8,7 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 - 제품 계약과 KPI: [docs/PRD.md](docs/PRD.md)
 - 현재 검증 상태: [docs/STATUS.md](docs/STATUS.md)
 - 시스템 구조: [docs/architecture.md](docs/architecture.md)
+- 최신 다국어 제품 카피 QA: [docs/qa/2026-07-19-product-copy-polish.md](docs/qa/2026-07-19-product-copy-polish.md)
 - 최신 Product polish·Production canary: [docs/qa/2026-07-19-product-polish-loop.md](docs/qa/2026-07-19-product-polish-loop.md)
 - 이전 Production canary: [docs/qa/2026-07-19-release-completion-canary.md](docs/qa/2026-07-19-release-completion-canary.md)
 - 출시 절차: [docs/production-release-checklist.md](docs/production-release-checklist.md)
@@ -20,7 +21,7 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 |---|---|---|---|
 | 소비자 Web | Product polish Production 배포·canary 완료 | PR #55, merge `024784c`, deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`, 전체 smoke와 post-deploy 모바일/API canary | 이후 코드·환경 변경 시 동일 gate 반복 |
 | 보안·데이터 경계 | Production 검증 완료 | 9개 앱 테이블 RLS, `anon`/`authenticated` 직접 권한 거부, 비공개 crop bucket, CSP, Firewall, runtime secret 검증 | schema·secret 변경 시 운영 검증 반복 |
-| 모바일 UI/UX | 4개 viewport·KO/EN/JA/ZH 회귀 통과 | 실제 Chromium 40개 조합에서 console/network/overflow/broken image/44px 미만 핵심 타깃 0 | 새 화면·번역 추가 시 회귀 테스트 확장 |
+| 모바일 UI/UX | 4개 viewport·KO/EN/JA/ZH 카피 회귀 통과 | 9개 핵심 route × 4개 언어 × 4개 viewport, 총 144개 텍스트 핏 조합과 320px 수동 브라우저 QA 통과 | 새 화면·번역 추가 시 동일 매트릭스 확장 |
 | Android 카메라 | Galaxy S25 Edge 기본 흐름 PASS | 권한, 전면 미러링, 품질 게이트, 촬영 완료, 재촬영 | 조도·반사·가림·background/resume와 iPhone Safari 매트릭스 |
 | 이메일 | 코드·정책 구현 완료 | 명시적 opt-in, 서명·만료 해지, 철회 제외, 보존 정리 테스트 | 검증 도메인으로 실제 수신·해지·cron 확인 |
 | Android TWA | API 36 signed AAB 검증 완료 | package, 권한, 서명, lint `No issues found`, Gradle clean bundle, Digital Asset Links 검증 | Play distribution certificate 반영 후 internal track 실기기 QA |
@@ -297,7 +298,7 @@ npm run dev
 |---|---|
 | `npm run dev` | Next.js 개발 서버 |
 | `npm test` | 전체 Vitest 계약·보안 회귀 |
-| `npm run test:mobile-ui` | Playwright Chromium 360×800 모바일 회귀 |
+| `npm run test:mobile-ui` | Playwright Chromium 모바일 기능·다국어·텍스트 핏 회귀 |
 | `npm run lint` | ESLint |
 | `npm run build` | Next.js Production build |
 | `npm run smoke` | lint, unit, mobile browser, build, ML compile, 주요 route/auth 통합 검증 |
@@ -358,12 +359,13 @@ git diff --check
 `npm run smoke`는 현재 다음을 묶어서 검사합니다.
 
 - ESLint와 TypeScript/Next.js Production build
-- Vitest 57개 파일, 277개 테스트
-- Playwright Chromium 360×800 실렌더 테스트 10개
+- Vitest 58개 파일, 285개 테스트
+- Playwright Chromium 모바일 E2E 36개
 - KO/EN/JA/ZH 홈과 핵심 callout
+- 9개 핵심 route × KO/EN/JA/ZH × 320/360/393/768px, 총 144개 텍스트 핏 조합
 - 카메라 권한 거부 fallback
 - Studio, 리마인더, 개인정보 화면
-- offscreen 요소와 44px 미만 핵심 터치 타깃
+- 잘린 문구, 깨진 문자, 다국어 키 누출, 가로 overflow와 44px 미만 핵심 터치 타깃
 - MediaPipe model/WASM same-origin asset
 - Production 공개 route와 내부 route 404
 - API JSON/body/auth/origin 경계
@@ -380,6 +382,7 @@ git diff --check
 | 이메일 | subscribe/unsubscribe/retention 테스트 + 실제 수신 주소로 2·4주 dry-run |
 | 보안 header/CSP | security tests + Chromium hydration/service worker/MediaPipe |
 | 추천·커머스 | claim/product trust 테스트 + 허용 판매처 redirect |
+| 제품 카피·번역 | copy contract + i18n coverage + 4개 locale/4개 viewport text-fit matrix |
 | Android | `npm run android:check`, signed artifact 검증, TWA 실기기 |
 | Play 자료 | `npm test -- tests/play-store-pack.test.ts`, Console 선언 대조 |
 
@@ -480,8 +483,9 @@ node scripts/generate-play-assets.mjs
 7. `scan/page.tsx`의 stream, landmarker, quality loop, capture analysis와 consent 책임을 단계적으로 분리했습니다.
 8. 명시적 이메일 opt-in, 서명·만료 해지, 철회 제외와 보존 정리를 구현했습니다.
 9. enforced CSP, security header, Vercel Firewall과 Production Supabase runtime 검증을 추가했습니다.
-10. 360px 다국어 UI, 44px 터치 타깃, 카메라 fallback과 Studio/Privacy 흐름을 실제 Chromium 회귀로 고정했습니다.
+10. 320px부터 768px까지 다국어 UI, 44px 터치 타깃, 카메라 fallback과 Studio/Privacy 흐름을 실제 Chromium 회귀로 고정했습니다.
 11. API 36 Android TWA, release signing, Digital Asset Links, signed AAB/APK와 Play 제출 패키지를 준비했습니다.
+12. 홈부터 체크인까지 소비자 카피를 정중하고 친근한 제품 언어로 다듬고, EN/JA/ZH를 각 언어의 어순과 서비스 관습에 맞춰 별도로 작성했습니다.
 
 ### 최근 release commit
 
@@ -552,6 +556,7 @@ npm test -- tests/mediapipe-assets.test.ts
 - [PRD](docs/PRD.md) — 제품 약속, 사용자, 데이터, KPI, 출시 게이트
 - [i18n PRD](docs/i18n-prd.md) — 다국어 제품 요구사항
 - [i18n UX flow](docs/i18n-ux-flow.md) — 언어별 사용자 흐름
+- [Consumer product copy design](docs/superpowers/specs/2026-07-19-product-copy-design.md) — 보이스, 화면별 카피, locale·text-fit 계약
 - [Commerce partnership playbook](docs/commerce-partnership-playbook.md) — 판매처·파트너 운영 원칙
 
 ### 시스템·ML
@@ -568,6 +573,7 @@ npm test -- tests/mediapipe-assets.test.ts
 
 - [Status](docs/STATUS.md) — 증거 기반 현재 상태와 차단 조건
 - [Production release checklist](docs/production-release-checklist.md) — Web Production 절차
+- [Multilingual product copy QA](docs/qa/2026-07-19-product-copy-polish.md) — 4개 언어 카피와 144개 텍스트 핏 조합
 - [Release completion canary](docs/qa/2026-07-19-release-completion-canary.md) — 최신 배포 검증
 - [Post-deploy security](docs/qa/2026-07-17-post-deploy-security.md) — CSP·Firewall 검증
 - [Supabase Production QA](docs/qa/2026-07-18-supabase-production.md) — RLS·role·bucket 증거

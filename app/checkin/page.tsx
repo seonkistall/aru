@@ -63,12 +63,12 @@ export default function Checkin() {
               {t("아루")}
             </Link>
             <p style={{ ...eyebrow, marginTop: 8 }}>{t("사용 후 체크인")}</p>
-            <h1 style={titleStyle}>{t("써보니 어땠나요?")}</h1>
+            <h1 style={titleStyle}>{t("스킨케어, 직접 써보니 어땠나요?")}</h1>
           </div>
           <Xiaohei size={54} pose="carry" />
         </div>
         <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "6px 0 26px", lineHeight: 1.55 }}>
-          {t("사용 후 피드백을 남기면 다음 추천이 더 정확해져요.")}
+          {t("짧게 사용감을 남겨두면 내 루틴을 돌아보기 좋아요.")}
         </p>
 
         {productUses.length === 0 ? (
@@ -89,8 +89,8 @@ export default function Checkin() {
             ))}
             {allDone && (
               <div style={{ textAlign: "center", padding: "18px", marginTop: 6 }}>
-                <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>{t("모든 피드백 완료! 다음 스캔에 더 정확히 반영할게요.")}</p>
-                <Link href="/scan" style={ctaPrimary}>{t("새로 스캔하기 →")}</Link>
+                <p style={{ fontSize: 14, color: "var(--ink)", marginBottom: 12 }}>{t("체크인을 모두 마쳤어요. 다음 스킨케어가 궁금할 때 다시 피부를 살펴보세요.")}</p>
+                <Link href="/scan" style={ctaPrimary}>{t("오늘 피부 다시 살펴보기")}</Link>
               </div>
             )}
           </>
@@ -130,9 +130,9 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
         </div>
       </div>
       {!due ? (
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t("2주쯤 써본 뒤에 사용감을 여쭤볼게요. 그때 사용감을 남기면 다음 추천이 더 정확해져요.")}</p>
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t("2주 정도 사용해 본 뒤에 다시 물어볼게요.")}</p>
       ) : done ? (
-        <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("고마워요. 피드백이 저장됐어요.")}</p>
+        <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("남겨주신 피드백을 저장했어요.")}</p>
       ) : (
         <>
           <Row label="만족도"><Seg options={["별로", "보통", "좋음"]} value={sat} onPick={setSat} /></Row>

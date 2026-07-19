@@ -71,14 +71,24 @@ describe("dictionary coverage for runtime-composed strings", () => {
   it("covers every consumer-page message id in every language", () => {
     const paths = [
       "app/page.tsx",
+      "app/scan/page.tsx",
+      "app/scan/info-sheet.tsx",
+      "app/scan/scan-controls.tsx",
+      "app/scan/use-quality-loop.ts",
+      "app/survey/page.tsx",
       "app/care/page.tsx",
       "app/checkin/page.tsx",
       "app/components/product-card.tsx",
       "app/components/product-compare.tsx",
+      "app/components/reengage-optin.tsx",
+      "app/components/share-card.tsx",
       "app/privacy/page.tsx",
       "app/report/page.tsx",
+      "app/studio/page.tsx",
       "app/unsubscribe/unsubscribe-form.tsx",
       "lib/care.ts",
+      "lib/report-trust.ts",
+      "lib/recommend.ts",
     ];
 
     for (const path of paths) {
@@ -91,6 +101,10 @@ describe("dictionary coverage for runtime-composed strings", () => {
   it("covers both feedback save messages composed at render time", () => {
     expectCovered("고마워요. {count}번째 피부 피드백이에요.");
     expectCovered("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.");
+  });
+
+  it("covers the multiline product rationale composed on the report", () => {
+    expectCovered("피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.");
   });
 
   it.each(["en", "ja", "zh"])("contains no duplicate keys in %s", (lang) => {

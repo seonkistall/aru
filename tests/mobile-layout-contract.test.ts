@@ -76,9 +76,11 @@ describe("mobile journey layout contract", () => {
     );
   });
 
-  it("keeps the localized hero callout inside a 360px viewport", () => {
+  it("bounds the localized hero callout and allows authored wrapping", () => {
     const home = source("app/page.tsx");
-    expect(home).toContain('right: "calc(100% - 28px)"');
+    expect(home).toContain('width: "min(240px, calc(100vw - 48px))"');
+    expect(home).toContain('whiteSpace: "normal"');
+    expect(home).not.toContain('whiteSpace: "nowrap"');
   });
 
   it("uses a metric-adjusted Korean fallback to avoid display-font layout shifts", () => {

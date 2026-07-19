@@ -30,16 +30,16 @@ export function ReengageOptIn({ context }: { context?: string }) {
   if (state === "done") {
     return (
       <div style={box}>
-        <p role="status" style={{ fontSize: 13.5, color: "var(--success)", margin: 0 }}>{t("좋아요. 2주 뒤 피부가 어떤지 살짝 리마인드해 드릴게요.")}</p>
+        <p role="status" style={{ fontSize: 13.5, color: "var(--success)", margin: 0 }}>{t("알림을 신청했어요. 2주 뒤에 잊지 않도록 알려드릴게요.")}</p>
       </div>
     );
   }
 
   return (
     <div style={box}>
-      <p style={{ fontSize: 13.5, color: "var(--ink)", fontWeight: 700, margin: "0 0 4px" }}>{t("2주 뒤 피부 변화, 리마인드 받기")}</p>
+      <p style={{ fontSize: 13.5, color: "var(--ink)", fontWeight: 700, margin: "0 0 4px" }}>{t("2주 뒤, 루틴은 잘 맞는지 같이 확인해 볼까요?")}</p>
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 0 10px" }}>
-        {t("루틴이 잘 맞았는지 2·4주 뒤 이메일로 딱 한 번씩만 알려드려요. 언제든 그만둘 수 있어요.")}
+        {t("2주와 4주 뒤에 한 번씩 이메일로 가볍게 알려드릴게요. 원할 때 언제든 그만 받을 수 있어요.")}
       </p>
       <form
         onSubmit={(event) => {
@@ -64,7 +64,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
           disabled={!consent || !email.trim() || state === "sending"}
           style={{ flexShrink: 0, minHeight: "var(--tap-min)", background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !consent || !email.trim() || state === "sending" ? 0.5 : 1 }}
         >
-          {state === "sending" ? "…" : t("신청")}
+          {state === "sending" ? "…" : t("이메일로 알림 받기")}
         </button>
       </form>
       <label style={{ display: "flex", alignItems: "center", minHeight: "var(--tap-min)", gap: 8, marginTop: 9, fontSize: 12.5, color: "var(--text-muted)", cursor: "pointer" }}>

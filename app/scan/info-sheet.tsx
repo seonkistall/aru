@@ -18,14 +18,14 @@ function CaptureTips() {
 function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
   return (
     <div style={{ marginTop: 12, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.55 }}>
-      <b style={{ color: "var(--ink)" }}>{t("동의는 2가지로 분리돼요.")}</b>
-      <span>
-        {" "}{t("AI 분석용 전송은 얼굴 크롭을 외부 AI(Gemini/OpenAI) 분석 API에 보내는 선택이에요.")}{" "}
-        {staffMode
-          ? t("학습용 크롭 저장은 동의한 연구 샘플을 이 기기에 최대 120개까지 보관하는 선택입니다.")
-          : t("학습용 크롭 저장은 파일럿 연구 세션에서만 별도 동의로 진행돼요.")}{" "}
-      </span>
-      <a href="/privacy" style={{ color: "var(--plum)", fontWeight: 800, textDecoration: "none" }}>{t("자세히 보기")}</a>
+      <b style={{ color: "var(--ink)" }}>{t("사진은 기기에서 먼저 확인해요. 전송과 저장은 선택한 경우에만 진행됩니다.")}</b>
+      <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+        <li>{t("기본 촬영은 이 기기에서 처리해요.")}</li>
+        <li>{t("더 자세한 분석을 원할 때만 외부 AI 사용을 선택할 수 있어요.")}</li>
+        <li>{t("연구용 저장은 파일럿 참여자에게만 별도로 안내해요.")}</li>
+      </ul>
+      {staffMode ? <span style={{ display: "block", marginTop: 6 }}>{t("파일럿 설정에 따라 연구용 저장 선택이 표시돼요.")}</span> : null}
+      <a href="/privacy" style={{ display: "inline-block", marginTop: 8, color: "var(--plum)", fontWeight: 800, textDecoration: "none" }}>{t("사진과 데이터 사용 자세히 보기")}</a>
     </div>
   );
 }
@@ -59,9 +59,6 @@ export function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose:
         <div style={{ width: 38, height: 4, borderRadius: 999, background: "var(--line)", margin: "0 auto 10px" }} />
         <CaptureTips />
         <PrivacyNotice staffMode={staffMode} />
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55, marginTop: 12 }}>
-          {t("체크박스의")} <b style={{ color: "var(--ink)" }}>{t("AI 분석 전송(선택)")}</b>{t("은 얼굴 크롭만 외부 AI(Google Gemini/OpenAI) 분석 API로 보내 추천 정확도를 높이는 선택이에요. 학습용 저장과는 분리되며, 동의하지 않아도 기기 안 분석만으로 진행돼요.")}
-        </p>
         <button
           onClick={onClose}
           style={{ width: "100%", marginTop: 14, background: "var(--ink)", color: "#fff", border: "none", borderRadius: 8, padding: "13px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}

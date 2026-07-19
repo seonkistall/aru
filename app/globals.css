@@ -101,3 +101,23 @@ html[lang="ja"] a, html[lang="zh-CN"] a {
 html[lang="en"], html[lang="ja"], html[lang="zh-CN"] {
   --font-display: var(--font-sans);
 }
+
+/* The compact journey still keeps 44px tap targets at 320px. Decorative
+   arrows yield first so translated step labels never widen the page. */
+@media (max-width: 359px) {
+  .aru-flow-steps {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+    gap: 2px !important;
+  }
+
+  .aru-flow-steps__item {
+    min-width: 0;
+    gap: 0 !important;
+  }
+
+  .aru-flow-steps__arrow {
+    display: none;
+  }
+}

@@ -73,7 +73,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
 
       <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginTop: 11 }}>{pick.reason}</p>
       {pick.watchOut && <p style={watchOutStyle}>{t(pick.watchOut)}</p>}
-      <p style={merchantNote}>{t("예산대는 추천 필터용 참고값이에요. 판매처에서 현재 가격·옵션·성분 확인")}</p>
+      <p style={merchantNote}>{t("현재 가격, 옵션, 전성분은 판매처에서 다시 확인해 주세요.")}</p>
 
       <a
         href={commerceOutHref(sku.id, commerce.merchant, placement)}
@@ -84,10 +84,10 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
         }}
         style={buyBtn}
       >
-        {t("{label}에서 보기 →", { label: t(commerce.label) })}
+        {t("{label}에서 제품 보기", { label: t(commerce.label) })}
       </a>
       <button type="button" onClick={confirmProductUse} disabled={useStatus === "saved"} style={useBtn(useStatus === "saved")}>
-        {useStatus === "saved" ? t("사용 시작일이 기록됐어요") : t("이 제품을 사용하기 시작했어요")}
+        {useStatus === "saved" ? t("사용 시작일을 기록했어요.") : t("이 제품 사용 시작하기")}
       </button>
       {useStatus === "error" && (
         <p role="status" style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 7 }}>

@@ -25,7 +25,7 @@ export function ScanControls({
     <section style={panelStyle} aria-labelledby="scan-options-title">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
         <h2 id="scan-options-title" style={titleStyle}>{t("촬영 옵션")}</h2>
-        <span style={privacyPill}>{t("기본값: 기기 안에서 처리")}</span>
+        <span style={privacyPill}>{t("사진은 기기에서 먼저 확인해요")}</span>
       </div>
       <div style={optionGrid}>
         <ToggleRow
@@ -36,22 +36,22 @@ export function ScanControls({
           onChange={onAutoCaptureChange}
         />
         <ToggleRow
-          label={t("AI 분석 전송")}
-          detail={t("선택 시 crop을 서버 분석에 사용")}
+          label={t("더 자세한 AI 분석")}
+          detail={t("선택한 경우에만 외부 AI를 사용해요")}
           checked={aiConsent}
           accent="var(--blue)"
           onChange={onAiConsentChange}
         />
       </div>
       <ToggleRow
-        label={t("연구용 학습 crop 저장")}
-        detail={t("동의한 파일만 이 기기에 최대 120개 보관")}
+        label={t("연구용 저장")}
+        detail={t("파일럿 참여자에게만 별도로 안내해요")}
         checked={datasetConsent}
         accent="var(--blue)"
         onChange={onDatasetConsentChange}
       />
       <button type="button" onClick={onInfoOpen} style={infoLinkBtn}>
-        {t("촬영 팁 · 동의 안내 보기")}
+        {t("사진과 데이터 사용 자세히 보기")}
       </button>
     </section>
   );
@@ -108,7 +108,7 @@ const privacyPill: CSSProperties = {
   padding: "3px 8px",
   color: "var(--text-muted)",
   fontSize: 11.5,
-  whiteSpace: "nowrap",
+  textAlign: "right",
 };
 
 const optionGrid: CSSProperties = {
