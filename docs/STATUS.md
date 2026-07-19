@@ -15,7 +15,7 @@
 | 소비자 Web 코드 | Product polish Production 배포·canary 완료 | PR #55, merge `024784c`, deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`; 57개 파일/277개 테스트, 모바일 E2E 10개, 40개 pre-deploy 조합과 16개 post-deploy 모바일 route case 통과 |
 | 보안·데이터 경계 | CSP·Firewall·DB 권한과 runtime 구성 검증 완료 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel modern secret의 새 배포 `configured: true` 확인 |
 | 모바일 UI/UX | 다국어 제품 카피와 텍스트 핏 release gate 통과 | [PR #57](https://github.com/seonkistall/aru/pull/57); 9개 핵심 route × KO/EN/JA/ZH × 320/360/393/768px 총 144개 조합과 320px 수동 브라우저 QA에서 깨진 문자·번역 누락·clipping·overflow·console 오류 0 |
-| 카메라 | Android 기본 흐름 PASS, iPhone WebKit lifecycle PASS, 실기기 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 확인; WebKit 26.5 iPhone profile 5개 lifecycle 회귀 통과; Android ROI 조건과 현재·이전 iOS Safari 물리 단말 필요 |
+| 카메라 | Android 기본 흐름 PASS, iPhone Production WebKit lifecycle PASS, 실기기 매트릭스 미완료 | [PR #60](https://github.com/seonkistall/aru/pull/60), merge `ece4617`, Vercel `dpl_EZK8pi9EHAC75bZ2YwFKCBRZtLY9`; 공개 Production WebKit 26.5 iPhone profile 5개 lifecycle 회귀 통과; Android ROI 조건과 현재·이전 iOS Safari 물리 단말 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
 | Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 clean signed AAB, release lint `No issues found`, 전체 npm audit 0; Play distribution certificate·내부 트랙 실기기 QA 필요 |
 | Google Play | 제출 패키지 완료, 계정 검증 차단 | ko/en 등록정보·Data safety·등급·reviewer 문서·실제 스크린샷 완료; `Sean_AI` 개발자 신원 확인 미완료로 앱 만들기 비활성화, 결제 계정 긴급 알림 해결 필요 |

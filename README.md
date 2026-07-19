@@ -23,7 +23,7 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 | 보안·데이터 경계 | Production 검증 완료 | 9개 앱 테이블 RLS, `anon`/`authenticated` 직접 권한 거부, 비공개 crop bucket, CSP, Firewall, runtime secret 검증 | schema·secret 변경 시 운영 검증 반복 |
 | 모바일 UI/UX | 4개 viewport·KO/EN/JA/ZH 카피 회귀 통과 | 9개 핵심 route × 4개 언어 × 4개 viewport, 총 144개 텍스트 핏 조합과 320px 수동 브라우저 QA 통과 | 새 화면·번역 추가 시 동일 매트릭스 확장 |
 | Android 카메라 | Galaxy S25 Edge 기본 흐름 PASS | 권한, 전면 미러링, 품질 게이트, 촬영 완료, 재촬영 | 조도·반사·가림·background/resume와 iPhone Safari 매트릭스 |
-| iPhone Safari 카메라 | WebKit lifecycle 회귀 PASS·실기기 PENDING | WebKit 26.5 iPhone 17 Pro profile에서 KO/EN/JA/ZH, background, `mute`, `ended`, `pagehide`, 명시적 재개 | 최신·이전 iOS Safari 물리 단말 권한·렌즈·회전·촬영 매트릭스 |
+| iPhone Safari 카메라 | Production·WebKit lifecycle PASS, 실기기 PENDING | PR #60, merge `ece4617`, deployment `dpl_EZK8pi9EHAC75bZ2YwFKCBRZtLY9`; 공개 Production에서 KO/EN/JA/ZH, background, `mute`, `ended`, `pagehide`, 명시적 재개 5건 통과 | 최신·이전 iOS Safari 물리 단말 권한·렌즈·회전·촬영 매트릭스 |
 | 이메일 | 코드·정책 구현 완료 | 명시적 opt-in, 서명·만료 해지, 철회 제외, 보존 정리 테스트 | 검증 도메인으로 실제 수신·해지·cron 확인 |
 | Android TWA | API 36 signed AAB 검증 완료 | package, 권한, 서명, lint `No issues found`, Gradle clean bundle, Digital Asset Links 검증 | Play distribution certificate 반영 후 internal track 실기기 QA |
 | Google Play | 제출 패키지 준비, Console 작업 차단 | ko/en 등록정보, Data safety, 콘텐츠 등급, reviewer 문서, 실제 UI 자산 | 개발자 신원·결제 계정·지원 이메일·App Signing·테스터 트랙 |
@@ -498,6 +498,7 @@ node scripts/generate-play-assets.mjs
 
 | Commit | 변경 |
 |---|---|
+| `ece4617` | PR #60 iPhone Safari camera lifecycle, WebKit 회귀와 Production 배포 |
 | `1d2738b` | Supabase runtime secret 형식과 마스킹 값 방어 |
 | `ba9053f` | Android adaptive orientation |
 | `83e7700` | returning-home 핵심 터치 타깃 복구 |
