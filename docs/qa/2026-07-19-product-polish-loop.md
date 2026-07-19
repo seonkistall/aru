@@ -1,13 +1,18 @@
 # Product polish loop — 2026-07-19
 
-Target branch: `codex/product-qa-polish`
+Release branch: `codex/product-qa-polish`
 
 Baseline: `origin/main` at `06b254fe897c555e6b571be2c2c1f4cee67f3761`
 
-This report records the release-candidate QA loop. Production deployment and
-post-deploy canary evidence are added only after the merge deployment is
-ready. No secret value, email address, face image, participant record, or
-signing password is included.
+Release PR: [#55](https://github.com/seonkistall/aru/pull/55)
+
+Production merge: `024784cfd6e63c8ee00bdd986c42aeea95af545e`
+
+Vercel deployment: `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`
+
+This report records the release-candidate QA loop and the completed
+post-merge Production canary. No secret value, email address, face image,
+participant record, or signing password is included.
 
 ## Outcome
 
@@ -17,6 +22,12 @@ configuration checks, Android release lint, and a signed release-bundle build.
 Two fresh-browser product loops then completed with no remaining observed
 console error, failed request, layout overflow, broken image, accessibility
 structure error, or mobile touch-target failure.
+
+PR #55 was then merged and the exact merge SHA reached a Vercel Production
+deployment in `Ready` state. The canonical alias, mobile browser paths,
+localized state, camera denial recovery, API guards, security headers,
+self-hosted MediaPipe assets, and runtime logs were rechecked without a new
+failure.
 
 This is not evidence that the external owner gates are complete. A real Resend
 delivery, the remaining physical-camera environment matrix, iPhone Safari,
@@ -171,6 +182,57 @@ The checked-in Android wrapper was originally generated with Bubblewrap
 is intentionally absent from the root npm graph. Any future regeneration is a
 separate reviewed maintenance operation, followed by a full Android diff,
 audit, and release build.
+
+## Production deployment and post-deploy canary
+
+GitHub reported a successful Vercel status for merge
+`024784cfd6e63c8ee00bdd986c42aeea95af545e`. Vercel inspection confirmed:
+
+- deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`
+- target `production`
+- status `Ready`
+- immutable URL
+  `https://aru-beauty-ax7ni30ql-seonkistalls-projects.vercel.app`
+- canonical alias `https://aru-beauty.vercel.app`
+
+The canonical HTTP canary verified:
+
+- `/` returned 200
+- `/reco` returned one 307 with `Location: /report`
+- `/pilot`, `/ops`, and `/eval` returned 404 with `noindex, nofollow`
+- production CSP omitted general `'unsafe-eval'` and retained only
+  `'wasm-unsafe-eval'`
+- camera was limited to same-origin and microphone, geolocation, payment, and
+  USB were disabled by `Permissions-Policy`
+- `face_landmarker.task` returned 200 at exactly 3,758,596 bytes
+- `vision_wasm_internal.wasm` returned 200 as `application/wasm` at
+  11,153,617 bytes
+- `/api/sync` reported Supabase, private crop bucket, and origin guard all
+  configured
+- sync POST from a disallowed origin returned 403; canonical-origin POST
+  without a token returned 401
+- manual reminder and scheduled reminder routes returned 401 without their
+  server secret
+- valid JSON containing an invalid email returned `400 invalid email`
+- invalid analyze and reason payloads returned 400 before provider work
+
+A fresh Playwright run against Production covered:
+
+- 16 route cases: eight routes at 360 × 800 and 393 × 873
+- KO, EN, JA, and ZH home rendering with correct `html[lang]`
+- invalid-email browser blocking before network
+- active locale propagation in the reminder payload without a real DB write
+- denied-camera recovery with a 44 px survey-only fallback
+- the `/reco` document redirect
+
+The run found **0** console errors, page errors, failed requests, horizontal
+overflows, broken images, unnamed actions, or sub-44 px visible mobile
+targets. Navigation after deployment ranged from 778 ms to 5,921 ms, with a
+1,778 ms average in this uncontrolled canary environment; these are
+observations, not a performance SLA.
+
+Vercel CLI queries for the canary window returned **0** 5xx request logs and
+**0** error-level runtime logs.
 
 ## Remaining external gates
 

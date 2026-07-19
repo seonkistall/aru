@@ -8,8 +8,8 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 - 제품 계약과 KPI: [docs/PRD.md](docs/PRD.md)
 - 현재 검증 상태: [docs/STATUS.md](docs/STATUS.md)
 - 시스템 구조: [docs/architecture.md](docs/architecture.md)
-- 최신 Product polish 검증 증거: [docs/qa/2026-07-19-product-polish-loop.md](docs/qa/2026-07-19-product-polish-loop.md)
-- 직전 Production canary: [docs/qa/2026-07-19-release-completion-canary.md](docs/qa/2026-07-19-release-completion-canary.md)
+- 최신 Product polish·Production canary: [docs/qa/2026-07-19-product-polish-loop.md](docs/qa/2026-07-19-product-polish-loop.md)
+- 이전 Production canary: [docs/qa/2026-07-19-release-completion-canary.md](docs/qa/2026-07-19-release-completion-canary.md)
 - 출시 절차: [docs/production-release-checklist.md](docs/production-release-checklist.md)
 
 ## 현재 릴리스 상태
@@ -18,7 +18,7 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 
 | 영역 | 현재 상태 | 확인된 증거 | 다음 게이트 |
 |---|---|---|---|
-| 소비자 Web | Product polish release gate 통과 | lint, 57개 Vitest 파일/277개 테스트, 10개 모바일 브라우저 테스트, 40개 route/viewport 조합, production build | merge 뒤 동일 경로의 Production canary 반복 |
+| 소비자 Web | Product polish Production 배포·canary 완료 | PR #55, merge `024784c`, deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`, 전체 smoke와 post-deploy 모바일/API canary | 이후 코드·환경 변경 시 동일 gate 반복 |
 | 보안·데이터 경계 | Production 검증 완료 | 9개 앱 테이블 RLS, `anon`/`authenticated` 직접 권한 거부, 비공개 crop bucket, CSP, Firewall, runtime secret 검증 | schema·secret 변경 시 운영 검증 반복 |
 | 모바일 UI/UX | 4개 viewport·KO/EN/JA/ZH 회귀 통과 | 실제 Chromium 40개 조합에서 console/network/overflow/broken image/44px 미만 핵심 타깃 0 | 새 화면·번역 추가 시 회귀 테스트 확장 |
 | Android 카메라 | Galaxy S25 Edge 기본 흐름 PASS | 권한, 전면 미러링, 품질 게이트, 촬영 완료, 재촬영 | 조도·반사·가림·background/resume와 iPhone Safari 매트릭스 |
@@ -405,7 +405,7 @@ git diff --check
 9. Vercel runtime error log, 브라우저 console/network와 모바일 렌더링을 확인합니다.
 10. deployment ID, merge SHA, 테스트 결과와 남은 외부 게이트를 `docs/qa/`에 기록합니다.
 
-기준 릴리스인 2026-07-19 production-readiness track은 코드 merge `1e884e6`과 문서 merge `3911282`까지 canary가 기록되어 있습니다. 후속 Product polish 후보는 10개 재현 이슈, 57개 테스트 파일/277개 테스트, 40개 브라우저 조합, Android lint와 clean signed AAB를 통과했으며 [검증 보고서](docs/qa/2026-07-19-product-polish-loop.md)에 기록됩니다. “현재 deployment”는 Vercel의 latest Production 상태를 직접 확인합니다.
+2026-07-19 Product polish는 [PR #55](https://github.com/seonkistall/aru/pull/55), merge `024784c`와 Vercel Production deployment `dpl_FCKydr4QKpM5Zh28aGrkxev6Ad8U`로 배포되었습니다. 배포 뒤 16개 모바일 route case, KO/EN/JA/ZH, 이메일·카메라·redirect focused flow, CSP·RLS 연동 상태·API 인증 경계·MediaPipe asset을 다시 검사했고 실패와 최근 5xx/runtime error가 0건이었습니다. 정확한 명령·수치·남은 외부 게이트는 [검증 보고서](docs/qa/2026-07-19-product-polish-loop.md)에 기록합니다.
 
 ## Android TWA
 
@@ -495,6 +495,7 @@ node scripts/generate-play-assets.mjs
 | `3911282` | Production release completion canary 증거 기록 |
 | `72de855`–`f4bce3e` | Product QA ISSUE-001~009 Web·copy·email 회귀 수정 |
 | `eac5d16` | Android 생성기 격리, 전체 npm audit 0건, release lint 정리 |
+| `024784c` | PR #55 Product polish 10개 이슈, 문서와 회귀 테스트의 Production merge |
 
 전체 변경 이력과 PR 토론은 [GitHub repository](https://github.com/seonkistall/aru)에서 확인할 수 있습니다.
 
