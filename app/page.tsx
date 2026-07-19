@@ -8,7 +8,7 @@ import { MoodFromLink } from "./components/mood-from-link";
 
 function Arrow() {
   return (
-    <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden style={{ filter: "url(#sketch)" }}>
+    <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden style={{ width: "clamp(20px, 6vw, 30px)", flexShrink: 1, filter: "url(#sketch)" }}>
       <path d="M2 8 L23 8" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" />
       <path d="M23 8 L17 4 M23 8 L17 12" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" fill="none" />
     </svg>
@@ -27,48 +27,47 @@ export default function Home() {
 
       <section className="flex-1 flex flex-col items-center justify-center px-6 text-center">
         {/* 小黑 reading skin through a magnifier, with a red hand annotation */}
-        <div style={{ position: "relative", marginBottom: 8 }}>
+        <div style={{ position: "relative", marginBottom: 8, paddingTop: 42 }}>
           <Xiaohei size={156} pose="magnify" bob />
-          {/* Anchored to the character's left edge and growing leftward, so
-              longer EN/JA/ZH strings never overlap the character. */}
           <span
             data-testid="hero-callout"
             style={{
               position: "absolute",
-              right: "calc(100% - 28px)",
-              top: 28,
+              left: "50%",
+              top: 0,
+              width: "min(240px, calc(100vw - 48px))",
               fontFamily: "var(--font-display)",
-              fontSize: 21,
+              fontSize: 19,
               color: "var(--plum)",
-              lineHeight: 1.1,
-              transform: "rotate(-7deg)",
-              textAlign: "right",
-              whiteSpace: "nowrap",
+              lineHeight: 1.18,
+              transform: "translateX(-50%) rotate(-4deg)",
+              textAlign: "center",
+              whiteSpace: "normal",
             }}
           >
-            {t("30초면")}<br />{t("읽어요")}
+            {t("나에게 맞는 화장품 찾기,")}<br />{t("30초면 충분해요.")}
           </span>
-          <svg width="42" height="26" viewBox="0 0 42 26" aria-hidden style={{ position: "absolute", left: -8, top: 60, filter: "url(#sketch)" }}>
+          <svg width="42" height="26" viewBox="0 0 42 26" aria-hidden style={{ position: "absolute", left: -8, top: 76, filter: "url(#sketch)" }}>
             <path d="M3 20 C14 6 28 4 38 11" stroke="var(--orange)" strokeWidth="2" fill="none" strokeLinecap="round" />
             <path d="M38 11 L31 10 M38 11 L34 17" stroke="var(--orange)" strokeWidth="2" fill="none" strokeLinecap="round" />
           </svg>
         </div>
 
         <h1 className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
-          {t("과장 없이,")}
+          {t("오늘의 내 피부,")}
           <br />
-          {t("너한테 맞는 최대 셋")}
+          {t("어떤 스킨케어가 좋을까요?")}
         </h1>
         <p style={{ fontSize: 14.5, color: "var(--text-muted)", maxWidth: 270, lineHeight: 1.6, marginTop: 12 }}>
-          {t("4만원짜리 실패는 그만. 카메라로 피부를 읽고 솔직하게 골라드려요.")}
+          {t("AI 카메라로 지금 피부에 맞는 제품과 루틴을 함께 찾아봐요.")}
         </p>
 
-        <div className="flex items-center justify-center" style={{ gap: 11, marginTop: 26, fontFamily: "var(--font-display)", fontSize: 24, lineHeight: 1.5, color: "var(--ink)" }}>
-          <span>{t("촬영")}</span>
+        <div className="flex items-center justify-center" style={{ width: "100%", gap: "clamp(4px, 2vw, 11px)", marginTop: 26, fontFamily: "var(--font-display)", fontSize: "clamp(18px, 5.5vw, 24px)", lineHeight: 1.5, color: "var(--ink)" }}>
+          <span>{t("카메라")}</span>
           <Arrow />
-          <span>{t("분석")}</span>
+          <span>{t("설문")}</span>
           <Arrow />
-          <span>{t("추천")}</span>
+          <span>{t("리포트")}</span>
         </div>
 
         <div style={{ width: "100%", maxWidth: 420, paddingTop: 24 }}>
@@ -76,19 +75,19 @@ export default function Home() {
             <div style={{ position: "relative", minHeight: "var(--tap-min)", padding: "17px 16px" }}>
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
-                <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.5, color: "var(--ink)" }}>{t("내 피부 결, 보러 가기")}</span>
+                <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.25, color: "var(--ink)" }}>{t("내 피부 살펴보기")}</span>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--orange)" }}>→</span>
               </div>
             </div>
           </Link>
           <Link
             href="/survey"
-            style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text-muted)", textDecoration: "none", marginTop: 8 }}
+            style={{ minHeight: "var(--tap-min)", padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "var(--font-display)", fontSize: 20, lineHeight: 1.25, color: "var(--text-muted)", textDecoration: "none", marginTop: 8 }}
           >
-            {t("카메라 없이 설문만 할래요 →")}
+            {t("카메라 없이 설문으로 시작하기")}
           </Link>
           <p style={{ textAlign: "center", fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text-muted)", marginTop: 4 }}>
-            {t("기본 스캔은 기기 안에서 처리 · 동의 없인 전송·저장 안 해요")}
+            {t("사진은 기기에서 확인하고, 동의 없이 저장하지 않아요.")}
           </p>
         </div>
 
@@ -101,20 +100,20 @@ export default function Home() {
           <HowCard
             index={1}
             pose="magnify"
-            title={t("30초 피부 스캔")}
-            body={t("가이드에 얼굴을 맞추면 조건이 갖춰졌을 때 자동으로 찍혀요. 기본 스캔은 기기 안에서만 처리돼요.")}
+            title={t("30초면 충분해요")}
+            body={t("얼굴을 가이드에 맞추면 촬영 조건을 확인한 뒤 자동으로 촬영해요.")}
           />
           <HowCard
             index={2}
             pose="funnel"
-            title={t("보이는 신호만 정직하게")}
-            body={t("유분·붉은기·결처럼 눈에 보이는 신호를 여러 프레임으로 읽고, 신뢰도가 낮으면 다시 찍자고 말해줘요.")}
+            title={t("취향을 조금 더 알려주세요")}
+            body={t("피부 타입, 고민, 예산을 더하면 지금 나에게 맞는 선택을 찾기 쉬워져요.")}
           />
           <HowCard
             index={3}
             pose="carry"
-            title={t("아침·저녁 루틴과 제품")}
-            body={t("스캔과 설문을 함께 보고, 과장 없는 이유와 함께 최대 세 가지 선택과 루틴을 골라드려요.")}
+            title={t("제품과 루틴을 함께 확인해요")}
+            body={t("오늘 살펴본 피부와 설문 답변을 바탕으로 제품 후보와 가벼운 루틴을 정리해요.")}
           />
         </div>
       </section>
