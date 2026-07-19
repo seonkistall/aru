@@ -55,7 +55,7 @@ describe("verifiable product claims", () => {
     expect(report).not.toContain("recordPurchase");
     expect(card).toContain("recordProductUse");
     expect(card).toContain("사용 시작일을 기록했어요.");
-    expect(source("app/privacy/page.tsx")).toContain("제품 사용 시작을 직접 기록하면 제품 ID·이름·시작 시각");
+    expect(source("app/privacy/page.tsx")).toContain("제품 사용 시작을 직접 기록하면 제품 ID, 이름과 시작 시각");
   });
 
   it("prioritizes a clinic only for an explicit trouble concern", () => {

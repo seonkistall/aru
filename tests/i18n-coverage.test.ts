@@ -72,6 +72,8 @@ describe("dictionary coverage for runtime-composed strings", () => {
     const paths = [
       "app/page.tsx",
       "app/scan/page.tsx",
+      "app/scan/info-sheet.tsx",
+      "app/scan/scan-controls.tsx",
       "app/scan/use-quality-loop.ts",
       "app/survey/page.tsx",
       "app/care/page.tsx",

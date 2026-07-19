@@ -292,3 +292,116 @@ test("Check-in waiting, saved, and complete states keep their promise", async ({
   await expect(page.getByText("체크인을 모두 마쳤어요. 다음 스킨케어가 궁금할 때 다시 피부를 살펴보세요.", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "오늘 피부 다시 살펴보기" })).toHaveAttribute("href", "/scan");
 });
+
+const privacyCopy = {
+  ko: {
+    title: "사진과 데이터는 이렇게 사용해요",
+    lead: "기본 촬영은 기기에서 처리하고, 필요한 기능만 직접 선택할 수 있어요.",
+    summary: "기기에서 먼저 확인해요",
+    details: "데이터 처리 기준 자세히 보기",
+    provider: "AI 분석을 선택한 촬영에서만 얼굴 부분 이미지가 Google Gemini 또는 OpenAI로 전송되며, 현재 추천을 만드는 데 사용돼요.",
+    research: "연구용 저장을 선택하면 얼굴 부분 이미지, 라벨과 촬영 품질 정보를 이 브라우저에 최대 120개까지 보관해요. 파일럿에서 별도로 동의한 연구 데이터의 서버 보존 기간은 기본 180일이에요.",
+    email: "이메일 알림 기록에는 이메일, 동의 문구 버전과 발송 시각이 저장돼요. 해지하거나 마지막 알림을 보낸 뒤 30일 안에 삭제 대상이 됩니다.",
+    deleteCta: "이 기기의 ARU 데이터 모두 지우기",
+    confirmTitle: "이 기기의 데이터를 모두 지울까요?",
+    confirmBody: "스캔 결과, 설문, 체크인과 설정이 삭제돼요. 이메일 알림과 연구 서버 데이터는 포함되지 않아요.",
+    confirmCta: "모두 지우기",
+    medical: "ARU는 화장품 선택을 도와드려요",
+    scanDetails: "사진과 데이터 사용 자세히 보기",
+    scanSummary: "사진은 기기에서 먼저 확인해요. 전송과 저장은 선택한 경우에만 진행됩니다.",
+    unsubscribeTitle: "이메일 알림을 그만 받을까요?",
+    unsubscribeBody: "2주·4주 루틴 확인 메일을 중단해요.",
+    unsubscribeCta: "이메일 알림 해지하기",
+    invalid: "이 링크는 사용할 수 없거나 유효 기간이 지났어요.",
+  },
+  en: {
+    title: "How we use your photos and data",
+    lead: "Standard camera checks run on your device, and you choose any extra features yourself.",
+    summary: "Checked on your device first",
+    details: "See how your data is handled",
+    provider: "Only when you choose AI analysis is a face-region image sent to Google Gemini or OpenAI for the current recommendation.",
+    research: "If you choose research storage, up to 120 face-region images with labels and capture-quality information are kept in this browser. Separately consented pilot research data is kept on the server for 180 days by default.",
+    email: "Email reminder records include your email, consent-copy version, and send times. They become eligible for deletion within 30 days after you unsubscribe or the final reminder is sent.",
+    deleteCta: "Delete all ARU data on this device",
+    confirmTitle: "Delete all data on this device?",
+    confirmBody: "Your scan results, questionnaire, check-ins, and settings will be deleted. Email reminders and research server data aren't included.",
+    confirmCta: "Delete everything",
+    medical: "ARU helps you choose skincare products",
+    scanDetails: "Learn more about photo and data use",
+    scanSummary: "Your photo is checked on your device first. Sending and storage happen only when you choose them.",
+    unsubscribeTitle: "Stop email reminders?",
+    unsubscribeBody: "Stop the 2- and 4-week routine check-in emails.",
+    unsubscribeCta: "Unsubscribe from email reminders",
+    invalid: "This link can't be used or has expired.",
+  },
+  ja: {
+    title: "写真とデータはこのように使います",
+    lead: "基本の撮影は端末内で行い、必要な機能だけ自分で選べます。",
+    summary: "まず端末で確認します",
+    details: "データの取り扱いを詳しく見る",
+    provider: "AI分析を選んだ撮影に限り、顔部分の画像がGoogle GeminiまたはOpenAIへ送られ、今回のおすすめ作成に使われます。",
+    research: "研究用保存を選ぶと、顔部分の画像、ラベル、撮影品質の情報をこのブラウザに最大120件まで保存します。パイロットで別途同意した研究データのサーバー保存期間は、初期設定で180日です。",
+    email: "メールのお知らせの記録には、メールアドレス、同意文のバージョン、送信時刻が保存されます。配信停止または最後のお知らせから30日以内に削除対象となります。",
+    deleteCta: "この端末のARUデータをすべて削除",
+    confirmTitle: "この端末のデータをすべて削除しますか？",
+    confirmBody: "スキャン結果、質問への回答、チェックイン、設定が削除されます。メールのお知らせと研究サーバーのデータは含まれません。",
+    confirmCta: "すべて削除",
+    medical: "ARUはスキンケア商品の選択をお手伝いします",
+    scanDetails: "写真とデータの利用を詳しく見る",
+    scanSummary: "写真はまず端末で確認します。送信と保存は選んだ場合にだけ行われます。",
+    unsubscribeTitle: "メールのお知らせを停止しますか？",
+    unsubscribeBody: "2週間後・4週間後のルーティン確認メールを停止します。",
+    unsubscribeCta: "メールのお知らせを停止する",
+    invalid: "このリンクは使用できないか、有効期限が切れています。",
+  },
+  zh: {
+    title: "照片和数据会这样使用",
+    lead: "基础拍摄在设备上处理，其他功能由你按需选择。",
+    summary: "先在设备上查看",
+    details: "查看数据处理详情",
+    provider: "只有选择AI分析时，面部区域图片才会发送至Google Gemini或OpenAI，用于生成本次建议。",
+    research: "选择研究存储后，此浏览器最多保存120条面部区域图片、标签和拍摄质量信息。试点中另行同意的研究数据，服务器默认保留180天。",
+    email: "邮件提醒记录包含邮箱、同意文案版本和发送时间。退订或最后一封提醒发出后，将在30天内进入删除流程。",
+    deleteCta: "删除此设备上的全部ARU数据",
+    confirmTitle: "要删除此设备上的全部数据吗？",
+    confirmBody: "肌肤检查结果、问卷、回访和设置将被删除。邮件提醒和研究服务器数据不在其中。",
+    confirmCta: "全部删除",
+    medical: "ARU帮助你选择护肤产品",
+    scanDetails: "了解照片和数据的使用方式",
+    scanSummary: "照片会先在设备上查看，只有选择后才会发送或保存。",
+    unsubscribeTitle: "要停止接收邮件提醒吗？",
+    unsubscribeBody: "停止第2周和第4周的护肤回访邮件。",
+    unsubscribeCta: "取消邮件提醒",
+    invalid: "此链接无法使用或已过期。",
+  },
+} as const;
+
+for (const [lang, copy] of Object.entries(privacyCopy)) {
+  test(`privacy disclosure uses natural ${lang} copy`, async ({ page }) => {
+    await page.addInitScript((nextLang) => localStorage.setItem("aru.lang", nextLang), lang);
+
+    await page.goto("/privacy");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.title);
+    await expect(page.getByText(copy.lead, { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: copy.summary })).toBeVisible();
+    await expect(page.getByText(copy.provider, { exact: true })).toBeHidden();
+    await page.getByText(copy.details, { exact: true }).click();
+    await expect(page.getByText(copy.provider, { exact: true })).toBeVisible();
+    await expect(page.getByText(copy.research, { exact: true })).toBeVisible();
+    await expect(page.getByText(copy.email, { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: copy.deleteCta }).click();
+    await expect(page.getByRole("heading", { name: copy.confirmTitle })).toBeVisible();
+    await expect(page.getByText(copy.confirmBody, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: copy.confirmCta })).toBeVisible();
+    await expect(page.getByRole("heading", { name: copy.medical })).toBeVisible();
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto("/unsubscribe");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.unsubscribeTitle);
+    await expect(page.getByText(copy.unsubscribeBody, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: copy.unsubscribeCta })).toBeDisabled();
+    await expect(page.getByText(copy.invalid, { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
+}

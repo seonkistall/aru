@@ -163,4 +163,57 @@ describe("ARU consumer product copy", () => {
       expect(`${checkin}\n${email}`).not.toContain(phrase);
     }
   });
+
+  it("uses progressive privacy, consent, medical, and unsubscribe copy", () => {
+    const privacy = source("app/privacy/page.tsx");
+    const scanPrivacy = [
+      source("app/scan/info-sheet.tsx"),
+      source("app/scan/scan-controls.tsx"),
+    ].join("\n");
+    const unsubscribe = source("app/unsubscribe/unsubscribe-form.tsx");
+
+    for (const phrase of [
+      "사진과 데이터는 이렇게 사용해요",
+      "기본 촬영은 기기에서 처리하고, 필요한 기능만 직접 선택할 수 있어요.",
+      "기기에서 먼저 확인해요",
+      "기본 촬영에서는 원본 사진을 외부로 보내거나 저장하지 않아요.",
+      "선택한 기능만 사용해요",
+      "AI 분석, 연구용 저장과 이메일 알림은 각각 따로 선택할 수 있어요.",
+      "언제든 관리할 수 있어요",
+      "이 기기에 저장된 결과와 활동 기록을 확인하거나 삭제할 수 있어요.",
+      "데이터 처리 기준 자세히 보기",
+      "이 기기의 ARU 데이터 모두 지우기",
+      "이 기기의 데이터를 모두 지울까요?",
+      "스캔 결과, 설문, 체크인과 설정이 삭제돼요. 이메일 알림과 연구 서버 데이터는 포함되지 않아요.",
+      "모두 지우기",
+      "이 기기에 저장된 ARU 데이터를 모두 지웠어요.",
+      "ARU는 화장품 선택을 도와드려요",
+      "의료 진단이나 치료를 제공하지 않아요. 피부가 불편하거나 변화가 오래 이어지면 전문가와 상담해 주세요.",
+    ]) {
+      expect(privacy).toContain(phrase);
+    }
+
+    for (const phrase of [
+      "사진은 기기에서 먼저 확인해요. 전송과 저장은 선택한 경우에만 진행됩니다.",
+      "기본 촬영은 이 기기에서 처리해요.",
+      "더 자세한 분석을 원할 때만 외부 AI 사용을 선택할 수 있어요.",
+      "연구용 저장은 파일럿 참여자에게만 별도로 안내해요.",
+      "사진과 데이터 사용 자세히 보기",
+    ]) {
+      expect(scanPrivacy).toContain(phrase);
+    }
+
+    for (const phrase of [
+      "이메일 알림을 그만 받을까요?",
+      "2주·4주 루틴 확인 메일을 중단해요.",
+      "이메일 알림 해지하기",
+      "이메일 알림을 해지했어요. 이제 2주·4주 알림을 보내지 않을게요.",
+      "이 링크는 사용할 수 없거나 유효 기간이 지났어요.",
+    ]) {
+      expect(unsubscribe).toContain(phrase);
+    }
+
+    const visibleCalls = [...`${privacy}\n${scanPrivacy}`.matchAll(/\bt\("([^"]+)"/g)].map((match) => match[1]);
+    expect(visibleCalls.filter((message) => /크롭|crop|분석 API/.test(message))).toEqual([]);
+  });
 });

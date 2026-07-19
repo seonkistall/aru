@@ -98,7 +98,7 @@ describe("device data registry", () => {
     expect(privacy).toContain('setDeleteState("confirm")');
     expect(privacy).toContain("clearAllDeviceData({ local: window.localStorage, session: window.sessionStorage })");
     expect(privacy).toContain("remaining.length === 0");
-    expect(privacy).toContain("스캔·리포트, 설문, 연구·동의, 활동·체크인, 언어 설정");
-    expect(privacy).toContain("서버 데이터는 지워지지 않아요");
+    expect(privacy).toContain("스캔 결과, 설문, 체크인과 설정이 삭제돼요.");
+    expect(privacy).toContain("이메일 알림과 연구 서버 데이터는 포함되지 않아요.");
   });
 });
