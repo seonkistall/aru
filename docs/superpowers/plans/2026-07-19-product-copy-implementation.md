@@ -4,6 +4,10 @@
 
 **Goal:** Replace ARU's awkward consumer copy with the approved friendly product voice in KO/EN/JA/ZH, preserve trust boundaries, prevent text clipping or corrupted characters, and deploy the verified result.
 
+**Execution status:** Tasks 1–6 are implemented and verified. Task 7 release
+tracking continues in [PR #57](https://github.com/seonkistall/aru/pull/57) and
+the [multilingual product copy QA ledger](../../qa/2026-07-19-product-copy-polish.md).
+
 **Architecture:** Keep the existing Korean-message-ID `t()` architecture and update only consumer message IDs, the three dictionaries, user-visible templates, metadata, and the smallest layout rules exposed by longer copy. Each journey segment gets a red-green test cycle and a reviewable commit; one final cross-locale browser matrix validates text fit and character integrity.
 
 **Tech Stack:** Next.js 16.2.9 App Router, React 19.2.4, TypeScript, existing `lib/i18n/core.ts`, Vitest 4.1.9, Playwright 1.61.1, Vercel, Supabase runtime checks.

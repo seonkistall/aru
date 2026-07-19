@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 
-Status: Approved design, pending implementation
+Status: Implemented and release-gate verified in PR #57
 
 ## 1. Objective
 
