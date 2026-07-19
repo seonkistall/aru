@@ -518,7 +518,7 @@ const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, disp
 const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const privacyLink: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 12, color: "var(--text-muted)", fontSize: 13, textDecoration: "underline" };
 
-const stepTabs: React.CSSProperties = { display: "flex", gap: 6, marginTop: 12, marginBottom: 4 };
+const stepTabs: React.CSSProperties = { display: "flex", alignItems: "stretch", gap: 6, marginTop: 12, marginBottom: 4 };
 function stepTab(active: boolean, done: boolean): React.CSSProperties {
   return {
     flex: 1,
@@ -526,15 +526,15 @@ function stepTab(active: boolean, done: boolean): React.CSSProperties {
     border: `1.5px solid ${active ? "var(--ink)" : "var(--line)"}`,
     background: active ? "var(--surface-tint)" : "var(--surface)",
     color: active ? "var(--ink)" : done ? "var(--ink-soft)" : "var(--text-muted)",
-    borderRadius: 999,
+    borderRadius: 12,
     minHeight: "var(--tap-min)",
-    padding: "7px 4px",
+    padding: "8px 5px",
     fontSize: 12,
+    lineHeight: 1.3,
     fontWeight: active ? 800 : 600,
     cursor: "pointer",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    whiteSpace: "normal",
+    overflowWrap: "break-word",
   };
 }
 const stepNav: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 28 };

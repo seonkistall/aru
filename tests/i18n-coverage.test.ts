@@ -103,6 +103,10 @@ describe("dictionary coverage for runtime-composed strings", () => {
     expectCovered("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.");
   });
 
+  it("covers the multiline product rationale composed on the report", () => {
+    expectCovered("피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.");
+  });
+
   it.each(["en", "ja", "zh"])("contains no duplicate keys in %s", (lang) => {
     const source = readFileSync(resolve(root, `lib/i18n/${lang}.ts`), "utf8");
     const keys = [...source.matchAll(/^\s*"((?:[^"\\]|\\.)*)":/gm)].map((match) => JSON.parse(`"${match[1]}"`) as string);

@@ -459,6 +459,7 @@ export const EN: Record<string, string> = {
   "사진은 참고만 하고, 설문에서 선택한 피부 타입과 고민, 예산을 중심으로 살펴봤어요.": "We used the photo as a reference and focused on the skin type, concerns, and budget you selected.",
   "사진은 참고만 했어요": "We used the photo as a reference",
   "살펴볼 제품 후보": "Product options to explore",
+  "피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.": "We considered your {type} skin, {concerns} concerns, and {budget} budget. Here are up to three {category} options close to those preferences.",
   "설문 답변을 바탕으로 나에게 맞는 스킨케어를 정리했어요.": "We've organized skincare ideas based on your questionnaire answers.",
   "설문 답변을 살펴보고 {budget} 예산에 가장 가까운 {category} 제품 후보로 정리했어요. {head}도 참고했어요.": "Based on your answers, this {category} is the closest option to your {budget} budget. We also considered {head}.",
   "설문 답변을 중심으로 정리했어요": "We focused on your questionnaire answers",
