@@ -39,4 +39,30 @@ describe("ARU consumer product copy", () => {
       expect(consumer).not.toContain(phrase);
     }
   });
+
+  it("uses the approved Scan and Survey journey", () => {
+    const consumer = [
+      source("app/scan/page.tsx"),
+      source("app/scan/use-quality-loop.ts"),
+      source("app/survey/page.tsx"),
+    ].join("\n");
+    for (const phrase of [
+      "오늘의 피부를 카메라로 살펴볼게요",
+      "얼굴을 가이드에 맞추면 빛과 각도를 확인한 뒤 자동으로 촬영해요.",
+      "30초 피부 체크, 시작해볼까요?",
+      "카메라로 살펴보기",
+      "카메라 없이 설문으로 시작하기",
+      "좋아요. 잠시 그대로 있어주세요.",
+      "피부가 선명하게 보이지 않았어요. 가이드라인에 맞춰서 밝은 곳에서 정면으로 다시 촬영해 주세요.",
+      "설문으로 이어가기",
+      "나에게 맞는 스킨케어를 찾아볼게요",
+      "피부와 취향을 조금 더 알려주세요.",
+      "사진에서 확인한 {signals} 항목을 먼저 선택했어요. 내 느낌과 다르면 바꿔주세요.",
+      "평소 신경 쓰이는 고민을 골라주세요.",
+      "제품 종류, 피부 타입, 예산을 선택해 주세요.",
+      "내 스킨케어 결과 보기",
+    ]) {
+      expect(consumer).toContain(phrase);
+    }
+  });
 });

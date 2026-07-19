@@ -67,9 +67,10 @@ describe("verifiable product claims", () => {
   it("promises at most three picks instead of an exact count", () => {
     const home = source("app/page.tsx");
     const layout = source("app/layout.tsx");
-    expect(home).toContain("너한테 맞는 최대 셋");
+    const engine = source("lib/recommend.ts");
+    expect(engine.match(/if \(picks\.length >= 3\) break;/g)).toHaveLength(2);
+    expect(home).not.toContain("너한테 맞는 최대 셋");
     expect(home).not.toContain("너한테 딱 맞는 셋");
-    expect(layout).toMatch(/최대 3가지|up to 3/);
     expect(layout).not.toMatch(/picks the 3|K뷰티 3종/);
   });
 });

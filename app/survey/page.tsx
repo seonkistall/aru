@@ -36,15 +36,15 @@ function loadScanHint(): ScanHint {
     if (!raw) return null;
     const scan = JSON.parse(raw) as ScanReads;
     if (!scan || scan.retakeRecommended || (scan.confidence ?? 0) < 0.58) {
-      return { concerns: [], text: t("촬영 조건이 애매해서 설문 답변을 중심으로 추천할게요.") };
+      return { concerns: [], text: t("촬영 조건이 충분하지 않아 사진은 참고만 할게요. 설문 답변을 중심으로 정리해요.") };
     }
     const concerns: Concern[] = [];
     if (scan.oil >= 2) concerns.push("유분");
     if (scan.redness >= 1) concerns.push("붉은기");
     if (scan.pores >= 1) concerns.push("모공");
     return concerns.length
-      ? { concerns, text: t("스캔에서 {signals} 신호가 보여 고민에 미리 담았어요.", { signals: concerns.map((c) => t(c)).join("·") }) }
-      : { concerns: [], text: t("스캔에서는 크게 도드라진 신호가 적어 기본 설문을 중심으로 볼게요.") };
+      ? { concerns, text: t("사진에서 확인한 {signals} 항목을 먼저 선택했어요. 내 느낌과 다르면 바꿔주세요.", { signals: concerns.map((c) => t(c)).join("·") }) }
+      : { concerns: [], text: t("사진에서 뚜렷하게 보이는 항목이 적어 설문 답변을 중심으로 살펴볼게요.") };
   } catch {
     return null;
   }
@@ -111,9 +111,9 @@ export default function Survey() {
   return (
     <main className="min-h-screen px-5 py-9" style={{ background: "var(--paper)" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
-        <p style={eyebrow}>{t("몇 가지만 더 알려주세요")}</p>
+        <p style={eyebrow}>{t("피부와 취향을 조금 더 알려주세요.")}</p>
         <FlowSteps current="survey" />
-        <h1 style={titleStyle}>{t("추천을 더 정확하게 맞춰볼게요")}</h1>
+        <h1 style={titleStyle}>{t("나에게 맞는 스킨케어를 찾아볼게요")}</h1>
 
         {(() => {
           const done = [Boolean(category), Boolean(type), Boolean(budget)].filter(Boolean).length;
@@ -121,7 +121,7 @@ export default function Survey() {
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--text-muted)", marginBottom: 6 }}>
                 <span>{t("필수 항목 {done}/3", { done })}</span>
-                <span>{done === 3 ? t("리포트를 볼 수 있어요") : t("제품·타입·예산을 골라주세요")}</span>
+                <span>{done === 3 ? t("결과를 볼 준비가 됐어요.") : t("제품 종류, 피부 타입, 예산을 선택해 주세요.")}</span>
               </div>
               <div style={{ height: 6, background: "var(--surface-tint)", borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(done / 3) * 100}%`, background: "var(--plum)", borderRadius: 3, transition: "width .3s ease" }} />
@@ -133,7 +133,7 @@ export default function Survey() {
         {scanHint && (
           <div style={scanHintStyle}>
             <p style={{ margin: 0 }}>{scanHint.text}</p>
-            <Link href="/scan" style={retakeLinkStyle}>{t("스캔 다시 하기")}</Link>
+            <Link href="/scan" style={retakeLinkStyle}>{t("카메라로 다시 살펴보기")}</Link>
           </div>
         )}
 
@@ -143,7 +143,7 @@ export default function Survey() {
         <Section title="피부 타입" required>
           <Chips options={TYPES} selected={type ? [type] : []} onPick={setType} />
         </Section>
-        <Section title="고민" hint="여러 개 선택할수록 정교해져요">
+        <Section title="고민" hint="평소 신경 쓰이는 고민을 골라주세요.">
           <Chips options={CONCERNS} selected={concerns} onPick={(v) => toggle(concerns, v, setConcerns)} />
         </Section>
         <Section title="예산" required>
@@ -157,11 +157,11 @@ export default function Survey() {
           <Chips options={AVOIDS} selected={avoid} onPick={(v) => toggle(avoid, v, setAvoid)} />
         </Section>
 
-        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>{t("내 추천 보기")}</button>
+        <button onClick={submit} disabled={!ready} style={submitStyle(Boolean(ready))}>{t("내 스킨케어 결과 보기")}</button>
         {saveErr && <p role="alert" style={{ fontSize: 12.5, color: "var(--plum-press)", textAlign: "center", marginTop: 8 }}>{saveErr}</p>}
         {!ready && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
-            {t("제품 종류·피부 타입·예산을 고르면 리포트를 볼 수 있어요")}
+            {t("제품 종류, 피부 타입, 예산을 선택해 주세요.")}
           </p>
         )}
       </div>

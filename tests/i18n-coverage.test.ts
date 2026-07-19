@@ -71,6 +71,9 @@ describe("dictionary coverage for runtime-composed strings", () => {
   it("covers every consumer-page message id in every language", () => {
     const paths = [
       "app/page.tsx",
+      "app/scan/page.tsx",
+      "app/scan/use-quality-loop.ts",
+      "app/survey/page.tsx",
       "app/care/page.tsx",
       "app/checkin/page.tsx",
       "app/components/product-card.tsx",

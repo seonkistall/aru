@@ -146,7 +146,7 @@ export function useQualityLoop({
     if (!face?.length) {
       lastCenterRef.current = null;
       setZones(null);
-      commitQuality({ ...initialQuality, message: t("얼굴이 보이지 않아요. 정면을 향해주세요.") });
+      commitQuality({ ...initialQuality, message: t("얼굴이 잘 보이지 않아요. 화면을 보며 정면으로 맞춰주세요.") });
       handleAutoTick(false);
       return;
     }
@@ -202,21 +202,21 @@ export function useQualityLoop({
     const score = 1 + (distance ? 1 : 0) + (brightness ? 1 : 0) + (noGlare ? 1 : 0) + (steady ? 1 : 0) + (centered ? 1 : 0);
     const message = !distance
       ? rawSize <= profile.minFaceSize
-        ? t("얼굴이 작게 보여요. 조금 더 가까이 와주세요.")
-        : t("너무 가까워요. 살짝 물러나 주세요.")
+        ? t("얼굴이 작게 보여요. 카메라 쪽으로 조금 가까이 와주세요.")
+        : t("얼굴이 너무 가까워요. 카메라에서 살짝 물러나 주세요.")
       : !skinQuality.regionsReady
-        ? t("피부 영역을 가이드 안에 맞춰주세요.")
+        ? t("피부 영역이 가이드에 맞지 않아요. 얼굴을 안내선 안에 맞춰주세요.")
         : !brightness
-          ? t("피부가 어두워요. 부드러운 정면 빛 쪽으로 이동해주세요.")
+          ? t("피부가 어둡게 보여요. 부드러운 정면 빛이 있는 곳으로 이동해 주세요.")
           : !noGlare
-            ? t("피부 반사가 강해요. 직접 조명이나 번들거림을 줄여주세요.")
+            ? t("빛 반사가 강해요. 직접 조명을 피하고 다시 확인해 주세요.")
             : !skinQuality.sharp
-              ? t("피부 결이 흐려요. 렌즈를 닦고 잠깐 멈춰주세요.")
+              ? t("피부가 흐리게 보여요. 렌즈를 닦고 잠시 멈춰주세요.")
               : !centered
-                ? t("얼굴을 윤곽선 중앙에 맞춰주세요.")
+                ? t("얼굴을 안내선 중앙에 맞춰주세요.")
                 : !steady
-                  ? t("잠깐만 멈춰주세요. 피부 결은 흔들림에 약해요.")
-                  : t("좋아요. 그대로 계세요.");
+                  ? t("화면이 흔들리고 있어요. 잠시 그대로 있어주세요.")
+                  : t("좋아요. 잠시 그대로 있어주세요.");
 
     commitQuality({ face: true, centered, distance, brightness, noGlare, steady, skinReady, score, message });
     handleAutoTick(pass);

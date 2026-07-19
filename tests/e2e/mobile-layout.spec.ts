@@ -67,10 +67,10 @@ test("camera fallback remains an accessible touch target", async ({ page }) => {
     });
   });
   await page.goto("/scan");
-  const start = page.getByRole("button", { name: "카메라 시작" });
+  const start = page.getByRole("button", { name: "카메라로 살펴보기" });
   await expect(start).toBeVisible();
   await start.click();
-  const fallback = page.getByRole("link", { name: "사진 없이 추천받기" });
+  const fallback = page.getByRole("link", { name: "카메라 없이 설문으로 시작하기" });
   await expect(fallback).toBeVisible();
   await expectTapHeight(fallback);
 });
