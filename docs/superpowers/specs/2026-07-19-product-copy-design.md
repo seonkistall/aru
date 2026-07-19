@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 
-Status: Implemented and release-gate verified in PR #57
+Status: Implemented in PR #57; 320 px locale polish in PR #58
 
 ## 1. Objective
 
