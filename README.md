@@ -8,7 +8,8 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 - 제품 계약과 KPI: [docs/PRD.md](docs/PRD.md)
 - 현재 검증 상태: [docs/STATUS.md](docs/STATUS.md)
 - 시스템 구조: [docs/architecture.md](docs/architecture.md)
-- 최신 Production 검증 증거: [docs/qa/2026-07-19-release-completion-canary.md](docs/qa/2026-07-19-release-completion-canary.md)
+- 최신 Product polish 검증 증거: [docs/qa/2026-07-19-product-polish-loop.md](docs/qa/2026-07-19-product-polish-loop.md)
+- 직전 Production canary: [docs/qa/2026-07-19-release-completion-canary.md](docs/qa/2026-07-19-release-completion-canary.md)
 - 출시 절차: [docs/production-release-checklist.md](docs/production-release-checklist.md)
 
 ## 현재 릴리스 상태
@@ -17,12 +18,12 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 
 | 영역 | 현재 상태 | 확인된 증거 | 다음 게이트 |
 |---|---|---|---|
-| 소비자 Web | Production 배포·canary 통과 | lint, 52개 Vitest 파일/260개 테스트, 4개 모바일 브라우저 테스트, production build, 주요 route/API canary | 변경 시 동일 smoke와 배포 후 canary 반복 |
+| 소비자 Web | Product polish release gate 통과 | lint, 57개 Vitest 파일/277개 테스트, 10개 모바일 브라우저 테스트, 40개 route/viewport 조합, production build | merge 뒤 동일 경로의 Production canary 반복 |
 | 보안·데이터 경계 | Production 검증 완료 | 9개 앱 테이블 RLS, `anon`/`authenticated` 직접 권한 거부, 비공개 crop bucket, CSP, Firewall, runtime secret 검증 | schema·secret 변경 시 운영 검증 반복 |
-| 모바일 UI/UX | 360×800 KO/EN/JA/ZH 회귀 통과 | 실제 Chromium에서 offscreen 및 44px 미만 터치 타깃 0 | 새 화면·번역 추가 시 회귀 테스트 확장 |
+| 모바일 UI/UX | 4개 viewport·KO/EN/JA/ZH 회귀 통과 | 실제 Chromium 40개 조합에서 console/network/overflow/broken image/44px 미만 핵심 타깃 0 | 새 화면·번역 추가 시 회귀 테스트 확장 |
 | Android 카메라 | Galaxy S25 Edge 기본 흐름 PASS | 권한, 전면 미러링, 품질 게이트, 촬영 완료, 재촬영 | 조도·반사·가림·background/resume와 iPhone Safari 매트릭스 |
 | 이메일 | 코드·정책 구현 완료 | 명시적 opt-in, 서명·만료 해지, 철회 제외, 보존 정리 테스트 | 검증 도메인으로 실제 수신·해지·cron 확인 |
-| Android TWA | API 36 signed AAB/APK 검증 완료 | package, 권한, 서명, bundletool/aapt2, Digital Asset Links 검증 | Play distribution certificate 반영 후 internal track 실기기 QA |
+| Android TWA | API 36 signed AAB 검증 완료 | package, 권한, 서명, lint `No issues found`, Gradle clean bundle, Digital Asset Links 검증 | Play distribution certificate 반영 후 internal track 실기기 QA |
 | Google Play | 제출 패키지 준비, Console 작업 차단 | ko/en 등록정보, Data safety, 콘텐츠 등급, reviewer 문서, 실제 UI 자산 | 개발자 신원·결제 계정·지원 이메일·App Signing·테스터 트랙 |
 
 > Web Production 배포 완료는 Google Play 출시 완료를 의미하지 않습니다. Play Console에서만 얻을 수 있는 신원, 결제, distribution certificate와 테스트 트랙 증거는 저장소에서 추측하지 않습니다.
@@ -227,7 +228,7 @@ AI 전송·학습 동의율은 성장 최적화 대상이 아니라 안전 KPI�
 | 데이터 | Supabase JS 2.108.2, Postgres, private Storage | 서버 전용 운영 데이터와 파일럿 crop |
 | 선택형 AI | Gemini 또는 OpenAI | 동의한 분석 교차 검증과 추천 문구 보정 |
 | Email | Resend | 명시적 2·4주 리마인더 |
-| Android | Bubblewrap 1.24.1 TWA, target/compile SDK 36 | 기존 모바일 Web을 Play 배포 가능한 wrapper로 패키징 |
+| Android | Bubblewrap 1.24.1로 생성된 TWA, Gradle 8.11.1, target/compile SDK 36 | 생성기는 릴리스 의존성에서 분리하고 검토된 Gradle wrapper로 AAB 빌드 |
 | 품질 | Vitest 4.1.9, Playwright 1.61.1, ESLint 9 | 계약·보안·모바일 UI·production route 회귀 |
 
 ### 글꼴과 다국어
@@ -276,7 +277,7 @@ docs/                         PRD, 설계, QA 증거, 운영·Play runbook
 - Git
 - Chromium — 모바일 실브라우저 회귀에 사용
 
-Android release 작업에는 추가로 JDK 17, Android SDK/Build Tools, Bubblewrap과 서명 환경이 필요합니다. 일반 Web 개발에는 Android toolchain이 필요하지 않습니다.
+Android release 빌드에는 추가로 JDK 17, Android SDK/Build Tools와 서명 환경이 필요합니다. 기존 wrapper 빌드에는 Bubblewrap이 필요하지 않으며, wrapper 재생성은 별도 검토 작업입니다. 일반 Web 개발에는 Android toolchain이 필요하지 않습니다.
 
 ### 설치와 실행
 
@@ -303,7 +304,7 @@ npm run dev
 | `npm run supabase:check` | Production Supabase 권한·Storage 점검 |
 | `npm run android:check` | TWA package/origin/API/권한/버전/toolchain/secret 점검 |
 | `npm run assets:mediapipe` | MediaPipe same-origin 자산 복사 |
-| `npm audit --omit=dev` | Production dependency 취약점 점검 |
+| `npm audit` | Production·개발 dependency 전체 취약점 점검 |
 | `git diff --check` | whitespace·conflict marker 점검 |
 
 ## 서버 환경변수
@@ -350,15 +351,15 @@ npm run lint
 
 ```bash
 npm run smoke
-npm audit --omit=dev
+npm audit
 git diff --check
 ```
 
 `npm run smoke`는 현재 다음을 묶어서 검사합니다.
 
 - ESLint와 TypeScript/Next.js Production build
-- Vitest 52개 파일, 260개 테스트
-- Playwright Chromium 360×800 실렌더 테스트 4개
+- Vitest 57개 파일, 277개 테스트
+- Playwright Chromium 360×800 실렌더 테스트 10개
 - KO/EN/JA/ZH 홈과 핵심 callout
 - 카메라 권한 거부 fallback
 - Studio, 리마인더, 개인정보 화면
@@ -404,11 +405,11 @@ git diff --check
 9. Vercel runtime error log, 브라우저 console/network와 모바일 렌더링을 확인합니다.
 10. deployment ID, merge SHA, 테스트 결과와 남은 외부 게이트를 `docs/qa/`에 기록합니다.
 
-기준 릴리스인 2026-07-19 production-readiness track은 코드 merge `1e884e6`과 문서 merge `3911282`까지 canary가 기록되어 있습니다. 이후 문서 전용 배포가 생길 수 있으므로 “현재 deployment”는 Vercel의 latest Production 상태를 직접 확인합니다.
+기준 릴리스인 2026-07-19 production-readiness track은 코드 merge `1e884e6`과 문서 merge `3911282`까지 canary가 기록되어 있습니다. 후속 Product polish 후보는 10개 재현 이슈, 57개 테스트 파일/277개 테스트, 40개 브라우저 조합, Android lint와 clean signed AAB를 통과했으며 [검증 보고서](docs/qa/2026-07-19-product-polish-loop.md)에 기록됩니다. “현재 deployment”는 Vercel의 latest Production 상태를 직접 확인합니다.
 
 ## Android TWA
 
-`android/`는 `com.seonkistall.aru`가 `https://aru-beauty.vercel.app`만 여는 Bubblewrap TWA 프로젝트입니다.
+`android/`는 `com.seonkistall.aru`가 `https://aru-beauty.vercel.app`만 여는, Bubblewrap으로 생성된 TWA 프로젝트입니다. 현재 릴리스는 체크인된 Gradle wrapper를 직접 빌드하며 Bubblewrap CLI를 npm 릴리스 그래프에 포함하지 않습니다.
 
 | 항목 | 값 |
 |---|---|
@@ -492,6 +493,8 @@ node scripts/generate-play-assets.mjs
 | `f0da693` | Play Console 계정 게이트 문서화 |
 | `1e884e6` | 모바일 QA와 Play readiness gap 수정 |
 | `3911282` | Production release completion canary 증거 기록 |
+| `72de855`–`f4bce3e` | Product QA ISSUE-001~009 Web·copy·email 회귀 수정 |
+| `eac5d16` | Android 생성기 격리, 전체 npm audit 0건, release lint 정리 |
 
 전체 변경 이력과 PR 토론은 [GitHub repository](https://github.com/seonkistall/aru)에서 확인할 수 있습니다.
 

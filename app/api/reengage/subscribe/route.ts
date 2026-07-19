@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, reason: "rate limited" }, { status: 429 });
   }
 
-  let body: { email: string; consent: true; context: string };
+  let body: { email: string; consent: true; context: string; locale: "ko" | "en" | "ja" | "zh" };
   try {
     const parsed = parseSubscribeInput(await readBoundedJson(request, 2048));
     if (!parsed.ok) return Response.json({ ok: false, reason: parsed.reason }, { status: 400 });
@@ -30,9 +30,21 @@ export async function POST(request: Request) {
   const admin = await getSupabaseAdmin();
   if (!admin) return Response.json({ ok: false, reason: "not configured" }, { status: 503 });
 
+  const consentedAt = new Date().toISOString();
   const { error } = await admin
     .from("reengage_contacts")
-    .upsert({ email: body.email, context: body.context, consent: true, consent_version: CONSENT_VERSION, consented_at: new Date().toISOString(), revoked_at: null, retention_until: null }, { onConflict: "email" });
+    .upsert({
+      email: body.email,
+      context: body.context,
+      consent: true,
+      consent_version: CONSENT_VERSION,
+      consented_at: consentedAt,
+      locale: body.locale,
+      revoked_at: null,
+      retention_until: null,
+      week2_sent_at: null,
+      week4_sent_at: null,
+    }, { onConflict: "email" });
   if (error) return Response.json({ ok: false, reason: "store failed" }, { status: 500 });
 
   return Response.json({ ok: true });

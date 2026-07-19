@@ -13,7 +13,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // explicitly records that they started using a product.
 const roundFor = (ts: number) => {
   const weeks = (Date.now() - ts) / WEEK_MS;
-  return weeks >= 3 ? 4 : weeks >= 2 ? 2 : 0;
+  return weeks >= 4 ? 4 : weeks >= 2 ? 2 : 0;
 };
 
 export default function Checkin() {
@@ -47,7 +47,21 @@ export default function Checkin() {
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <Link href="/" style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--ink)", textDecoration: "none" }}>{t("아루")}</Link>
+            <Link
+              href="/"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                minWidth: 44,
+                minHeight: 44,
+                fontFamily: "var(--font-display)",
+                fontSize: 22,
+                color: "var(--ink)",
+                textDecoration: "none",
+              }}
+            >
+              {t("아루")}
+            </Link>
             <p style={{ ...eyebrow, marginTop: 8 }}>{t("사용 후 체크인")}</p>
             <h1 style={titleStyle}>{t("써보니 어땠나요?")}</h1>
           </div>

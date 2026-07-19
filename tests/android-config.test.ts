@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
@@ -40,6 +40,23 @@ describe("Android Trusted Web Activity configuration", () => {
     expect(gradle).toContain("orientation: 'any'");
   });
 
+  it("ships a themed launcher icon without obsolete generated resources", () => {
+    const adaptiveIcon = read("android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml");
+    const gradle = read("android/app/build.gradle");
+    const manifest = JSON.parse(read("android/twa-manifest.json"));
+
+    expect(adaptiveIcon).toContain(
+      '<monochrome android:drawable="@drawable/ic_launcher_monochrome" />',
+    );
+    expect(existsSync("android/app/src/main/res/drawable/ic_launcher_monochrome.xml")).toBe(true);
+    expect(gradle).not.toContain("enableSiteSettingsShortcut");
+    expect(manifest.enableSiteSettingsShortcut).toBeUndefined();
+    expect(existsSync("android/app/src/main/res/drawable-anydpi/shortcut_legacy_background.xml")).toBe(
+      false,
+    );
+    expect(existsSync("android/app/src/main/res/raw/web_app_manifest.json")).toBe(false);
+  });
+
   it("keeps generated resources reproducible and local secrets out of Git", () => {
     const gradle = read("android/app/build.gradle");
     const gitignore = read(".gitignore");
@@ -55,7 +72,7 @@ describe("Android Trusted Web Activity configuration", () => {
     expect(gitignore).toContain("*.aab");
     expect(gitignore).toContain("*.apk");
     expect(packageJson.scripts["android:check"]).toBe("node scripts/android-check.mjs");
-    expect(packageJson.devDependencies["@bubblewrap/cli"]).toBe("1.24.1");
+    expect(packageJson.devDependencies["@bubblewrap/cli"]).toBeUndefined();
   });
 
   it("loads release signing only from the environment", () => {

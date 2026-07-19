@@ -1,5 +1,12 @@
 import type { NextConfig } from "next";
 
+const scriptSources = [
+  "'self'",
+  "'unsafe-inline'",
+  "'wasm-unsafe-eval'",
+  ...(process.env.NODE_ENV === "development" ? ["'unsafe-eval'"] : []),
+].join(" ");
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -11,7 +18,7 @@ const contentSecurityPolicy = [
   "connect-src 'self'",
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  `script-src ${scriptSources}`,
 ].join("; ");
 
 const securityHeaders = [

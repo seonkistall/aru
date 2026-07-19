@@ -12,12 +12,12 @@
 
 | 영역 | 상태 | 근거/다음 게이트 |
 |---|---|---|
-| 소비자 Web 코드 | production 배포·canary 완료 | `npm run smoke`와 10분 production canary 통과; CSP enforcement 후 재검증 포함 |
+| 소비자 Web 코드 | Product polish release gate 통과, 배포 canary 대기 | 57개 파일/277개 테스트, 모바일 E2E 10개, 40개 route/viewport 조합과 production build 통과 |
 | 보안·데이터 경계 | CSP·Firewall·DB 권한과 runtime 구성 검증 완료 | production 9개 테이블 RLS와 브라우저 역할 4종 권한 거부, service-role 트랜잭션 rollback, 비공개 bucket 확인; Vercel modern secret의 새 배포 `configured: true` 확인 |
-| 모바일 UI/UX | production canary와 렌더링 회귀 완료 | 360×800 KO/EN/JA/ZH callout, 카메라 fallback, Studio, 리마인더·개인정보 경로를 실제 Chromium으로 검증; 44px 미만·offscreen 0 |
+| 모바일 UI/UX | 두 번의 독립 브라우저 루프 완료 | 360/393/768/1440px 40개 경로 조합과 KO/EN/JA/ZH·카메라 오류 4종 검증; console/network/overflow/broken image/44px 미만 핵심 타깃 0 |
 | 카메라 | Android 기본 흐름 PASS, ROI 매트릭스 미완료 | Galaxy S25 Edge 권한·미러링·촬영·재촬영 사용자 확인 완료; 조도/반사/가림 조건과 iPhone 실기기 필요 |
 | 이메일 | 코드 완료, 실발송 미검증 | 검증 도메인·수신 주소·Resend production key 필요 |
-| Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 AAB/APK와 upload association 검증; Play distribution certificate·내부 트랙 실기기 QA 필요 |
+| Android TWA/AAB | 코드·서명 산출물 검증 완료 | API 36 clean signed AAB, release lint `No issues found`, 전체 npm audit 0; Play distribution certificate·내부 트랙 실기기 QA 필요 |
 | Google Play | 제출 패키지 완료, 계정 검증 차단 | ko/en 등록정보·Data safety·등급·reviewer 문서·실제 스크린샷 완료; `Sean_AI` 개발자 신원 확인 미완료로 앱 만들기 비활성화, 결제 계정 긴급 알림 해결 필요 |
 
 ## 이번 production-readiness 트랙에서 완료한 코드
@@ -52,12 +52,15 @@
 
 ### 최신 로컬 증거
 
-- 2026-07-18 `npm run smoke` 통과
-- Vitest 52개 파일, 260개 테스트 통과
-- Playwright Chromium 360×800 실렌더 회귀 4개 통과
+- 2026-07-19 clean `npm ci`와 `npm run smoke` 통과
+- Vitest 57개 파일, 277개 테스트 통과
+- Playwright Chromium 360×800 실렌더 회귀 10개 통과
+- 10개 route × 4개 viewport 브라우저 매트릭스 40/40 통과
+- KO/EN/JA/ZH 리포트·Care·이메일 locale, 카메라 오류 4종, `/reco` 307, production CSP 집중 루프 통과
 - ESLint, Next.js 16.2.9 production build와 TypeScript 통과
 - ML Python script compile 통과
-- `npm audit --omit=dev` production 취약점 0건
+- `npm audit` production·development 취약점 0건
+- Android `android:check`, `lintRelease`, clean signed `bundleRelease` 통과; AAB SHA-256 `6F92AA61DF06B7F6067C218DB8C54219EB30CB8E501BE40FFB6B9893FE168FB3`
 - `/scan`, `/privacy`, `/api/out`, `/api/sync` smoke 통과
 - production 기본 차단 대상 `/pilot`, `/ops`, `/eval` 404 확인
 - 로컬 허용 origin 밖의 `/api/sync` POST 403 확인
@@ -72,6 +75,7 @@
 - merge `1e884e6`의 Production 배포 `dpl_3YTFaCFcvjEyWHTWXXmC8PDDPsUr`에서 같은 360px 경로 재검증; console error·runtime error log 0
 - same-origin MediaPipe 모델·JS·WASM 200과 `aru-mediapipe-v1` Service Worker 캐시 확인
 - Vercel Production 배포의 1시간 error-level runtime log 0건 확인
+- 세부 재현·수정·회귀 증거: [qa/2026-07-19-product-polish-loop.md](qa/2026-07-19-product-polish-loop.md)
 
 코드 변경 묶음은 다음 순서를 따른다.
 

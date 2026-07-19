@@ -46,11 +46,11 @@ export async function GET(request: Request) {
     const column = week === 2 ? "week2_sent_at" : "week4_sent_at";
     const { data, error } = await admin
       .from("reengage_contacts")
-      .select(`email,${column}`)
+      .select(`email,locale,${column}`)
       .eq("consent", true)
       .is("revoked_at", null)
       .is(column, null)
-      .lte("created_at", new Date(now - week * WEEK_MS).toISOString())
+      .lte("consented_at", new Date(now - week * WEEK_MS).toISOString())
       .limit(BATCH);
     if (error) {
       failed += 1;
@@ -70,6 +70,7 @@ export async function GET(request: Request) {
         link,
         unsubscribeLink: `${base}/unsubscribe?token=${encodeURIComponent(token)}`,
         idempotencyKey,
+        locale: contact.locale,
       });
       if (result.sent) {
         const update = week === 4 ? { [column]: new Date().toISOString(), retention_until: new Date(retentionAfterWeekFour(now)).toISOString() } : { [column]: new Date().toISOString() };

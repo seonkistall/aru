@@ -46,7 +46,6 @@ def twaManifest = [
     // The fallback strategy for when Trusted Web Activity is not available. Possible values are
     // 'customtabs' and 'webview'.
     fallbackType: 'customtabs',
-    enableSiteSettingsShortcut: 'true',
     orientation: 'any',
 ]
 
@@ -167,7 +166,6 @@ android {
 
         resValue "string", "fallbackType", twaManifest.fallbackType
 
-        resValue "bool", "enableSiteSettingsShortcut", twaManifest.enableSiteSettingsShortcut
         resValue "string", "orientation", twaManifest.orientation
 
 
