@@ -94,7 +94,7 @@ test("routine reminder and privacy path are usable in the TWA viewport", async (
     sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
   }, survey);
   await page.goto("/report");
-  await page.getByRole("tab", { name: /오늘의 루틴/ }).click();
+  await page.getByRole("tab", { name: /오늘부터 가볍게 시작할 루틴/ }).click();
 
   await expectTapHeight(page.getByRole("textbox", { name: "이메일 주소" }));
   await expectTapHeight(page.getByRole("button", { name: "신청" }));

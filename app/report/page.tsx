@@ -178,8 +178,8 @@ export default function Report() {
   const step = steps[Math.min(stepIndex, steps.length - 1)];
   const stepTitles: Record<ReportStep, string> = {
     analysis: t("피부 분석"),
-    picks: t("추천 제품"),
-    routine: t("오늘의 루틴"),
+    picks: t("살펴볼 제품 후보"),
+    routine: t("오늘부터 가볍게 시작할 루틴"),
   };
   const goStep = (next: number) => {
     setStepIndex(Math.max(0, Math.min(steps.length - 1, next)));
@@ -205,7 +205,7 @@ export default function Report() {
       <div className="mx-auto" style={{ maxWidth: 420 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <p style={eyebrow}>{t("피부 리포트")}</p>
+            <p style={eyebrow}>{t("오늘의 피부 리포트")}</p>
             <FlowSteps current="report" />
             <h1 style={headlineStyle}>
               {stepIndex === 0 ? (reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })) : stepTitles[step]}
@@ -221,7 +221,11 @@ export default function Report() {
           ))}
         </div>
         {stepIndex === 0 && (
-          <p style={subStyle}>{reads ? t("사진과 설문을 함께 읽었어요.") : t("설문 답변을 바탕으로 정리했어요.")}</p>
+          <p style={subStyle}>
+            {reads
+              ? t("카메라에서 확인한 피부 특징을 설문 답변과 함께 정리했어요.")
+              : t("설문 답변을 바탕으로 나에게 맞는 스킨케어를 정리했어요.")}
+          </p>
         )}
         {step === "analysis" && reads?.narrative && <p style={narrativeStyle}>{localizedNarrative(reads)}</p>}
         {step === "analysis" && reads && <ConfidenceBridge reads={reads} scanApplied={result.scanApplied} />}
@@ -233,8 +237,8 @@ export default function Report() {
             <h2 style={sectionLabel}>{t("피부 분석")}</h2>
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
               {result.scanApplied
-                ? t("촬영한 사진의 T존·양볼 신호를 설문 답변과 함께 읽었어요. 아래는 당신의 스캔 결과예요.")
-                : t("촬영 신뢰도가 낮아 스캔은 참고만 하고, 설문 답변을 중심으로 정리했어요.")}
+                ? t("카메라에서 확인한 피부 특징을 항목별로 살펴볼 수 있어요.")
+                : t("촬영 조건이 충족되지 않아 사진은 참고만 하고, 설문 답변을 중심으로 정리했어요.")}
             </p>
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 12 }}>
               {analysisRows.map(([label, read, note]) => (
@@ -276,7 +280,7 @@ export default function Report() {
                 ))}
             </div>
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
-              {t("유분·붉은기·결처럼 눈에 보이는 신호를 여러 프레임으로 읽고, 신뢰도가 낮으면 다시 찍자고 말해줘요.")}
+              {t("카메라를 사용하면 유분, 붉은기, 피부결처럼 눈에 보이는 특징도 함께 살펴볼 수 있어요.")}
             </p>
             <Link href="/scan" style={{ ...careBtn, marginTop: 12 }}>{t("30초 피부 스캔")}</Link>
           </section>
@@ -284,21 +288,18 @@ export default function Report() {
 
         {step === "picks" && (
         <section style={{ margin: "30px 0 24px" }}>
-          <h2 style={sectionLabel}>{t("추천 기준")}</h2>
-          <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
-            {result.relaxed === "budget" || result.relaxed === "both"
-              ? t("{type} 피부와 {concerns} 고민을 기준으로 {category} 제품을 골랐어요.", {
-                  type: t(survey.type),
-                  concerns: concernText,
-                  category: t(survey.category),
-                })
-              : t("{type} 피부, {concerns} 고민, {budget} 예산을 기준으로 {category} 제품을 골랐어요.", {
-                  type: t(survey.type),
-                  concerns: concernText,
-                  budget: t(budgetLabel(survey.budget)),
-                  category: t(survey.category),
-                })}
-            {result.scanApplied && reads ? ` ${t("스캔에서 보인 {signals} 신호도 함께 반영했어요.", { signals: scanSignalText(reads) })}` : ""}
+           <h2 style={sectionLabel}>{t("추천 기준")}</h2>
+           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
+             {t(
+               "피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.",
+               {
+                 type: t(survey.type),
+                 concerns: concernText,
+                 budget: t(budgetLabel(survey.budget)),
+                 category: t(survey.category),
+               },
+             )}
+             {result.scanApplied && reads ? ` ${t("카메라에서 확인한 {signals}도 함께 참고했어요.", { signals: scanSignalText(reads) })}` : ""}
           </p>
           {survey.avoid.length > 0 && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>{t("제외 요청: {list}", { list: survey.avoid.map((item) => t(item)).join(" · ") })}</p>
@@ -309,7 +310,7 @@ export default function Report() {
         {step === "routine" && (
         <details open style={card}>
           <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
-            <h2 style={sectionLabel}>{t("오늘의 루틴")}</h2>
+             <h2 style={sectionLabel}>{t("오늘부터 가볍게 시작할 루틴")}</h2>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("아침 {am} · 저녁 {pm}단계", { am: result.routine.am.length, pm: result.routine.pm.length })}</span>
           </summary>
           <div style={{ marginTop: 6 }}>
@@ -321,14 +322,14 @@ export default function Report() {
 
         {step === "routine" && (
         <section style={careCard}>
-          <p style={sectionLabel}>{t("후속 연결")}</p>
-          <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 6px" }}>
-            {t("구매와 상담까지 이어볼까요?")}
-          </h2>
-          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: 14 }}>
-            {t("추천 제품 검색, 국내 구매처, 외국인용 검색, 근처 피부과 찾기를 한 화면에서 연결해요.")}
-          </p>
-          <Link href="/care" style={careBtn}>{t("구매/상담 연결 보기")}</Link>
+           <p style={sectionLabel}>{t("다음 단계")}</p>
+           <h2 style={{ fontFamily: "var(--font-ko-serif)", fontSize: 21, color: "var(--ink)", margin: "8px 0 6px" }}>
+             {t("제품 정보나 전문가 상담이 더 궁금한가요?")}
+           </h2>
+           <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: 14 }}>
+             {t("추천 제품의 판매처를 확인하거나, 피부 고민이 계속되면 상담 정보를 찾아볼 수 있어요.")}
+           </p>
+           <Link href="/care" style={careBtn}>{t("제품과 상담 정보 보기")}</Link>
           {/* context is persisted (Supabase reengage_contacts) — keep Korean canonical, no t() */}
           <ReengageOptIn context={`${survey.type}·${survey.category}`} />
         </section>
@@ -338,7 +339,7 @@ export default function Report() {
           <>
             {result.note && <p style={noteStyle}>{t(result.note)}</p>}
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-              <h2 style={{ ...sectionLabel, marginBottom: 0 }}>{t("추천 제품")}</h2>
+               <h2 style={{ ...sectionLabel, marginBottom: 0 }}>{t("살펴볼 제품 후보")}</h2>
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("{category} · {n}개", { category: t(survey.category), n: result.picks.length })}</span>
             </div>
             <div style={{ display: "grid", gap: 12 }}>
@@ -351,7 +352,7 @@ export default function Report() {
               <details style={{ ...card, marginTop: 16 }}>
                 <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
                   <span style={sectionLabel}>{t("추천 제품 비교")}</span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("예산대·용량·성분 한눈에")}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("예산대, 용량, 주요 성분을 비교해 보세요.")}</span>
                 </summary>
                 <div style={{ marginTop: 12 }}>
                   <ProductCompare picks={result.picks} />
@@ -370,9 +371,9 @@ export default function Report() {
                   }}
                   style={buyBtn}
                 >
-                  {topCommerce ? t("{label} 보기", { label: t(topCommerce.label) }) : t("바로 검색")}
+                  {topCommerce ? t("{label}에서 제품 보기", { label: t(topCommerce.label) }) : t("제품 검색하기")}
                 </a>
-                <Link href="/care" style={commerceCareBtn}>{t("구매/상담 연결")}</Link>
+                <Link href="/care" style={commerceCareBtn}>{t("제품과 상담 정보 보기")}</Link>
               </section>
             )}
           </>

@@ -116,7 +116,7 @@ describe("recommend()", () => {
       { oil: 1, redness: 0, pores: 0, confidence: 0.4, retakeRecommended: true }
     );
     expect(result.relaxed).toBe("budget");
-    expect(result.note).toContain("스캔"); // scan-ambiguous line present
+    expect(result.note).toContain("촬영 조건"); // low-confidence camera line present
     expect(result.note).toContain("예산"); // budget relaxation NOT suppressed
   });
 

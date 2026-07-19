@@ -65,4 +65,52 @@ describe("ARU consumer product copy", () => {
       expect(consumer).toContain(phrase);
     }
   });
+
+  it("uses the approved Report, product, routine, and Care journey", () => {
+    const consumer = [
+      source("app/report/page.tsx"),
+      source("app/components/product-card.tsx"),
+      source("app/components/product-compare.tsx"),
+      source("app/care/page.tsx"),
+      source("lib/care.ts"),
+      source("lib/report-trust.ts"),
+      source("lib/recommend.ts"),
+    ].join("\n");
+    for (const phrase of [
+      "오늘의 피부 리포트",
+      "카메라에서 확인한 피부 특징을 설문 답변과 함께 정리했어요.",
+      "촬영 조건이 충족되지 않아 사진은 참고만 하고, 설문 답변을 중심으로 정리했어요.",
+      "설문 답변을 바탕으로 나에게 맞는 스킨케어를 정리했어요.",
+      "피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.",
+      "카메라에서 확인한 {signals}도 함께 참고했어요.",
+      "살펴볼 제품 후보",
+      "예산대, 용량, 주요 성분을 비교해 보세요.",
+      "현재 가격, 옵션, 전성분은 판매처에서 다시 확인해 주세요.",
+      "{label}에서 제품 보기",
+      "이 제품 사용 시작하기",
+      "사용 시작일을 기록했어요.",
+      "오늘부터 가볍게 시작할 루틴",
+      "제품 정보나 전문가 상담이 더 궁금한가요?",
+      "추천 제품의 판매처를 확인하거나, 피부 고민이 계속되면 상담 정보를 찾아볼 수 있어요.",
+      "제품과 상담 정보 보기",
+      "아직 이어서 볼 리포트가 없어요.",
+      "먼저 피부를 살펴보거나 설문을 완료하면 제품 정보와 루틴을 이어서 볼 수 있어요.",
+      "추천 제품 더 알아보기",
+      "궁금한 제품의 정보와 판매처를 한눈에 비교해 보세요.",
+      "피부 고민이 계속 신경 쓰인다면",
+    ]) {
+      expect(consumer).toContain(phrase);
+    }
+
+    for (const phrase of [
+      "사진과 설문을 함께 읽었어요.",
+      "스캔 신호를 추천에 반영했어요",
+      "후속 연결",
+      "구매/상담 연결",
+      "이 제품을 사용하기 시작했어요",
+      "사용 후 체크인으로 다음 추천을 더 정확하게 만들 수 있어요.",
+    ]) {
+      expect(consumer).not.toContain(phrase);
+    }
+  });
 });

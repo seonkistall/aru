@@ -27,7 +27,7 @@ describe("verifiable product claims", () => {
     for (const path of ["app/components/product-card.tsx", "app/components/product-compare.tsx"]) {
       const component = source(path);
       expect(component).not.toMatch(/sku\.rating|reviewCount|toLocaleString|maxRating|minPrice/);
-      expect(component).toContain("판매처에서 현재 가격·옵션·성분 확인");
+      expect(component).toContain("현재 가격, 옵션, 전성분은 판매처에서 다시 확인해 주세요.");
     }
   });
 
@@ -54,7 +54,7 @@ describe("verifiable product claims", () => {
     expect(card).not.toContain("recordPurchase");
     expect(report).not.toContain("recordPurchase");
     expect(card).toContain("recordProductUse");
-    expect(card).toContain("이 제품을 사용하기 시작했어요");
+    expect(card).toContain("사용 시작일을 기록했어요.");
     expect(source("app/privacy/page.tsx")).toContain("제품 사용 시작을 직접 기록하면 제품 ID·이름·시작 시각");
   });
 

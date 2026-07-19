@@ -82,6 +82,8 @@ describe("dictionary coverage for runtime-composed strings", () => {
       "app/report/page.tsx",
       "app/unsubscribe/unsubscribe-form.tsx",
       "lib/care.ts",
+      "lib/report-trust.ts",
+      "lib/recommend.ts",
     ];
 
     for (const path of paths) {

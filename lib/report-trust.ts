@@ -21,9 +21,9 @@ export type ReportTrust = {
 };
 
 const SOURCE_LABEL: Record<AnalysisSource, string> = {
-  "roi-calibrated": "온디바이스 ROI 분석",
-  "vision-api": "온디바이스 + 비전 API 교차 확인",
-  "ml-model": "온디바이스 ML 분석",
+  "roi-calibrated": "기기에서 확인",
+  "vision-api": "기기 확인 + 선택한 AI 분석",
+  "ml-model": "기기에서 확인",
 };
 
 function signalCheck(signal: ConfidenceSignal): string {
@@ -39,8 +39,8 @@ export function buildReportTrust(reads: ReportTrustInput, scanApplied: boolean):
   if (reads.retakeRecommended) {
     return {
       tone: "retake",
-      title: "재촬영하면 더 믿을 수 있어요",
-      body: "이번 추천은 스캔 신호를 무리하게 쓰지 않고 설문 답변을 중심으로 정리했어요. 빛, 각도, 흔들림을 맞춰 다시 찍으면 리포트와 추천 근거가 더 선명해집니다.",
+      title: "사진은 참고만 했어요",
+      body: "촬영 조건이 충족되지 않아 설문 답변을 중심으로 정리했어요. 밝은 곳에서 정면으로 다시 촬영하면 피부 특징을 더 선명하게 확인할 수 있어요.",
       sourceLabel: SOURCE_LABEL[reads.source],
       checks,
       reasons,
@@ -49,8 +49,8 @@ export function buildReportTrust(reads: ReportTrustInput, scanApplied: boolean):
   if (!scanApplied) {
     return {
       tone: "survey-led",
-      title: "스캔은 참고로만 반영했어요",
-      body: "카메라 신호가 충분히 단단하지 않아 추천 점수에는 설문에서 고른 피부 타입, 고민, 예산을 더 크게 반영했어요.",
+      title: "설문 답변을 중심으로 정리했어요",
+      body: "사진은 참고만 하고, 설문에서 선택한 피부 타입과 고민, 예산을 중심으로 살펴봤어요.",
       sourceLabel: SOURCE_LABEL[reads.source],
       checks,
       reasons,
@@ -58,8 +58,8 @@ export function buildReportTrust(reads: ReportTrustInput, scanApplied: boolean):
   }
   return {
     tone: "trusted",
-    title: "스캔 신호를 추천에 반영했어요",
-    body: "촬영 프레임의 피부 신호와 설문 답변을 함께 보고 제품 추천, 루틴, 주의 성분을 연결했어요. 리포트는 의료 판단이 아니라 화장품 선택을 돕는 참고 결과입니다.",
+    title: "카메라에서 확인한 피부 특징도 참고했어요",
+    body: "사진에서 확인한 특징을 설문 답변과 함께 살펴보고 제품 후보와 루틴을 정리했어요.",
     sourceLabel: SOURCE_LABEL[reads.source],
     checks,
     reasons,
