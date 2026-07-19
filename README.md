@@ -23,6 +23,7 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 | 보안·데이터 경계 | Production 검증 완료 | 9개 앱 테이블 RLS, `anon`/`authenticated` 직접 권한 거부, 비공개 crop bucket, CSP, Firewall, runtime secret 검증 | schema·secret 변경 시 운영 검증 반복 |
 | 모바일 UI/UX | 4개 viewport·KO/EN/JA/ZH 카피 회귀 통과 | 9개 핵심 route × 4개 언어 × 4개 viewport, 총 144개 텍스트 핏 조합과 320px 수동 브라우저 QA 통과 | 새 화면·번역 추가 시 동일 매트릭스 확장 |
 | Android 카메라 | Galaxy S25 Edge 기본 흐름 PASS | 권한, 전면 미러링, 품질 게이트, 촬영 완료, 재촬영 | 조도·반사·가림·background/resume와 iPhone Safari 매트릭스 |
+| iPhone Safari 카메라 | WebKit lifecycle 회귀 PASS·실기기 PENDING | WebKit 26.5 iPhone 17 Pro profile에서 KO/EN/JA/ZH, background, `mute`, `ended`, `pagehide`, 명시적 재개 | 최신·이전 iOS Safari 물리 단말 권한·렌즈·회전·촬영 매트릭스 |
 | 이메일 | 코드·정책 구현 완료 | 명시적 opt-in, 서명·만료 해지, 철회 제외, 보존 정리 테스트 | 검증 도메인으로 실제 수신·해지·cron 확인 |
 | Android TWA | API 36 signed AAB 검증 완료 | package, 권한, 서명, lint `No issues found`, Gradle clean bundle, Digital Asset Links 검증 | Play distribution certificate 반영 후 internal track 실기기 QA |
 | Google Play | 제출 패키지 준비, Console 작업 차단 | ko/en 등록정보, Data safety, 콘텐츠 등급, reviewer 문서, 실제 UI 자산 | 개발자 신원·결제 계정·지원 이메일·App Signing·테스터 트랙 |
@@ -62,6 +63,7 @@ K-뷰티 구매자는 많은 제품 수와 과장된 표현 때문에 자신에�
 4. 자동 촬영은 2틱 연속 통과 후 카운트다운을 시작하며, 조건을 이탈하면 취소합니다.
 5. 캡처 직후 원본 해상도로 다시 검증하고 추가 2프레임을 분석해 일시적 노이즈를 줄입니다.
 6. 품질이 부족하면 이유와 조정 방법을 보여주고 재촬영 또는 설문 전용 진행을 제공합니다.
+7. iPhone Safari에서 탭 전환이나 camera track 중단이 발생하면 기존 stream을 해제하고, 사용자가 명시적으로 카메라를 다시 켤 수 있는 복구 화면을 제공합니다.
 7. AI 교차 검증과 학습용 crop은 서로 다른 명시적 동의를 받은 경우에만 실행합니다.
 
 ### 2. 설문 전용 여정
@@ -134,7 +136,7 @@ flowchart LR
 
 ARU는 단순히 “얼굴이 보이는가”보다 “분석할 피부 영역의 품질이 충분한가”를 우선합니다.
 
-1. `getUserMedia`로 720×960 전면 카메라를 요청합니다.
+1. `getUserMedia`로 1080×1440 전면 카메라를 우선 요청하고, 실패하면 720×960 profile로 재시도합니다.
 2. 650ms 주기로 MediaPipe FaceLandmarker를 VIDEO 모드로 실행합니다.
 3. 얼굴 크기, 중앙 정렬, 정면 각도와 함께 T-zone·양 볼 ROI를 계산합니다.
 4. 너무 어둡거나 밝은 노출, 반사, 흔들림, ROI 가림과 유효 샘플 수를 확인합니다.
@@ -156,6 +158,8 @@ ARU는 단순히 “얼굴이 보이는가”보다 “분석할 피부 영역�
 - `page.tsx`: 사용자 흐름과 화면 상태 조정
 
 모델과 WASM은 `public/vendor/mediapipe/`에서 same-origin으로 제공되며 CDN 런타임 의존성이 없습니다. `postinstall`과 `npm run assets:mediapipe`가 패키지 자산을 복사하고, 테스트와 smoke가 누락·경로·응답을 검사합니다.
+
+`npm run test:ios-safari`는 Playwright WebKit 26.5와 iPhone 17 Pro device profile에서 inline/muted/autoplay 계약, KO/EN/JA/ZH 복구 카피, background, `mute`, `ended`, `pagehide`, 명시적 재시작, overflow와 터치 타깃을 검사합니다. 이는 WebKit 엔진 회귀이며 실제 렌즈나 iOS 권한 UI를 재현하는 물리 단말 검증은 아닙니다.
 
 실기기 카메라 변경은 [Mobile camera QA](docs/mobile-camera-qa.md)의 Android Chrome·iOS Safari 항목을 채워야 합니다. 자동 테스트는 실제 렌즈, OS 권한 UI, 열·메모리, background/resume 동작을 대체하지 않습니다.
 
@@ -299,6 +303,7 @@ npm run dev
 | `npm run dev` | Next.js 개발 서버 |
 | `npm test` | 전체 Vitest 계약·보안 회귀 |
 | `npm run test:mobile-ui` | Playwright Chromium 모바일 기능·다국어·텍스트 핏 회귀 |
+| `npm run test:ios-safari` | Playwright WebKit iPhone profile 카메라 lifecycle·다국어 복구 회귀 |
 | `npm run lint` | ESLint |
 | `npm run build` | Next.js Production build |
 | `npm run smoke` | lint, unit, mobile browser, build, ML compile, 주요 route/auth 통합 검증 |
@@ -359,8 +364,9 @@ git diff --check
 `npm run smoke`는 현재 다음을 묶어서 검사합니다.
 
 - ESLint와 TypeScript/Next.js Production build
-- Vitest 58개 파일, 285개 테스트
-- Playwright Chromium 모바일 E2E 36개
+- Vitest 58개 파일, 290개 테스트
+- Playwright Chromium 모바일 E2E 41개
+- Playwright WebKit 26.5 iPhone profile 카메라 lifecycle E2E 5개
 - KO/EN/JA/ZH 홈과 핵심 callout
 - 9개 핵심 route × KO/EN/JA/ZH × 320/360/393/768px, 총 144개 텍스트 핏 조합
 - 카메라 권한 거부 fallback
@@ -377,7 +383,7 @@ git diff --check
 
 | 변경 영역 | 최소 추가 검증 |
 |---|---|
-| 카메라·ROI | 관련 Vitest + mobile UI + Android/iOS 실기기 매트릭스 |
+| 카메라·ROI | 관련 Vitest + `test:mobile-ui` + `test:ios-safari` + Android/iOS 실기기 매트릭스 |
 | Supabase schema | `npm run supabase:check`, anon/auth 거부, service-role rollback, private bucket |
 | 이메일 | subscribe/unsubscribe/retention 테스트 + 실제 수신 주소로 2·4주 dry-run |
 | 보안 header/CSP | security tests + Chromium hydration/service worker/MediaPipe |
@@ -486,6 +492,7 @@ node scripts/generate-play-assets.mjs
 10. 320px부터 768px까지 다국어 UI, 44px 터치 타깃, 카메라 fallback과 Studio/Privacy 흐름을 실제 Chromium 회귀로 고정했습니다.
 11. API 36 Android TWA, release signing, Digital Asset Links, signed AAB/APK와 Play 제출 패키지를 준비했습니다.
 12. 홈부터 체크인까지 소비자 카피를 정중하고 친근한 제품 언어로 다듬고, EN/JA/ZH를 각 언어의 어순과 서비스 관습에 맞춰 별도로 작성했습니다.
+13. iPhone Safari의 background·`mute`·`ended`·`pagehide` camera lifecycle을 명시적 재개 흐름으로 보강하고 WebKit 26.5 다국어 회귀를 추가했습니다.
 
 ### 최근 release commit
 
@@ -511,6 +518,7 @@ node scripts/generate-play-assets.mjs
 - 브라우저·OS 카메라 권한과 다른 앱의 카메라 점유를 확인합니다.
 - `Permissions-Policy`가 `camera=(self)`인지 확인합니다.
 - 사용자에게 설문 전용 fallback이 계속 보이는지 확인합니다.
+- iPhone Safari에서 다른 탭이나 앱을 다녀온 뒤에는 `카메라 다시 켜기`를 눌러 새 stream을 시작합니다. 검은 preview를 그대로 분석하지 않습니다.
 
 ### 얼굴은 보이지만 품질 게이트가 통과하지 않음
 
@@ -567,6 +575,7 @@ npm test -- tests/mediapipe-assets.test.ts
 - [ML inference architecture](docs/ml-inference-architecture.md) — inference와 승격 구조
 - [Pilot ML loop](docs/pilot-ml-loop.md) — 동의한 파일럿 수집·평가
 - [Golden set](docs/golden-set.md) — 카메라 판독 회귀 프로토콜
+- [iPhone Safari camera QA](docs/qa/2026-07-20-ios-safari-camera.md) — WebKit lifecycle 회귀와 남은 물리 단말 게이트
 - [Worker offload](docs/worker-offload.md) — 브라우저 worker 분리 계획
 
 ### QA·운영
