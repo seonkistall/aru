@@ -40,7 +40,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full">
         <ServiceWorkerRegistration />
         <SketchDefs />

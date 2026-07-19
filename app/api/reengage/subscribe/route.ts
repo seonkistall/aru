@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, reason: "rate limited" }, { status: 429 });
   }
 
-  let body: { email: string; consent: true; context: string; locale: "ko" | "en" | "ja" | "zh" };
+  let body: { email: string; consent: true; context: string; locale: "ko" | "en" | "ja" | "zh" | "ar" };
   try {
     const parsed = parseSubscribeInput(await readBoundedJson(request, 2048));
     if (!parsed.ok) return Response.json({ ok: false, reason: parsed.reason }, { status: 400 });

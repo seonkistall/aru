@@ -51,10 +51,7 @@ export function LanguageSwitcher() {
           cursor: "pointer",
         }}
       >
-        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4">
-          <circle cx="8" cy="8" r="6.6" />
-          <path d="M1.4 8h13.2M8 1.4c-2 2.2-2 11 0 13.2M8 1.4c2 2.2 2 11 0 13.2" />
-        </svg>
+        <span aria-hidden>{current.flag}</span>
         {current.label}
       </button>
       {open && (
@@ -83,7 +80,7 @@ export function LanguageSwitcher() {
                 display: "block",
                 width: "100%",
                 minHeight: "var(--tap-min)",
-                textAlign: "left",
+                textAlign: "start",
                 padding: "8px 12px",
                 fontSize: 13,
                 background: "transparent",
@@ -93,6 +90,7 @@ export function LanguageSwitcher() {
                 fontWeight: l.code === lang ? 700 : 400,
               }}
             >
+              <span aria-hidden style={{ marginInlineEnd: 6 }}>{l.flag}</span>
               {l.label}
             </button>
           ))}

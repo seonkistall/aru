@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const langs = ["ko", "en", "ja", "zh"] as const;
+const langs = ["ko", "en", "ja", "zh", "ar"] as const;
 const viewports = [
   { width: 320, height: 800 },
   { width: 360, height: 800 },

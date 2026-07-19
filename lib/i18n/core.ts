@@ -8,21 +8,24 @@
 import { EN } from "./en";
 import { JA } from "./ja";
 import { ZH } from "./zh";
+import { AR } from "./ar";
 import { DEVICE_DATA_KEY } from "../device-data";
 
-export type Lang = "ko" | "en" | "ja" | "zh";
+export type Lang = "ko" | "en" | "ja" | "zh" | "ar";
 
-export const LANGS: { code: Lang; label: string }[] = [
-  { code: "ko", label: "한국어" },
-  { code: "en", label: "English" },
-  { code: "ja", label: "日本語" },
-  { code: "zh", label: "中文" },
+export const LANGS: { code: Lang; label: string; flag: string }[] = [
+  { code: "ko", label: "한국어", flag: "🇰🇷" },
+  { code: "en", label: "English", flag: "🇺🇸" },
+  { code: "ja", label: "日本語", flag: "🇯🇵" },
+  { code: "zh", label: "中文", flag: "🇨🇳" },
+  { code: "ar", label: "العربية", flag: "🇸🇦" },
 ];
 
 const DICTS: Partial<Record<Lang, Record<string, string>>> = {
   en: EN,
   ja: JA,
   zh: ZH,
+  ar: AR,
 };
 
 export const LANG_STORAGE_KEY = DEVICE_DATA_KEY.language;
@@ -39,7 +42,7 @@ export function setCurrentLang(lang: Lang) {
 }
 
 export function isLang(v: unknown): v is Lang {
-  return v === "ko" || v === "en" || v === "ja" || v === "zh";
+  return v === "ko" || v === "en" || v === "ja" || v === "zh" || v === "ar";
 }
 
 export function t(msg: string, params?: Record<string, string | number>): string {

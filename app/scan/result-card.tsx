@@ -2,7 +2,7 @@ import { getLang, t } from "@/lib/i18n/core";
 import { localizedNarrative, type SkinReads } from "@/lib/skin";
 import { eyebrow } from "./scan-styles";
 
-const LOCALES: Record<string, string> = { ko: "ko-KR", en: "en-US", ja: "ja-JP", zh: "zh-CN" };
+const LOCALES: Record<string, string> = { ko: "ko-KR", en: "en-US", ja: "ja-JP", zh: "zh-CN", ar: "ar" };
 
 // Hand-drawn zigzag tear line for the receipt edges (stretched to card width).
 function TearEdge({ flip = false }: { flip?: boolean }) {

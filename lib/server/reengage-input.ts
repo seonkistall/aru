@@ -1,8 +1,8 @@
 type ParseResult<T> = { ok: true; value: T } | { ok: false; reason: string };
-type ReengageLocale = "ko" | "en" | "ja" | "zh";
+type ReengageLocale = "ko" | "en" | "ja" | "zh" | "ar";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const REENGAGE_LOCALES = new Set<ReengageLocale>(["ko", "en", "ja", "zh"]);
+const REENGAGE_LOCALES = new Set<ReengageLocale>(["ko", "en", "ja", "zh", "ar"]);
 
 function recordWithOnly(input: unknown, allowed: readonly string[]): Record<string, unknown> | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;

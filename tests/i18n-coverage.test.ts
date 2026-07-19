@@ -4,12 +4,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EN } from "@/lib/i18n/en";
 import { JA } from "@/lib/i18n/ja";
 import { ZH } from "@/lib/i18n/zh";
+import { AR } from "@/lib/i18n/ar";
 import { setCurrentLang } from "@/lib/i18n/core";
 import { buildReportTrust, type ReportTrustInput } from "@/lib/report-trust";
 import { moodSummary } from "@/lib/share-link";
 import { clinicLinks } from "@/lib/care";
 
-const DICTS: Record<string, Record<string, string>> = { en: EN, ja: JA, zh: ZH };
+const DICTS: Record<string, Record<string, string>> = { en: EN, ja: JA, zh: ZH, ar: AR };
 const HANGUL = /[가-힣]/;
 const root = resolve(import.meta.dirname, "..");
 
@@ -44,7 +45,7 @@ describe("dictionary coverage for runtime-composed strings", () => {
   });
 
   it("covers every mood share-link label in every language", () => {
-    for (const lang of ["en", "ja", "zh"] as const) {
+    for (const lang of ["en", "ja", "zh", "ar"] as const) {
       setCurrentLang(lang);
       for (let oil = 0; oil <= 2; oil++) {
         for (let redness = 0; redness <= 2; redness++) {
@@ -58,7 +59,7 @@ describe("dictionary coverage for runtime-composed strings", () => {
   });
 
   it("covers clinic link labels/notes stored Korean-canonical for every locale", () => {
-    for (const lang of ["ko", "en", "ja", "zh"] as const) {
+    for (const lang of ["ko", "en", "ja", "zh", "ar"] as const) {
       for (const link of clinicLinks(lang)) {
         expect(link.label).toMatch(HANGUL); // stored canonical, not pre-translated
         expect(link.note).toMatch(HANGUL);
@@ -107,7 +108,7 @@ describe("dictionary coverage for runtime-composed strings", () => {
     expectCovered("피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.");
   });
 
-  it.each(["en", "ja", "zh"])("contains no duplicate keys in %s", (lang) => {
+  it.each(["en", "ja", "zh", "ar"])("contains no duplicate keys in %s", (lang) => {
     const source = readFileSync(resolve(root, `lib/i18n/${lang}.ts`), "utf8");
     const keys = [...source.matchAll(/^\s*"((?:[^"\\]|\\.)*)":/gm)].map((match) => JSON.parse(`"${match[1]}"`) as string);
     const seen = new Set<string>();
