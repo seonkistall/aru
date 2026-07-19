@@ -400,7 +400,7 @@ export default function Scan() {
             )}
             {phase === "interrupted" && (
               <Center>
-                <div style={{ maxWidth: 300, textAlign: "center" }}>
+                <div style={{ maxWidth: 300, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                   <p style={{ ...fallbackText, color: "var(--ink)", fontWeight: 700, marginBottom: 6 }}>
                     {t("카메라가 잠시 멈췄어요.")}
                   </p>
