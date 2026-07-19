@@ -252,18 +252,62 @@ Korean source strings remain the message IDs in the existing i18n system.
 When a source string changes, the old EN/JA/ZH dictionary key is removed and a
 new naturally authored value is added.
 
-Translations are not literal:
+Translations are independently authored for each locale rather than generated
+by substituting words into Korean sentence order:
 
-- English uses short, warm product language and avoids phrases such as
+- English uses short, warm, direct product language. It avoids over-familiar
+  address, title case on full sentences, and phrases such as
   `Go see my skin texture`, `No exaggeration`, and `No more mistakes`.
-- Japanese uses natural polite service language rather than Korean sentence
-  order.
-- Simplified Chinese uses concise, friendly product language and avoids
-  mechanical translations of `읽다`, `신호`, or `정직하게`.
+- Japanese uses natural polite service language, appropriate particles, and
+  Japanese information order. It avoids a mechanical sequence of Korean
+  nouns and excessive `あなた`.
+- Simplified Chinese uses concise, courteous product language and familiar
+  mobile-service verbs. It avoids mechanical translations of `읽다`, `신호`,
+  `정직하게`, and unnecessary repetition of `您的`.
+
+The Home anchors establish the voice for each dictionary:
+
+| Locale | Annotation | Headline | Primary CTA | Secondary CTA |
+|---|---|---|---|---|
+| EN | `Find skincare that fits you,` / `in just 30 seconds.` | `What skincare suits` / `your skin today?` | `Start my skin check` | `Start with the questionnaire` |
+| JA | `自分に合うコスメ探しは、` / `30秒から。` | `今日の肌には、` / `どんなスキンケアが合いそうですか？` | `肌をチェックする` | `カメラを使わず、質問から始める` |
+| ZH | `找到适合自己的护肤品，` / `30秒就够了。` | `今天的肌肤，` / `适合怎样的护肤方案？` | `看看我的肌肤状态` | `不用相机，从问卷开始` |
+
+The remainder of each locale follows these anchors. Error messages preserve
+the local convention for polite recovery instructions. Privacy and medical
+copy stays calm and direct rather than becoming legalistic or playful.
 
 Dynamic interpolation must keep variables away from locale-sensitive
 particles and articles. Product and ingredient proper names continue to use
 the existing canonical dictionaries.
+
+### Text fit and character integrity
+
+Copy is accepted only when it renders without clipping, unintended horizontal
+scroll, unreadable breaks, or corrupted characters.
+
+- Required viewports: 320 × 800 stress case, 360 × 800 Android baseline,
+  393 × 873 modern phone, and 768 × 1024 tablet.
+- Primary and secondary CTA labels may wrap to two lines and must retain a
+  minimum 44 px target. They are never ellipsized.
+- The Home annotation has an authored line break and a bounded text area; it
+  must not rely on `white-space: nowrap`.
+- Korean uses phrase-preserving line breaks where possible. English wraps at
+  words. Japanese and Chinese use their native line-breaking behavior rather
+  than `break-all`.
+- Tabs, chips, cards, comparison cells, dialog actions, and form labels must
+  grow or wrap without pushing controls outside their container.
+- Long email addresses, provider names, and technical identifiers may use
+  `overflow-wrap: anywhere`; ordinary sentences do not.
+- Browser QA waits for fonts before measuring text.
+- Rendered pages must not contain the Unicode replacement character `�`,
+  leaked Korean message IDs in EN/JA/ZH, raw translation keys, or visibly
+  corrupted byte-decoding fragments.
+- Automated layout checks compare each visible text element's scroll box with
+  its content box and report the route, locale, viewport, and offending copy.
+- Final visual review covers every consumer route in KO/EN/JA/ZH at 360 px and
+  the Home, Scan, Report, Privacy, and Check-in routes at all required
+  viewports.
 
 ## 10. Implementation boundaries
 
@@ -329,9 +373,9 @@ Verification includes:
 - Lint, TypeScript, and Next.js Production build
 - Complete `npm run smoke`
 - KO/EN/JA/ZH browser QA through Home, Scan, Survey, Report, Care, Check-in,
-  Privacy, and Unsubscribe
+  Privacy, and Unsubscribe at the required copy-fit viewports
 - Console, failed-request, overflow, clipping, CTA wrapping, accessibility
-  name, and 44 px target checks
+  name, character integrity, font completion, and 44 px target checks
 - Production deployment canary and runtime error-log check after merge
 
 ## 13. Success criteria
