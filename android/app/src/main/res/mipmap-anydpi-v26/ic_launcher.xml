@@ -30,4 +30,5 @@
         </layer-list>
     </background>
     <foreground android:drawable="@android:color/transparent" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
