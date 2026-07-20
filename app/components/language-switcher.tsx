@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LANGS, useLang, type Lang } from "../../lib/i18n";
+import { supportsFlagEmoji } from "../../lib/flag-support";
 
 /**
  * Fixed top-right language picker. Sketch-styled pill that expands into a
@@ -11,7 +12,17 @@ import { LANGS, useLang, type Lang } from "../../lib/i18n";
 export function LanguageSwitcher() {
   const { lang, setLang } = useLang();
   const [open, setOpen] = useState(false);
+  const [flags, setFlags] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Canvas measurement is client-only, and detecting during render would
+    // desync from the server markup, so probe after mount. Starting false
+    // avoids briefly painting the regional-indicator letter fallback.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setFlags(supportsFlagEmoji());
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -51,7 +62,7 @@ export function LanguageSwitcher() {
           cursor: "pointer",
         }}
       >
-        <span aria-hidden>{current.flag}</span>
+        {flags && <span aria-hidden>{current.flag}</span>}
         {current.label}
       </button>
       {open && (
@@ -90,7 +101,7 @@ export function LanguageSwitcher() {
                 fontWeight: l.code === lang ? 700 : 400,
               }}
             >
-              <span aria-hidden style={{ marginInlineEnd: 6 }}>{l.flag}</span>
+              {flags && <span aria-hidden style={{ marginInlineEnd: 6 }}>{l.flag}</span>}
               {l.label}
             </button>
           ))}

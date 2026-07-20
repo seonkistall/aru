@@ -1,74 +1,132 @@
 # OpenAI Build Week — ARU submission pack
 
-Track: **Apps for Your Life**
+**Track: Apps for Your Life**
 
-Live: https://aru-beauty.vercel.app · Repo: (public mirror) · Demo: (YouTube, <3 min)
-
----
-
-## 1. Devpost 설명문 (폼에 그대로 붙여넣기)
-
-### 한 줄
-셀피 30초로 지금 내 피부 상태를 읽고, 과장 없는 근거와 함께 오늘 쓸 화장품 3개와 아침·저녁 루틴을 정해주는 앱.
-
-### 대상 사용자
-K-뷰티 제품을 사고 싶지만 무엇을 골라야 할지 모르는 개인. 두 축이 있다. (a) 성분·리뷰 정보가 넘쳐 오히려 결정을 못 하는 국내 사용자, (b) 올리브영 앞에서 한국어 제품명·성분표를 못 읽는 방한 외국인. 후자를 위해 앱 기본 언어를 영어로 두고 한국어·일본어·중국어·아랍어(RTL)를 지원한다.
-
-### 문제
-피부 분석 서비스는 이미 있지만 대부분 "미백", "개선", "재생" 같은 효능 표현으로 신뢰를 잃거나, 분석만 하고 "그래서 오늘 뭘 사야 하나"에 답하지 않는다. 사용자는 30초 안에 답을 원하는데, 기존 흐름은 회원가입·설문 20문항·상담 예약을 요구한다.
-
-### 해결 방식
-1. **온디바이스 스캔(30초)** — MediaPipe Face Landmarker로 T존·양볼 ROI를 잡고, 조명·거리·흔들림·반사 품질 게이트를 통과한 순간에만 자동 촬영한다. 기본 경로에서 원본 사진은 전송·저장되지 않는다.
-2. **보이는 신호만 정직하게** — 유분·붉은기·결 세 가지만 판독하고, 촬영 신뢰도가 낮으면 "이번엔 설문 답변을 중심으로 봤다"고 스스로 강등한다.
-3. **효능 클레임 게이트** — 추천 문구를 GPT-5.6이 자연스럽게 다듬되, 5개 언어별 금지어 필터(`lib/claim-filter.ts`)와 `efficacyClean()`을 통과하지 못한 문장은 사전 승인된 템플릿으로 자동 대체한다. AI가 의료 표현을 쓸 수 없는 구조.
-4. **행동으로 연결** — 제품 후보 3개 + 아침/저녁 루틴 + 판매처·피부과 아웃링크, 그리고 2주·4주 뒤 이메일 체크인으로 "써보니 어땠나"를 회수해 다음 추천에 반영한다.
-
-### 실제 동작 방법
-`/` → `/scan`(자동촬영) → `/survey`(피부타입·고민·예산) → `/report`(분석 → 추천 → 루틴 3단계) → `/care`(구매·상담) → `/checkin`(2·4주 후). 카메라를 거부하거나 없는 환경에서는 설문만으로 동일한 리포트까지 도달한다. 언어는 우측 상단 국기 스위처에서 즉시 전환되며 아랍어는 RTL로 레이아웃이 뒤집힌다.
-
-### 왜 다른가
-범용 뷰티 챗봇이 아니라, **의료 경계와 광고법 제약을 입력·프롬프트·출력 검증에 직접 코드로 박아 넣은** 제품이다. AI가 무엇을 말할 수 있는지가 335개 자동 테스트로 고정되어 있다.
+| | |
+|---|---|
+| Live app | <https://aru-beauty.vercel.app> |
+| Repository | <https://github.com/seonkistall/aru-buildweek> (public) |
+| Demo video | *(YouTube, under 3 minutes — to be recorded)* |
+| Build log | [BUILDLOG.md](../../BUILDLOG.md) |
+| User research | [user-research.md](user-research.md) |
+| Demo scripts | [English](DEMO-SCRIPT.md) · [Korean](DEMO-SCRIPT-KO.md) |
+| Screenshots | [assets/](assets) — English, 1080×2160 |
 
 ---
 
-## 2. 3분 데모 영상 스크립트
+## 1. Project description (paste into Devpost)
 
-총 2분 50초 목표. 실기기(안드로이드/아이폰) 화면 녹화 + 음성 내레이션.
+### One line
 
-> 촬영할 때는 **[DEMO-SCRIPT-KO.md](DEMO-SCRIPT-KO.md)**(그대로 읽는 한국어 나레이션 대본 + 영어 자막 + 녹음 가이드)를 사용합니다. 아래 표는 구성 요약입니다.
+A 30-second selfie scan that reads what your skin actually shows today, and
+picks three products and a morning/evening routine — with honest reasons and no
+efficacy claims.
 
-| 구간 | 화면 | 내레이션 |
+### Who it is for
+
+People choosing K-beauty products, along two axes. Korean users who cannot
+decide because there is *too much* ingredient and review data. And visitors to
+Korea standing in a store unable to read a Korean product name or ingredient
+list — which is why the app defaults to English and supports Korean, Japanese,
+Simplified Chinese and Arabic with right-to-left layout.
+
+### The problem
+
+Skin-analysis tools already exist. Most lose trust by promising to "whiten",
+"improve" or "regenerate" — efficacy claims that Korean cosmetics advertising
+rules restrict and users have learned to discount. The rest analyse and stop,
+never answering "so what do I buy today?". Meanwhile the user wants an answer in
+thirty seconds, and the incumbent flow asks for an account, a twenty-question
+survey, or a booked consultation.
+
+### How it works
+
+1. **On-device scan, 30 seconds.** MediaPipe Face Landmarker samples T-zone and
+   cheek regions. A quality loop grades light, distance, steadiness and glare
+   every frame, and auto-capture fires only when all four hold. On the basic
+   path the original photo is never uploaded or stored.
+2. **Only what is visible.** Three signals — oil, redness, texture. If capture
+   confidence is low the app demotes its own reading and says so, leaning on the
+   questionnaire instead.
+3. **A compliance gate around the model.** GPT-5.6 phrases why each product was
+   picked, but every sentence must pass a per-language banned-claims filter
+   (`lib/claim-filter.ts` plus `efficacyClean()`). Anything failing is replaced
+   with a pre-approved template, so the app *structurally cannot* publish an
+   efficacy claim.
+4. **Turn it into action.** Three product candidates, a morning/evening routine,
+   retailer and dermatologist outlinks, then a 2-week and 4-week email check-in
+   that feeds the next recommendation.
+
+### How to actually use it
+
+`/` → `/scan` (auto-capture) → `/survey` (skin type, concerns, budget) →
+`/report` (analysis → picks → routine) → `/care` (buy and consult) → `/checkin`
+(2 and 4 weeks later). If the camera is denied or unavailable, the
+questionnaire alone reaches the same report. The language switcher is fixed in
+the corner of every screen; Arabic flips the whole layout to RTL.
+
+### Why it is different
+
+This is not a general beauty chatbot with a skin prompt. **The medical boundary
+and the advertising-law constraint are implemented as code** — in the input
+validation, the prompt, and the output filter — and what the AI is permitted to
+say is pinned by automated tests.
+
+---
+
+## 2. Judging-criteria mapping
+
+**Technological Implementation.** On-device ML (MediaPipe, self-hosted model and
+WASM) with a per-frame quality gate, an optional vision-API cross-check, and a
+per-language claim filter that gates LLM output. 297 Vitest tests across 59
+files plus 42 Playwright mobile tests, production CSP, Supabase RLS on nine
+tables, per-IP rate limits. The GPU-delegate corruption self-heal
+(`app/scan/use-landmarker.ts`) is the clearest example of non-trivial work:
+detected at runtime, recovered automatically, regression-tested.
+
+**Design.** A first flow that needs no account and no keys. Empty state — the
+questionnaire-only path reaches a full report with no scan. Error states —
+camera denial recovery, low-confidence demotion, GPU self-heal, storage-blocked
+fallbacks. Consistency — nine routes × five locales × four viewports are pinned
+by a 180-combination text-fit regression, with 44px touch targets at 320px.
+
+**Potential Impact.** In moderated interviews, 4–5 of 10 people stated they
+would buy the specific product ARU picked. That is stated intent from a small
+sample, and [user-research.md](user-research.md) says so plainly rather than
+inflating it. The 2-/4-week check-in exists to convert that into measured
+retention.
+
+**Quality of the Idea.** The insight is that the scan is a hook and the purchase
+moment is the product — which is why the roadmap prioritises a manual concierge
+round over more camera features. The differentiator is a product that refuses to
+overclaim, in a category defined by overclaiming.
+
+---
+
+## 3. Checklist status
+
+| # | Item | Status |
 |---|---|---|
-| 0:00–0:15 | 올리브영 매대 사진 or 제품 리뷰 스크롤 | "K-뷰티 제품은 수천 개인데, 지금 내 피부에 뭐가 맞는지는 아무도 30초 안에 안 알려줍니다. 그래서 ARU를 만들었습니다." |
-| 0:15–0:35 | 홈(영어 기본) → '내 피부 살펴보기' 탭 | "기본 언어는 영어입니다. 한국을 방문한 외국인이 주요 사용자이기 때문입니다." |
-| 0:35–1:15 | 실제 스캔: 가이드 정렬 → 품질 게이트 통과 → 3·2·1 자동촬영 → 분석 연출 | "얼굴을 맞추면 조명·거리·흔들림·반사를 확인한 뒤 조건이 맞는 순간에만 자동으로 찍습니다. 판독은 전부 기기 안에서 돌고, 원본 사진은 전송도 저장도 하지 않습니다." |
-| 1:15–1:50 | 리포트 3단계: 분석 → 추천 3개 → 아침/저녁 루틴 | "유분·붉은기·결 세 가지만 정직하게 읽습니다. 추천 문구는 GPT-5.6이 다듬지만, 다섯 개 언어 각각의 금지어 필터를 통과하지 못하면 승인된 템플릿으로 자동 교체됩니다. 이 앱은 '개선', '미백' 같은 말을 구조적으로 할 수 없습니다." |
-| 1:50–2:05 | 케어 화면 판매처 → 체크인 화면 | "구매처로 연결하고, 2주·4주 뒤 이메일로 사용감을 회수해 다음 추천에 반영합니다." |
-| 2:05–2:20 | 국기 스위처로 한국어 → 일본어 → 아랍어(RTL 뒤집힘) | "다섯 개 언어를 지원하고, 아랍어에서는 레이아웃과 진행 화살표까지 좌우가 뒤집힙니다." |
-| 2:20–2:45 | 터미널: `npm run smoke` 통과 + GitHub `codex/*` 브랜치 목록 | "Codex로 기능 라운드를 브랜치 단위로 돌렸습니다. 안드로이드 자동촬영이 두 번 실패했을 때, 임계값 추측을 멈추고 실기기 디버그 데이터를 받아보니 GPU 델리게이트가 손상된 랜드마크를 뱉고 있었습니다. Codex에게 CPU 폴백 자가복구를 구현시키고, 그 좌표 수학을 단위테스트로 고정했습니다." |
-| 2:45–2:50 | 인터뷰 결과 슬라이드 | "사용자 인터뷰 10명 중 4~5명이 스캔 후 추천 제품을 구매할 의향을 밝혔습니다." |
+| 1 | Working project using Codex and GPT-5.6 | Live in production; Vitest 297 + mobile E2E 42 + smoke green. `/api/reason` defaults to `gpt-5.6` — **requires `OPENAI_API_KEY` in production to exercise the LLM path** |
+| 2 | One official track | Apps for Your Life |
+| 3 | Project description | Section 1 of this document |
+| 4 | Public YouTube demo under 3 minutes | Scripts ready ([EN](DEMO-SCRIPT.md) / [KO](DEMO-SCRIPT-KO.md)); recording outstanding |
+| 5 | Judgeable repository | Public: <https://github.com/seonkistall/aru-buildweek> — 25 branches, full history including every `codex/` session branch |
+| 6 | README and run instructions | [README.md](../../README.md) — install, run, env vars, tests. Runs with no keys and no sample data |
+| 7 | Codex usage and key decisions | [BUILDLOG.md](../../BUILDLOG.md), including an explicit tooling disclosure |
+| 8 | `/feedback` session ID | Outstanding — must be run in a Codex session |
+| 9 | Developer Tool extras | Not applicable (Apps track) |
 
-촬영 팁: 스캔 구간은 반드시 실기기 실촬영(에뮬레이터 X). 자동촬영 카운트다운이 실제로 도는 장면이 심사의 "실행 가능한 핵심 데모" 근거.
+## 4. Remaining owner actions
 
----
-
-## 3. 체크리스트 상태
-
-| # | 항목 | 상태 |
-|---|---|---|
-| 1 | 작동하는 프로젝트 | 프로덕션 라이브, Vitest 293 + 모바일 E2E 42 + smoke 그린. reason 경로 기본 모델 `gpt-5.6` |
-| 2 | 공식 트랙 1개 | Apps for Your Life |
-| 3 | 프로젝트 설명 | 이 문서 1절 |
-| 4 | 3분 YouTube 데모 | 스크립트 준비 완료, 촬영 필요 |
-| 5 | 심사 가능한 저장소 | 공개 미러 저장소 |
-| 6 | README와 실행 방법 | `README.md` — 설치·실행·환경변수·테스트·품질 게이트 |
-| 7 | Codex 활용·판단 설명 | `BUILDLOG.md` |
-| 8 | /feedback Session ID | Codex 세션에서 실행 후 기록 필요 |
-| 9 | Developer Tool 추가 | 해당 없음 (Apps 트랙) |
-
-## 4. 심사 기준 매핑
-
-- **Technological Implementation** — 온디바이스 ML(MediaPipe) + 비전 API 교차확인 + 언어별 클레임 필터가 LLM 출력을 게이트. 335개 자동 테스트, 프로덕션 CSP·RLS·rate limit 경계.
-- **Design** — 빈 상태(스캔 없이 설문-only 폴백), 오류 상태(카메라 거부·GPU 손상 자가복구), 5개 언어 × 4개 뷰포트 텍스트 핏 180조합 자동 회귀.
-- **Potential Impact** — 모더레이티드 인터뷰 10명 중 4~5명 구매 의향. 재유입 루프(2·4주 체크인)로 일회성 도구가 아닌 반복 사용 구조.
-- **Quality of the Idea** — "분석을 파는" 대신 "구매 순간을 돕는" 포지셔닝. 의료 경계·광고법 제약을 코드 불변식으로 구현한 점이 범용 챗봇 대비 차별점.
+1. **Set `OPENAI_API_KEY` in Vercel production**, redeploy, then confirm
+   `POST /api/reason` returns `"source": "llm"`. Until then the live app serves
+   template copy and the GPT-5.6 claim cannot be observed by a judge. Verify the
+   model id in `OPENAI_REASON_MODEL` with one real call first — an unusable id
+   degrades silently to templates (the failure is logged server-side).
+2. **Run `/feedback` in a Codex session** and keep the session ID.
+3. **Record the demo** using [DEMO-SCRIPT.md](DEMO-SCRIPT.md), after step 1 so
+   the S4 narration is true.
+4. **Submit on Devpost** with the description above. Devpost's official rules
+   take precedence over any community guide, so re-check the private-repository
+   and `/feedback` requirements immediately before submitting.

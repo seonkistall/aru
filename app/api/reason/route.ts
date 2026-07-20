@@ -75,7 +75,11 @@ export async function POST(req: Request) {
       return candidate && reasonClean(candidate, lang ?? "ko") ? candidate : item.fallback;
     });
     return NextResponse.json({ reasons, source: "llm" });
-  } catch {
+  } catch (error) {
+    // The response shape stays identical so users always get approved copy,
+    // but an unusable model id or revoked key would otherwise be invisible —
+    // log it server-side (no key, no user content) so runtime logs show why.
+    console.error("reason: llm call failed, serving template", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ reasons: items.map((item) => item.fallback), source: "template" });
   }
 }
