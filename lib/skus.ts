@@ -11,8 +11,8 @@
  *
  * NOTE: images under /public/products are retailer product thumbnails
  * (Olive Young CDN) used for demo presentation only; rights belong to the
- * respective brands/retailer. Some SKU names reference earlier product
- * generations — the image shows the closest current retail listing.
+ * respective brands/retailer. SKU names follow the current retail listing
+ * each image shows; ingredient/price fields remain representative seed data.
  */
 
 import { buildCommerceLinks, primaryCommerceLink, type CommerceLink } from "./commerce";
@@ -103,7 +103,7 @@ export const SKUS: Sku[] = [
     highlights: ["약산성", "촉촉 세정", "저자극"], texture: "젤", tone: "safe",
   }),
   sku({
-    id: "cl2", image: "/products/cl2.jpg", brand: "이즈앤트리", name: "히알루론산 약산성 클렌저", category: "클렌저",
+    id: "cl2", image: "/products/cl2.jpg", brand: "이즈앤트리", name: "참마 비건 약산성 클렌저", category: "클렌저",
     price: 12000, volume: "150ml",
     forTypes: ["민감성", "건성", "중성"], concerns: ["건조", "붉은기", "수분부족"],
     ingredientKeys: ["hyaluronic", "panthenol", "glycerin"], freeOf: ["향료", "알코올", "에센셜오일", "파라벤", "실리콘", "광물성오일"],
@@ -149,7 +149,7 @@ export const SKUS: Sku[] = [
     highlights: ["스네일 96%", "결 정돈"], texture: "에센스", tone: "value",
   }),
   sku({
-    id: "es2", image: "/products/es2.jpg", brand: "아이소이", name: "불가리안 로즈 에센스", category: "에센스",
+    id: "es2", image: "/products/es2.jpg", brand: "아이소이", name: "브라이트닝 카밍 스팟 세럼", category: "에센스",
     price: 38000, volume: "50ml",
     forTypes: ["건성", "민감성", "중성"], concerns: ["칙칙함", "탄력", "수분부족"],
     ingredientKeys: ["peptide", "collagen", "glycerin"], freeOf: ["파라벤", "인공색소", "광물성오일", "실리콘"],
@@ -158,11 +158,11 @@ export const SKUS: Sku[] = [
 
   // ── 세럼 ────────────────────────────────────────────────
   sku({
-    id: "sr1", image: "/products/sr1.jpg", brand: "아누아", name: "어성초 80 세럼", category: "세럼",
+    id: "sr1", image: "/products/sr1.jpg", brand: "아누아", name: "어성초 77 B3 징크 세럼", category: "세럼",
     price: 22000, volume: "30ml",
     forTypes: ["지성", "복합성", "민감성"], concerns: ["트러블", "붉은기", "모공", "유분"],
     ingredientKeys: ["heartleaf", "panthenol", "niacinamide"], freeOf: ["향료", "알코올", "파라벤"],
-    highlights: ["어성초 80%", "피지·진정"], texture: "세럼", tone: "value",
+    highlights: ["어성초 77%", "피지·진정"], texture: "세럼", tone: "value",
   }),
   sku({
     id: "sr2", image: "/products/sr2.jpg", brand: "토리든", name: "다이브인 저분자 히알루론산 세럼", category: "세럼",
@@ -172,14 +172,14 @@ export const SKUS: Sku[] = [
     highlights: ["5D 히알루론산", "속당김 케어"], texture: "세럼", tone: "gentle",
   }),
   sku({
-    id: "sr3", image: "/products/sr3.jpg", brand: "넘버즈인", name: "5번 비타민C 잡티 세럼", category: "세럼",
+    id: "sr3", image: "/products/sr3.jpg", brand: "넘버즈인", name: "5번 글루타치온C 흔적 앰플", category: "세럼",
     price: 25000, volume: "32ml",
     forTypes: ["복합성", "중성", "지성"], concerns: ["잡티", "칙칙함", "모공"],
     ingredientKeys: ["vitc_derivative", "niacinamide", "tranexamic"], freeOf: ["향료", "에센셜오일", "인공색소"],
     highlights: ["비타민C 유도체", "톤 정돈"], texture: "세럼", tone: "value",
   }),
   sku({
-    id: "sr4", image: "/products/sr4.jpg", brand: "메디큐브", name: "제로 모공 PHA 세럼", category: "세럼",
+    id: "sr4", image: "/products/sr4.jpg", brand: "메디큐브", name: "제로 모공 원데이 펩타이드 세럼", category: "세럼",
     price: 29000, volume: "30ml",
     forTypes: ["지성", "복합성"], concerns: ["모공", "블랙헤드", "각질", "유분"],
     ingredientKeys: ["pha", "lha", "niacinamide"], freeOf: ["향료", "알코올", "파라벤"],
@@ -225,7 +225,7 @@ export const SKUS: Sku[] = [
     highlights: ["SPF50+ PA++++", "시카", "톤업"], texture: "로션", tone: "gentle",
   }),
   sku({
-    id: "su3", image: "/products/su3.jpg", brand: "뷰티오브조선", name: "리프 선스틱 어성초", category: "선크림",
+    id: "su3", image: "/products/su3.jpg", brand: "뷰티오브조선", name: "산들쑥 선스틱", category: "선크림",
     price: 17000, volume: "18g",
     forTypes: ["지성", "복합성"], concerns: ["유분", "트러블"],
     ingredientKeys: ["heartleaf", "greentea"], freeOf: ["인공색소"],
@@ -241,7 +241,7 @@ export const SKUS: Sku[] = [
     highlights: ["티트리", "데일리팩"], texture: "시트", tone: "value",
   }),
   sku({
-    id: "mk2", image: "/products/mk2.jpg", brand: "아비브", name: "어성초 카밍 개러멘트 마스크", category: "마스크팩",
+    id: "mk2", image: "/products/mk2.jpg", brand: "아비브", name: "어성초 껌딱지 시트 마스크", category: "마스크팩",
     price: 3000, volume: "1매",
     forTypes: ["민감성", "복합성", "건성"], concerns: ["붉은기", "민감", "수분부족"],
     ingredientKeys: ["houttuynia", "panthenol", "hyaluronic"], freeOf: ["향료", "알코올", "파라벤", "실리콘", "광물성오일"],
@@ -250,7 +250,7 @@ export const SKUS: Sku[] = [
 
   // ── 아이크림 ────────────────────────────────────────────
   sku({
-    id: "ey1", image: "/products/ey1.jpg", brand: "에스트라", name: "리제덤365 아이크림", category: "아이크림",
+    id: "ey1", image: "/products/ey1.jpg", brand: "에스트라", name: "리제덤365 레티노이드 아이세럼", category: "아이크림",
     price: 30000, volume: "25ml",
     forTypes: ["건성", "중성", "복합성"], concerns: ["탄력", "건조", "칙칙함"],
     ingredientKeys: ["peptide", "adenosine", "ceramide"], freeOf: ["향료", "인공색소"],
