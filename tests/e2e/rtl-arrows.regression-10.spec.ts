@@ -4,32 +4,45 @@ import { expect, test } from "@playwright/test";
 // glyphs) stayed pointing right under Arabic RTL, so the journey arrows on
 // home/report pointed backwards against the reading direction.
 // Found by the 2026-07-20 polish loop on the Arabic surface.
+//
+// Assertions use toHaveCSS (auto-retrying) rather than a single evaluate():
+// LanguageProvider remounts the subtree on language change, so a one-shot
+// computed-style read races the remount and intermittently sees "none".
 
-test("forward arrows mirror under RTL and stay unmirrored in LTR", async ({ browser }) => {
-  const mirrored = async (lang: "ar" | "en") => {
-    const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
-    await context.addInitScript((next) => localStorage.setItem("aru.lang", next), lang);
-    const page = await context.newPage();
+const MIRRORED = "matrix(-1, 0, 0, 1, 0, 0)";
 
-    await page.goto("/");
-    await expect(page.locator("html")).toHaveAttribute("lang", lang);
-    await expect(page.locator("html")).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
-    const homeArrow = page.locator(".aru-dir-arrow").first();
-    const homeTransform = await homeArrow.evaluate((el) => getComputedStyle(el).transform);
+async function openHome(browser: import("@playwright/test").Browser, lang: "ar" | "en") {
+  const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
+  await context.addInitScript((next) => localStorage.setItem("aru.lang", next), lang);
+  const page = await context.newPage();
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", lang);
+  await expect(page.locator("html")).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+  return { context, page };
+}
 
-    await page.goto("/report");
-    const stepArrow = page.locator(".aru-flow-steps__arrow").first();
-    const stepTransform = await stepArrow.evaluate((el) => getComputedStyle(el).transform);
+test("forward arrows mirror under Arabic RTL", async ({ browser }) => {
+  const { context, page } = await openHome(browser, "ar");
 
-    await context.close();
-    return { homeTransform, stepTransform };
-  };
+  const homeArrows = page.locator(".aru-dir-arrow");
+  await expect(homeArrows.first()).toHaveCSS("transform", MIRRORED);
+  for (let i = 0; i < await homeArrows.count(); i += 1) {
+    await expect(homeArrows.nth(i)).toHaveCSS("transform", MIRRORED);
+  }
 
-  const ar = await mirrored("ar");
-  expect(ar.homeTransform).toContain("matrix(-1");
-  expect(ar.stepTransform).toContain("matrix(-1");
+  await page.goto("/report");
+  await expect(page.locator(".aru-flow-steps__arrow").first()).toHaveCSS("transform", MIRRORED);
 
-  const en = await mirrored("en");
-  expect(en.homeTransform).toBe("none");
-  expect(en.stepTransform).toBe("none");
+  await context.close();
+});
+
+test("forward arrows stay unmirrored in LTR", async ({ browser }) => {
+  const { context, page } = await openHome(browser, "en");
+
+  await expect(page.locator(".aru-dir-arrow").first()).toHaveCSS("transform", "none");
+
+  await page.goto("/report");
+  await expect(page.locator(".aru-flow-steps__arrow").first()).toHaveCSS("transform", "none");
+
+  await context.close();
 });

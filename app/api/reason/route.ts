@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: process.env.OPENAI_REASON_MODEL ?? "gpt-5.6",
         temperature: 0.6,
         max_tokens: 256,
         response_format: { type: "json_object" },
