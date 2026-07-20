@@ -90,16 +90,25 @@ p, h1, h2, h3, span, small, label { overflow-wrap: break-word; }
 /* keep-all suits Korean (phrase-level wrapping at spaces) but Japanese and
    Chinese have no spaces — keep-all forbids ALL breaks there, forcing
    single-line overflow. Restore normal CJK breaking for those languages. */
-html[lang="ja"] body, html[lang="zh-CN"] body,
-html[lang="ja"] button, html[lang="zh-CN"] button,
-html[lang="ja"] a, html[lang="zh-CN"] a {
+html[lang="ja"] body, html[lang="zh-CN"] body, html[lang="ar"] body,
+html[lang="ja"] button, html[lang="zh-CN"] button, html[lang="ar"] button,
+html[lang="ja"] a, html[lang="zh-CN"] a, html[lang="ar"] a {
   word-break: normal;
 }
 
 /* Keep the hand-drawn display face Korean-only. Latin and CJK translations use
    the compact sans token so long headings remain legible. */
-html[lang="en"], html[lang="ja"], html[lang="zh-CN"] {
+html[lang="en"], html[lang="ja"], html[lang="zh-CN"], html[lang="ar"] {
   --font-display: var(--font-sans);
+}
+
+/* RTL: decorative forward arrows (SVG strokes and literal → glyphs) are drawn
+   pointing right; mirror them so "forward" still points along the reading
+   direction. inline-block lets transform apply to glyph spans. */
+html[dir="rtl"] .aru-dir-arrow,
+html[dir="rtl"] .aru-flow-steps__arrow {
+  display: inline-block;
+  transform: scaleX(-1);
 }
 
 /* The compact journey still keeps 44px tap targets at 320px. Decorative

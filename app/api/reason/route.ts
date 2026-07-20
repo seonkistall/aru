@@ -19,6 +19,7 @@ const LANG_NAMES: Record<string, string> = {
   en: "영어(English)",
   ja: "일본어(日本語)",
   zh: "중국어 간체(简体中文)",
+  ar: "아랍어(العربية)",
 };
 
 export async function POST(req: Request) {

@@ -3,8 +3,8 @@
 /**
  * React bindings for the i18n core (see lib/i18n/core.ts for the gettext-style
  * design). The language lives in localStorage and is read through
- * useSyncExternalStore, so SSR/hydration always starts from Korean and the
- * client re-renders once with the saved language. LanguageProvider remounts
+ * useSyncExternalStore, so SSR/hydration always starts from the English
+ * default and the client re-renders once with the saved language. LanguageProvider remounts
  * the subtree via key={lang} on change, so plain t() calls anywhere
  * (components or lib code running during render) pick up the new language
  * without subscribing to context.
@@ -32,15 +32,11 @@ function subscribe(callback: () => void) {
   return () => window.removeEventListener(LANG_EVENT, callback);
 }
 
-// First visit (no saved choice): follow the browser language so international
-// testers land in a language they can read without hunting for the switcher.
-// Detected once per session (stable snapshot); only an explicit pick persists.
-function detectBrowserLang(): Lang {
-  const nav = (navigator.language || "").toLowerCase();
-  if (nav.startsWith("en")) return "en";
-  if (nav.startsWith("ja")) return "ja";
-  if (nav.startsWith("zh")) return "zh";
-  return "ko";
+// First visit (no saved choice): English is the product default regardless of
+// browser language (global-first positioning). Users switch via the picker and
+// only an explicit pick persists.
+function defaultLang(): Lang {
+  return "en";
 }
 
 function getSnapshot(): Lang {
@@ -50,14 +46,16 @@ function getSnapshot(): Lang {
     if (isLang(v)) return v;
   } catch {
     // accessing localStorage itself can throw (cookies/site data blocked) —
-    // getSnapshot runs during render, so fall through to detection
+    // getSnapshot runs during render, so fall through to the default
   }
-  memoryLang = detectBrowserLang();
+  memoryLang = defaultLang();
   return memoryLang;
 }
 
 function getServerSnapshot(): Lang {
-  return "ko";
+  // SSR paints in the product default (English) so first visits don't flash
+  // Korean; clients with a saved choice re-render once after hydration.
+  return "en";
 }
 
 type LangContextValue = { lang: Lang; setLang: (lang: Lang) => void };
@@ -88,6 +86,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useIsomorphicLayoutEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
+    // Arabic is the only RTL language we ship; dir must flip with it so flex
+    // rows, text alignment, and scroll direction follow the script.
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   }, [lang]);
 
   return (

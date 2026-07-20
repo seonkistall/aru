@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ sent: false, reason: "unauthorized" }, { status: 401 });
   }
-  let body: { email: string; week: 2 | 4; locale: "ko" | "en" | "ja" | "zh" };
+  let body: { email: string; week: 2 | 4; locale: "ko" | "en" | "ja" | "zh" | "ar" };
   try {
     const parsed = parseManualReengageInput(await readBoundedJson(req, 1024));
     if (!parsed.ok) return NextResponse.json({ sent: false, reason: parsed.reason }, { status: 400 });

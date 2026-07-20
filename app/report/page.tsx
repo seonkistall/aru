@@ -382,14 +382,14 @@ export default function Report() {
         <div style={stepNav}>
           {stepIndex > 0 ? (
             <button type="button" onClick={() => goStep(stepIndex - 1)} style={stepNavBtn(false)}>
-              ← {t("이전")}
+              <span className="aru-dir-arrow" aria-hidden>←</span> {t("이전")}
             </button>
           ) : (
             <span />
           )}
           {stepIndex < steps.length - 1 && (
             <button type="button" onClick={() => goStep(stepIndex + 1)} style={stepNavBtn(true)}>
-              {t("다음")}: {stepTitles[steps[stepIndex + 1]]} →
+              {t("다음")}: {stepTitles[steps[stepIndex + 1]]} <span className="aru-dir-arrow" aria-hidden>→</span>
             </button>
           )}
         </div>

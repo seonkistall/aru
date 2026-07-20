@@ -27,7 +27,7 @@ describe("recommendation sentence grammar", () => {
     expect(relaxed.picks[0]?.reason).not.toContain("세럼로");
   });
 
-  it.each(["en", "ja", "zh"] as const)("translates the neutral category template in %s", (lang: Lang) => {
+  it.each(["en", "ja", "zh", "ar"] as const)("translates the neutral category template in %s", (lang: Lang) => {
     setCurrentLang(lang);
     const reason = recommend(creamSurvey, null).picks[0]?.reason ?? "";
 

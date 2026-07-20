@@ -60,6 +60,14 @@ describe("localized re-engagement email", () => {
       unsubscribe: "停止接收邮件提醒",
       lang: "zh-CN",
     }],
+    ["ar", {
+      subjects: ["ARU | أسبوعان منذ بدأت روتينك", "ARU | نظرة على أربعة أسابيع من روتينك"],
+      headings: ["كيف تشعر مع روتينك؟", "مضت أربعة أسابيع على استخدام روتينك"],
+      bodies: ["خذ لحظة لتدوين انطباعك حتى الآن.", "شارك انطباعك حتى الآن، ثم استكشف خيارات عنايتك التالية."],
+      ctas: ["تسجيل متابعة الأسبوع 2", "تسجيل متابعة الأسبوع 4"],
+      unsubscribe: "إيقاف رسائل التذكير",
+      lang: "ar",
+    }],
   ] as const)("renders distinct week-specific %s email templates", async (locale: Lang, expected) => {
     process.env.RESEND_API_KEY = "re_test";
     process.env.REENGAGE_FROM = "ARU <hello@example.com>";

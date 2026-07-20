@@ -24,6 +24,6 @@ export function parseReasonInput(value: unknown): Validation<{ items: ReasonItem
     return [item.matched, item.freeOf].every((list) => Array.isArray(list) && list.length <= 12 && list.every((s) => typeof s === "string" && s.length <= 80));
   });
   const lang = (value as Record<string, unknown>).lang;
-  if (lang !== undefined && (typeof lang !== "string" || !["ko", "en", "ja", "zh"].includes(lang))) return { ok: false, reason: "invalid language" };
+  if (lang !== undefined && (typeof lang !== "string" || !["ko", "en", "ja", "zh", "ar"].includes(lang))) return { ok: false, reason: "invalid language" };
   return valid ? { ok: true, value: { items: items as ReasonItem[], lang: lang as string | undefined } } : { ok: false, reason: "invalid items" };
 }

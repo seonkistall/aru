@@ -19,7 +19,7 @@ describe("installable PWA manifest", () => {
       scope: "/",
       display: "standalone",
       orientation: "portrait",
-      lang: "ko",
+      lang: "en",
       categories: ["beauty", "lifestyle"],
     });
   });

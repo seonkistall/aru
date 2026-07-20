@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-const languages = ["ko", "en", "ja", "zh"] as const;
+const languages = ["ko", "en", "ja", "zh", "ar"] as const;
 const survey = {
   type: "복합성",
   concerns: ["모공", "유분"],

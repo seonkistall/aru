@@ -81,10 +81,20 @@ const EMAIL_COPY: Record<Lang, EmailCopy> = {
     footer: "ARU——陪你回顾日常护肤。邮件提醒可以随时取消。",
     unsubscribe: "停止接收邮件提醒",
   },
+  ar: {
+    subject: (week) => week === 2 ? "ARU | أسبوعان منذ بدأت روتينك" : "ARU | نظرة على أربعة أسابيع من روتينك",
+    heading: (week) => week === 2 ? "كيف تشعر مع روتينك؟" : "مضت أربعة أسابيع على استخدام روتينك",
+    body: (week) => week === 2
+      ? "خذ لحظة لتدوين انطباعك حتى الآن."
+      : "شارك انطباعك حتى الآن، ثم استكشف خيارات عنايتك التالية.",
+    cta: (week) => `تسجيل متابعة الأسبوع ${week}`,
+    footer: "ARU — عناية بالبشرة لروتينك اليومي. يمكنك إيقاف رسائل التذكير في أي وقت.",
+    unsubscribe: "إيقاف رسائل التذكير",
+  },
 };
 
 function emailLocale(locale: unknown): Lang {
-  return locale === "en" || locale === "ja" || locale === "zh" ? locale : "ko";
+  return locale === "en" || locale === "ja" || locale === "zh" || locale === "ar" ? locale : "ko";
 }
 
 // Defense-in-depth: even though callers now pass a fixed server link, escape it
@@ -108,6 +118,7 @@ export async function sendReengageEmail(opts: {
   const locale = emailLocale(opts.locale);
   const copy = EMAIL_COPY[locale];
   const htmlLang = locale === "zh" ? "zh-CN" : locale;
+  const htmlDir = locale === "ar" ? "rtl" : "ltr";
   try {
     const response = await fetchWithTimeout("https://api.resend.com/emails", {
       method: "POST",
@@ -121,7 +132,7 @@ export async function sendReengageEmail(opts: {
         to: opts.email,
         subject: copy.subject(opts.week),
         html: `
-          <div lang="${htmlLang}" style="font-family:system-ui,sans-serif;max-width:480px">
+          <div lang="${htmlLang}" dir="${htmlDir}" style="font-family:system-ui,sans-serif;max-width:480px">
             <h1 style="font-size:24px;line-height:1.35">${copy.heading(opts.week)}</h1>
             <p style="font-size:16px;line-height:1.6">${copy.body(opts.week)}</p>
             <p><a href="${escapeAttr(opts.link)}" style="display:inline-block;background:#1a1a1a;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px">${copy.cta(opts.week)}</a></p>
