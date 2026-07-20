@@ -21,7 +21,7 @@ function readEnvLocal() {
 
 const env = { ...readEnvLocal(), ...process.env };
 const key = env.OPENAI_API_KEY;
-const model = env.OPENAI_REASON_MODEL || "gpt-5.6";
+const model = env.OPENAI_REASON_MODEL || "gpt-5.6-luna";
 
 if (!key) {
   console.error("OPENAI_API_KEY is not set in .env.local or the environment.");
@@ -36,7 +36,7 @@ const response = await fetch("https://api.openai.com/v1/chat/completions", {
   headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
   body: JSON.stringify({
     model,
-    max_tokens: 32,
+    max_completion_tokens: 32,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: "Reply with JSON only." },

@@ -56,9 +56,9 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: process.env.OPENAI_REASON_MODEL ?? "gpt-5.6",
-        temperature: 0.6,
-        max_tokens: 256,
+        // gpt-5.6-* rejects max_tokens and any temperature other than the default.
+        model: process.env.OPENAI_REASON_MODEL ?? "gpt-5.6-luna",
+        max_completion_tokens: 256,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: sys },

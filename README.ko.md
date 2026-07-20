@@ -335,7 +335,7 @@ npm run dev
 | `GEMINI_MODEL` | 선택형 vision | server-only | 미지정 시 `gemini-2.0-flash` |
 | `OPENAI_API_KEY` | 선택형 vision/reason | server-only | OpenAI provider |
 | `OPENAI_VISION_MODEL` | 선택형 vision | server-only | 미지정 시 `gpt-4o-mini` |
-| `OPENAI_REASON_MODEL` | 선택형 reason | server-only | 미지정 시 `gpt-5.6` |
+| `OPENAI_REASON_MODEL` | 선택형 reason | server-only | 미지정 시 `gpt-5.6-luna` |
 | `VISION_PROVIDER` | 선택형 vision | server-only | `gemini` 또는 `openai` |
 
 정확한 생성·적용·검증 순서는 다음 문서를 사용합니다.

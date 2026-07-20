@@ -431,7 +431,7 @@ All variables are optional and **server-only** — never prefix any of them with
 | Variable | Needed for | Scope | Notes |
 |---|---|---|---|
 | `OPENAI_API_KEY` | optional reason/vision | server-only | Enables LLM phrasing of recommendation reasons |
-| `OPENAI_REASON_MODEL` | optional reason | server-only | Defaults to `gpt-5.6` |
+| `OPENAI_REASON_MODEL` | optional reason | server-only | Defaults to `gpt-5.6-luna` |
 | `OPENAI_VISION_MODEL` | optional vision | server-only | Defaults to `gpt-4o-mini` |
 | `GEMINI_API_KEY` | optional vision | server-only | `/api/analyze` Gemini provider |
 | `GEMINI_MODEL` | optional vision | server-only | Defaults to `gemini-2.0-flash` |

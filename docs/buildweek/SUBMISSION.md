@@ -107,7 +107,7 @@ overclaim, in a category defined by overclaiming.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Working project using Codex and GPT-5.6 | Live in production; Vitest 297 + mobile E2E 42 + smoke green. `/api/reason` defaults to `gpt-5.6` — **requires `OPENAI_API_KEY` in production to exercise the LLM path** |
+| 1 | Working project using Codex and GPT-5.6 | Live in production; Vitest 297 + mobile E2E 42 + smoke green. `/api/reason` defaults to `gpt-5.6-luna` — **requires `OPENAI_API_KEY` in production to exercise the LLM path** |
 | 2 | One official track | Apps for Your Life |
 | 3 | Project description | Section 1 of this document |
 | 4 | Public YouTube demo under 3 minutes | Scripts ready ([EN](DEMO-SCRIPT.md) / [KO](DEMO-SCRIPT-KO.md)); recording outstanding |

@@ -53,6 +53,6 @@ describe("provider output limits", () => {
 
     expect(analyze).toContain("maxOutputTokens: 256");
     expect(analyze).toContain("max_tokens: 256");
-    expect(reason).toContain("max_tokens: 256");
+    expect(reason).toContain("max_completion_tokens: 256");
   });
 });
