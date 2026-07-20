@@ -119,11 +119,11 @@ overclaim, in a category defined by overclaiming.
 
 ## 4. Remaining owner actions
 
-1. **Set `OPENAI_API_KEY` in Vercel production**, redeploy, then confirm
-   `POST /api/reason` returns `"source": "llm"`. Until then the live app serves
-   template copy and the GPT-5.6 claim cannot be observed by a judge. Verify the
-   model id in `OPENAI_REASON_MODEL` with one real call first — an unusable id
-   degrades silently to templates (the failure is logged server-side).
+1. ~~Set `OPENAI_API_KEY` in Vercel production~~ — **done 2026-07-21.**
+   `OPENAI_API_KEY` and `OPENAI_REASON_MODEL=gpt-5.6-luna` are registered in
+   Vercel production, `openai:check` passes against the live key, and
+   `POST /api/reason` on <https://aru-beauty.vercel.app> returns
+   `"source": "llm"` in EN and KO.
 2. **Run `/feedback` in a Codex session** and keep the session ID.
 3. **Record the demo** using [DEMO-SCRIPT.md](DEMO-SCRIPT.md), after step 1 so
    the S4 narration is true.
