@@ -8,7 +8,7 @@ import { MoodFromLink } from "./components/mood-from-link";
 
 function Arrow() {
   return (
-    <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden style={{ width: "clamp(20px, 6vw, 30px)", flexShrink: 1, filter: "url(#sketch)" }}>
+    <svg className="aru-dir-arrow" width="30" height="16" viewBox="0 0 30 16" aria-hidden style={{ width: "clamp(20px, 6vw, 30px)", flexShrink: 1, filter: "url(#sketch)" }}>
       <path d="M2 8 L23 8" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" />
       <path d="M23 8 L17 4 M23 8 L17 12" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" fill="none" />
     </svg>
@@ -18,9 +18,9 @@ function Arrow() {
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      <header className="flex items-center justify-between px-6 pt-7" style={{ paddingRight: 118 }}>
+      <header className="flex items-center justify-between px-6 pt-7" style={{ paddingInlineEnd: 118 }}>
         <span style={{ fontFamily: "var(--font-display)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "right" }}>{t("아름다움을, 매일의 루틴으로")}</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "end" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>
 
       <MoodFromLink />
@@ -76,7 +76,7 @@ export default function Home() {
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
                 <span className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.25, color: "var(--ink)" }}>{t("내 피부 살펴보기")}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--orange)" }}>→</span>
+                <span className="aru-dir-arrow" aria-hidden style={{ fontFamily: "var(--font-display)", fontSize: 27, color: "var(--orange)" }}>→</span>
               </div>
             </div>
           </Link>

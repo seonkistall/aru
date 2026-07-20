@@ -30,7 +30,7 @@ export function LanguageSwitcher() {
   };
 
   return (
-    <div ref={ref} style={{ position: "fixed", top: 10, right: 10, zIndex: 90 }}>
+    <div ref={ref} style={{ position: "fixed", top: 10, insetInlineEnd: 10, zIndex: 90 }}>
       <button
         type="button"
         aria-label="Language"
@@ -59,7 +59,7 @@ export function LanguageSwitcher() {
           role="listbox"
           style={{
             position: "absolute",
-            right: 0,
+            insetInlineEnd: 0,
             marginTop: 6,
             background: "var(--paper, #fff)",
             border: "1.6px solid var(--ink, #222)",

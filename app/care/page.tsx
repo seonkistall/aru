@@ -104,7 +104,7 @@ export default function CarePage() {
               <div style={{ position: "absolute", inset: 0, border: "2.4px solid var(--ink)", borderRadius: 4, filter: "url(#sketch)" }} aria-hidden />
               <div className="flex items-center justify-center" style={{ position: "relative", gap: 10 }}>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>{t("내 피부 살펴보기")}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--orange)" }}>→</span>
+                <span className="aru-dir-arrow" aria-hidden style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--orange)" }}>→</span>
               </div>
             </div>
           </Link>
@@ -197,11 +197,11 @@ export default function CarePage() {
           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
             {clinics.map((link) => (
               <button key={link.label} onClick={() => openCareLink(link, view.survey.type)} style={clinicBtn}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "start" }}>
                   <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{t(link.label)}</span>
                   <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
                 </span>
-                <span aria-hidden style={{ color: "var(--plum)", fontSize: 18 }}>→</span>
+                <span className="aru-dir-arrow" aria-hidden style={{ color: "var(--plum)", fontSize: 18 }}>→</span>
               </button>
             ))}
           </div>
