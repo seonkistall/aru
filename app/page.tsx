@@ -20,37 +20,41 @@ export default function Home() {
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7" style={{ paddingInlineEnd: 118 }}>
         <span style={{ fontFamily: "var(--font-display)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "end" }}>{t("아름다움을, 매일의 루틴으로")}</span>
+        <span data-testid="header-tagline" style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "end" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>
 
       <MoodFromLink />
 
       <section className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-        {/* 小黑 reading skin through a magnifier, with a red hand annotation */}
-        <div style={{ position: "relative", marginBottom: 8, paddingTop: 42 }}>
-          <Xiaohei size={156} pose="magnify" bob />
+        {/* 小黑 reading skin through a magnifier, with a red hand annotation.
+            The callout stays in normal flow so its rotated box (taller in sans
+            locales) pushes the mascot down instead of bleeding up into the
+            header tagline. */}
+        <div style={{ marginBottom: 8, paddingTop: 20 }}>
           <span
             data-testid="hero-callout"
             style={{
-              position: "absolute",
-              left: "50%",
-              top: 0,
+              display: "block",
+              margin: "0 auto",
               width: "min(240px, calc(100vw - 48px))",
               fontFamily: "var(--font-display)",
               fontSize: 19,
               color: "var(--plum)",
               lineHeight: 1.18,
-              transform: "translateX(-50%) rotate(-4deg)",
+              transform: "rotate(-4deg)",
               textAlign: "center",
               whiteSpace: "normal",
             }}
           >
             {t("나에게 맞는 화장품 찾기,")}<br />{t("30초면 충분해요.")}
           </span>
-          <svg width="42" height="26" viewBox="0 0 42 26" aria-hidden style={{ position: "absolute", left: -8, top: 76, filter: "url(#sketch)" }}>
-            <path d="M3 20 C14 6 28 4 38 11" stroke="var(--orange)" strokeWidth="2" fill="none" strokeLinecap="round" />
-            <path d="M38 11 L31 10 M38 11 L34 17" stroke="var(--orange)" strokeWidth="2" fill="none" strokeLinecap="round" />
-          </svg>
+          <div style={{ position: "relative", width: 156, margin: "6px auto 0" }}>
+            <Xiaohei size={156} pose="magnify" bob />
+            <svg width="42" height="26" viewBox="0 0 42 26" aria-hidden style={{ position: "absolute", left: -8, top: 34, filter: "url(#sketch)" }}>
+              <path d="M3 20 C14 6 28 4 38 11" stroke="var(--orange)" strokeWidth="2" fill="none" strokeLinecap="round" />
+              <path d="M38 11 L31 10 M38 11 L34 17" stroke="var(--orange)" strokeWidth="2" fill="none" strokeLinecap="round" />
+            </svg>
+          </div>
         </div>
 
         <h1 className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
