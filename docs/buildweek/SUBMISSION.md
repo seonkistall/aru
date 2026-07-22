@@ -6,7 +6,7 @@
 |---|---|
 | Live app | <https://aru-beauty.vercel.app> |
 | Repository | <https://github.com/seonkistall/aru-buildweek> (public) |
-| Demo video | *(YouTube, under 3 minutes — to be recorded)* |
+| Demo video | <https://youtu.be/oc-ccLo-yn0> |
 | Build log | [BUILDLOG.md](../../BUILDLOG.md) |
 | User research | [user-research.md](user-research.md) |
 | Demo scripts | [English](DEMO-SCRIPT.md) · [Korean](DEMO-SCRIPT-KO.md) |
@@ -110,11 +110,11 @@ overclaim, in a category defined by overclaiming.
 | 1 | Working project using Codex and GPT-5.6 | Live in production; Vitest 297 + mobile E2E 42 + smoke green. `/api/reason` defaults to `gpt-5.6-luna` — **requires `OPENAI_API_KEY` in production to exercise the LLM path** |
 | 2 | One official track | Apps for Your Life |
 | 3 | Project description | Section 1 of this document |
-| 4 | Public YouTube demo under 3 minutes | Scripts ready ([EN](DEMO-SCRIPT.md) / [KO](DEMO-SCRIPT-KO.md)); recording outstanding |
+| 4 | Public YouTube demo under 3 minutes | Published: <https://youtu.be/oc-ccLo-yn0> (scripts: [EN](DEMO-SCRIPT.md) / [KO](DEMO-SCRIPT-KO.md)) |
 | 5 | Judgeable repository | Public: <https://github.com/seonkistall/aru-buildweek> — 25 branches, full history including every `codex/` session branch |
 | 6 | README and run instructions | [README.md](../../README.md) — install, run, env vars, tests. Runs with no keys and no sample data |
 | 7 | Codex usage and key decisions | [BUILDLOG.md](../../BUILDLOG.md), including an explicit tooling disclosure |
-| 8 | `/feedback` session ID | Outstanding — must be run in a Codex session |
+| 8 | `/feedback` session ID | Submitted with the Devpost entry |
 | 9 | Developer Tool extras | Not applicable (Apps track) |
 
 ## 4. Remaining owner actions
@@ -124,9 +124,9 @@ overclaim, in a category defined by overclaiming.
    Vercel production, `openai:check` passes against the live key, and
    `POST /api/reason` on <https://aru-beauty.vercel.app> returns
    `"source": "llm"` in EN and KO.
-2. **Run `/feedback` in a Codex session** and keep the session ID.
-3. **Record the demo** using [DEMO-SCRIPT.md](DEMO-SCRIPT.md), after step 1 so
-   the S4 narration is true.
-4. **Submit on Devpost** with the description above. Devpost's official rules
-   take precedence over any community guide, so re-check the private-repository
-   and `/feedback` requirements immediately before submitting.
+2. ~~Run `/feedback` in a Codex session~~ — **done; session ID submitted with
+   the Devpost entry.**
+3. ~~Record the demo~~ — **done: <https://youtu.be/oc-ccLo-yn0>.**
+4. ~~Submit on Devpost~~ — **submitted 2026-07-22 (KST) before the deadline.**
+   Judging runs July 22 – August 7; keep the live app stable during that
+   window.
