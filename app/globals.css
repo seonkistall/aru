@@ -100,7 +100,17 @@ html[lang="ja"] a, html[lang="zh-CN"] a, html[lang="ar"] a {
    the compact sans token so long headings remain legible. */
 html[lang="en"], html[lang="ja"], html[lang="zh-CN"], html[lang="ar"] {
   --font-display: var(--font-sans);
+  --hero-sub-max: 320px;
 }
+
+/* Display metrics are tuned for the narrow Korean handwriting glyphs. Sans
+   glyphs fill the whole line box, so translated display text needs looser
+   leading to stay legible — CJK/Arabic more than Latin. */
+.locale-display { line-height: 1.1; }
+html[lang="en"] .locale-display { line-height: 1.2; }
+html[lang="ja"] .locale-display,
+html[lang="zh-CN"] .locale-display,
+html[lang="ar"] .locale-display { line-height: 1.35; }
 
 /* RTL: decorative forward arrows (SVG strokes and literal → glyphs) are drawn
    pointing right; mirror them so "forward" still points along the reading

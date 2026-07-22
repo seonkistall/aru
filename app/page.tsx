@@ -57,12 +57,12 @@ export default function Home() {
           </div>
         </div>
 
-        <h1 className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(34px, 10vw, 48px)", lineHeight: 1.1, margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
+        <h1 className="locale-display" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(34px, 10vw, 48px)", margin: "4px 0 2px", overflowWrap: "break-word", maxWidth: "100%" }}>
           {t("오늘의 내 피부,")}
           <br />
           {t("어떤 스킨케어가 좋을까요?")}
         </h1>
-        <p style={{ fontSize: 14.5, color: "var(--text-muted)", maxWidth: 270, lineHeight: 1.6, marginTop: 12 }}>
+        <p style={{ fontSize: 14.5, color: "var(--text-muted)", maxWidth: "var(--hero-sub-max, 270px)", lineHeight: 1.6, marginTop: 12 }}>
           {t("AI 카메라로 지금 피부에 맞는 제품과 루틴을 함께 찾아봐요.")}
         </p>
 
@@ -137,7 +137,7 @@ function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" 
             <Xiaohei size={46} pose={pose} />
           </span>
           <div style={{ textAlign: "left", minWidth: 0, flex: 1 }}>
-            <h3 style={{ margin: 0, display: "block", fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1.1, color: "var(--ink)" }}>{title}</h3>
+            <h3 className="locale-display" style={{ margin: 0, display: "block", fontFamily: "var(--font-display)", fontSize: 22, color: "var(--ink)" }}>{title}</h3>
             <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
           </div>
         </div>
