@@ -47,12 +47,14 @@ describe("re-engagement input validation", () => {
 });
 
 describe("provider output limits", () => {
-  it("caps all AI provider responses at 256 tokens", () => {
+  it("bounds every AI provider response", () => {
     const analyze = readFileSync(resolve(root, "app/api/analyze/route.ts"), "utf8");
     const reason = readFileSync(resolve(root, "app/api/reason/route.ts"), "utf8");
 
     expect(analyze).toContain("maxOutputTokens: 256");
     expect(analyze).toContain("max_tokens: 256");
-    expect(reason).toContain("max_completion_tokens: 256");
+    // Reason runs on a reasoning model whose hidden thinking tokens count
+    // against the completion cap — 256 truncated Korean/Arabic to templates.
+    expect(reason).toContain("max_completion_tokens: 1024");
   });
 });

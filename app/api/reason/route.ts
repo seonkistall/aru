@@ -57,8 +57,10 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
         // gpt-5.6-* rejects max_tokens and any temperature other than the default.
+        // The cap must cover hidden reasoning tokens (~130+) plus the JSON output;
+        // 256 silently truncated Korean/Arabic responses into template fallbacks.
         model: process.env.OPENAI_REASON_MODEL ?? "gpt-5.6-luna",
-        max_completion_tokens: 256,
+        max_completion_tokens: 1024,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: sys },
