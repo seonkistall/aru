@@ -12,6 +12,7 @@ It is **not** a medical diagnosis, treatment, or condition monitor. The whole
 recommendation flow can also be completed with the questionnaire alone.
 
 - **Live:** <https://aru-beauty.vercel.app>
+- **Demo video (3 min):** <https://youtu.be/oc-ccLo-yn0>
 - **OpenAI Build Week (Apps for Your Life):** [submission pack](docs/buildweek/SUBMISSION.md) · [build log](BUILDLOG.md) · [user research](docs/buildweek/user-research.md) · demo scripts ([EN](docs/buildweek/DEMO-SCRIPT.md) / [KO](docs/buildweek/DEMO-SCRIPT-KO.md))
 - **한국어 문서:** [README.ko.md](README.ko.md) (full Korean documentation)
 - Product contract and KPIs: [docs/PRD.md](docs/PRD.md)

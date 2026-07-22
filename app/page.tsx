@@ -98,7 +98,7 @@ export default function Home() {
         <ReturnBanner />
       </section>
 
-      <section className="px-6" style={{ paddingBottom: 6 }}>
+      <section className="px-6" style={{ paddingBottom: 6, width: "100%", maxWidth: 720, marginInline: "auto" }}>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.5, color: "var(--ink)", textAlign: "center", margin: "2px 0 14px" }}>{t("이렇게 진행돼요")}</h2>
         <div style={{ display: "grid", gap: 10 }}>
           <HowCard

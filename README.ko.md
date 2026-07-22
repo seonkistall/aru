@@ -5,6 +5,7 @@ ARU는 계정 없이 선택형 온디바이스 카메라 관찰과 짧은 설문
 카메라를 사용하지 않아도 설문만으로 전체 추천 흐름을 완료할 수 있습니다. ARU의 카메라 결과는 현재 사진에서 보이는 미용적 경향을 설명하는 보조 정보이며, 의료 진단·치료·질환 모니터링이 아닙니다.
 
 - Production: <https://aru-beauty.vercel.app>
+- 데모 영상(3분): <https://youtu.be/oc-ccLo-yn0>
 - **OpenAI Build Week 제출(Apps for Your Life)**: [제출 자료](docs/buildweek/SUBMISSION.md) · [빌드 로그](BUILDLOG.md)
 - 제품 계약과 KPI: [docs/PRD.md](docs/PRD.md)
 - 현재 검증 상태: [docs/STATUS.md](docs/STATUS.md)
