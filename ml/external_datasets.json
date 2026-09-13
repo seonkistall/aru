@@ -7,7 +7,7 @@
       "name": "SCIN Skin Condition Image Network",
       "url": "https://github.com/google-research-datasets/scin",
       "paper": "https://doi.org/10.1001/jamanetworkopen.2024.46615",
-      "access": "Open access through Google Cloud Storage under the SCIN Data Use License.",
+      "access": "Open download from Google Cloud Storage under the SCIN Data Use License (no registration). The copyright grant has no NonCommercial clause, but the agreement's onward-use terms are unresolved for a shipping product, so shipping purposes need a written position first.",
       "labels": [
         "dermatologist condition labels",
         "estimated Fitzpatrick skin type",
@@ -15,16 +15,17 @@
         "self-reported demographics and symptoms"
       ],
       "recommendedUse": [
-        "skin-tone coverage audit",
-        "image quality/gradation research",
-        "not direct cosmetic oil/redness/pores supervision"
+        "skin-tone coverage reference",
+        "fairness stress test",
+        "reviewer calibration"
       ],
       "risks": [
-        "medical-condition imagery",
-        "sensitive and sometimes graphic images",
-        "US internet-user sample, not K-beauty selfie protocol"
+        "no graded label for any ARU axis: conditions are diagnosis presence/absence, with no severity scale anywhere in the schema",
+        "age is AGE_UNKNOWN on most rows that have the field at all",
+        "US internet-user sample of skin CONDITIONS, not a K-beauty selfie protocol",
+        "sensitive and sometimes graphic medical imagery"
       ],
-      "licenseTier": "gated_application"
+      "licenseTier": "contract_required"
     },
     {
       "id": "acne04",
@@ -313,6 +314,125 @@
         "inherits Fitzpatrick17k non-commercial terms",
         "clinical images, not selfies"
       ]
+    },
+    {
+      "id": "ddi2",
+      "name": "DDI-2",
+      "url": "https://ddi-dataset.github.io/",
+      "licenseTier": "non_commercial",
+      "access": "Stanford School of Medicine Research Use Agreement.",
+      "labels": [
+        "Fitzpatrick skin type",
+        "anatomical site",
+        "biopsy-confirmed diagnoses",
+        "workflow artifacts"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "research-use agreement forbids commercial use and derivative works",
+        "no erythema field; SkinCon's Erythema overlay covers DDI-1 and Fitzpatrick17k, not DDI-2",
+        "Fitzpatrick is a per-patient phototype stratifier, not a pigmentation label"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "derm1m",
+      "name": "Derm1M",
+      "url": "https://github.com/SiyuanYan1/Derm1M",
+      "licenseTier": "non_commercial",
+      "access": "CC BY-NC 4.0; commercial use requires separate permission.",
+      "labels": [
+        "49-term concept vocabulary",
+        "image-text pairs"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "no pore, wrinkle, sebum or moisture term in the vocabulary",
+        "erythema/xerosis/comedo are binary lesion descriptors on diseased skin, not cosmetic grades"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "isgd",
+      "name": "ISGD Indian Skincare and Grooming Dataset",
+      "url": "https://www.kaggle.com/datasets/himalrana2610/indian-skincare-and-grooming-dataset",
+      "licenseTier": "unknown",
+      "access": "No LICENSE file found in the repository; treat as all rights reserved.",
+      "labels": [
+        "33 binary attributes, 29 of them hair and grooming"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "oily_skin is a binary annotator judgment and the worst-performing attribute in the authors' own metrics",
+        "images appear web-scraped with no documented consent basis"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "porepatch",
+      "name": "PorePatch",
+      "url": "https://github.com/verdureB/PorePatch",
+      "licenseTier": "unknown",
+      "access": "No LICENSE file exists.",
+      "labels": [
+        "facial skin patches for local descriptor learning"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "zero skin-condition annotations of any kind; it is a keypoint-matching benchmark, not a pore-grade dataset"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "aihub_skincare_ingredient",
+      "name": "AI-Hub 스킨케어 성분-효능 추천 데이터 (dataSetSn=71886)",
+      "url": "https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71886",
+      "licenseTier": "non_commercial",
+      "access": "AI-Hub application; the operating institution states non-commercial R&D by default.",
+      "labels": [
+        "ingredient-efficacy knowledge",
+        "survey records"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "supports no ARU camera axis",
+        "commercial use needs a separate agreement with the operating institution"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "aihub_facial_skin_disease_synthetic",
+      "name": "AI-Hub 안면부 피부질환 이미지 합성 데이터 (dataSetSn=71863)",
+      "url": "https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71863",
+      "licenseTier": "gated_application",
+      "access": "AI-Hub clinical-data track; terms unread because aihub.or.kr was unreachable.",
+      "labels": [
+        "synthetic facial skin-disease images",
+        "lesion masks"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "synthetic and disease-oriented",
+        "no subject demographics can exist",
+        "clinical track carries the heaviest access terms"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "kface",
+      "name": "AI-Hub K-FACE 한국인 안면 이미지 (dataSetSn=83)",
+      "url": "https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=83",
+      "licenseTier": "gated_application",
+      "access": "AI-Hub registration; terms unread.",
+      "labels": [
+        "controlled multi-camera face images with pose and illumination variation"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "no skin labels at all",
+        "identifiable biometric data on named individuals engages 개인정보보호법 sensitive-information duties"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
     }
   ]
 }
