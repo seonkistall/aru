@@ -115,13 +115,31 @@ AXES: tuple[Axis, ...] = (
         regions=("forehead", "cheeks", "chin"),
         product_facing=False,
         notes=(
-            "Evenness, not tone lightness. ARU never grades how light a face is; "
-            "absolute tone is used only as a fairness stratifier, never as a product output."
+            "Evenness across regions, not tone lightness and not discrete spots. ARU never "
+            "grades how light a face is; absolute tone is a fairness stratifier only. Discrete "
+            "spots belong to the pigmentation axis, and no public dataset grades evenness."
         ),
         external_label_hints={
-            "aihub_korean_skin": "색소침착 / 톤 grade",
-            "scin": "estimated Fitzpatrick and Monk labels (stratifier only, not an output)",
+            "scin": "estimated Fitzpatrick and Monk labels (stratifier only, never an output)",
         },
+    ),
+    Axis(
+        id="pigmentation",
+        ko="색소침착",
+        en="Dark spots / visible pigmentation",
+        levels=4,
+        level_labels_ko=("색소침착 없음", "약간", "보통", "뚜렷"),
+        head="camera",
+        evidence="direct",
+        regions=("cheeks", "forehead", "upper_lip"),
+        product_facing=False,
+        notes=(
+            "Localized pigment spots. Distinct from tone evenness: a face can have even "
+            "overall tone and still show spots, and a blotchy face can have none. Keeping "
+            "them as one axis is what lets an external spot grade be mapped onto an "
+            "evenness head, which trains the model on the wrong construct."
+        ),
+        external_label_hints={"aihub_korean_skin": "색소침착 expert grade 0-5, per region"},
     ),
     Axis(
         id="trouble",

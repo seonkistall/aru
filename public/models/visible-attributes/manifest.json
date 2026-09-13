@@ -84,6 +84,13 @@
       "requiresSurvey": false,
       "evidence": "direct"
     },
+    "pigmentation": {
+      "levels": 4,
+      "ko": "색소침착",
+      "productFacing": false,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    },
     "trouble": {
       "levels": 4,
       "ko": "트러블",

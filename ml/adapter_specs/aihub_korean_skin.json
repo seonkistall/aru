@@ -8,7 +8,8 @@
     "https://raw.githubusercontent.com/leejeongho3214/NIA/main/tool/img_crop.py (info.filename, images.bbox, images.facepart)",
     "https://raw.githubusercontent.com/leejeongho3214/NIA/main/tool/data_loader.py (annotations / equipment blocks, path template {equ}/{sub}/{sub}_{equ}_{angle}_{area}.json)",
     "https://raw.githubusercontent.com/leejeongho3214/NIA/main/tool/test.py (grade counts: dryness 5, pigmentation 6, pore 6, sagging 6, wrinkle 7)",
-    "https://raw.githubusercontent.com/hpicsk/regional-ccm/main/data/processed/metadata.csv (subject_id, age, gender, skin_type, sensitive, equipment_id, angle, region)"
+    "https://raw.githubusercontent.com/hpicsk/regional-ccm/main/data/processed/metadata.csv (subject_id, age, gender, skin_type, sensitive, equipment_id, angle, region)",
+    "README 평가 항목 list (색소침착, 입술건조도, 모공, 턱선처짐, 주름) read against the five class heads in tool/test.py — this is what establishes dryness = lip dryness"
   ],
   "verifyNote": "Label schema and directory layout are confirmed from the official project code. The LICENCE tier is NOT confirmed: aihub.or.kr was unreachable, so the dataset page 이용약관 must be read before any shipping run.",
   "capture": "controlled_dslr_tablet_smartphone",
@@ -41,18 +42,6 @@
     "monk": null
   },
   "axes": {
-    "dryness": {
-      "fromContains": "dryness",
-      "map": {
-        "0": 0,
-        "1": 1,
-        "2": 2,
-        "3": 3,
-        "4": 3
-      },
-      "note": "Source grades 0-4 collapse onto ARU's 0-3; the top two source grades both read as 매우 건조.",
-      "scope": "annotations."
-    },
     "pores": {
       "fromContains": "pore",
       "map": {
@@ -64,19 +53,6 @@
         "5": 2
       },
       "note": "Source grades 0-5 collapse in pairs onto ARU's shipped 3-level pore scale.",
-      "scope": "annotations."
-    },
-    "tone": {
-      "fromContains": "pigmentation",
-      "map": {
-        "0": 0,
-        "1": 1,
-        "2": 2,
-        "3": 2,
-        "4": 3,
-        "5": 3
-      },
-      "note": "Keys are region-specific (forehead_pigmentation, cheek_pigmentation). Scope pins the lookup to the expert-grade block, because equipment.pigmentation is an instrument value on a different scale.",
       "scope": "annotations."
     },
     "wrinkles": {
@@ -92,6 +68,19 @@
       },
       "note": "Keys are forehead_wrinkle / glabellus_wrinkle / perocular_wrinkle; source grades 0-6.",
       "scope": "annotations."
+    },
+    "pigmentation": {
+      "fromContains": "pigmentation",
+      "scope": "annotations.",
+      "map": {
+        "0": 0,
+        "1": 1,
+        "2": 2,
+        "3": 2,
+        "4": 3,
+        "5": 3
+      },
+      "note": "색소침착 expert grade 0-5, keyed per region (forehead_pigmentation, cheek_pigmentation). Scope pins the lookup to the expert-grade block; equipment.pigmentation is a VISIA-CR instrument value on a different scale."
     }
   },
   "axesDeliberatelyAbsent": {
@@ -99,8 +88,10 @@
     "redness": "No erythema grade exists in this dataset.",
     "trouble": "No acne or lesion grade exists in this dataset.",
     "moisture": "equipment.moisture is a corneometer reading and supervises no camera head by design; it belongs in the instrument regression track, not the ARU product model.",
-    "sensitivity": "info.sensitive is a SUBJECT-level self-reported flag, not a visible per-image label."
+    "sensitivity": "info.sensitive is a SUBJECT-level self-reported flag, not a visible per-image label.",
+    "dryness": "The 5-grade `dryness` head is 입술건조도 — LIP dryness, graded on the lip region. The README lists the graded items as 색소침착, 입술건조도, 모공, 턱선처짐, 주름, matching the five class heads in tool/test.py in order. ARU grades flaking on cheeks and T-zone, which is a different construct on a different region, so this label is NOT mapped.",
+    "tone": "색소침착 is a discrete pigment-spot grade and maps to ARU's pigmentation axis, not to tone evenness. No public dataset found so far grades tone evenness at all."
   },
   "collapseMappingWarning": "Every map above compresses a finer source scale onto ARU's coarser one. That is a product decision, not a fact about the data. Re-check it against reviewer agreement before treating collapsed grades as ground truth.",
-  "notes": "1,099 Korean subjects aged 14-69, three capture devices (DSLR / tablet / smartphone), up to 7 angles, 8 facial-region bounding boxes, five dermatologists grading plus instrument measurement. The smartphone arm is the part that transfers to a browser selfie; the DSLR arm is a different optical domain and should be weighted or held out accordingly."
+  "notes": "1,099 Korean subjects aged 14-69, three capture devices (DSLR / tablet / smartphone), up to 7 angles, 8 facial-region bounding boxes, five dermatologists grading plus instrument measurement. The smartphone arm is the part that transfers to a browser selfie; the DSLR arm is a different optical domain and should be weighted or held out accordingly. Usable ARU axes from this dataset are pores, wrinkles and pigmentation only. sagging (턱선처짐) has no ARU axis."
 }
