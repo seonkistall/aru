@@ -15,17 +15,28 @@
         "self-reported demographics and symptoms"
       ],
       "recommendedUse": [
-        "skin-tone coverage reference",
-        "fairness stress test",
-        "reviewer calibration"
+        "tone robustness SMOKE TEST only — not an audit set",
+        "two weak self-reported signals nothing else in this survey offers: textures_rough_or_flaky (dryness) and condition_symptoms_burning (sensitivity)"
       ],
       "risks": [
-        "no graded label for any ARU axis: conditions are diagnosis presence/absence, with no severity scale anywhere in the schema",
-        "age is AGE_UNKNOWN on most rows that have the field at all",
-        "US internet-user sample of skin CONDITIONS, not a K-beauty selfie protocol",
-        "sensitive and sometimes graphic medical imagery"
+        "14 Asian cases in the facial subset. A K-beauty model cannot be audited for its own users on this data",
+        "only 737 of 5,033 cases are head or neck, and 432 of those are close-ups rather than front-camera frames",
+        "353 of the 737 facial cases have AGE_UNKNOWN",
+        "no graded label for any ARU axis: conditions are diagnosis presence, with no severity scale in the schema",
+        "an inflammatory-rash corpus with a face subset, not a cosmetic corpus"
       ],
-      "licenseTier": "contract_required"
+      "licenseTier": "contract_required",
+      "verifiedCounts": {
+        "countedFrom": "storage.googleapis.com/dx-scin-public-data/dataset/scin_cases.csv, read and counted directly 2026-09-13",
+        "totalCases": 5033,
+        "headOrNeckCases": 737,
+        "headOrNeckCloseUp": 432,
+        "headOrNeckAgeUnknown": 353,
+        "headOrNeckAsian": 14,
+        "corpusAsian": 96,
+        "headOrNeckRoughOrFlaky": 220,
+        "headOrNeckBurning": 221
+      }
     },
     {
       "id": "acne04",

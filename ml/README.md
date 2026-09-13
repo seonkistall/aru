@@ -139,6 +139,20 @@ model as before. What is new around it:
 The gate is meant to fail loudly. "No subgroup cell reached n>=20" is a blocker, not
 a pass: a model nobody could evaluate on a subgroup has not been shown to work on it.
 
+### Read qwk and pearson, not accuracy alone
+
+Every axis reports `qwk` (quadratic weighted kappa) and `pearson` alongside accuracy,
+macro-F1 and ordinal MAE. On a skewed ordinal scale a model that always predicts the
+majority grade scores well on accuracy, MAE and "within one grade" while carrying no
+information; QWK goes to 0 for exactly that model. `within_one_grade` is recorded for
+comparability with published skin-grading work, but it is never a promotion signal on
+its own — the survey turned up a published case of 94% within-one-grade agreement at a
+correlation of 0.25.
+
+For any axis supervised by an instrument reading rather than a human grade, report
+correlation against held-out instrument values before building the head at all. Asking
+whether an axis is recoverable from RGB has to come before choosing a dataset for it.
+
 ## ARU target and source registries
 
 - `aru_target_schema.json` defines the camera targets ARU needs for cosmetic
