@@ -16,6 +16,11 @@ const mlFiles = [
   "ml/evaluate_dataset.py",
   "ml/calibrate.py",
   "ml/run_pipeline.py",
+  "ml/aru_axes.py",
+  "ml/subgroups.py",
+  "ml/ita.py",
+  "ml/licensing.py",
+  "ml/external_manifest.py",
 ];
 
 const routeChecks = [

@@ -1,0 +1,22 @@
+{
+  "source": "acne04",
+  "name": "ACNE04 (LDL)",
+  "url": "https://github.com/xpwu95/LDL",
+  "paper": "https://arxiv.org/abs/1911.07931",
+  "verified": false,
+  "verifyNote": "Column order of NNEW_trainval_*.txt must be confirmed against the actual download before any run is treated as evidence.",
+  "capture": "clinical_frontal",
+  "labelConfidence": "external",
+  "index": {
+    "path": "NNEW_trainval_0.txt",
+    "format": "space",
+    "columns": ["image", "severity", "lesion_count"]
+  },
+  "images": { "root": "Classification/JPEGImages", "column": "image" },
+  "subject": { "column": null, "fallback": "image_stem" },
+  "demographics": { "ita": null, "fitzpatrick": null, "monk": null, "sex": null, "age": null },
+  "axes": {
+    "trouble": { "from": "severity", "map": { "0": 0, "1": 1, "2": 2, "3": 3 } }
+  },
+  "notes": "Hayashi severity. Academic-use licence: research_pretrain / eval_audit only, never shipping weights."
+}

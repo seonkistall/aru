@@ -1,8 +1,22 @@
 # ARU Camera ML Upgrade Plan
 
-Updated: 2026-07-07
+Updated: 2026-09-13
 
 ## Current conclusion
+
+The 2026-09 dataset survey ([docs/skin-dataset-survey.md](skin-dataset-survey.md))
+changes one part of this and confirms the rest.
+
+What changed: **AI-Hub 028 한국인 피부상태 측정 데이터 (dataSetSn=71645)** exists and is
+a genuine candidate for product training. 1,099 Korean subjects aged 14-69, graded by
+five dermatologists, captured on a smartphone as well as a DSLR, with per-subject age
+and sex. It can supervise dryness, pores, pigmentation/tone and wrinkles. Its licence
+tier is still unverified, so the gate in `ml/licensing.py` currently blocks shipping
+use of it.
+
+What did not change: it carries **no oil, no redness and no acne labels**, and no other
+public dataset carries them under a licence that permits shipping weights. Those axes
+still depend entirely on ARU's own opt-in collection.
 
 ARU should not train a product model directly from public dermatology datasets.
 Most public skin datasets are clinical, non-commercial, gated, or focused on

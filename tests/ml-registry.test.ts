@@ -61,7 +61,9 @@ describe("ARU ML registries", () => {
     expect(manifest.inputSchemaVersion).toBe(VISIBLE_MODEL_CONTRACT.inputSchemaVersion);
     expect(manifest.fallbackVersion).toBe(VISIBLE_MODEL_CONTRACT.fallbackVersion);
     expect(manifest.targetModel).toBe(VISIBLE_MODEL_CONTRACT.targetModel);
-    expect(manifest.promotionGate.validation).toBe("grouped_by_participant");
+    // Participant grouping is the invariant; the validation strategy may strengthen
+    // beyond it (it is now also stratified by subgroup) but may never drop it.
+    expect(manifest.promotionGate.validation).toContain("grouped_by_participant");
     expect(manifest.promotionGate.minTrainingCrops).toBeGreaterThanOrEqual(300);
   });
 });

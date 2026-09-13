@@ -7,27 +7,22 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-ATTRS = ("oil", "redness", "pores")
+import aru_axes  # noqa: E402
+import subgroups  # noqa: E402
+
+
+ATTRS = aru_axes.LEGACY_ATTRS
 
 
 def ita_bucket(value: str) -> str:
-    try:
-        ita = float(value)
-    except (TypeError, ValueError):
-        return "unknown"
-    if ita > 55:
-        return "very_light"
-    if ita > 41:
-        return "light"
-    if ita > 28:
-        return "intermediate"
-    if ita > 10:
-        return "tan"
-    return "brown_dark"
+    """Kept as a thin alias so older call sites still work; bands live in subgroups.py."""
+    return subgroups.tone_band_from_ita(value)
 
 
 def next_action(n: int) -> str:
@@ -57,14 +52,27 @@ def main() -> None:
     print(f"sessions: {len(sessions)}")
     print(f"next: {next_action(len(rows))}\n")
 
-    for attr in ATTRS:
-        counts = Counter(row[attr] for row in rows)
-        print(f"{attr}: " + ", ".join(f"{label}={counts[str(label)]}" for label in range(3)))
+    present = [axis for axis in aru_axes.CAMERA_AXES if axis in (rows[0] if rows else {})]
+    for attr in present:
+        counts = Counter(row.get(attr, "") for row in rows)
+        labelled = ", ".join(
+            f"{label}={counts[str(label)]}" for label in range(aru_axes.levels_for(attr))
+        )
+        unlabeled = counts.get("", 0)
+        print(f"{attr}: {labelled}" + (f", unlabeled={unlabeled}" if unlabeled else ""))
 
-    ita_counts = Counter(ita_bucket(row.get("ita", "")) for row in rows)
-    print("\nITA buckets:")
-    for bucket, count in ita_counts.most_common():
-        print(f"  {bucket}: {count}")
+    cov = subgroups.coverage(rows)
+    print("\nTone bands:")
+    for band, count in sorted(cov.tone.items(), key=lambda kv: -kv[1]):
+        print(f"  {band}: {count}")
+    print("\nAge bands:")
+    for band, count in sorted(cov.age.items(), key=lambda kv: -kv[1]):
+        print(f"  {band}: {count}")
+    warnings = subgroups.coverage_warnings(cov)
+    if warnings:
+        print("\nSubgroup warnings:")
+        for warning in warnings:
+            print(f"  - {warning}")
 
     by_source = Counter(row.get("source", "unknown") for row in rows)
     print("\nSources:")
@@ -82,9 +90,9 @@ def main() -> None:
         print(f"  {mode}: {count}")
 
     missing = defaultdict(int)
-    for attr in ATTRS:
-        for label in ("0", "1", "2"):
-            if not any(row[attr] == label for row in rows):
+    for attr in present:
+        for label in range(aru_axes.levels_for(attr)):
+            if not any(row.get(attr) == str(label) for row in rows):
                 missing[attr] += 1
     if any(missing.values()):
         print("\nLabel gaps:")

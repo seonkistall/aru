@@ -13,11 +13,16 @@ import argparse
 import base64
 import csv
 import json
-import math
+import sys
 from pathlib import Path
 from typing import Iterable
 
-from PIL import Image, ImageStat
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import ita as ita_module  # noqa: E402
+import subgroups  # noqa: E402
 
 
 def parse_data_url(value: str) -> bytes:
@@ -26,31 +31,21 @@ def parse_data_url(value: str) -> bytes:
     return base64.b64decode(value.split(",", 1)[1])
 
 
-def srgb_to_linear(c: float) -> float:
-    c = c / 255.0
-    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+def ita_for_row(path: Path, features: dict) -> str:
+    """ITA for one crop, preferring the value the app already measured.
 
-
-def rgb_to_lab_l_b(r: float, g: float, b: float) -> tuple[float, float]:
-    rl, gl, bl = srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b)
-    x = (0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl) / 0.95047
-    y = 0.2126729 * rl + 0.7151522 * gl + 0.0721750 * bl
-    z = (0.0193339 * rl + 0.1191920 * gl + 0.9503041 * bl) / 1.08883
-
-    def f(t: float) -> float:
-        return t ** (1 / 3) if t > 0.008856 else (7.787 * t) + (16 / 116)
-
-    fy = f(y)
-    l = 116 * fy - 16
-    b_lab = 200 * (fy - f(z))
-    return l, b_lab
-
-
-def ita_from_image(path: Path) -> float:
-    img = Image.open(path).convert("RGB").resize((64, 64))
-    r, g, b = ImageStat.Stat(img).mean
-    l, b_lab = rgb_to_lab_l_b(r, g, b)
-    return math.degrees(math.atan2(l - 50, b_lab if abs(b_lab) > 1e-6 else 1e-6))
+    The browser computes ITA on the live frame from the trimmed cheek pixels, with
+    landmarks and before JPEG compression, so its reading beats anything recomputed
+    from the stored crop. Recomputation is the fallback, and it goes through ml/ita.py
+    so both paths use the same dominant-cluster definition. An earlier version of this
+    script averaged the whole crop instead, which put the same face in a different
+    tone band depending on which path produced the number.
+    """
+    recorded = str(features.get("toneIta", "") or "").strip()
+    if recorded:
+        return recorded
+    reading = ita_module.tone_from_image_path(path)
+    return f"{reading.ita:.3f}" if reading else ""
 
 
 def read_jsonl(path: Path) -> Iterable[dict]:
@@ -96,6 +91,7 @@ def main() -> None:
         features = row.get("features", {})
         meta = row.get("meta") or {}
         quality = meta.get("quality") or {}
+        ita_value = ita_for_row(image_path, features)
         rows.append({
             "id": image_id,
             "image": str(image_path.relative_to(args.out)),
@@ -123,7 +119,10 @@ def main() -> None:
             "retake_recommended": meta.get("retakeRecommended", ""),
             "label_confidence": meta.get("labelConfidence", ""),
             "ungradable": meta.get("ungradable", ""),
-            "ita": f"{ita_from_image(image_path):.3f}",
+            "ita": ita_value,
+            "ita_source": "app_measured" if str(features.get("toneIta", "") or "").strip() else "recomputed_from_crop",
+            "tone_band": subgroups.tone_band_from_ita(ita_value),
+            "age_band": subgroups.resolve_age_band(meta),
             "toneLstar": features.get("toneLstar", ""),
             "toneIta": features.get("toneIta", ""),
             "shine": features.get("shine", ""),

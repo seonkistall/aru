@@ -1,0 +1,17 @@
+{
+  "source": "fitzpatrick17k",
+  "name": "Fitzpatrick17k",
+  "url": "https://github.com/mattgroh/fitzpatrick17k",
+  "paper": "https://arxiv.org/abs/2104.09957",
+  "verified": false,
+  "verifyNote": "Images are not redistributed with the CSV; confirm the image acquisition route before assuming rows resolve.",
+  "capture": "clinical_atlas",
+  "labelConfidence": "external",
+  "require_label": false,
+  "index": { "path": "fitzpatrick17k.csv", "format": "csv" },
+  "images": { "root": "images", "column": "md5hash", "suffix": ".jpg" },
+  "subject": { "column": "md5hash", "fallback": "row_index" },
+  "demographics": { "fitzpatrick": "fitzpatrick_scale", "ita": null, "monk": null, "age": null, "sex": null },
+  "axes": {},
+  "notes": "CC BY-NC-SA. Tone-band audit only. Published audits report label-quality and duplication problems; treat as a stress set, not ground truth."
+}

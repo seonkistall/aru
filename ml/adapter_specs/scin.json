@@ -1,0 +1,23 @@
+{
+  "source": "scin",
+  "name": "SCIN Skin Condition Image Network",
+  "url": "https://github.com/google-research-datasets/scin",
+  "paper": "https://doi.org/10.1001/jamanetworkopen.2024.46615",
+  "verified": false,
+  "verifyNote": "Confirm the current CSV column names in the released cases/labels files.",
+  "capture": "consumer_photo_mixed",
+  "labelConfidence": "external",
+  "require_label": false,
+  "index": { "path": "scin_cases.csv", "format": "csv" },
+  "images": { "root": "images", "column": "image_path" },
+  "subject": { "column": "case_id", "fallback": "row_index" },
+  "demographics": {
+    "fitzpatrick": ["dermatologist_fitzpatrick_skin_type_label_1", "fitzpatrick_skin_type"],
+    "monk": ["monk_skin_tone_label_us", "monk_skin_tone"],
+    "age": ["age_group"],
+    "sex": ["sex_at_birth"],
+    "ita": null
+  },
+  "axes": {},
+  "notes": "Tone and age stratification reference only. Dermatology conditions are not ARU axes; do not supervise product heads on this."
+}

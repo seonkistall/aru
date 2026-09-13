@@ -8,7 +8,12 @@
   "runtime": {
     "featureFlag": "NEXT_PUBLIC_VISIBLE_ATTR_MODEL=on",
     "package": "onnxruntime-web",
-    "loader": "classifyVisibleAttributes"
+    "loader": "classifyVisibleAttributes",
+    "calibration": {
+      "file": "tone_calibration.json",
+      "applies": "additive offset on the expected ordinal level, selected by the on-device ITA tone band",
+      "note": "Bands marked calibrated=false get no offset, so an unmeasured band is never silently corrected."
+    }
   },
   "input": {
     "kind": "face-crop",
@@ -17,14 +22,100 @@
     "colorSpace": "srgb"
   },
   "outputs": {
-    "oil": ["유분 적음", "유분 약간", "유분 많음"],
-    "redness": ["붉은기 낮음", "붉은기 약간", "붉은기 뚜렷"],
-    "pores": ["결 매끈", "결 약간 보임", "결 뚜렷"]
+    "oil": [
+      "유분 적음",
+      "유분 약간",
+      "유분 많음"
+    ],
+    "redness": [
+      "붉은기 낮음",
+      "붉은기 약간",
+      "붉은기 뚜렷"
+    ],
+    "pores": [
+      "결 매끈",
+      "결 약간 보임",
+      "결 뚜렷"
+    ]
   },
   "promotionGate": {
     "minTrainingCrops": 300,
     "minPilotParticipants": 30,
-    "validation": "grouped_by_participant",
-    "recommendationConfidenceThreshold": 0.58
+    "validation": "grouped_by_participant_stratified_by_subgroup",
+    "recommendationConfidenceThreshold": 0.58,
+    "subgroup": {
+      "dimensions": [
+        "tone",
+        "age",
+        "tone_x_age"
+      ],
+      "minSamplesPerBand": 20,
+      "maxAccuracyGap": 0.1,
+      "calibrationFile": "tone_calibration.json",
+      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently."
+    }
+  },
+  "axes": {
+    "oil": {
+      "levels": 3,
+      "ko": "유분",
+      "productFacing": true,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    },
+    "redness": {
+      "levels": 3,
+      "ko": "홍조",
+      "productFacing": true,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    },
+    "pores": {
+      "levels": 3,
+      "ko": "모공",
+      "productFacing": true,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    },
+    "tone": {
+      "levels": 4,
+      "ko": "색감",
+      "productFacing": false,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    },
+    "trouble": {
+      "levels": 4,
+      "ko": "트러블",
+      "productFacing": false,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    },
+    "dryness": {
+      "levels": 4,
+      "ko": "건조",
+      "productFacing": false,
+      "requiresSurvey": true,
+      "evidence": "weak"
+    },
+    "wrinkles": {
+      "levels": 4,
+      "ko": "주름",
+      "productFacing": false,
+      "requiresSurvey": false,
+      "evidence": "direct"
+    }
+  },
+  "axesNotPredictedFromCamera": {
+    "moisture": {
+      "ko": "수분",
+      "head": "instrument_only",
+      "why": "Corneometer capacitance. An RGB frame does not contain it. ARU may only infer a hydration HINT from visible dryness plus the survey, and must label it as an inference. Supervising a camera head on instrument hydration is allowed only for research on an instrument-paired dataset, never for a product claim."
+    },
+    "sensitivity": {
+      "ko": "민감",
+      "head": "composite",
+      "why": "Sensitivity is a reaction history, not an appearance. Redness is a symptom, not the axis."
+    }
   }
 }
