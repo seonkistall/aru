@@ -36,7 +36,7 @@ export type SkinRawFeatures = {
    */
   /** Relative spread of L* across forehead / both cheeks / chin. Evenness, not lightness. */
   toneSpread: number;
-  /** Cheek high-frequency energy over forehead high-frequency energy, each brightness-normalised. */
+  /** Cheek high-frequency energy over forehead high-frequency energy, each brightness-normalised. 0 = not measurable. */
   roughnessRatio: number;
   /** Local a* maxima found on the sampled face area. */
   blemishCount: number;
@@ -663,7 +663,10 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     toneLstar: tone.lstar,
     toneIta: tone.ita,
     toneSpread: relativeSpread(regionLstars),
-    roughnessRatio: cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 1,
+    // 0 means "could not measure" — the forehead patch fell outside the frame. A
+    // real ratio cannot be 0 (cheek pixels always carry some high-frequency energy),
+    // and the previous sentinel of 1 was indistinguishable from a genuine even face.
+    roughnessRatio: cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0,
     blemishCount: blemishes.count,
     blemishDensity: blemishes.count / Math.max(blemishes.areaPx / 1e6, 1e-6),
   };

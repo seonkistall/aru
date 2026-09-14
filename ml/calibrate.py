@@ -210,6 +210,18 @@ def collect(rows, feat, read_label):
 def report(attr, feat, levels, collected, suffix=""):
     samples, skipped = collected
     note = f"  (skipped {skipped} unusable)" if skipped else ""
+
+    # A label column with one value in it has no boundary in it. The DP happily
+    # returns a cut above (or below) every sample at 100% agreement, which reads
+    # exactly like a real fit and is not one. This is the normal state of the
+    # trouble observation — the checkbox is off on every row until someone ticks
+    # it — so say so instead of printing a number.
+    present = sorted({label for _, label in samples})
+    if len(present) < 2:
+        only = present[0] if present else "none"
+        print(f"{attr:8s}  feature={feat:16s}  only label {only} present in {len(samples)} rows - no boundary to learn{note}")
+        return
+
     res = best_thresholds(samples, levels)
     if not res:
         print(f"{attr:8s}: not enough distinct values yet{note}")

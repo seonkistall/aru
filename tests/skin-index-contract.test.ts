@@ -117,6 +117,41 @@ describe("within-image indices", () => {
   });
 });
 
+/** Text between two anchors, failing loudly rather than silently returning "" if either moves. */
+function section(source: string, from: string, to: string): string {
+  const start = source.indexOf(from);
+  const end = source.indexOf(to, start + 1);
+  expect(start, `anchor not found: ${from}`).toBeGreaterThanOrEqual(0);
+  expect(end, `anchor not found after ${from}: ${to}`).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
+/**
+ * The three axis -> feature maps in ml/calibrate.py, parsed once.
+ *
+ * Each body is bounded by the closing brace at its own line end, so a renamed or
+ * reformatted map fails the assertion instead of letting the scan run on into the
+ * rest of the file and assert against something unrelated.
+ */
+function calibrateFeatureMaps() {
+  const calibrate = readMl("calibrate.py");
+  const body = (name: string) => {
+    const match = calibrate.match(new RegExp(`^${name} = \\{([\\s\\S]*?)\\}\\s*$`, "m"));
+    expect(match, `${name} not found in ml/calibrate.py`).toBeTruthy();
+    return match?.[1] ?? "";
+  };
+  const features = (name: string) => {
+    const found = [...body(name).matchAll(/"[a-z_]+": "([A-Za-z]+)"/g)].map(([, feature]) => feature);
+    expect(found.length, `${name} parsed to no entries`).toBeGreaterThan(0);
+    return found;
+  };
+  // Global, so a second observation axis is checked too rather than silently skipped.
+  const observation = [...body("OBSERVATION_FEATURE").matchAll(/"[a-z_]+": \("([A-Za-z]+)", "([A-Za-z]+)"\)/g)]
+    .map(([, feature, label]) => ({ feature, label }));
+  expect(observation.length, "OBSERVATION_FEATURE parsed to no entries").toBeGreaterThan(0);
+  return { graded: features("FEATURE"), unlabelled: features("UNLABELLED_FEATURE"), observation };
+}
+
 describe("index registry contract", () => {
   const python = readMl("skin_indices.py");
 
@@ -137,20 +172,38 @@ describe("index registry contract", () => {
     for (const key of keys) expect(rawType).toContain(`${key}: number`);
   });
 
+  it("exports every calibratable feature from the /eval harness", () => {
+    // The golden-set harness is the only path that turns real photos into cut points
+    // without a pilot. If it stops writing a feature calibrate.py reads, that axis
+    // silently drops out of the calibration run with no error anywhere.
+    const evalPage = readFileSync(resolve(root, "app/eval/page.tsx"), "utf8");
+    const exported = section(evalPage, "function exportCalibrationJsonl", "const diffCell");
+    const block = section(exported, "features: {", "labels: {");
+    // Key AND value: `roughnessRatio: undefined` or a key with no row field behind it
+    // would satisfy a name-only check while exporting nothing.
+    const written = [...block.matchAll(/^\s+([A-Za-z]+):\s*(row\.[A-Za-z]+|Number\(row\.[A-Za-z]+)/gm)].map(([, key]) => key);
+    expect(written.sort()).toEqual([
+      "blemishCount", "blemishDensity", "cov", "relRedness", "roughnessRatio",
+      "shine", "toneIta", "toneLstar", "toneSpread",
+    ]);
+
+    const maps = calibrateFeatureMaps();
+    const needed = [...maps.graded, ...maps.unlabelled, ...maps.observation.map((pair) => pair.feature)];
+    expect(needed.length).toBe(6);
+    for (const feature of needed) expect(written, `${feature} missing from the /eval calibration export`).toContain(feature);
+  });
+
   it("calibrates only features the app measures", () => {
-    const calibrate = readMl("calibrate.py");
-    const bodies = [
-      calibrate.match(/^FEATURE = \{(.*)\}$/m)?.[1],
-      calibrate.match(/^UNLABELLED_FEATURE = \{([\s\S]*?)\}$/m)?.[1],
-    ];
-    expect(bodies.every(Boolean), "feature maps not found in ml/calibrate.py").toBe(true);
-    const declared = bodies.flatMap((body) => [...(body ?? "").matchAll(/"[a-z]+": "([A-Za-z]+)"/g)].map(([, feature]) => feature));
-    const observation = calibrate.match(/^OBSERVATION_FEATURE = \{[\s\S]*?"([A-Za-z]+)", "([A-Za-z]+)"\)/m);
-    expect(declared.length).toBeGreaterThan(3);
-    const rawType = skinTs.slice(skinTs.indexOf("export type SkinRawFeatures"), skinTs.indexOf("export type ConfidenceSignal"));
+    const maps = calibrateFeatureMaps();
+    const declared = [...maps.graded, ...maps.unlabelled, ...maps.observation.map((pair) => pair.feature)];
+    expect(declared).toEqual(["shine", "relRedness", "cov", "toneSpread", "roughnessRatio", "blemishDensity"]);
+
+    const rawType = section(skinTs, "export type SkinRawFeatures", "export type ConfidenceSignal");
     for (const feature of declared) expect(rawType, `${feature} is not a SkinRawFeatures field`).toContain(`${feature}: number`);
-    expect(observation?.[1]).toBe("blemishDensity");
-    // The observation label must be a key the app actually records.
-    expect(readFileSync(resolve(root, "lib/labels.ts"), "utf8")).toContain(`${observation?.[2]}?: boolean`);
+
+    // Every observation label must be a key the app actually records on a sample.
+    const labelsTs = readFileSync(resolve(root, "lib/labels.ts"), "utf8");
+    expect(maps.observation.length).toBeGreaterThan(0);
+    for (const pair of maps.observation) expect(labelsTs, `${pair.label} is not recorded in SampleMeta`).toContain(`${pair.label}?: boolean`);
   });
 });
