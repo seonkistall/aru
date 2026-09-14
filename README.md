@@ -19,6 +19,7 @@ recommendation flow can also be completed with the questionnaire alone.
 - Current verified state: [docs/STATUS.md](docs/STATUS.md)
 - System architecture: [docs/architecture.md](docs/architecture.md)
 - Release procedure: [docs/production-release-checklist.md](docs/production-release-checklist.md)
+- Continuous improvement loop: [docs/AUTOPILOT.md](docs/AUTOPILOT.md) (cycle protocol, guardrails, backlog)
 
 ## Current release state
 

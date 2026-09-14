@@ -172,8 +172,11 @@ export default function EvalPage() {
       .filter((row) => row.ok && labels[row.file])
       .map((row) => {
         const truth = labels[row.file];
+        // The file name is deliberately NOT carried over. docs/golden-set.md names
+        // golden images `golden-{인물ID}-…`, so exporting it would put a person's id
+        // next to their measured tone in a file that leaves this machine. calibrate.py
+        // needs neither.
         return JSON.stringify({
-          id: row.file,
           ts,
           features: {
             shine: row.shine,
@@ -193,7 +196,13 @@ export default function EvalPage() {
             inputSchemaVersion: VISIBLE_MODEL_CONTRACT.inputSchemaVersion,
             featureVersion: VISIBLE_MODEL_CONTRACT.fallbackVersion,
             exportedFrom: "eval-harness",
-            ...(truth.troubleSeen ? { observations: { troubleSeen: true } } : {}),
+            // Strict: a golden-labels file is hand-written, and "false" or "no" in it
+            // is a no, not a yes. Only a real boolean true records the observation.
+            ...(truth.troubleSeen === true ? { observations: { troubleSeen: true } } : {}),
+            // /eval analyses a downscaled still (maxSide 720) while /scan analyses the
+            // camera frame at its native size. Texture-scale features do not transfer
+            // between those two without care, so the size travels with the row.
+            analyzedMaxSide: 720,
           },
         });
       });
@@ -336,13 +345,19 @@ export default function EvalPage() {
           <button onClick={exportJsonl} style={exportBtn}>이번 실행을 JSONL로 내보내기 (다음 베이스라인)</button>
         )}
 
-        {hasLabels && rows.some((row) => row.ok && labels[row.file]) && (
+        {/* Deliberately not gated on hasLabels: that also requires a graded oil/redness/
+            pores label, which would block a labels file carrying only the trouble
+            observation — the one axis this export uniquely unlocks. */}
+        {rows.some((row) => row.ok && labels[row.file]) && (
           <>
             <button onClick={exportCalibrationJsonl} style={exportBtn}>calibrate.py 형식으로 내보내기 (정답 라벨 있는 행만)</button>
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
               내려받은 파일로 <code>python ml/calibrate.py golden-calibration-…jsonl</code> 을 실행하면
               유분·붉은기·결의 임계값이 나옵니다. 톤편차·거칠기는 라벨 출처가 없어 측정만 되고,
-              트러블은 정답 라벨에 <code>troubleSeen</code>이 있으면 컷 1개를 잡습니다.
+              트러블은 정답 라벨에 <code>troubleSeen: true</code>가 하나라도 있어야 컷을 잡습니다.
+              파일명(인물 ID)은 내보내지 않습니다. 여기서 나온 임계값은 <strong>출발점</strong>이에요 —
+              이 화면은 720px로 줄인 정지 이미지를 읽고 /scan은 카메라 원본 프레임을 읽기 때문에,
+              결·거칠기처럼 텍스처를 보는 값은 실제 스캔 피드백으로 다시 확인해야 합니다.
             </p>
           </>
         )}
