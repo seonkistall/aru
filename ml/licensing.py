@@ -212,6 +212,44 @@ def check(source_id: str, purpose: str) -> Decision:
     return Decision(source_id, purpose, tier, True, f"tier {tier!r} permits {purpose}", evidence)
 
 
+def strictest_tier(tiers: list[str]) -> str:
+    """The most restrictive tier in a set, by how few purposes it permits."""
+    known = [tier for tier in tiers if tier in TIERS] or ["unknown"]
+    return min(known, key=lambda tier: (len(TIERS[tier]), tier))
+
+
+def lineage_sources(lineage: dict | None) -> list[str]:
+    """Every registered source that has ever touched a checkpoint, oldest first."""
+    if not lineage:
+        return []
+    seen: list[str] = []
+    for stage in lineage.get("stages", []):
+        for source_id in stage.get("sources", []):
+            if source_id not in seen:
+                seen.append(source_id)
+    return seen
+
+
+def check_lineage(lineage: dict | None, purpose: str) -> list[Decision]:
+    """Apply the gate to weights inherited from an earlier training stage.
+
+    A fine-tune does not launder its starting point. Weights are a derivative work of
+    everything they were trained on, so a checkpoint pretrained on a non-commercial
+    corpus cannot ship no matter how clean the fine-tuning data is. Without this, the
+    intended pretrain-then-finetune path would quietly produce unshippable weights
+    that every per-run check called fine.
+    """
+    return [check(source_id, purpose) for source_id in lineage_sources(lineage)]
+
+
+def describe_lineage(lineage: dict | None) -> str:
+    sources = lineage_sources(lineage)
+    if not sources:
+        return "no inherited weights"
+    tiers = [check(source_id, "camera_qa").tier for source_id in sources]
+    return f"{len(sources)} inherited source(s) [{strictest_tier(tiers)}]: {', '.join(sources)}"
+
+
 def enforce(source_ids: list[str], purpose: str) -> list[Decision]:
     """Check every source and raise on the first blocked one, listing all blockers."""
     decisions = [check(source_id, purpose) for source_id in source_ids]

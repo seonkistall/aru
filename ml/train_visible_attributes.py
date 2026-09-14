@@ -177,6 +177,58 @@ def parse_level(value: object, axis: str) -> int | None:
         return None
 
 
+def load_pretrained(path: Path, model: nn.Module, device) -> dict:
+    """Initialise from an earlier stage's checkpoint and return its lineage.
+
+    Heads whose shape does not match are dropped rather than forced: a pretrain over
+    a dataset that only grades pores and wrinkles has no head for oil, and reusing a
+    differently sized classifier would be silent garbage. The trunk is what transfers.
+    """
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    state = checkpoint.get("model") or {}
+    current = model.state_dict()
+    kept, dropped = {}, []
+    for key, value in state.items():
+        if key in current and current[key].shape == value.shape:
+            kept[key] = value
+        else:
+            dropped.append(key)
+    missing = [key for key in current if key not in kept]
+    model.load_state_dict(kept, strict=False)
+    print(
+        f"init-from {path}: loaded {len(kept)} tensors, "
+        f"skipped {len(dropped)} shape-mismatched, {len(missing)} left at init"
+    )
+    return {
+        "path": str(path),
+        "sha256": sha256(path),
+        "axes": list(checkpoint.get("axes") or []),
+        "loaded_tensors": len(kept),
+        "skipped_tensors": dropped,
+        "lineage": checkpoint.get("lineage") or {"stages": []},
+    }
+
+
+def image_root_for(manifest: Path, fallback: Path) -> Path:
+    """Where a manifest's relative image paths resolve from.
+
+    Manifests from different datasets are concatenated for a combined pretrain, and
+    each one's paths are relative to its own dataset root, not to a shared --data.
+    external_manifest.py already records that root in the provenance file it writes
+    beside the manifest, so read it rather than making the caller repeat it.
+    """
+    provenance = manifest.parent / "provenance.json"
+    if provenance.exists():
+        try:
+            with provenance.open(encoding="utf-8") as handle:
+                recorded = json.load(handle).get("datasetRoot")
+            if recorded and Path(recorded).exists():
+                return Path(recorded)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return fallback
+
+
 def load_rows(root: Path, manifest: Path, axes: tuple[str, ...], aux_heads: tuple[str, ...]) -> list[Row]:
     rows: list[Row] = []
     with manifest.open(encoding="utf-8-sig", newline="") as handle:
@@ -216,23 +268,39 @@ def load_rows(root: Path, manifest: Path, axes: tuple[str, ...], aux_heads: tupl
     return rows
 
 
-def enforce_source_licences(rows: list[Row], purpose: str) -> dict:
-    """Refuse to start when any source in the manifest forbids this purpose."""
+def enforce_source_licences(rows: list[Row], purpose: str, lineage: dict | None = None) -> dict:
+    """Refuse to start when this data, or the weights we start from, forbid this purpose.
+
+    The lineage half is what makes pretrain-then-finetune honest. Fine-tuning on clean
+    first-party crops does not wash out a pretrain on a non-commercial corpus, because
+    the resulting weights are a derivative of both.
+    """
     counts = Counter(row.source for row in rows)
     decisions = [licensing.check(source, purpose) for source in sorted(counts)]
+    inherited = licensing.check_lineage(lineage, purpose)
+
     blocked = [d for d in decisions if not d.allowed]
-    if blocked:
-        lines = "\n".join(
-            f"  - {d.source_id} ({counts[d.source_id]} rows) [{d.tier}]: {d.reason}" for d in blocked
-        )
+    blocked_inherited = [d for d in inherited if not d.allowed]
+    if blocked or blocked_inherited:
+        lines = [
+            f"  - {d.source_id} ({counts[d.source_id]} rows in this manifest) [{d.tier}]: {d.reason}"
+            for d in blocked
+        ]
+        lines += [
+            f"  - {d.source_id} (inherited from --init-from weights) [{d.tier}]: {d.reason}"
+            for d in blocked_inherited
+        ]
         raise SystemExit(
-            f"Refusing to train for purpose={purpose!r}. Blocked sources:\n{lines}\n"
-            f"Re-run with --purpose research_pretrain for a non-shipping experiment, or remove those rows."
+            f"Refusing to train for purpose={purpose!r}. Blocked:\n" + "\n".join(lines) + "\n"
+            f"Re-run with --purpose research_pretrain for a non-shipping experiment, drop those rows, "
+            f"or start from weights without that lineage."
         )
     return {
         "purpose": purpose,
         "sources": {source: counts[source] for source in sorted(counts)},
         "decisions": [d.as_dict() for d in decisions],
+        "inherited": [d.as_dict() for d in inherited],
+        "lineage": licensing.describe_lineage(lineage),
     }
 
 
@@ -618,6 +686,19 @@ def write_split(path: Path, rows: list[Row], axes: tuple[str, ...]) -> None:
             })
 
 
+def jsonable(value):
+    """Make argparse values JSON-safe. --manifest is a LIST of Paths, so a flat
+    isinstance check on the value misses them and metrics.json fails to write at the
+    very end of a run, after all the training work is already spent."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return [jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): jsonable(item) for key, item in value.items()}
+    return value
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -695,7 +776,19 @@ def promotion_check(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("ml/data/crops"))
-    parser.add_argument("--manifest", type=Path, help="override manifest path (default <data>/manifest.csv)")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        nargs="*",
+        help="one or more manifests to concatenate (default <data>/manifest.csv). "
+             "Several external datasets can pretrain together; unlabeled axes are masked per row.",
+    )
+    parser.add_argument(
+        "--init-from",
+        type=Path,
+        help="start from an earlier stage's .pt checkpoint. Its source lineage is inherited "
+             "and re-checked against --purpose, because weights are a derivative work.",
+    )
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=2e-4)
@@ -742,17 +835,36 @@ def main() -> None:
     axes = aru_axes.resolve_axes(args.axes)
     aux_heads = tuple(args.aux_heads)
     declared_dimensions = check_declared_dimensions()
+    pretrained = None
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    manifest = args.manifest or (args.data / "manifest.csv")
-    rows = load_rows(args.data, manifest, axes, aux_heads)
+    manifests = [Path(m) for m in (args.manifest or [args.data / "manifest.csv"])]
+    rows: list[Row] = []
+    per_manifest = {}
+    for manifest in manifests:
+        image_root = image_root_for(manifest, args.data)
+        loaded = load_rows(image_root, manifest, axes, aux_heads)
+        per_manifest[str(manifest)] = {"rows": len(loaded), "imageRoot": str(image_root)}
+        rows.extend(loaded)
     if len(rows) < args.min_samples:
         raise SystemExit(
-            f"Need at least ~{args.min_samples} labeled samples to start; manifest has {len(rows)}."
+            f"Need at least ~{args.min_samples} labeled samples to start; "
+            f"{len(manifests)} manifest(s) gave {len(rows)}."
         )
 
-    licence_report = enforce_source_licences(rows, args.purpose)
+    pretrained = None
+    if args.init_from:
+        if not args.init_from.exists():
+            raise SystemExit(f"--init-from checkpoint not found: {args.init_from}")
+        # Peek at the lineage before building the model so the licence check runs first.
+        peek = torch.load(args.init_from, map_location="cpu", weights_only=False)
+        inherited_lineage = peek.get("lineage") or {"stages": []}
+        del peek
+    else:
+        inherited_lineage = {"stages": []}
+
+    licence_report = enforce_source_licences(rows, args.purpose, inherited_lineage)
     if args.export_onnx and not licensing.PURPOSES[args.purpose]:
         print(
             f"NOTE: --purpose {args.purpose} is a non-shipping purpose. The exported ONNX is a "
@@ -778,6 +890,8 @@ def main() -> None:
     model = MultiHeadNet(
         args.arch, axes=axes, aux_heads=aux_heads, pretrained=args.weights == "imagenet"
     ).to(device)
+    if args.init_from:
+        pretrained = load_pretrained(args.init_from, model, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     train_loader = DataLoader(
         CropDataset(train_rows, train_tf, axes, aux_heads),
@@ -792,6 +906,18 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     write_split(out_dir / "split_train.csv", train_rows, axes)
     write_split(out_dir / "split_val.csv", val_rows, axes)
+
+    # Lineage chains this run onto whatever the starting weights carried, so the next
+    # stage inherits the full history rather than just this stage's sources.
+    run_lineage = {
+        "stages": list(inherited_lineage.get("stages", []))
+        + [{
+            "purpose": args.purpose,
+            "sources": sorted({row.source for row in rows}),
+            "axes": list(axes),
+            "manifests": {name: info["rows"] for name, info in per_manifest.items()},
+        }]
+    }
 
     best = -1.0
     best_path = out_dir / f"visible_attr_{args.arch}.pt"
@@ -828,7 +954,8 @@ def main() -> None:
             best_epoch = epoch
             torch.save(
                 {"model": model.state_dict(), "axes": axes, "aux_heads": aux_heads,
-                 "args": vars(args), "epoch": epoch},
+                 "args": {k: str(v) for k, v in vars(args).items()}, "epoch": epoch,
+                 "lineage": run_lineage},
                 best_path,
             )
 
@@ -864,7 +991,7 @@ def main() -> None:
     cov = subgroups.coverage([dict(row.meta) for row in rows])
     metrics = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "args": {key: (str(value) if isinstance(value, Path) else value) for key, value in vars(args).items()},
+        "args": {key: jsonable(value) for key, value in vars(args).items()},
         "axes": list(axes),
         "aux_heads": list(aux_heads),
         "device": str(device),
@@ -877,6 +1004,9 @@ def main() -> None:
         "licence": licence_report,
         "promotion_gate_source": model_contract.source(),
         "promotion_gate_dimensions": declared_dimensions,
+        "manifests": per_manifest,
+        "init_from": pretrained,
+        "lineage": run_lineage,
         "label_distribution": {
             "all": label_distribution(rows, axes),
             "train": label_distribution(train_rows, axes),

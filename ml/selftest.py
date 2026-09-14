@@ -190,6 +190,41 @@ class ModelContract(unittest.TestCase):
         self.assertTrue(set(model_contract.declared_dimensions()) <= implemented)
 
 
+class WeightLineage(unittest.TestCase):
+    """Fine-tuning on clean data must not launder a non-commercial pretrain."""
+
+    TAINTED = {"stages": [
+        {"purpose": "research_pretrain", "sources": ["acne04", "aihub_korean_skin"]},
+        {"purpose": "product_training", "sources": [licensing.FIRST_PARTY_SOURCE]},
+    ]}
+
+    def test_inherited_sources_are_collected_in_order(self):
+        self.assertEqual(
+            licensing.lineage_sources(self.TAINTED),
+            ["acne04", "aihub_korean_skin", licensing.FIRST_PARTY_SOURCE],
+        )
+        self.assertEqual(licensing.lineage_sources(None), [])
+        self.assertEqual(licensing.lineage_sources({"stages": []}), [])
+
+    def test_a_tainted_pretrain_blocks_shipping_however_clean_the_finetune(self):
+        blocked = [d for d in licensing.check_lineage(self.TAINTED, "product_training") if not d.allowed]
+        self.assertEqual(sorted(d.source_id for d in blocked), ["acne04", "aihub_korean_skin"])
+
+    def test_the_same_lineage_is_fine_for_research(self):
+        decisions = licensing.check_lineage(self.TAINTED, "research_pretrain")
+        self.assertTrue(all(d.allowed for d in decisions))
+
+    def test_first_party_only_lineage_may_ship(self):
+        clean = {"stages": [{"purpose": "product_training", "sources": [licensing.FIRST_PARTY_SOURCE]}]}
+        self.assertTrue(all(d.allowed for d in licensing.check_lineage(clean, "product_training")))
+
+    def test_strictest_tier_wins(self):
+        self.assertEqual(licensing.strictest_tier(["commercial_ok", "non_commercial"]), "non_commercial")
+        self.assertEqual(licensing.strictest_tier(["commercial_ok"]), "commercial_ok")
+        self.assertEqual(licensing.strictest_tier(["nonsense"]), "unknown")
+        self.assertEqual(licensing.strictest_tier([]), "unknown")
+
+
 class AdapterSpecs(unittest.TestCase):
     def _write_spec(self, spec: dict) -> Path:
         handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")

@@ -125,6 +125,34 @@ This writes `manifest.csv` in the same shape the trainer reads, plus
 coverage warnings. Axes the dataset does not annotate stay empty; the trainer masks
 them per sample. Never commit the downloaded images.
 
+### Pretrain on external data, fine-tune on ARU's
+
+Full procedure: [docs/pretrain-finetune-runbook.md](../../docs/pretrain-finetune-runbook.md).
+
+```bash
+# stage A: several external datasets at once; unlabeled axes are masked per row
+python ml/train_visible_attributes.py --data ml/data/external \
+  --manifest ml/data/external/aihub_korean_skin/manifest.csv \
+             ml/data/external/acne04/manifest.csv \
+  --axes pores wrinkles pigmentation trouble --purpose research_pretrain \
+  --out-dir ml/artifacts/stageA
+
+# stage B: fine-tune on consented crops, starting from stage A's trunk
+python ml/train_visible_attributes.py --data ml/data/crops \
+  --init-from ml/artifacts/stageA/visible_attr_mobilenetv3_small.pt \
+  --axes oil redness pores --purpose product_training --out-dir ml/artifacts/stageB
+```
+
+Weights are a derivative work, so the gate follows them. A checkpoint records every
+source it was ever trained on, `--init-from` inherits that lineage, and it is
+re-checked against the new `--purpose`. Fine-tuning on spotless first-party crops
+does **not** make a non-commercial pretrain shippable, and the run refuses rather
+than producing weights that every per-run check called fine.
+
+Only the trunk transfers. Heads whose shape differs between stages are dropped and
+re-initialised, because a classifier sized for a different axis set is not a
+head worth keeping.
+
 ### Multi-axis, subgroup-aware training
 
 ```bash
