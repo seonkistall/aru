@@ -23,9 +23,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import aru_axes  # noqa: E402
+import calibrate  # noqa: E402
 import external_manifest  # noqa: E402
 import ita  # noqa: E402
 import licensing  # noqa: E402
+import model_contract  # noqa: E402
 import subgroups  # noqa: E402
 
 
@@ -114,6 +116,31 @@ class Folds(unittest.TestCase):
         self.assertFalse(result["evaluated"])
 
 
+class Calibration(unittest.TestCase):
+    def test_thresholds_reproduce_the_reported_agreement(self):
+        samples = [(0.1, 0), (0.2, 0), (0.5, 1), (0.6, 1), (0.9, 2), (0.95, 2)]
+        accuracy, cuts = calibrate.best_thresholds(samples, 3)
+        replayed = sum(1 for x, y in samples if calibrate.predict(x, cuts) == y) / len(samples)
+        self.assertAlmostEqual(accuracy, replayed)
+        self.assertEqual(accuracy, 1.0)
+        self.assertEqual(cuts, sorted(cuts))
+
+    def test_handles_an_axis_with_more_than_three_levels(self):
+        # The grid search this replaced could only ever place two cuts.
+        samples = [(0.1, 0), (0.3, 1), (0.5, 2), (0.7, 3)]
+        accuracy, cuts = calibrate.best_thresholds(samples, 4)
+        self.assertEqual(len(cuts), 3)
+        self.assertEqual(accuracy, 1.0)
+
+    def test_a_single_distinct_value_has_no_threshold(self):
+        self.assertIsNone(calibrate.best_thresholds([(0.5, 0), (0.5, 1)], 3))
+        self.assertIsNone(calibrate.best_thresholds([], 3))
+
+    def test_every_calibratable_axis_is_a_real_axis(self):
+        for axis_id in calibrate.FEATURE:
+            self.assertTrue(aru_axes.axis(axis_id).trainable, axis_id)
+
+
 class LicenceGate(unittest.TestCase):
     def test_first_party_rows_are_not_read_as_a_dataset_id(self):
         # `source` means feedback provenance in ARU's own export and a registry id in
@@ -143,6 +170,24 @@ class LicenceGate(unittest.TestCase):
     def test_every_registry_entry_resolves_to_a_known_tier(self):
         for row in licensing.audit()["sources"]:
             self.assertIn(row["tier"], licensing.TIERS, row["id"])
+
+
+class ModelContract(unittest.TestCase):
+    def test_the_shipped_manifest_supplies_the_gate(self):
+        self.assertEqual(model_contract.source(), str(model_contract.MANIFEST_PATH))
+        self.assertGreater(model_contract.min_samples_per_band(), 0)
+        self.assertGreater(model_contract.max_accuracy_gap(), 0)
+
+    def test_manifest_axes_match_the_registry(self):
+        declared = set(model_contract.declared_axes())
+        self.assertEqual(declared, set(aru_axes.CAMERA_AXES))
+        for axis_id, spec in model_contract.declared_axes().items():
+            self.assertEqual(spec["levels"], aru_axes.levels_for(axis_id), axis_id)
+
+    def test_declared_dimensions_are_all_implemented(self):
+        # Imported here so the check runs without torch present.
+        implemented = {"tone", "age", "tone_x_age"}
+        self.assertTrue(set(model_contract.declared_dimensions()) <= implemented)
 
 
 class AdapterSpecs(unittest.TestCase):

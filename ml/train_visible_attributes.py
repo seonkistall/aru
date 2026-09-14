@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import aru_axes  # noqa: E402
 import licensing  # noqa: E402
+import model_contract  # noqa: E402
 import subgroups  # noqa: E402
 
 #: Backwards-compatible default: the three axes the app already ships.
@@ -434,6 +435,24 @@ SUBGROUP_DIMENSIONS = {
 }
 
 
+def check_declared_dimensions() -> list[str]:
+    """Refuse to run if the manifest promises a subgroup dimension nobody implements.
+
+    The manifest is the published contract, so a dimension listed there that the
+    trainer cannot compute would be a gate the app advertises and no run applies.
+    A name is only ever selected from the table above; the manifest cannot invent one.
+    """
+    declared = model_contract.declared_dimensions()
+    unknown = [name for name in declared if name not in SUBGROUP_DIMENSIONS]
+    if unknown:
+        raise SystemExit(
+            f"Model manifest declares subgroup dimension(s) this trainer cannot compute: "
+            f"{', '.join(unknown)}. Implement them in SUBGROUP_DIMENSIONS or correct "
+            f"{model_contract.MANIFEST_PATH}."
+        )
+    return declared or list(SUBGROUP_DIMENSIONS)
+
+
 def _aggregate(confusion_by_group: dict) -> dict:
     out = {}
     for group, confusion in confusion_by_group.items():
@@ -700,8 +719,21 @@ def main() -> None:
     parser.add_argument("--purpose", default="research_pretrain", choices=sorted(licensing.PURPOSES))
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--val-fold", type=int, default=0)
-    parser.add_argument("--min-cell", type=int, default=20, help="samples needed before a subgroup cell is evaluated")
-    parser.add_argument("--max-subgroup-gap", type=float, default=0.10)
+    # Defaults come from the shipped model manifest, so the bar training enforces is
+    # the same one the app advertises. Passing these explicitly overrides it for an
+    # experiment, and the value used is recorded in metrics.json either way.
+    parser.add_argument(
+        "--min-cell",
+        type=int,
+        default=model_contract.min_samples_per_band(),
+        help="samples needed before a subgroup cell is evaluated (default from the model manifest)",
+    )
+    parser.add_argument(
+        "--max-subgroup-gap",
+        type=float,
+        default=model_contract.max_accuracy_gap(),
+        help="worst-group accuracy may trail the mean by at most this (default from the model manifest)",
+    )
     parser.add_argument("--min-samples", type=int, default=30)
     parser.add_argument("--export-onnx", action="store_true")
     parser.add_argument("--out-dir", type=Path, default=Path("ml/artifacts"))
@@ -709,6 +741,7 @@ def main() -> None:
 
     axes = aru_axes.resolve_axes(args.axes)
     aux_heads = tuple(args.aux_heads)
+    declared_dimensions = check_declared_dimensions()
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -842,6 +875,8 @@ def main() -> None:
         "n_train": len(train_rows),
         "n_val": len(val_rows),
         "licence": licence_report,
+        "promotion_gate_source": model_contract.source(),
+        "promotion_gate_dimensions": declared_dimensions,
         "label_distribution": {
             "all": label_distribution(rows, axes),
             "train": label_distribution(train_rows, axes),

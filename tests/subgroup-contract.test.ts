@@ -68,3 +68,34 @@ describe("visible attribute model manifest", () => {
     expect(manifest.promotionGate.subgroup.dimensions).toContain("tone");
   });
 });
+
+describe("ML readiness bands", () => {
+  it("uses the same crop thresholds as the pipeline runner", () => {
+    // /ops shows the band from lib/ml-readiness.ts while ml/run_pipeline.py prints its
+    // own from the same numbers. If one side moves, the dashboard and the experiment
+    // report tell the team different things about what is allowed next.
+    const python = readMl("run_pipeline.py");
+    const block = python.slice(python.indexOf("def readiness("), python.indexOf("def label_distribution("));
+    const pythonThresholds = [...block.matchAll(/crop_count < (\d+)/g)].map(([, n]) => Number(n));
+    expect(pythonThresholds.length).toBeGreaterThan(0);
+
+    const ts = readFileSync(resolve(root, "lib/ml-readiness.ts"), "utf8");
+    const tsThresholds = [...ts.matchAll(/crops < (\d+)/g)].map(([, n]) => Number(n));
+    expect(tsThresholds).toEqual(pythonThresholds);
+  });
+});
+
+describe("promotion gate contract", () => {
+  it("is read from the manifest by the trainer rather than hardcoded", () => {
+    const trainer = readMl("train_visible_attributes.py");
+    expect(trainer).toContain("model_contract.min_samples_per_band()");
+    expect(trainer).toContain("model_contract.max_accuracy_gap()");
+    // A literal default here would silently override what the manifest promises.
+    expect(trainer).not.toMatch(/"--min-cell",\s*type=int,\s*default=\d+/);
+  });
+
+  it("points the Python contract reader at the file the browser loads", () => {
+    const contract = readMl("model_contract.py");
+    expect(contract).toContain('"public" / "models" / "visible-attributes" / "manifest.json"');
+  });
+});
