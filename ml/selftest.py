@@ -28,6 +28,7 @@ import external_manifest  # noqa: E402
 import ita  # noqa: E402
 import licensing  # noqa: E402
 import model_contract  # noqa: E402
+import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
 
@@ -223,6 +224,79 @@ class WeightLineage(unittest.TestCase):
         self.assertEqual(licensing.strictest_tier(["commercial_ok"]), "commercial_ok")
         self.assertEqual(licensing.strictest_tier(["nonsense"]), "unknown")
         self.assertEqual(licensing.strictest_tier([]), "unknown")
+
+
+class SkinIndices(unittest.TestCase):
+    """The claim these indices rest on: a device or illuminant change moves absolute
+    numbers and leaves within-image comparisons alone. If that fails, nothing built on
+    top of it transfers between phones."""
+
+    @staticmethod
+    def _lab_under_gain(lstar, astar, bstar, gain):
+        """Crude stand-in for a different sensor or a warmer room: everything in the
+        frame scales together, which is exactly what makes a relative index survive."""
+        return lstar * gain, astar * gain, bstar * gain
+
+    def test_relative_redness_survives_a_device_change_up_to_scale(self):
+        cheek_a, forehead_a = 18.0, 12.0
+        plain = skin_indices.relative_redness(cheek_a, forehead_a)
+        for gain in (0.6, 0.85, 1.4):
+            _, cheek_g, _ = self._lab_under_gain(60, cheek_a, 20, gain)
+            _, fore_g, _ = self._lab_under_gain(60, forehead_a, 20, gain)
+            # The sign and the ordering are what the product reads, and they hold.
+            self.assertGreater(skin_indices.relative_redness(cheek_g, fore_g), 0)
+            self.assertAlmostEqual(
+                skin_indices.relative_redness(cheek_g, fore_g) / gain, plain, places=6
+            )
+
+    def test_absolute_indices_do_not_survive_it(self):
+        # The same face through a device that renders 15% darker: both absolute indices
+        # move, which is why neither may carry a user-facing reading on its own.
+        lstar, _, bstar = self._lab_under_gain(60.0, 12.0, 20.0, 0.85)
+        self.assertNotAlmostEqual(skin_indices.ita(60.0, 20.0), skin_indices.ita(lstar, bstar), places=1)
+        self.assertNotAlmostEqual(
+            skin_indices.melanin_index(60.0), skin_indices.melanin_index(lstar), places=2
+        )
+
+    def test_tone_evenness_ignores_how_light_the_face_is(self):
+        even_dark = skin_indices.tone_evenness([40.0, 40.0, 40.0, 40.0])
+        even_light = skin_indices.tone_evenness([70.0, 70.0, 70.0, 70.0])
+        uneven = skin_indices.tone_evenness([40.0, 55.0, 48.0, 62.0])
+        self.assertEqual(even_dark, even_light)
+        self.assertGreater(uneven, even_light)
+
+    def test_shine_and_roughness_are_ratios_so_exposure_cancels(self):
+        self.assertAlmostEqual(skin_indices.shine_ratio(0.30, 0.10), 3.0)
+        self.assertAlmostEqual(skin_indices.shine_ratio(0.30 * 1.7, 0.10 * 1.7), 3.0)
+        self.assertAlmostEqual(skin_indices.roughness_ratio(0.8 * 0.4, 0.2 * 0.4), 4.0)
+
+    def test_blemish_density_is_normalised_by_face_size(self):
+        near = skin_indices.blemish_density(12, 4_000_000)
+        far = skin_indices.blemish_density(3, 1_000_000)
+        self.assertAlmostEqual(near, far)
+
+    def test_coarse_bands_merge_the_pairs_that_disagree_across_devices(self):
+        self.assertEqual(skin_indices.coarse_tone_band(60), "light")
+        self.assertEqual(skin_indices.coarse_tone_band(45), "light")
+        self.assertEqual(skin_indices.coarse_tone_band(35), "medium")
+        self.assertEqual(skin_indices.coarse_tone_band(15), "medium")
+        self.assertEqual(skin_indices.coarse_tone_band(0), "deep")
+        self.assertEqual(skin_indices.coarse_tone_band(-45), "deep")
+
+    def test_only_within_image_indices_may_ship_alone(self):
+        for index_id in ("melanin_index", "ita"):
+            self.assertEqual(skin_indices.transfer_class(index_id), skin_indices.ABSOLUTE)
+            self.assertNotIn(index_id, skin_indices.shippable_indices())
+        self.assertIn("relative_redness", skin_indices.shippable_indices())
+
+    def test_subgroup_bands_are_the_del_bino_cutpoints_with_the_last_two_merged(self):
+        # subgroups.py reports five bands, not the canonical six: it merges Brown and
+        # Dark into brown_dark. Its cutpoints must still be a subset of Del Bino's, or
+        # the stratifier and the published convention stop describing the same thing.
+        paper = set(skin_indices.ITA_BIN_EDGES)
+        ours = {bound for _, bound in subgroups.ITA_BANDS if bound != float("-inf")}
+        self.assertTrue(ours <= paper, f"{ours - paper} are not Del Bino cutpoints")
+        self.assertEqual(paper - ours, {-30.0}, "only the Brown/Dark split should be merged")
 
 
 class AdapterSpecs(unittest.TestCase):

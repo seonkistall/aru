@@ -27,6 +27,16 @@ Dermatology sets name concepts like erythema and xerosis, but those are binary l
 descriptors on diseased skin, not cosmetic severity grades on healthy skin. Those five
 axes depend entirely on ARU's own opt-in collection.
 
+The bigger correction, added 2026-09-14: for four of the five uncovered axes the
+answer is not a dataset at all. Redness, oil, tone evenness and blemish count are
+measurements taken between two regions of the same frame, where the device and the
+illuminant cancel. See [label-free-axes.md](label-free-axes.md) — a three-device
+benchmark on the same Korean faces found the camera explains 200x more colour variance
+than the subject's own skin condition, so an absolute-colour classifier mostly learns
+the hardware. That also caps how much the ITA tone stratifier can be trusted: six-band
+typing disagrees across devices for up to 45% of samples, though 98.3% of those land
+one band away.
+
 ARU should not train a product model directly from public dermatology datasets.
 Most public skin datasets are clinical, non-commercial, gated, or focused on
 diagnosis, wrinkles, spectra, or demographic skin-tone labels. They are still

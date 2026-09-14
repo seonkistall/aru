@@ -22,6 +22,7 @@ const mlFiles = [
   "ml/licensing.py",
   "ml/external_manifest.py",
   "ml/model_contract.py",
+  "ml/skin_indices.py",
   "ml/selftest.py",
 ];
 
