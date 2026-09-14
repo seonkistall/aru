@@ -137,6 +137,29 @@ describe("index registry contract", () => {
     for (const key of keys) expect(rawType).toContain(`${key}: number`);
   });
 
+  it("exports every calibratable feature from the /eval harness", () => {
+    // The golden-set harness is the only path that turns real photos into cut points
+    // without a pilot. If it stops writing a feature calibrate.py reads, that axis
+    // silently drops out of the calibration run with no error anywhere.
+    const evalPage = readFileSync(resolve(root, "app/eval/page.tsx"), "utf8");
+    const exported = evalPage.slice(
+      evalPage.indexOf("function exportCalibrationJsonl"),
+      evalPage.indexOf("const diffCell")
+    );
+    const block = exported.slice(exported.indexOf("features: {"), exported.indexOf("labels: {"));
+    const written = [...block.matchAll(/^\s+([A-Za-z]+):/gm)].map(([, key]) => key);
+    expect(written.length).toBeGreaterThan(5);
+
+    const calibrate = readMl("calibrate.py");
+    const needed = [
+      ...[...(calibrate.match(/^FEATURE = \{(.*)\}$/m)?.[1] ?? "").matchAll(/"[a-z]+": "([A-Za-z]+)"/g)],
+      ...[...(calibrate.match(/^UNLABELLED_FEATURE = \{([\s\S]*?)\}$/m)?.[1] ?? "").matchAll(/"[a-z]+": "([A-Za-z]+)"/g)],
+      ...[...(calibrate.match(/^OBSERVATION_FEATURE = \{[\s\S]*?\("([A-Za-z]+)"/m) ?? []).slice(1).map((key) => [null, key] as const)],
+    ].map(([, key]) => key);
+    expect(needed.length).toBeGreaterThan(4);
+    for (const feature of needed) expect(written, `${feature} missing from the /eval calibration export`).toContain(feature);
+  });
+
   it("calibrates only features the app measures", () => {
     const calibrate = readMl("calibrate.py");
     const bodies = [

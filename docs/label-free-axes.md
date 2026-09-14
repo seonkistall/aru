@@ -108,6 +108,20 @@ manuscript `srt_submission/main.tex` 및 자동생성 `parameters.tex`)가 보�
 - **임계값 보정.** 상대 지표가 "얼마나 붉으면 붉은 것인가"를 알려주지는 않는다.
   `ml/calibrate.py`가 라벨 몇십 개로 그 경계를 학습한다. 파일럿을 없애지는 못하고,
   **필요 규모를 크게 줄인다** — 300장이 아니라 수십 건의 피드백이면 된다.
+
+  파일럿보다 먼저 할 수 있는 경로가 하나 있다. `/eval` 골든셋 하네스가 이제 4개
+  지표를 표에 같이 보여주고, **정답 라벨이 붙은 행만 `calibrate.py` 형식으로
+  내보낸다.** 사진 20~30장에 운영자 합의 라벨을 달면 그대로 임계값이 나온다.
+  이미지는 브라우저 밖으로 나가지 않는다.
+
+  ```
+  /eval → 골든셋 이미지 + golden-labels.jsonl 업로드
+        → "calibrate.py 형식으로 내보내기"
+        → python ml/calibrate.py golden-calibration-….jsonl
+  ```
+
+  `tests/skin-index-contract.test.ts`가 이 내보내기에서 `calibrate.py`가 읽는 피처가
+  빠지면 실패한다. 축이 조용히 보정에서 빠지는 걸 막는다.
 - **건조 라벨 연결.** 설문의 `concerns: 건조` / `type: 건성`은 설문 레코드에 있고
   스캔 샘플에는 없다. 파일럿에서는 `participantId`로 조인하면 되지만, 소비자
   경로에서 쓰려면 동의 흐름을 건드려야 한다 — 그건 제품 결정이라 손대지 않았다.
