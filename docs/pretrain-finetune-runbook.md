@@ -22,27 +22,69 @@ $ python ml/train_visible_attributes.py --data ml/data/crops \
     --purpose product_training
 
 Refusing to train for purpose='product_training'. Blocked:
-  - acne04 (inherited from --init-from weights) [academic_only]: ...
-  - aihub_korean_skin (inherited from --init-from weights) [gated_application]: ...
+  - acne04 (inherited from --init-from weights) [academic_only]: tier 'academic_only'
+    permits only research_pretrain, eval_audit, camera_qa. Shipping weights count as
+    commercial use.
+Re-run with --purpose research_pretrain for a non-shipping experiment, drop those rows,
+or start from weights without that lineage.
 ```
 
-자체 데이터는 100% 깨끗했는데도 막혔다. 그게 맞다.
+자체 데이터는 100% 깨끗했는데도 막혔다. 그게 맞다. 위 실행은 ACNE04가 섞인
+사전학습에서 이어받았기 때문이고, **AI-Hub는 `commercial_ok`라 더 이상 막지 않는다.**
+
+AI-Hub 단독으로 사전학습하면 같은 미세조정이 통과한다 (2026-09-14 합성 데이터로 실행 확인):
+
+```
+$ python ml/train_visible_attributes.py \
+    --manifest .../ship/aihub_korean_skin/manifest.csv \
+    --purpose shipping_pretrain --axes pores wrinkles pigmentation
+...
+$ python ml/train_visible_attributes.py --data .../crops \
+    --init-from .../stageShip/visible_attr_mobilenetv3_small.pt \
+    --purpose product_training
+
+init-from ...: loaded 242 tensors, skipped 4 shape-mismatched, 4 left at init
+epoch=01 ...
+promotion gate: BLOCKED
+  - [tone] no tone band reached n>=20. ...
+  - [age] no age band reached n>=20. ...
+```
+
+라이선스는 통과하고 **승급 게이트에서 막힌다.** 그게 정확히 맞는 상태다 — 합성
+데이터에는 서브그룹이 없으니까. 실데이터가 쌓이면 이 두 줄이 해제 조건이다.
+
+체크포인트에 기록된 계보:
+
+```json
+[{"purpose": "shipping_pretrain", "sources": ["aihub_korean_skin"],
+  "axes": ["pores", "wrinkles", "pigmentation"]},
+ {"purpose": "product_training", "sources": ["aru_opt_in_camera_panel"],
+  "axes": ["oil", "redness", "pores"]}]
+```
 
 ## 1단계: 데이터 확보 (오너만 가능)
 
 ### AI-Hub 028 한국인 피부상태 측정 데이터 (dataSetSn=71645)
 
 1. aihub.or.kr 회원가입 (국내 신청자 한정)
-2. `dataSetSn=71645` 페이지 → **이용약관 탭을 먼저 읽는다**
-3. 데이터 활용 신청 (신청자 신분·소속·목적)
+2. ~~`dataSetSn=71645` 페이지 → 이용약관 탭을 먼저 읽는다~~ — **완료 (2026-09-14)**
+3. 데이터 활용 신청 (신청자 신분·소속·목적) ← **여기가 현재 위치**
 4. 승인 후 전체 다운로드 / AI-Hub Shell / Open API
 
-**2번이 이 문서 전체에서 가장 중요한 단계다.** 읽은 결과를
-`ml/external_datasets.json`의 `aihub_korean_skin.licenseTier`에 근거와 함께 반영한다.
+**2단계 결과**: 소유자가 약관을 확인해 **상업 학습 허용**으로 보고했고,
+`ml/external_datasets.json`의 `aihub_korean_skin.licenseTier`는 `commercial_ok`다.
+모공·주름·색소침착 사전학습 가중치를 **출시 모델에 쓸 수 있다.**
+
+두 가지를 계속 기억할 것:
+
+- 이 tier는 **소유자 확인 기록**이지 저장소가 보관한 약관 원문이 아니다
+  (`licenseEvidence` 필드에 그렇게 적혀 있고, 게이트 출력에도 나온다).
+- **신청 승인서에 별도 조건이 붙을 수 있다.** 승인되면 그 조건을 읽고 필요하면
+  tier를 내린다. 내리는 순간 그 데이터로 학습한 가중치도 함께 막힌다(lineage).
 
 | 약관 결과 | tier | 결과 |
 |---|---|---|
-| 상업적 R&D와 학습 모델의 영리 이용 허용 | `commercial_ok` | 모공·주름·색소침착 사전학습 가중치를 **출시 가능** |
+| **상업적 R&D와 학습 모델의 영리 이용 허용 ← 확인된 값** | `commercial_ok` | 모공·주름·색소침착 사전학습 가중치를 **출시 가능** |
 | 비영리 한정 | `non_commercial` | 연구용 사전학습만. 출시 모델은 자체 데이터 단독 |
 | 별도 협의 필요 | `contract_required` | 계약 후 `ml/private_sources.json`에 기재 |
 
@@ -95,7 +137,9 @@ python ml/train_visible_attributes.py \
   --out-dir ml/artifacts/stageA
 ```
 
-`--purpose`는 정직하게 쓴다. AI-Hub 약관이 확인되기 전에는 `research_pretrain`이다.
+`--purpose`는 정직하게 쓴다. AI-Hub는 `commercial_ok`가 되어 `shipping_pretrain`이
+가능하지만, **ACNE04·AcneSCU·FFHQ-Wrinkle을 섞는 순간 lineage가 막힌다.** 출시용
+사전학습은 AI-Hub 단독으로 돌리고, 연구 비교용 실행만 `research_pretrain`으로 섞는다.
 
 ## 4단계: 자체 데이터로 미세조정
 

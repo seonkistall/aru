@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-13",
+  "updated": "2026-09-14",
   "policy": "External datasets are registry-only inputs. Do not commit downloaded images. Use them for pretraining, camera quality research, fairness audits, or auxiliary validation unless the license explicitly permits product training. Every entry carries an explicit licenseTier read by ml/licensing.py; an entry without one is treated as the most restrictive tier rather than allowed through.",
   "datasets": [
     {
@@ -289,8 +289,8 @@
       "id": "aihub_korean_skin",
       "name": "AI-Hub 한국인 피부상태 측정 데이터",
       "url": "https://aihub.or.kr",
-      "licenseTier": "gated_application",
-      "access": "Korean AI-Hub account plus a usage application. Tier must be re-reviewed against the approved 이용 조건 before any shipping use.",
+      "licenseTier": "commercial_ok",
+      "access": "Korean AI-Hub account plus a usage application, restricted to domestic applicants. The data itself has not been obtained; the tier below governs what may be done once it is.",
       "labels": [
         "instrument-paired skin measurements",
         "expert grades",
@@ -304,8 +304,10 @@
       "risks": [
         "access is an application, not a download",
         "controlled capture differs from a phone front camera, so a domain gap remains",
-        "usage terms decide whether weights may ship; unverified until the application is approved"
-      ]
+        "the tier rests on an owner attestation; the approved application may attach its own conditions",
+        "mono-ethnic with no Fitzpatrick, Monk or ITA field, so it cannot audit its own cross-ethnicity gap"
+      ],
+      "licenseEvidence": "2026-09-14: the repository owner read the per-dataset 이용약관 on the AI-Hub dataset page (dataSetSn=71645) and reported that commercial training is permitted. This is an owner attestation, not a licence document read by the pipeline — aihub.or.kr is unreachable from the build network, so no text was quoted or archived here. Re-verify against the terms attached to the approved application before weights trained on this data ship."
     },
     {
       "id": "skincon",

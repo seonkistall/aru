@@ -194,7 +194,15 @@ def check(source_id: str, purpose: str) -> Decision:
         )
 
     tier = _normalize_tier(entry)
-    evidence = str(entry.get("license") or entry.get("access") or entry.get("url") or "")
+    # licenseEvidence first: it says what the tier rests on, which is what someone
+    # reading a refusal (or an approval) needs. `access` only says how to get the data.
+    evidence = str(
+        entry.get("licenseEvidence")
+        or entry.get("license")
+        or entry.get("access")
+        or entry.get("url")
+        or ""
+    )
     permitted = TIERS.get(tier, ())
 
     if purpose not in permitted:

@@ -209,7 +209,28 @@ class WeightLineage(unittest.TestCase):
 
     def test_a_tainted_pretrain_blocks_shipping_however_clean_the_finetune(self):
         blocked = [d for d in licensing.check_lineage(self.TAINTED, "product_training") if not d.allowed]
-        self.assertEqual(sorted(d.source_id for d in blocked), ["acne04", "aihub_korean_skin"])
+        # One non-shipping source anywhere in the chain is enough. Asserting the exact
+        # set would tie this test to whichever tier the registry currently carries;
+        # what must hold is that acne04 (academic_only) blocks and the first-party
+        # fine-tune does not launder it.
+        self.assertIn("acne04", [d.source_id for d in blocked])
+        self.assertNotIn(licensing.FIRST_PARTY_SOURCE, [d.source_id for d in blocked])
+
+    def test_a_commercial_ok_pretrain_does_not_block_shipping(self):
+        # The path the runbook describes: pretrain on a commercially licensed source,
+        # fine-tune on ARU's own crops, ship the result.
+        lineage = {"stages": [
+            {"purpose": "shipping_pretrain", "sources": ["aihub_korean_skin"]},
+            {"purpose": "product_training", "sources": [licensing.FIRST_PARTY_SOURCE]},
+        ]}
+        decisions = licensing.check_lineage(lineage, "product_training")
+        tier = licensing.check("aihub_korean_skin", "product_training").tier
+        if tier == "commercial_ok":
+            self.assertTrue(all(d.allowed for d in decisions))
+        else:
+            # The tier rests on an owner attestation and may be revoked; if it is,
+            # the chain must close again rather than keep shipping.
+            self.assertFalse(all(d.allowed for d in decisions))
 
     def test_the_same_lineage_is_fine_for_research(self):
         decisions = licensing.check_lineage(self.TAINTED, "research_pretrain")

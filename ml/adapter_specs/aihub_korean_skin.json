@@ -11,7 +11,7 @@
     "https://raw.githubusercontent.com/hpicsk/regional-ccm/main/data/processed/metadata.csv (subject_id, age, gender, skin_type, sensitive, equipment_id, angle, region)",
     "README 평가 항목 list (색소침착, 입술건조도, 모공, 턱선처짐, 주름) read against the five class heads in tool/test.py — this is what establishes dryness = lip dryness"
   ],
-  "verifyNote": "Label schema and directory layout are confirmed from the official project code. The LICENCE tier is NOT confirmed: aihub.or.kr was unreachable, so the dataset page 이용약관 must be read before any shipping run.",
+  "verifyNote": "Label schema and directory layout are confirmed from the official project code. LICENCE: the repository owner read the dataset page 이용약관 on 2026-09-14 and reported that commercial training is permitted, so ml/external_datasets.json carries commercial_ok; that is an owner attestation, not a document this pipeline read (aihub.or.kr is unreachable from the build network). Re-check the conditions attached to the approved usage application before shipping weights trained on this data.",
   "capture": "controlled_dslr_tablet_smartphone",
   "labelConfidence": "external_expert_panel",
   "index": {
