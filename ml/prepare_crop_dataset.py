@@ -22,6 +22,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ita as ita_module  # noqa: E402
+import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
 
@@ -134,6 +135,8 @@ def main() -> None:
             "tzoneSpecular": features.get("tzoneSpecular", ""),
             "cheekSamples": features.get("cheekSamples", ""),
             "tzoneSamples": features.get("tzoneSamples", ""),
+            **{key: features.get(key, "") for key in skin_indices.NEW_FEATURE_KEYS},
+            "trouble_seen": (meta.get("observations") or {}).get("troubleSeen", ""),
         })
 
     with manifest_path.open("w", newline="", encoding="utf-8") as handle:

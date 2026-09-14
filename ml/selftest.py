@@ -265,6 +265,20 @@ class SkinIndices(unittest.TestCase):
         self.assertEqual(even_dark, even_light)
         self.assertGreater(uneven, even_light)
 
+    def test_tone_evenness_is_a_ratio_so_exposure_cancels(self):
+        # The reason it is divided by the mean: a plain standard deviation of L*
+        # grows when the frame gets brighter, which would read as a less even face.
+        regions = [62.0, 66.0, 59.0, 71.0]
+        brighter = [value * 1.15 for value in regions]
+        self.assertAlmostEqual(skin_indices.tone_evenness(regions), skin_indices.tone_evenness(brighter))
+
+    def test_every_index_declares_the_feature_key_the_app_writes(self):
+        # An index with no feature key is one the pipeline cannot find in an export.
+        for index in skin_indices.INDICES:
+            self.assertIn(index.id, skin_indices.FEATURE_KEY)
+        for key in skin_indices.NEW_FEATURE_KEYS:
+            self.assertNotIn(key, ("shine", "relRedness", "cov"))
+
     def test_shine_and_roughness_are_ratios_so_exposure_cancels(self):
         self.assertAlmostEqual(skin_indices.shine_ratio(0.30, 0.10), 3.0)
         self.assertAlmostEqual(skin_indices.shine_ratio(0.30 * 1.7, 0.10 * 1.7), 3.0)

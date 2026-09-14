@@ -215,6 +215,8 @@ ML PIPELINE (offline):
     ita.py             ITA from pixels, matching dominantTone in lib/skin.ts
     licensing.py       whether a dataset may be used for a given purpose
     model_contract.py  reads the shipped model manifest so training enforces its gate
+    skin_indices.py    every pixel index's transfer class: within_image indices may
+                       drive a reading, absolute ones (ITA, melanin) stratify only
 
   External datasets are ingested declaratively:
     external_manifest.py + adapter_specs/*.json → the same manifest shape the trainer reads

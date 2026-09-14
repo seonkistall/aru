@@ -94,6 +94,12 @@ export type LabeledSample = {
     tzoneSamples?: number;
     toneLstar?: number;
     toneIta?: number;
+    /** Within-image indices (docs/label-free-axes.md). Optional: samples stored
+     *  before roi-calibrated-2026-09-14 do not carry them. */
+    toneSpread?: number;
+    roughnessRatio?: number;
+    blemishCount?: number;
+    blemishDensity?: number;
   };
   labels: { oil: number; redness: number; pores: number };
   source: "confirmed" | "corrected";

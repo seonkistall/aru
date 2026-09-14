@@ -97,6 +97,22 @@ INDICES: tuple[Index, ...] = (
 
 INDEX_BY_ID = {index.id: index for index in INDICES}
 
+#: Index id -> the feature key lib/skin.ts writes into every exported sample.
+#: tests/skin-index-contract.test.ts fails if the two sides drift apart.
+FEATURE_KEY = {
+    "relative_redness": "relRedness",
+    "tone_evenness": "toneSpread",
+    "shine_ratio": "shine",
+    "blemish_count": "blemishDensity",
+    "roughness_ratio": "roughnessRatio",
+    "melanin_index": "toneLstar",
+    "ita": "toneIta",
+}
+
+#: Feature keys added by the within-image indices, in export column order. The
+#: pipeline scripts read this instead of each repeating the list.
+NEW_FEATURE_KEYS = ("toneSpread", "roughnessRatio", "blemishCount", "blemishDensity")
+
 
 def melanin_index(lstar: float) -> float:
     """Takiwaki's melanin index on the CIELAB substitution. ABSOLUTE."""
@@ -123,13 +139,21 @@ def relative_redness(target_astar: float, reference_astar: float) -> float:
 def tone_evenness(region_lstars: list[float]) -> float:
     """Spread of L* across regions of one frame, lower is more even. WITHIN_IMAGE.
 
+    Divided by the mean, because a raw standard deviation of L* still moves with
+    exposure: brighten the whole frame and the spread grows with it. The ratio does
+    not, which is the property that makes this shippable. Same formula as
+    `relativeSpread` in lib/skin.ts.
+
     Deliberately not a measure of how light the face is. ARU never grades that.
     """
     values = [value for value in region_lstars if isinstance(value, (int, float))]
     if len(values) < 2:
         return 0.0
     mean = sum(values) / len(values)
-    return math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
+    if abs(mean) < 1e-6:
+        return 0.0
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return math.sqrt(variance) / abs(mean)
 
 
 def shine_ratio(tzone_specular: float, cheek_specular: float) -> float:

@@ -31,6 +31,7 @@ from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
 
@@ -138,7 +139,7 @@ def feature_summary(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, float
     buckets: dict[str, list[float]] = defaultdict(list)
     for row in rows:
         features = row.get("features", {})
-        for key in ("shine", "relRedness", "cov", "tzoneL", "cheekL"):
+        for key in ("shine", "relRedness", "cov", "tzoneL", "cheekL", *skin_indices.NEW_FEATURE_KEYS):
             value = features.get(key)
             if isinstance(value, (int, float)) and math.isfinite(value):
                 buckets[key].append(float(value))
@@ -292,6 +293,8 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
         "tzoneSpecular",
         "cheekSamples",
         "tzoneSamples",
+        *skin_indices.NEW_FEATURE_KEYS,
+        "trouble_seen",
     ]
     failures: list[str] = []
     decoded: list[dict[str, Any]] = []
@@ -351,6 +354,10 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 "tzoneSpecular": features.get("tzoneSpecular", ""),
                 "cheekSamples": features.get("cheekSamples", ""),
                 "tzoneSamples": features.get("tzoneSamples", ""),
+                **{key: features.get(key, "") for key in skin_indices.NEW_FEATURE_KEYS},
+                # The one label already collected for an axis outside the graded
+                # three: the optional "트러블 흔적도 보였어요" checkbox in /scan.
+                "trouble_seen": (meta.get("observations") or {}).get("troubleSeen", ""),
             })
             valid += 1
             decoded.append({
