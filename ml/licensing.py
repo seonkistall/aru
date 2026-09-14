@@ -158,6 +158,28 @@ def _contract_allows(source_id: str, purpose: str) -> tuple[bool, str]:
     )
 
 
+#: Column that only an external-dataset manifest carries. Its presence is what marks
+#: a row as third-party data rather than ARU's own consented collection.
+EXTERNAL_MARKER_COLUMN = "license_tier"
+
+FIRST_PARTY_SOURCE = "aru_opt_in_camera_panel"
+
+
+def dataset_source_for_row(row: dict) -> str:
+    """Which registered dataset a manifest row belongs to.
+
+    Two manifests feed the trainer and both have a `source` column meaning different
+    things. external_manifest.py writes the registry id there and always carries
+    `license_tier`. ARU's own crop export writes the FEEDBACK provenance there —
+    "user", "staff" — with no tier; those rows are first-party consented data, not a
+    third-party dataset. Reading the second kind as a registry id blocks the one
+    training path that is actually permitted, so the tier column decides, not `source`.
+    """
+    if str(row.get(EXTERNAL_MARKER_COLUMN) or "").strip():
+        return str(row.get("source") or "").strip() or FIRST_PARTY_SOURCE
+    return FIRST_PARTY_SOURCE
+
+
 def check(source_id: str, purpose: str) -> Decision:
     """Decide whether source_id may be used for purpose. Never raises on unknown sources."""
     if purpose not in PURPOSES:

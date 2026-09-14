@@ -29,6 +29,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import subgroups  # noqa: E402
+
 
 ATTRS = ("oil", "redness", "pores")
 FEATURE_FOR_ATTR = {"oil": "shine", "redness": "relRedness", "pores": "cov"}
@@ -243,7 +247,7 @@ def crop_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
     if not rows:
-        return {"manifest": None, "valid": 0, "failures": []}
+        return {"manifest": None, "valid": 0, "failures": [], "subgroup_coverage": None, "subgroup_warnings": []}
     dataset = out_dir / "dataset"
     images = dataset / "images"
     images.mkdir(parents=True, exist_ok=True)
@@ -277,6 +281,8 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
         "ungradable",
         "toneLstar",
         "toneIta",
+        "tone_band",
+        "age_band",
         "shine",
         "relRedness",
         "cov",
@@ -288,6 +294,7 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
         "tzoneSamples",
     ]
     failures: list[str] = []
+    decoded: list[dict[str, Any]] = []
     valid = 0
     with manifest.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -333,6 +340,8 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 "ungradable": meta.get("ungradable", ""),
                 "toneLstar": features.get("toneLstar", ""),
                 "toneIta": features.get("toneIta", ""),
+                "tone_band": subgroups.tone_band_from_ita(features.get("toneIta", "")),
+                "age_band": subgroups.resolve_age_band(meta),
                 "shine": features.get("shine", ""),
                 "relRedness": features.get("relRedness", ""),
                 "cov": features.get("cov", ""),
@@ -344,7 +353,22 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 "tzoneSamples": features.get("tzoneSamples", ""),
             })
             valid += 1
-    return {"manifest": str(manifest), "valid": valid, "failures": failures}
+            decoded.append({
+                "participant_id": meta.get("participantId", ""),
+                "session_id": meta.get("sessionId", ""),
+                "device_id": meta.get("deviceId", ""),
+                "toneIta": features.get("toneIta", ""),
+                "age_band": subgroups.resolve_age_band(meta),
+                "id": image_id,
+            })
+    coverage = subgroups.coverage(decoded)
+    return {
+        "manifest": str(manifest),
+        "valid": valid,
+        "failures": failures,
+        "subgroup_coverage": coverage.as_dict(),
+        "subgroup_warnings": subgroups.coverage_warnings(coverage),
+    }
 
 
 def warnings_for(summary: dict[str, Any]) -> list[str]:
@@ -359,6 +383,8 @@ def warnings_for(summary: dict[str, Any]) -> list[str]:
         missing = [label for label in ("0", "1", "2") if counts.get(label, 0) == 0]
         if missing:
             warnings.append(f"{attr} is missing label bucket(s): {', '.join(missing)}.")
+    for warning in summary.get("decode", {}).get("subgroup_warnings", []) or []:
+        warnings.append(f"Subgroup coverage: {warning}")
     pilot = summary.get("pilot", {})
     if pilot.get("total", 0) and pilot.get("completion_rate", 0) < 0.8:
         warnings.append("Pilot scan completion rate is below 80%; fix capture UX before collecting more data.")
@@ -570,7 +596,11 @@ def main() -> None:
     out_dir = args.out or named_out_dir(args.name)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    decode = decode_crops(crops, out_dir) if (crops or args.decode_crops or args.train) else {"manifest": None, "valid": 0, "failures": []}
+    decode = (
+        decode_crops(crops, out_dir)
+        if (crops or args.decode_crops or args.train)
+        else {"manifest": None, "valid": 0, "failures": [], "subgroup_coverage": None, "subgroup_warnings": []}
+    )
     training = run_training_if_requested(args, crops, decode, out_dir)
     summary: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

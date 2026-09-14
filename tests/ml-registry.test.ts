@@ -8,8 +8,8 @@ function readJson<T>(path: string): T {
 }
 
 type TargetSchema = {
-  currentTargets: Array<{ id: string }>;
-  nextTargets: Array<{ id: string }>;
+  currentTargets: Array<{ id: string; aruAxisId: string | null }>;
+  nextTargets: Array<{ id: string; aruAxisId: string | null }>;
   requiredMetadata: string[];
 };
 
@@ -43,6 +43,28 @@ describe("ARU ML registries", () => {
     expect(targetIds).toContain("pigmentation_spots");
     expect(schema.requiredMetadata).toContain("consentEventIds");
     expect(schema.requiredMetadata).toContain("labelConfidence");
+  });
+
+  it("keeps the commerce target schema and the trainable axis registry in step", () => {
+    // These are two views of the same skin signals: the schema carries commerce and
+    // clinic handling, ml/aru_axes.py carries what the model predicts. Without this
+    // check they drift silently, and a target can quietly lose the axis behind it.
+    const schema = readJson<TargetSchema>("ml/aru_target_schema.json");
+    const registry = readFileSync(join(process.cwd(), "ml/aru_axes.py"), "utf8");
+    const axisIds = [...registry.matchAll(/^\s{8}id="([a-z_]+)",$/gm)].map(([, id]) => id);
+    expect(axisIds.length).toBeGreaterThan(0);
+
+    const targets = [...schema.currentTargets, ...schema.nextTargets];
+    const claimed = targets.map((target) => target.aruAxisId).filter((id): id is string => Boolean(id));
+
+    for (const target of targets) {
+      expect(target, `${target.id} must declare aruAxisId (use null when it is not an axis)`).toHaveProperty("aruAxisId");
+      if (target.aruAxisId) {
+        expect(axisIds, `${target.id} -> ${target.aruAxisId}`).toContain(target.aruAxisId);
+      }
+    }
+    expect(new Set(claimed).size, "two targets claim the same axis").toBe(claimed.length);
+    expect([...axisIds].sort(), "every axis needs exactly one target").toEqual([...claimed].sort());
   });
 
   it("keeps source provenance and license policy explicit", () => {

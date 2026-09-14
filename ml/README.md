@@ -82,6 +82,19 @@ Four modules carry the rules that every other script reads:
 | `ita.py` | ITA from pixels, matching `dominantTone` in `lib/skin.ts` exactly so the app and the trainer agree on subgroups. |
 | `licensing.py` | Whether a dataset may be used for a purpose. A dataset with no explicit tier is treated as the most restrictive one. |
 
+### Self-check
+
+```bash
+python ml/selftest.py
+```
+
+Standard library only, no torch, and `npm run smoke` runs it. It covers the rules the
+modules enforce rather than just that they parse: licence tiers and the first-party
+vs external `source` distinction, ITA bands including the `toneIta` key the app
+writes, age banding and the under-13 exclusion, fold leakage, worst-group skipping,
+and adapter spec validation. Two shipped defects got past `py_compile` before it
+existed, so add a case here whenever one of these rules changes.
+
 ### Licence gate
 
 ```bash

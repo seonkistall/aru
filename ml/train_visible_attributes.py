@@ -73,7 +73,8 @@ class Row:
 
     @property
     def source(self) -> str:
-        return (self.meta.get("source") or "aru_opt_in_camera_panel").strip() or "aru_opt_in_camera_panel"
+        """Registered dataset id for the licence gate; see licensing.dataset_source_for_row."""
+        return licensing.dataset_source_for_row(self.meta)
 
     @property
     def cell(self) -> str:

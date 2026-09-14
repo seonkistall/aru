@@ -132,7 +132,10 @@ def resolve_tone_band(row: dict) -> str:
         candidate = str(row.get(key) or "").strip()
         if candidate in TONE_BAND_ORDER:
             return candidate
-    for key in ("ita", "skin_tone_proxy_ita", "skinToneProxyIta", "ita_proxy"):
+    # "toneIta" is the key the app itself writes into the feature block, and it is what
+    # run_pipeline.py carries into its manifest. Omitting it made every row from that
+    # path read as tone-unknown, which blocked promotion for the wrong reason.
+    for key in ("ita", "toneIta", "tone_ita", "skin_tone_proxy_ita", "skinToneProxyIta", "ita_proxy"):
         if row.get(key) not in (None, ""):
             band = tone_band_from_ita(row.get(key))
             if band != UNKNOWN:

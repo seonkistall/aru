@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-07-07.aru-skin-targets.v1",
-  "updated": "2026-07-07",
+  "updated": "2026-09-14",
   "purpose": "Define ARU camera targets for cosmetic recommendation, commerce conversion, and clinic handoff without claiming medical diagnosis.",
   "principles": [
     "Camera-visible findings are cosmetic guidance unless a licensed clinician labels the data under a medical workflow.",
@@ -14,33 +14,95 @@
       "displayName": "Oil / shine",
       "currentStatus": "implemented",
       "labelType": "ordinal_0_2",
-      "regions": ["t_zone", "forehead", "nose"],
-      "cameraSignals": ["specular_ratio", "t_zone_minus_cheek_luminance", "burst_agreement"],
-      "commerceUse": ["oil-control cleanser", "lightweight moisturizer", "sebum-control sunscreen", "matte primer"],
-      "clinicUse": ["not a clinic trigger by itself"],
-      "excludeWhen": ["heavy makeup", "strong glare", "low confidence", "ungraded feedback"]
+      "regions": [
+        "t_zone",
+        "forehead",
+        "nose"
+      ],
+      "cameraSignals": [
+        "specular_ratio",
+        "t_zone_minus_cheek_luminance",
+        "burst_agreement"
+      ],
+      "commerceUse": [
+        "oil-control cleanser",
+        "lightweight moisturizer",
+        "sebum-control sunscreen",
+        "matte primer"
+      ],
+      "clinicUse": [
+        "not a clinic trigger by itself"
+      ],
+      "excludeWhen": [
+        "heavy makeup",
+        "strong glare",
+        "low confidence",
+        "ungraded feedback"
+      ],
+      "aruAxisId": "oil"
     },
     {
       "id": "pore_visibility",
       "displayName": "Visible pores / texture",
       "currentStatus": "implemented",
       "labelType": "ordinal_0_2",
-      "regions": ["cheeks", "nose_side"],
-      "cameraSignals": ["local_texture_cov", "cheek_texture", "face_scale"],
-      "commerceUse": ["pore-care serum", "retinoid alternative", "gentle exfoliant", "primer"],
-      "clinicUse": ["aesthetic consult only when user requests pore/scar procedures"],
-      "excludeWhen": ["blur", "small face", "low light", "skin smoothing filter"]
+      "regions": [
+        "cheeks",
+        "nose_side"
+      ],
+      "cameraSignals": [
+        "local_texture_cov",
+        "cheek_texture",
+        "face_scale"
+      ],
+      "commerceUse": [
+        "pore-care serum",
+        "retinoid alternative",
+        "gentle exfoliant",
+        "primer"
+      ],
+      "clinicUse": [
+        "aesthetic consult only when user requests pore/scar procedures"
+      ],
+      "excludeWhen": [
+        "blur",
+        "small face",
+        "low light",
+        "skin smoothing filter"
+      ],
+      "aruAxisId": "pores"
     },
     {
       "id": "visible_redness",
       "displayName": "Visible redness",
       "currentStatus": "implemented",
       "labelType": "ordinal_0_2",
-      "regions": ["cheeks", "nose_side", "chin"],
-      "cameraSignals": ["relative_redness", "red_channel_ratio", "tone_adjusted_redness"],
-      "commerceUse": ["barrier cream", "soothing serum", "fragrance-free products", "low-irritation sunscreen"],
-      "clinicUse": ["dermatology handoff if persistent, painful, burning, or user-reported flare"],
-      "excludeWhen": ["warm lighting", "recent exercise", "makeup blush", "retake recommended"]
+      "regions": [
+        "cheeks",
+        "nose_side",
+        "chin"
+      ],
+      "cameraSignals": [
+        "relative_redness",
+        "red_channel_ratio",
+        "tone_adjusted_redness"
+      ],
+      "commerceUse": [
+        "barrier cream",
+        "soothing serum",
+        "fragrance-free products",
+        "low-irritation sunscreen"
+      ],
+      "clinicUse": [
+        "dermatology handoff if persistent, painful, burning, or user-reported flare"
+      ],
+      "excludeWhen": [
+        "warm lighting",
+        "recent exercise",
+        "makeup blush",
+        "retake recommended"
+      ],
+      "aruAxisId": "redness"
     }
   ],
   "nextTargets": [
@@ -48,77 +110,219 @@
       "id": "tone_evenness",
       "displayName": "Tone evenness",
       "labelType": "ordinal_0_3",
-      "regions": ["forehead", "cheeks", "chin"],
-      "cameraSignals": ["region_luminance_delta", "ita_delta", "shadow_mask"],
-      "commerceUse": ["brightening products", "sunscreen adherence", "tone-up base"],
-      "clinicUse": ["pigmentation consult only after user intent or persistent concern"]
+      "regions": [
+        "forehead",
+        "cheeks",
+        "chin"
+      ],
+      "cameraSignals": [
+        "region_luminance_delta",
+        "ita_delta",
+        "shadow_mask"
+      ],
+      "commerceUse": [
+        "brightening products",
+        "sunscreen adherence",
+        "tone-up base"
+      ],
+      "clinicUse": [
+        "pigmentation consult only after user intent or persistent concern"
+      ],
+      "aruAxisId": "tone"
     },
     {
       "id": "pigmentation_spots",
       "displayName": "Dark spots / visible pigmentation",
       "labelType": "count_band_plus_ordinal",
-      "regions": ["cheeks", "forehead", "upper_lip"],
-      "cameraSignals": ["localized_brown_spot_mask", "spot_count", "spot_area_ratio"],
-      "commerceUse": ["vitamin C", "niacinamide", "sunscreen", "dark-spot serum"],
-      "clinicUse": ["dermatology/aesthetic clinic routing for laser or pigment consult when user asks"]
+      "regions": [
+        "cheeks",
+        "forehead",
+        "upper_lip"
+      ],
+      "cameraSignals": [
+        "localized_brown_spot_mask",
+        "spot_count",
+        "spot_area_ratio"
+      ],
+      "commerceUse": [
+        "vitamin C",
+        "niacinamide",
+        "sunscreen",
+        "dark-spot serum"
+      ],
+      "clinicUse": [
+        "dermatology/aesthetic clinic routing for laser or pigment consult when user asks"
+      ],
+      "aruAxisId": "pigmentation"
     },
     {
       "id": "fine_lines_wrinkles",
       "displayName": "Fine lines / wrinkles",
       "labelType": "region_mask_or_ordinal_0_3",
-      "regions": ["forehead", "crow_feet", "under_eye", "nasolabial"],
-      "cameraSignals": ["wrinkle_mask_density", "oriented_texture", "region_depth_proxy"],
-      "commerceUse": ["retinoid alternative", "peptide cream", "eye cream", "sunscreen"],
-      "clinicUse": ["aesthetic clinic routing for botulinum toxin, filler, laser, or skin booster only as user-requested consult categories"]
+      "regions": [
+        "forehead",
+        "crow_feet",
+        "under_eye",
+        "nasolabial"
+      ],
+      "cameraSignals": [
+        "wrinkle_mask_density",
+        "oriented_texture",
+        "region_depth_proxy"
+      ],
+      "commerceUse": [
+        "retinoid alternative",
+        "peptide cream",
+        "eye cream",
+        "sunscreen"
+      ],
+      "clinicUse": [
+        "aesthetic clinic routing for botulinum toxin, filler, laser, or skin booster only as user-requested consult categories"
+      ],
+      "aruAxisId": "wrinkles"
     },
     {
       "id": "blemish_acne_like",
       "displayName": "Blemish / acne-like visible lesions",
       "labelType": "count_band_plus_ordinal",
-      "regions": ["forehead", "cheeks", "chin", "jawline"],
-      "cameraSignals": ["red_bump_candidates", "comedone_like_texture", "lesion_count_band"],
-      "commerceUse": ["spot care", "non-comedogenic moisturizer", "BHA", "gentle cleanser"],
-      "clinicUse": ["dermatology routing if severe, widespread, painful, scarring concern, or persistent by self-report"],
-      "medicalBoundary": "Do not diagnose acne subtype from consumer camera alone."
+      "regions": [
+        "forehead",
+        "cheeks",
+        "chin",
+        "jawline"
+      ],
+      "cameraSignals": [
+        "red_bump_candidates",
+        "comedone_like_texture",
+        "lesion_count_band"
+      ],
+      "commerceUse": [
+        "spot care",
+        "non-comedogenic moisturizer",
+        "BHA",
+        "gentle cleanser"
+      ],
+      "clinicUse": [
+        "dermatology routing if severe, widespread, painful, scarring concern, or persistent by self-report"
+      ],
+      "medicalBoundary": "Do not diagnose acne subtype from consumer camera alone.",
+      "aruAxisId": "trouble"
     },
     {
       "id": "dryness_flaking",
       "displayName": "Dryness / flaking",
       "labelType": "ordinal_0_3_plus_survey",
-      "regions": ["cheeks", "mouth_corner", "forehead"],
-      "cameraSignals": ["white_flake_candidates", "roughness_texture", "low_shine_with_survey"],
-      "commerceUse": ["barrier cream", "hydrating serum", "low-foam cleanser"],
-      "clinicUse": ["dermatology routing only with itching, pain, persistent cracking, or user concern"]
+      "regions": [
+        "cheeks",
+        "mouth_corner",
+        "forehead"
+      ],
+      "cameraSignals": [
+        "white_flake_candidates",
+        "roughness_texture",
+        "low_shine_with_survey"
+      ],
+      "commerceUse": [
+        "barrier cream",
+        "hydrating serum",
+        "low-foam cleanser"
+      ],
+      "clinicUse": [
+        "dermatology routing only with itching, pain, persistent cracking, or user concern"
+      ],
+      "aruAxisId": "dryness"
     },
     {
       "id": "sensitivity_barrier_risk",
       "displayName": "Sensitivity / barrier risk",
       "labelType": "survey_camera_composite",
-      "regions": ["cheeks", "nose_side"],
-      "cameraSignals": ["redness", "dryness", "recent_reaction_survey"],
-      "commerceUse": ["fragrance-free", "low-active routine", "patch-test guidance"],
-      "clinicUse": ["dermatology routing when user reports burning, swelling, pain, or recurring flare"],
-      "medicalBoundary": "Camera signal alone is not enough; require survey confirmation."
+      "regions": [
+        "cheeks",
+        "nose_side"
+      ],
+      "cameraSignals": [
+        "redness",
+        "dryness",
+        "recent_reaction_survey"
+      ],
+      "commerceUse": [
+        "fragrance-free",
+        "low-active routine",
+        "patch-test guidance"
+      ],
+      "clinicUse": [
+        "dermatology routing when user reports burning, swelling, pain, or recurring flare"
+      ],
+      "medicalBoundary": "Camera signal alone is not enough; require survey confirmation.",
+      "aruAxisId": "sensitivity"
     },
     {
       "id": "acne_scarring_texture",
       "displayName": "Acne-scar-like texture",
       "labelType": "region_ordinal_0_3",
-      "regions": ["cheeks", "temples", "jawline"],
-      "cameraSignals": ["pitted_texture_candidates", "shadow_consistency_across_burst"],
-      "commerceUse": ["texture-care routine", "sunscreen"],
-      "clinicUse": ["aesthetic clinic routing for laser, microneedling, subcision consult when user asks"],
-      "medicalBoundary": "Call it texture/scar-like concern, not a diagnosis."
+      "regions": [
+        "cheeks",
+        "temples",
+        "jawline"
+      ],
+      "cameraSignals": [
+        "pitted_texture_candidates",
+        "shadow_consistency_across_burst"
+      ],
+      "commerceUse": [
+        "texture-care routine",
+        "sunscreen"
+      ],
+      "clinicUse": [
+        "aesthetic clinic routing for laser, microneedling, subcision consult when user asks"
+      ],
+      "medicalBoundary": "Call it texture/scar-like concern, not a diagnosis.",
+      "aruAxisId": null,
+      "notAnAxisBecause": "No separate head: pitted texture is read through the pores/texture axis, and calling it scarring would be a diagnosis."
     },
     {
       "id": "makeup_occlusion",
       "displayName": "Makeup / filter occlusion",
       "labelType": "binary_or_unknown",
-      "regions": ["whole_face"],
-      "cameraSignals": ["skin_smoothing", "unnatural_color_uniformity", "survey_makeup_state"],
-      "commerceUse": ["reduce confidence; ask retake or survey-first"],
-      "clinicUse": ["not used"],
-      "excludeWhen": ["true"]
+      "regions": [
+        "whole_face"
+      ],
+      "cameraSignals": [
+        "skin_smoothing",
+        "unnatural_color_uniformity",
+        "survey_makeup_state"
+      ],
+      "commerceUse": [
+        "reduce confidence; ask retake or survey-first"
+      ],
+      "clinicUse": [
+        "not used"
+      ],
+      "excludeWhen": [
+        "true"
+      ],
+      "aruAxisId": null,
+      "notAnAxisBecause": "A capture-quality signal, not a skin state. It lowers confidence on every other axis rather than being predicted as one."
+    },
+    {
+      "id": "hydration_level",
+      "aruAxisId": "moisture",
+      "displayName": "Hydration",
+      "labelType": "instrument_or_survey_only",
+      "regions": [
+        "cheeks",
+        "forehead"
+      ],
+      "cameraSignals": [],
+      "commerceUse": [
+        "hydrating serum",
+        "barrier cream",
+        "low-foam cleanser"
+      ],
+      "clinicUse": [
+        "not a clinic trigger"
+      ],
+      "medicalBoundary": "Corneometer capacitance. An RGB frame does not contain it. ARU may present a hydration HINT inferred from visible dryness plus the survey, labelled as an inference, and must never present it as a camera measurement."
     }
   ],
   "commerceOutcomeLabels": [
@@ -152,5 +356,9 @@
     "retakeRecommended",
     "reviewerId",
     "labelConfidence"
-  ]
+  ],
+  "axisRegistry": {
+    "file": "ml/aru_axes.py",
+    "note": "aruAxisId cross-references that registry, which is what the training code reads. tests/ml-registry.test.ts fails if a target maps to an unknown axis, if two targets claim the same axis, or if an axis has no target."
+  }
 }
