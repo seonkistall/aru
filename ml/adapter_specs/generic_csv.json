@@ -1,0 +1,16 @@
+{
+  "source": "generic_csv",
+  "name": "Template: any CSV-indexed dataset",
+  "verified": false,
+  "verifyNote": "Copy this file to <source-id>.json, set source to the registry id, and map the columns.",
+  "capture": "unknown",
+  "index": { "path": "labels.csv", "format": "csv" },
+  "images": { "root": "images", "column": "image" },
+  "subject": { "column": "subject_id", "fallback": "image_stem" },
+  "demographics": { "ita": "ita", "fitzpatrick": "fitzpatrick", "monk": "monk", "age": "age", "sex": "sex" },
+  "axes": {
+    "oil": { "from": "oil_grade", "map": { "low": 0, "mid": 1, "high": 2 } },
+    "redness": { "from": "erythema_score", "bins": [1.5, 3.5] }
+  },
+  "notes": "Bins map a continuous score to ordinal levels: value > edge increments the level."
+}

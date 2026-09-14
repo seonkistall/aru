@@ -16,6 +16,14 @@ const mlFiles = [
   "ml/evaluate_dataset.py",
   "ml/calibrate.py",
   "ml/run_pipeline.py",
+  "ml/aru_axes.py",
+  "ml/subgroups.py",
+  "ml/ita.py",
+  "ml/licensing.py",
+  "ml/external_manifest.py",
+  "ml/model_contract.py",
+  "ml/skin_indices.py",
+  "ml/selftest.py",
 ];
 
 const routeChecks = [
@@ -205,6 +213,10 @@ async function main() {
   await run(npmCmd, ["run", "test:mobile-ui"]);
   await run(npmCmd, ["run", "build"]);
   await run(pythonCmd, ["-m", "py_compile", ...mlFiles]);
+  // py_compile only proves the files parse. selftest.py exercises the rules they
+  // enforce — licence tiers, tone bands, fold leakage, adapter spec validation —
+  // using the standard library only, so it needs no torch install.
+  await run(pythonCmd, ["ml/selftest.py"]);
   await smokeHttp();
   console.log("\nSmoke test passed.");
   process.exit(0);

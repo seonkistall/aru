@@ -27,6 +27,21 @@ export type SkinRawFeatures = {
   toneLstar: number;
   /** Individual Typology Angle (deg) of the dominant cheek tone — same recording-only purpose. */
   toneIta: number;
+  /**
+   * Within-image indices for the axes with no shippable public dataset
+   * (docs/label-free-axes.md). Each compares regions of the SAME frame, so the
+   * device and illuminant terms — which explain ~200x more colour variance than
+   * the subject's skin does — largely cancel. Recorded for calibration; the
+   * product grades none of them until ml/calibrate.py has cut points.
+   */
+  /** Relative spread of L* across forehead / both cheeks / chin. Evenness, not lightness. */
+  toneSpread: number;
+  /** Cheek high-frequency energy over forehead high-frequency energy, each brightness-normalised. */
+  roughnessRatio: number;
+  /** Local a* maxima found on the sampled face area. */
+  blemishCount: number;
+  /** Those maxima per megapixel of sampled face area. */
+  blemishDensity: number;
 };
 
 export type ConfidenceSignal = {
@@ -89,12 +104,35 @@ type RegionStats = {
   meanL: number;
   specularRatio: number;
   texture: number;
+  /** Mean |L - mean(4-neighbour L)| over non-specular pixels: local detail, with
+   *  the region's slow shading gradient removed. `texture` keeps that gradient. */
+  highFreq: number;
   n: number;
   pixels: SkinPixel[];
 };
 
 const TZONE = [9, 8, 107, 336, 151, 10, 67, 297, 1, 4, 5, 195, 197];
 const CHEEKS = [50, 101, 118, 117, 116, 205, 36, 280, 330, 347, 346, 345, 425, 266];
+
+// Tone evenness needs regions, not one average, so the T-zone and cheek unions
+// above are split into the four patches it compares. FOREHEAD is TZONE minus the
+// nose bridge; LEFT_CHEEK + RIGHT_CHEEK is exactly CHEEKS. Oil, redness and pores
+// keep reading the unions, so their calibrated thresholds are untouched.
+const FOREHEAD = [9, 8, 107, 336, 151, 10, 67, 297];
+const LEFT_CHEEK = [50, 101, 118, 117, 116, 205, 36];
+const RIGHT_CHEEK = [280, 330, 347, 346, 345, 425, 266];
+const CHIN = [18, 200, 199, 175, 152, 83, 313];
+
+// Landmarks whose neighbourhood is not skin. Brows, lashes, lid shadow, lips and
+// nostrils all read as local a* maxima, which is exactly what a blemish looks
+// like to the detector below.
+const NON_SKIN = [
+  33, 133, 159, 145, 153, 157, 173, 246, // left eye
+  362, 263, 386, 374, 380, 385, 398, 466, // right eye
+  70, 63, 105, 66, 107, 336, 296, 334, 293, 300, // brows
+  61, 291, 13, 14, 0, 17, 78, 308, 39, 269, // lips
+  94, 99, 328, 2, // nostrils / philtrum
+];
 
 // Exposed so the capture guide can draw the REAL sampling regions on the face.
 export const SAMPLING_LANDMARKS = { tzone: TZONE, cheeks: CHEEKS };
@@ -108,7 +146,9 @@ export const SKIN_LABELS: Record<SkinAttr, [string, string, string]> = {
 export const VISIBLE_MODEL_CONTRACT = {
   inputSchemaVersion: "2026-06-30.visible-face-crop.v1",
   // Bumped 07-03: trimmed region stats + tone (L*/ITA) fields change feature semantics.
-  fallbackVersion: "roi-calibrated-2026-07-03",
+  // Bumped 09-14: within-image indices added (toneSpread, roughnessRatio,
+  // blemish count/density) and tone evenness now reads the four-region spread.
+  fallbackVersion: "roi-calibrated-2026-09-14",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
 
@@ -122,9 +162,16 @@ function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+function lumAt(data: Uint8ClampedArray, w: number, x: number, y: number) {
+  const o = (y * w + x) * 4;
+  return lum(data[o], data[o + 1], data[o + 2]);
+}
+
 function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: LM[], indices: number[], radius = 4): RegionStats | null {
   const collected: SkinPixel[] = [];
   let specular = 0;
+  let hfSum = 0;
+  let hfCount = 0;
 
   for (const idx of indices) {
     const lm = landmarks[idx];
@@ -143,6 +190,13 @@ function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: 
         const L = lum(r, g, b);
         collected.push({ r, g, b, L });
         if (L > 218) specular += 1;
+        // A glint is not texture, and an edge pixel has no four neighbours.
+        else if (x > 0 && y > 0 && x + 1 < w && y + 1 < h) {
+          const neighbours =
+            (lumAt(data, w, x - 1, y) + lumAt(data, w, x + 1, y) + lumAt(data, w, x, y - 1) + lumAt(data, w, x, y + 1)) / 4;
+          hfSum += Math.abs(L - neighbours);
+          hfCount += 1;
+        }
       }
     }
   }
@@ -176,6 +230,7 @@ function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: 
     meanL,
     specularRatio: specular / collected.length,
     texture: Math.sqrt(variance),
+    highFreq: hfCount ? hfSum / hfCount : 0,
     n: collected.length,
     pixels: kept,
   };
@@ -376,11 +431,185 @@ function frameChannelGains(data: Uint8ClampedArray, width: number, height: numbe
   return { r: gain(meanR), g: gain(meanG), b: gain(meanB) };
 }
 
+/**
+ * Within-image indices for the axes no public dataset can supervise.
+ *
+ * The constants below are starting points, not validated cut points. What they
+ * produce is a number whose ordering is meaningful; where the grade boundaries
+ * sit is `ml/calibrate.py`'s job, and until it has run these feed nothing the
+ * user sees. Mirrored in `ml/skin_indices.py`, held together by
+ * tests/skin-index-contract.test.ts.
+ */
+const BLEMISH = {
+  /** Face width in grid cells — sets the sampling stride. */
+  gridAcrossFace: 90,
+  /** Local-background window radius, in cells. ~6% of face width. */
+  backgroundRadius: 5,
+  /** Non-maximum suppression radius, in cells: one blemish, one count. */
+  suppressionRadius: 2,
+  /** a* units a candidate must clear above its own local background. */
+  minResidual: 1.6,
+  /** Exclusion radius around a non-skin landmark, as a fraction of face width. */
+  excludeFraction: 0.055,
+};
+
+function relativeSpread(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((acc, value) => acc + value, 0) / values.length;
+  if (Math.abs(mean) < 1e-6) return 0;
+  const variance = values.reduce((acc, value) => acc + (value - mean) * (value - mean), 0) / values.length;
+  return Math.sqrt(variance) / Math.abs(mean);
+}
+
+/**
+ * Blemish count over the sampled face area.
+ *
+ * Morphology, not colour level: a spot is a small local maximum of a* against
+ * the skin immediately around it, so the count survives the device shifting
+ * every a* in the frame by the same amount. Eyes, brows, lips and nostrils are
+ * cut out because each of them is also a local a* maximum.
+ */
+function detectBlemishes(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  landmarks: LM[],
+  gains: { r: number; g: number; b: number }
+): { count: number; areaPx: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const lm of landmarks) {
+    if (!lm) continue;
+    minX = Math.min(minX, lm.x * w);
+    maxX = Math.max(maxX, lm.x * w);
+    minY = Math.min(minY, lm.y * h);
+    maxY = Math.max(maxY, lm.y * h);
+  }
+  const faceW = maxX - minX;
+  const faceH = maxY - minY;
+  if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaPx: 0 };
+
+  const stride = Math.max(1, Math.round(faceW / BLEMISH.gridAcrossFace));
+  const x0 = Math.max(0, Math.floor(minX));
+  const y0 = Math.max(0, Math.floor(minY));
+  const gw = Math.floor((Math.min(w - 1, Math.ceil(maxX)) - x0) / stride) + 1;
+  const gh = Math.floor((Math.min(h - 1, Math.ceil(maxY)) - y0) / stride) + 1;
+  if (gw < 2 * BLEMISH.backgroundRadius || gh < 2 * BLEMISH.backgroundRadius) return { count: 0, areaPx: 0 };
+
+  const excludeR = BLEMISH.excludeFraction * faceW;
+  const excluded: Array<{ x: number; y: number }> = [];
+  for (const idx of NON_SKIN) {
+    const lm = landmarks[idx];
+    if (lm) excluded.push({ x: lm.x * w, y: lm.y * h });
+  }
+
+  const astar = new Float64Array(gw * gh);
+  const valid = new Uint8Array(gw * gh);
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const px = x0 + gx * stride;
+      const py = y0 + gy * stride;
+      if (px >= w || py >= h) continue;
+      let nearNonSkin = false;
+      for (const point of excluded) {
+        const dx = px - point.x;
+        const dy = py - point.y;
+        if (dx * dx + dy * dy < excludeR * excludeR) {
+          nearNonSkin = true;
+          break;
+        }
+      }
+      if (nearNonSkin) continue;
+      const o = (py * w + px) * 4;
+      const r = data[o];
+      const g = data[o + 1];
+      const b = data[o + 2];
+      const L = lum(r, g, b);
+      // Hair, shadow and blown highlights are not gradable skin.
+      if (L < 40 || L > 230 || r <= b) continue;
+      const lab = rgbToLab(Math.min(255, r * gains.r), Math.min(255, g * gains.g), Math.min(255, b * gains.b));
+      astar[gy * gw + gx] = lab.a;
+      valid[gy * gw + gx] = 1;
+    }
+  }
+
+  // Summed-area tables over valid cells only, so the local background is the
+  // mean of the skin actually present in the window.
+  const sw = gw + 1;
+  const sumTable = new Float64Array(sw * (gh + 1));
+  const countTable = new Float64Array(sw * (gh + 1));
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      const s0 = (gy + 1) * sw + (gx + 1);
+      sumTable[s0] = (valid[i] ? astar[i] : 0) + sumTable[s0 - 1] + sumTable[s0 - sw] - sumTable[s0 - sw - 1];
+      countTable[s0] = (valid[i] ? 1 : 0) + countTable[s0 - 1] + countTable[s0 - sw] - countTable[s0 - sw - 1];
+    }
+  }
+  const windowMean = (gx: number, gy: number, radius: number): number | null => {
+    const lx = Math.max(0, gx - radius);
+    const ly = Math.max(0, gy - radius);
+    const hx = Math.min(gw - 1, gx + radius);
+    const hy = Math.min(gh - 1, gy + radius);
+    const a = (hy + 1) * sw + (hx + 1);
+    const b = ly * sw + (hx + 1);
+    const c = (hy + 1) * sw + lx;
+    const d = ly * sw + lx;
+    const count = countTable[a] - countTable[b] - countTable[c] + countTable[d];
+    if (count < 8) return null;
+    return (sumTable[a] - sumTable[b] - sumTable[c] + sumTable[d]) / count;
+  };
+
+  const residual = new Float64Array(gw * gh);
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!valid[i]) continue;
+      const background = windowMean(gx, gy, BLEMISH.backgroundRadius);
+      residual[i] = background === null ? 0 : astar[i] - background;
+    }
+  }
+
+  let count = 0;
+  let validCells = 0;
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!valid[i]) continue;
+      validCells += 1;
+      if (residual[i] < BLEMISH.minResidual) continue;
+      let isPeak = true;
+      for (let dy = -BLEMISH.suppressionRadius; dy <= BLEMISH.suppressionRadius && isPeak; dy += 1) {
+        for (let dx = -BLEMISH.suppressionRadius; dx <= BLEMISH.suppressionRadius; dx += 1) {
+          const nx = gx + dx;
+          const ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || (dx === 0 && dy === 0)) continue;
+          const j = ny * gw + nx;
+          // Ties go to the cell scanned first, so a plateau counts once.
+          if (residual[j] > residual[i] || (residual[j] === residual[i] && j < i)) {
+            isPeak = false;
+            break;
+          }
+        }
+      }
+      if (isPeak) count += 1;
+    }
+  }
+
+  return { count, areaPx: validCells * stride * stride };
+}
+
 function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
   const { data, width: w, height: h } = imageData;
   const tzone = sampleRegion(data, w, h, landmarks, TZONE);
   const cheeks = sampleRegion(data, w, h, landmarks, CHEEKS);
   if (!tzone || !cheeks || tzone.n < 40 || cheeks.n < 40) return null;
+  const forehead = sampleRegion(data, w, h, landmarks, FOREHEAD);
+  const leftCheek = sampleRegion(data, w, h, landmarks, LEFT_CHEEK);
+  const rightCheek = sampleRegion(data, w, h, landmarks, RIGHT_CHEEK);
+  const chin = sampleRegion(data, w, h, landmarks, CHIN);
 
   const cheekL = lum(cheeks.meanR, cheeks.meanG, cheeks.meanB);
   const tzoneL = lum(tzone.meanR, tzone.meanG, tzone.meanB);
@@ -402,6 +631,25 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
   })();
 
+  // Tone evenness: spread of L* across four regions of this one frame. Divided by
+  // the mean so a brighter exposure does not read as a less even face; L* itself
+  // is never the reading, because how light someone is is not a skin concern.
+  const labOf = (m: RegionStats) => rgbToLab(Math.min(255, m.meanR * gains.r), Math.min(255, m.meanG * gains.g), Math.min(255, m.meanB * gains.b)).l;
+  const regionLstars = [forehead, leftCheek, rightCheek, chin]
+    .filter((region): region is RegionStats => region !== null && region.n >= 40)
+    .map(labOf);
+
+  // Dryness: cheek detail against forehead detail, each divided by its own
+  // brightness. Flaking raises the numerator; a sharpening filter raises both.
+  // The weakest of the indices — phone denoising differs — so it stays recorded
+  // until a survey answer sits next to it.
+  const normalizedHf = (region: RegionStats | null, meanL: number) =>
+    region && meanL > 1 ? region.highFreq / meanL : null;
+  const cheekHf = normalizedHf(cheeks, cheekL);
+  const foreheadHf = normalizedHf(forehead, forehead ? lum(forehead.meanR, forehead.meanG, forehead.meanB) : 0);
+
+  const blemishes = detectBlemishes(data, w, h, landmarks, gains);
+
   return {
     shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255),
     relRedness: rIdx(cheeks) - rIdx(tzone),
@@ -414,6 +662,10 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     tzoneSamples: tzone.n,
     toneLstar: tone.lstar,
     toneIta: tone.ita,
+    toneSpread: relativeSpread(regionLstars),
+    roughnessRatio: cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 1,
+    blemishCount: blemishes.count,
+    blemishDensity: blemishes.count / Math.max(blemishes.areaPx / 1e6, 1e-6),
   };
 }
 
@@ -433,11 +685,14 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
 
   // Extra visible reads (observational only — no quantities, no claims).
   // Raw Korean: persisted with SkinReads, translated at render.
-  const toneDiff = Math.abs(raw.tzoneL - raw.cheekL) / Math.max(1, raw.cheekL);
+  // Reads the four-region L* spread now, not the T-zone/cheek luminance gap: two
+  // patches cannot tell an uneven face from a brighter forehead. Cut points are
+  // provisional, like every other one here, until ml/calibrate.py replaces them.
+  const toneDiff = raw.toneSpread;
   const toneEven: SkinExtraRead =
-    toneDiff < 0.06
+    toneDiff < 0.035
       ? { label: "톤 균일감", value: "고르게 보여요", calm: true, note: "이마와 볼 밝기가 비슷하게 읽혔어요." }
-      : toneDiff < 0.13
+      : toneDiff < 0.075
         ? {
             label: "톤 균일감",
             value: "약간 차이",

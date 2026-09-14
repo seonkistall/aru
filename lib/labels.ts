@@ -1,4 +1,5 @@
 import { DEVICE_DATA_KEY } from "./device-data";
+import type { AgeBand, ToneBand } from "./tone-bands";
 
 /**
  * Local feedback storage for calibration.
@@ -57,6 +58,14 @@ export type SampleMeta = {
   burst?: { frames: number; agreement: Partial<Record<Attr, number>> };
   /** Optional user observations outside the graded attrs (observation only — never severity grades). */
   observations?: { troubleSeen?: boolean };
+  /**
+   * Subgroup stratifiers, recorded for model evaluation and never shown to the user.
+   * `toneBand` is derived on-device from the ITA already measured during the scan.
+   * `ageBand` is only present for consented pilot sessions that collected it; the
+   * consumer survey does not ask for age.
+   */
+  toneBand?: ToneBand;
+  ageBand?: AgeBand;
 };
 
 export const SCALES: Record<Attr, [string, string, string]> = {
@@ -85,6 +94,12 @@ export type LabeledSample = {
     tzoneSamples?: number;
     toneLstar?: number;
     toneIta?: number;
+    /** Within-image indices (docs/label-free-axes.md). Optional: samples stored
+     *  before roi-calibrated-2026-09-14 do not carry them. */
+    toneSpread?: number;
+    roughnessRatio?: number;
+    blemishCount?: number;
+    blemishDensity?: number;
   };
   labels: { oil: number; redness: number; pores: number };
   source: "confirmed" | "corrected";

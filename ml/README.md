@@ -71,6 +71,129 @@ quality risks, and benchmarks the current heuristic thresholds before any CNN
 training is considered. Low-confidence or ungradable feedback samples are
 excluded by default from calibration, manifest decoding, and training.
 
+## Axis registry, subgroups and external data
+
+Four modules carry the rules that every other script reads:
+
+| Module | Rule it owns |
+|---|---|
+| `aru_axes.py` | Which axes exist, how many ordinal levels each has, and which ones get a camera head at all. Hydration and sensitivity deliberately get none. |
+| `subgroups.py` | Tone band (ITA) and age band, group-safe stratified folds, coverage warnings, worst-group selection. |
+| `ita.py` | ITA from pixels, matching `dominantTone` in `lib/skin.ts` exactly so the app and the trainer agree on subgroups. |
+| `licensing.py` | Whether a dataset may be used for a purpose. A dataset with no explicit tier is treated as the most restrictive one. |
+
+### Self-check
+
+```bash
+python ml/selftest.py
+```
+
+Standard library only, no torch, and `npm run smoke` runs it. It covers the rules the
+modules enforce rather than just that they parse: licence tiers and the first-party
+vs external `source` distinction, ITA bands including the `toneIta` key the app
+writes, age banding and the under-13 exclusion, fold leakage, worst-group skipping,
+and adapter spec validation. Two shipped defects got past `py_compile` before it
+existed, so add a case here whenever one of these rules changes.
+
+### Licence gate
+
+```bash
+python ml/licensing.py --audit                       # every registered source and its tier
+python ml/licensing.py --source acne04 --purpose product_training
+```
+
+Purposes split on whether the artifact ships: `product_training` and
+`shipping_pretrain` ship, `research_pretrain`, `eval_audit` and `camera_qa` do not.
+A CC BY-NC dataset blocks the shipping purposes, because weights are a derivative work.
+
+### Ingesting an external dataset
+
+Datasets are described declaratively in `ml/adapter_specs/*.json`, so adding one is
+a spec file rather than a new parser. `generic_csv.json` is the template.
+
+```bash
+python ml/external_manifest.py \
+  --source aihub_korean_skin \
+  --root /local/path/to/dataset \
+  --purpose research_pretrain \
+  --compute-ita \
+  --out ml/data/external
+```
+
+This writes `manifest.csv` in the same shape the trainer reads, plus
+`provenance.json` recording the licence decision, the build counts and the subgroup
+coverage warnings. Axes the dataset does not annotate stay empty; the trainer masks
+them per sample. Never commit the downloaded images.
+
+### Pretrain on external data, fine-tune on ARU's
+
+Full procedure: [docs/pretrain-finetune-runbook.md](../../docs/pretrain-finetune-runbook.md).
+
+```bash
+# stage A: several external datasets at once; unlabeled axes are masked per row
+python ml/train_visible_attributes.py --data ml/data/external \
+  --manifest ml/data/external/aihub_korean_skin/manifest.csv \
+             ml/data/external/acne04/manifest.csv \
+  --axes pores wrinkles pigmentation trouble --purpose research_pretrain \
+  --out-dir ml/artifacts/stageA
+
+# stage B: fine-tune on consented crops, starting from stage A's trunk
+python ml/train_visible_attributes.py --data ml/data/crops \
+  --init-from ml/artifacts/stageA/visible_attr_mobilenetv3_small.pt \
+  --axes oil redness pores --purpose product_training --out-dir ml/artifacts/stageB
+```
+
+Weights are a derivative work, so the gate follows them. A checkpoint records every
+source it was ever trained on, `--init-from` inherits that lineage, and it is
+re-checked against the new `--purpose`. Fine-tuning on spotless first-party crops
+does **not** make a non-commercial pretrain shippable, and the run refuses rather
+than producing weights that every per-run check called fine.
+
+Only the trunk transfers. Heads whose shape differs between stages are dropped and
+re-initialised, because a classifier sized for a different axis set is not a
+head worth keeping.
+
+### Multi-axis, subgroup-aware training
+
+```bash
+python ml/train_visible_attributes.py \
+  --data ml/data/crops \
+  --axes oil redness pores \
+  --aux-heads tone_band age_band \
+  --purpose product_training \
+  --min-cell 20 --max-subgroup-gap 0.10 \
+  --export-onnx
+```
+
+Defaults are unchanged: with no `--axes` the script trains the same oil/redness/pores
+model as before. What is new around it:
+
+- partial labels are masked, so an external set that only grades acne still trains;
+- `--loss ordinal` (now the default) adds a distance penalty, because predicting
+  level 0 for a level 2 sample is a worse error than predicting level 1;
+- validation folds keep a person whole and balance subgroup cells;
+- `metrics.json` reports per tone band, per age band and per joint cell, and the
+  promotion gate blocks on the worst evaluated group rather than the mean;
+- `tone_calibration.json` carries per-tone-band offsets the runtime can apply;
+- `--weights none` trains from scratch for offline or reproducibility runs.
+
+The gate is meant to fail loudly. "No subgroup cell reached n>=20" is a blocker, not
+a pass: a model nobody could evaluate on a subgroup has not been shown to work on it.
+
+### Read qwk and pearson, not accuracy alone
+
+Every axis reports `qwk` (quadratic weighted kappa) and `pearson` alongside accuracy,
+macro-F1 and ordinal MAE. On a skewed ordinal scale a model that always predicts the
+majority grade scores well on accuracy, MAE and "within one grade" while carrying no
+information; QWK goes to 0 for exactly that model. `within_one_grade` is recorded for
+comparability with published skin-grading work, but it is never a promotion signal on
+its own — the survey turned up a published case of 94% within-one-grade agreement at a
+correlation of 0.25.
+
+For any axis supervised by an instrument reading rather than a human grade, report
+correlation against held-out instrument values before building the head at all. Asking
+whether an axis is recoverable from RGB has to come before choosing a dataset for it.
+
 ## ARU target and source registries
 
 - `aru_target_schema.json` defines the camera targets ARU needs for cosmetic

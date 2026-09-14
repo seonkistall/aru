@@ -1,16 +1,42 @@
 {
-  "updated": "2026-07-07",
-  "policy": "External datasets are registry-only inputs. Do not commit downloaded images. Use them for pretraining, camera quality research, fairness audits, or auxiliary validation unless the license explicitly permits product training.",
+  "updated": "2026-09-14",
+  "policy": "External datasets are registry-only inputs. Do not commit downloaded images. Use them for pretraining, camera quality research, fairness audits, or auxiliary validation unless the license explicitly permits product training. Every entry carries an explicit licenseTier read by ml/licensing.py; an entry without one is treated as the most restrictive tier rather than allowed through.",
   "datasets": [
     {
       "id": "scin",
       "name": "SCIN Skin Condition Image Network",
       "url": "https://github.com/google-research-datasets/scin",
       "paper": "https://doi.org/10.1001/jamanetworkopen.2024.46615",
-      "access": "Open access through Google Cloud Storage under the SCIN Data Use License.",
-      "labels": ["dermatologist condition labels", "estimated Fitzpatrick skin type", "estimated Monk Skin Tone", "self-reported demographics and symptoms"],
-      "recommendedUse": ["skin-tone coverage audit", "image quality/gradation research", "not direct cosmetic oil/redness/pores supervision"],
-      "risks": ["medical-condition imagery", "sensitive and sometimes graphic images", "US internet-user sample, not K-beauty selfie protocol"]
+      "access": "Open download from Google Cloud Storage under the SCIN Data Use License (no registration). The copyright grant has no NonCommercial clause, but the agreement's onward-use terms are unresolved for a shipping product, so shipping purposes need a written position first.",
+      "labels": [
+        "dermatologist condition labels",
+        "estimated Fitzpatrick skin type",
+        "estimated Monk Skin Tone",
+        "self-reported demographics and symptoms"
+      ],
+      "recommendedUse": [
+        "tone robustness SMOKE TEST only — not an audit set",
+        "two weak self-reported signals nothing else in this survey offers: textures_rough_or_flaky (dryness) and condition_symptoms_burning (sensitivity)"
+      ],
+      "risks": [
+        "14 Asian cases in the facial subset. A K-beauty model cannot be audited for its own users on this data",
+        "only 737 of 5,033 cases are head or neck, and 432 of those are close-ups rather than front-camera frames",
+        "353 of the 737 facial cases have AGE_UNKNOWN",
+        "no graded label for any ARU axis: conditions are diagnosis presence, with no severity scale in the schema",
+        "an inflammatory-rash corpus with a face subset, not a cosmetic corpus"
+      ],
+      "licenseTier": "contract_required",
+      "verifiedCounts": {
+        "countedFrom": "storage.googleapis.com/dx-scin-public-data/dataset/scin_cases.csv, read and counted directly 2026-09-13",
+        "totalCases": 5033,
+        "headOrNeckCases": 737,
+        "headOrNeckCloseUp": 432,
+        "headOrNeckAgeUnknown": 353,
+        "headOrNeckAsian": 14,
+        "corpusAsian": 96,
+        "headOrNeckRoughOrFlaky": 220,
+        "headOrNeckBurning": 221
+      }
     },
     {
       "id": "acne04",
@@ -18,18 +44,38 @@
       "url": "https://github.com/xpwu95/LDL",
       "paper": "https://arxiv.org/abs/1911.07931",
       "access": "Project repository links Baidu and Google Drive downloads; repository states academic use is free and other use requires contacting the author.",
-      "labels": ["facial acne severity labels", "ordinal severity distribution labels"],
-      "recommendedUse": ["auxiliary acne/blemish severity research", "ordinal-label training experiments that stay separate from ARU cosmetic oil/redness/pores labels"],
-      "risks": ["academic-use limitation", "acne severity is not equivalent to ARU visible-attribute labels", "dataset protocol may not match mobile selfie capture"]
+      "labels": [
+        "facial acne severity labels",
+        "ordinal severity distribution labels"
+      ],
+      "recommendedUse": [
+        "auxiliary acne/blemish severity research",
+        "ordinal-label training experiments that stay separate from ARU cosmetic oil/redness/pores labels"
+      ],
+      "risks": [
+        "academic-use limitation",
+        "acne severity is not equivalent to ARU visible-attribute labels",
+        "dataset protocol may not match mobile selfie capture"
+      ],
+      "licenseTier": "academic_only"
     },
     {
       "id": "acnescu",
       "name": "AcneSCU",
       "url": "https://github.com/pingguokiller/acnedetection",
       "access": "Repository provides Baidu download links and states non-commercial use only.",
-      "labels": ["facial acne detection annotations"],
-      "recommendedUse": ["blemish detector pretraining or negative testing", "do not merge into cosmetic-label training without separate license review"],
-      "risks": ["commercial use prohibited without permission", "acne detection labels do not map to pores/oil/redness directly"]
+      "labels": [
+        "facial acne detection annotations"
+      ],
+      "recommendedUse": [
+        "blemish detector pretraining or negative testing",
+        "do not merge into cosmetic-label training without separate license review"
+      ],
+      "risks": [
+        "commercial use prohibited without permission",
+        "acne detection labels do not map to pores/oil/redness directly"
+      ],
+      "licenseTier": "non_commercial"
     },
     {
       "id": "wider-face",
@@ -37,9 +83,22 @@
       "url": "http://shuoyang1213.me/WIDERFACE/",
       "paper": "https://arxiv.org/abs/1511.06523",
       "access": "Public face-detection benchmark; verify current mirror and license before downloading.",
-      "labels": ["face bounding boxes", "pose", "occlusion", "event categories"],
-      "recommendedUse": ["camera face-detection robustness tests", "stress tests for pose, scale, occlusion, and lighting"],
-      "risks": ["not a skin-quality dataset", "no cosmetic labels", "privacy/license review required before commercial model use"]
+      "labels": [
+        "face bounding boxes",
+        "pose",
+        "occlusion",
+        "event categories"
+      ],
+      "recommendedUse": [
+        "camera face-detection robustness tests",
+        "stress tests for pose, scale, occlusion, and lighting"
+      ],
+      "risks": [
+        "not a skin-quality dataset",
+        "no cosmetic labels",
+        "privacy/license review required before commercial model use"
+      ],
+      "licenseTier": "unknown"
     },
     {
       "id": "lapa",
@@ -47,9 +106,20 @@
       "url": "https://github.com/jd-opensource/lapa-dataset",
       "paper": "https://ojs.aaai.org/index.php/AAAI/article/view/6832",
       "access": "Repository provides Google Drive and Baidu downloads; license text allows non-commercial use only.",
-      "labels": ["11-category face parsing maps", "106-point landmarks"],
-      "recommendedUse": ["face/skin ROI mask experiments", "crop quality validation", "not direct ARU cosmetic-label training"],
-      "risks": ["non-commercial terms", "semantic parsing labels are not oil/redness/pores labels"]
+      "labels": [
+        "11-category face parsing maps",
+        "106-point landmarks"
+      ],
+      "recommendedUse": [
+        "face/skin ROI mask experiments",
+        "crop quality validation",
+        "not direct ARU cosmetic-label training"
+      ],
+      "risks": [
+        "non-commercial terms",
+        "semantic parsing labels are not oil/redness/pores labels"
+      ],
+      "licenseTier": "non_commercial"
     },
     {
       "id": "ffhq-wrinkle",
@@ -57,9 +127,20 @@
       "url": "https://github.com/labhai/ffhq-wrinkle-dataset",
       "paper": "https://arxiv.org/abs/2408.10060",
       "access": "Labels are downloadable from the project; source face images derive from FFHQ.",
-      "labels": ["1000 manual wrinkle masks", "50000 weak wrinkle masks", "face parsing labels for 1000 images"],
-      "recommendedUse": ["texture/wrinkle auxiliary pretraining", "face ROI parsing experiments"],
-      "risks": ["wrinkle labels do not map to ARU oil/redness/pores", "check FFHQ and project license terms before any commercial training"]
+      "labels": [
+        "1000 manual wrinkle masks",
+        "50000 weak wrinkle masks",
+        "face parsing labels for 1000 images"
+      ],
+      "recommendedUse": [
+        "texture/wrinkle auxiliary pretraining",
+        "face ROI parsing experiments"
+      ],
+      "risks": [
+        "wrinkle labels do not map to ARU oil/redness/pores",
+        "check FFHQ and project license terms before any commercial training"
+      ],
+      "licenseTier": "non_commercial"
     },
     {
       "id": "hyperskin",
@@ -67,9 +148,21 @@
       "url": "https://github.com/hyperspectral-skin/Hyper-Skin-2023",
       "paper": "https://openreview.net/forum?id=doV2nhGm1l",
       "access": "Credentialed EULA request required for the dataset; repository code is MIT licensed.",
-      "labels": ["paired RGB/VIS hyperspectral facial skin", "MSI/NIR pairs", "participant-level train/test split"],
-      "recommendedUse": ["illumination and skin-spectra research", "color constancy and tone proxy validation"],
-      "risks": ["small participant count", "credentialed access", "not a commodity mobile selfie dataset"]
+      "labels": [
+        "paired RGB/VIS hyperspectral facial skin",
+        "MSI/NIR pairs",
+        "participant-level train/test split"
+      ],
+      "recommendedUse": [
+        "illumination and skin-spectra research",
+        "color constancy and tone proxy validation"
+      ],
+      "risks": [
+        "small participant count",
+        "credentialed access",
+        "not a commodity mobile selfie dataset"
+      ],
+      "licenseTier": "gated_application"
     },
     {
       "id": "fitzpatrick17k",
@@ -78,18 +171,41 @@
       "paper": "https://arxiv.org/abs/2104.09957",
       "access": "CSV annotations are public; original images come from dermatology atlases and may require form-based access.",
       "license": "CC BY-NC-SA 3.0 for the dataset work as stated by the repository.",
-      "labels": ["Fitzpatrick skin type", "114 clinical skin conditions"],
-      "recommendedUse": ["fairness audit", "skin-tone subgroup validation", "dermatology domain pretraining only when license permits"],
-      "risks": ["non-commercial license", "clinical labels not cosmetic labels", "known dataset quality and leakage concerns in later audits"]
+      "labels": [
+        "Fitzpatrick skin type",
+        "114 clinical skin conditions"
+      ],
+      "recommendedUse": [
+        "fairness audit",
+        "skin-tone subgroup validation",
+        "dermatology domain pretraining only when license permits"
+      ],
+      "risks": [
+        "non-commercial license",
+        "clinical labels not cosmetic labels",
+        "known dataset quality and leakage concerns in later audits"
+      ],
+      "licenseTier": "non_commercial"
     },
     {
       "id": "ddi",
       "name": "Diverse Dermatology Images",
       "url": "https://arxiv.org/abs/2203.08807",
       "access": "Public clinical-image benchmark described in the paper; verify current distribution terms before use.",
-      "labels": ["pathologically confirmed skin conditions", "diverse skin tones"],
-      "recommendedUse": ["fairness and skin-tone stress testing", "dermatology bias audit, not cosmetic product-label training"],
-      "risks": ["clinical imagery", "small dataset", "medical task mismatch"]
+      "labels": [
+        "pathologically confirmed skin conditions",
+        "diverse skin tones"
+      ],
+      "recommendedUse": [
+        "fairness and skin-tone stress testing",
+        "dermatology bias audit, not cosmetic product-label training"
+      ],
+      "risks": [
+        "clinical imagery",
+        "small dataset",
+        "medical task mismatch"
+      ],
+      "licenseTier": "non_commercial"
     },
     {
       "id": "isic-2018-ham10000",
@@ -97,27 +213,57 @@
       "url": "https://challenge.isic-archive.com/data/#2018",
       "paper": "https://doi.org/10.1038/sdata.2018.161",
       "access": "ISIC Challenge page lists downloads and CC-BY-NC license for 2018 training data.",
-      "labels": ["dermoscopic lesion diagnosis", "segmentation masks and metadata depending on task"],
-      "recommendedUse": ["medical-domain pretraining only if license permits", "do not use for ARU cosmetic recommendations"],
-      "risks": ["non-commercial license", "dermoscopic lesion images differ strongly from front-camera selfie crops"]
+      "labels": [
+        "dermoscopic lesion diagnosis",
+        "segmentation masks and metadata depending on task"
+      ],
+      "recommendedUse": [
+        "medical-domain pretraining only if license permits",
+        "do not use for ARU cosmetic recommendations"
+      ],
+      "risks": [
+        "non-commercial license",
+        "dermoscopic lesion images differ strongly from front-camera selfie crops"
+      ],
+      "licenseTier": "non_commercial"
     },
     {
       "id": "faceskin",
       "name": "FaceSkin",
       "url": "https://arxiv.org/abs/2308.04765",
       "access": "Paper describes the dataset; verify availability and license before use.",
-      "labels": ["facial skin patches", "age/race/gender attributes", "synthetic attack categories"],
-      "recommendedUse": ["privacy-preserving skin patch representation research"],
-      "risks": ["attribute labels are not cosmetic skin states", "availability/license must be verified before integration"]
+      "labels": [
+        "facial skin patches",
+        "age/race/gender attributes",
+        "synthetic attack categories"
+      ],
+      "recommendedUse": [
+        "privacy-preserving skin patch representation research"
+      ],
+      "risks": [
+        "attribute labels are not cosmetic skin states",
+        "availability/license must be verified before integration"
+      ],
+      "licenseTier": "unknown"
     },
     {
       "id": "microglam",
       "name": "MicroGlam",
       "url": "https://arxiv.org/abs/2401.05339",
       "access": "Paper/project dataset; verify release terms before use.",
-      "labels": ["microscopic skin patches under foundation, blusher, highlighter", "many lighting conditions"],
-      "recommendedUse": ["lighting augmentation ideas", "makeup robustness research"],
-      "risks": ["microscopic capture device differs from phone selfie camera", "only 9 participants in paper abstract"]
+      "labels": [
+        "microscopic skin patches under foundation, blusher, highlighter",
+        "many lighting conditions"
+      ],
+      "recommendedUse": [
+        "lighting augmentation ideas",
+        "makeup robustness research"
+      ],
+      "risks": [
+        "microscopic capture device differs from phone selfie camera",
+        "only 9 participants in paper abstract"
+      ],
+      "licenseTier": "unknown"
     },
     {
       "id": "skincap",
@@ -126,9 +272,180 @@
       "paper": "https://arxiv.org/abs/2405.18004",
       "access": "Gated Hugging Face dataset with contact sharing and research-use terms.",
       "license": "CC BY-NC-SA 4.0 plus dataset use agreement.",
-      "labels": ["dermatology captions", "medical descriptions"],
-      "recommendedUse": ["explanation/caption style research for non-product internal evaluation"],
-      "risks": ["non-commercial and no clinical-care use", "raw images require separate access to underlying datasets"]
+      "labels": [
+        "dermatology captions",
+        "medical descriptions"
+      ],
+      "recommendedUse": [
+        "explanation/caption style research for non-product internal evaluation"
+      ],
+      "risks": [
+        "non-commercial and no clinical-care use",
+        "raw images require separate access to underlying datasets"
+      ],
+      "licenseTier": "non_commercial"
+    },
+    {
+      "id": "aihub_korean_skin",
+      "name": "AI-Hub 한국인 피부상태 측정 데이터",
+      "url": "https://aihub.or.kr",
+      "licenseTier": "commercial_ok",
+      "access": "Korean AI-Hub account plus a usage application, restricted to domestic applicants. The data itself has not been obtained; the tier below governs what may be done once it is.",
+      "labels": [
+        "instrument-paired skin measurements",
+        "expert grades",
+        "subject age and sex"
+      ],
+      "recommendedUse": [
+        "the only realistic supervision for a dryness head on Korean faces",
+        "an oil scale grounded in sebumeter units rather than annotator taste",
+        "age-band subgroup coverage"
+      ],
+      "risks": [
+        "access is an application, not a download",
+        "controlled capture differs from a phone front camera, so a domain gap remains",
+        "the tier rests on an owner attestation; the approved application may attach its own conditions",
+        "mono-ethnic with no Fitzpatrick, Monk or ITA field, so it cannot audit its own cross-ethnicity gap"
+      ],
+      "licenseEvidence": "2026-09-14: the repository owner read the per-dataset 이용약관 on the AI-Hub dataset page (dataSetSn=71645) and reported that commercial training is permitted. This is an owner attestation, not a licence document read by the pipeline — aihub.or.kr is unreachable from the build network, so no text was quoted or archived here. Re-verify against the terms attached to the approved application before weights trained on this data ship."
+    },
+    {
+      "id": "skincon",
+      "name": "SkinCon",
+      "url": "https://skincon-dataset.github.io/",
+      "paper": "https://arxiv.org/abs/2302.00785",
+      "licenseTier": "non_commercial",
+      "access": "Concept annotations layered on Fitzpatrick17k and DDI images; inherits their terms.",
+      "labels": [
+        "48 clinical concepts densely annotated by dermatologists, including erythema"
+      ],
+      "recommendedUse": [
+        "redness concept reference",
+        "fairness audit"
+      ],
+      "risks": [
+        "inherits Fitzpatrick17k non-commercial terms",
+        "clinical images, not selfies"
+      ]
+    },
+    {
+      "id": "ddi2",
+      "name": "DDI-2",
+      "url": "https://ddi-dataset.github.io/",
+      "licenseTier": "non_commercial",
+      "access": "Stanford School of Medicine Research Use Agreement.",
+      "labels": [
+        "Fitzpatrick skin type",
+        "anatomical site",
+        "biopsy-confirmed diagnoses",
+        "workflow artifacts"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "research-use agreement forbids commercial use and derivative works",
+        "no erythema field; SkinCon's Erythema overlay covers DDI-1 and Fitzpatrick17k, not DDI-2",
+        "Fitzpatrick is a per-patient phototype stratifier, not a pigmentation label"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "derm1m",
+      "name": "Derm1M",
+      "url": "https://github.com/SiyuanYan1/Derm1M",
+      "licenseTier": "non_commercial",
+      "access": "CC BY-NC 4.0; commercial use requires separate permission.",
+      "labels": [
+        "49-term concept vocabulary",
+        "image-text pairs"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "no pore, wrinkle, sebum or moisture term in the vocabulary",
+        "erythema/xerosis/comedo are binary lesion descriptors on diseased skin, not cosmetic grades"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "isgd",
+      "name": "ISGD Indian Skincare and Grooming Dataset",
+      "url": "https://www.kaggle.com/datasets/himalrana2610/indian-skincare-and-grooming-dataset",
+      "licenseTier": "unknown",
+      "access": "No LICENSE file found in the repository; treat as all rights reserved.",
+      "labels": [
+        "33 binary attributes, 29 of them hair and grooming"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "oily_skin is a binary annotator judgment and the worst-performing attribute in the authors' own metrics",
+        "images appear web-scraped with no documented consent basis"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "porepatch",
+      "name": "PorePatch",
+      "url": "https://github.com/verdureB/PorePatch",
+      "licenseTier": "unknown",
+      "access": "No LICENSE file exists.",
+      "labels": [
+        "facial skin patches for local descriptor learning"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "zero skin-condition annotations of any kind; it is a keypoint-matching benchmark, not a pore-grade dataset"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "aihub_skincare_ingredient",
+      "name": "AI-Hub 스킨케어 성분-효능 추천 데이터 (dataSetSn=71886)",
+      "url": "https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71886",
+      "licenseTier": "non_commercial",
+      "access": "AI-Hub application; the operating institution states non-commercial R&D by default.",
+      "labels": [
+        "ingredient-efficacy knowledge",
+        "survey records"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "supports no ARU camera axis",
+        "commercial use needs a separate agreement with the operating institution"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "aihub_facial_skin_disease_synthetic",
+      "name": "AI-Hub 안면부 피부질환 이미지 합성 데이터 (dataSetSn=71863)",
+      "url": "https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71863",
+      "licenseTier": "gated_application",
+      "access": "AI-Hub clinical-data track; terms unread because aihub.or.kr was unreachable.",
+      "labels": [
+        "synthetic facial skin-disease images",
+        "lesion masks"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "synthetic and disease-oriented",
+        "no subject demographics can exist",
+        "clinical track carries the heaviest access terms"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
+    },
+    {
+      "id": "kface",
+      "name": "AI-Hub K-FACE 한국인 안면 이미지 (dataSetSn=83)",
+      "url": "https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=83",
+      "licenseTier": "gated_application",
+      "access": "AI-Hub registration; terms unread.",
+      "labels": [
+        "controlled multi-camera face images with pose and illumination variation"
+      ],
+      "recommendedUse": [],
+      "risks": [
+        "no skin labels at all",
+        "identifiable biometric data on named individuals engages 개인정보보호법 sensitive-information duties"
+      ],
+      "verifiedRejection": "2026-09-13 survey: adversarial verification found it unusable for ARU."
     }
   ]
 }

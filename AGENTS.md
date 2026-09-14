@@ -8,7 +8,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Project Overview
 
-**아루 ARU** (formerly K-Beauty AI (Camera)) is a progressive skin analysis and product recommendation platform combining on-device computer vision (MediaPipe), cloud vision APIs (Gemini/OpenAI), and a research-grade ML training loop.
+**아루 ARU** is a skin analysis and product recommendation web app combining on-device
+computer vision (MediaPipe), optional cloud vision APIs (Gemini/OpenAI), and a
+research-grade ML training loop. It ships in five languages — English (default),
+Korean, Japanese, Simplified Chinese, and Arabic with right-to-left layout.
 
 **Core Loop:**
 1. User scans face with phone camera → MediaPipe extracts skin features (oil, redness, pores)
@@ -110,15 +113,19 @@ npm run start           # Serve production build
 npm run lint            # ESLint check
 
 # Testing
-npm run smoke           # Custom smoke test (scripts/smoke-test.mjs)
+npm run test            # Vitest unit + contract tests
+npm run smoke           # lint + vitest + build + py_compile + ml/selftest.py + routes + mobile E2E
+npm run test:mobile-ui  # Playwright mobile suite only
 npm run supabase:check  # Validate Supabase config
+python ml/selftest.py   # Standard-library checks for the ML rule modules (no torch needed)
 
 # ML Pipeline (offline, after exporting from /ops)
-cd ml
-python calibrate.py gyeol-labels-42.jsonl
-python prepare_crop_dataset.py gyeol-crop-samples-42.jsonl
-python evaluate_dataset.py ml/data/crops/manifest.csv
-python train_visible_attributes.py ml/data/crops/manifest.csv
+python ml/calibrate.py gyeol-labels-42.jsonl
+python ml/prepare_crop_dataset.py gyeol-crop-samples-42.jsonl --out ml/data/crops
+python ml/evaluate_dataset.py ml/data/crops/manifest.csv
+python ml/run_pipeline.py --labels gyeol-labels-42.jsonl --crops gyeol-crop-samples-42.jsonl --decode-crops
+python ml/train_visible_attributes.py --data ml/data/crops --purpose product_training
+python ml/licensing.py --audit
 ```
 
 ---
@@ -138,6 +145,21 @@ python train_visible_attributes.py ml/data/crops/manifest.csv
 8. **Participant ID case-sensitive** – "p005" fails; must be "P005" after normalization
 9. **ML training sample size matters** – <30 crops: calibration only; 300+: first production model
 10. **Crop storage limit is hard** – Max 120 crops in local memory; oldest discarded when full
+
+### 🧭 ML-specific
+15. **Axes are not interchangeable with the target schema** – `ml/aru_axes.py` is what the
+    training code reads; `ml/aru_target_schema.json` carries commerce and clinic handling.
+    Every target declares `aruAxisId`, and `tests/ml-registry.test.ts` fails on drift.
+16. **Hydration and sensitivity get no camera head** – a corneometer reading and a reaction
+    history are not in an RGB frame. They are survey-gated, and the product must never
+    present them as camera measurements.
+17. **`source` means two things** – a registry id in an external manifest, feedback
+    provenance ("user", "staff") in ARU's own export. Only `license_tier` distinguishes
+    them; see `licensing.dataset_source_for_row`.
+18. **Never judge an ordinal head on accuracy alone** – a majority-class predictor scores
+    well on accuracy, MAE and "within one grade". Read `qwk` and `pearson`.
+19. **A subgroup too small to evaluate is a blocker, not a pass** – the promotion gate
+    reports it as UNEVALUATED and refuses.
 
 ### 💡 Development Issues
 11. **MediaPipe WASM requires CDN** – Fails offline; needs `cdn.jsdelivr.net` access
@@ -164,18 +186,42 @@ BACKEND API:
   /api/analyze    → Vision API call (Gemini/OpenAI base64 crop)
   /api/reason     → LLM-generated product copy (filtered)
   /api/sync       → Batch upload labels/crops/consent to Supabase
+  /api/out        → Retailer click-through with attribution
+  /api/reengage/* → Reminder subscribe / unsubscribe / scheduled run
 
-RESEARCH FLOW:
+OTHER CONSUMER ROUTES:
+  /studio         → Shareable result card
+  /checkin        → 2-/4-week follow-up
+  /reco           → Legacy recommendation path, redirects to /report
+  /unsubscribe    → Signed reminder opt-out
+
+RESEARCH FLOW (404 in production unless INTERNAL_TOOLS_* is set):
   /pilot          → Create participant session (P001–P030)
   /ops            → Dashboard: label count, crop count, ML readiness band
+  /eval           → Re-read harness
   /privacy        → Export JSONL/CSV or clear local data
 
 ML PIPELINE (offline):
   Export from /ops dashboard
-    ↓ calibrate.py (validate heuristics on user labels)
+    ↓ calibrate.py (learn heuristic thresholds from user labels)
     ↓ prepare_crop_dataset.py (decode JSONL, generate manifest)
-    ↓ evaluate_dataset.py (check data quality)
-    ↓ train_visible_attributes.py (MobileNetV3-small, participant-grouped CV)
+    ↓ evaluate_dataset.py (data quality + subgroup coverage)
+    ↓ run_pipeline.py (lab entry point; wraps the above and writes an experiment report)
+    ↓ train_visible_attributes.py (MobileNetV3-small, subgroup-stratified grouped CV)
+
+  Rules live in four modules that everything else reads, never re-declares:
+    aru_axes.py        which axes exist, their level counts, which get a camera head
+    subgroups.py       tone band (ITA) x age band, fold assignment, coverage warnings
+    ita.py             ITA from pixels, matching dominantTone in lib/skin.ts
+    licensing.py       whether a dataset may be used for a given purpose
+    model_contract.py  reads the shipped model manifest so training enforces its gate
+    skin_indices.py    every pixel index's transfer class: within_image indices may
+                       drive a reading, absolute ones (ITA, melanin) stratify only
+
+  External datasets are ingested declaratively:
+    external_manifest.py + adapter_specs/*.json → the same manifest shape the trainer reads
+
+  selftest.py is the standard-library check for all of the above; npm run smoke runs it.
 ```
 
 ---
@@ -194,6 +240,12 @@ ML PIPELINE (offline):
 | [app/api/sync/route.ts](app/api/sync/route.ts) | Batch upload endpoint, rate limiting, token validation |
 | [app/ops/page.tsx](app/ops/page.tsx) | Research dashboard, ML readiness band calculation |
 | [supabase/schema.sql](supabase/schema.sql) | Database schema: labels, crops, consent, pilot_notes |
+| [ml/aru_axes.py](ml/aru_axes.py) | Axis registry: level counts, which axes get a camera head |
+| [ml/subgroups.py](ml/subgroups.py) | Tone/age banding, leak-free stratified folds, coverage warnings |
+| [ml/licensing.py](ml/licensing.py) | Dataset licence gate by purpose |
+| [ml/selftest.py](ml/selftest.py) | Standard-library checks for the rule modules |
+| [lib/tone-bands.ts](lib/tone-bands.ts) | Browser-side tone bands, kept in step with ml/subgroups.py |
+| [docs/skin-dataset-survey.md](docs/skin-dataset-survey.md) | What public data can and cannot supervise |
 
 ---
 

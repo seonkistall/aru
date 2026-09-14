@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-07-07.aru-source-candidates.v1",
-  "updated": "2026-07-07",
+  "updated": "2026-09-13",
   "policy": {
     "publicAttribution": "Product UI does not need to expose every training source, but internal provenance must never be hidden.",
     "licenseBypass": false,
@@ -14,7 +14,17 @@
       "tier": "primary",
       "sourceType": "first_party_consent",
       "commercialTraining": "allowed_with_user_consent_and_retention_policy",
-      "mapsToTargets": ["cosmetic_oil", "pore_visibility", "visible_redness", "tone_evenness", "pigmentation_spots", "fine_lines_wrinkles", "blemish_acne_like", "dryness_flaking", "acne_scarring_texture"],
+      "mapsToTargets": [
+        "cosmetic_oil",
+        "pore_visibility",
+        "visible_redness",
+        "tone_evenness",
+        "pigmentation_spots",
+        "fine_lines_wrinkles",
+        "blemish_acne_like",
+        "dryness_flaking",
+        "acne_scarring_texture"
+      ],
       "whyAru": "Only source that directly matches ARU camera, Korean/K-beauty product language, opt-in consent, feedback labels, and commerce outcomes.",
       "nextAction": "Collect participant-grouped crops with reviewer labels and outcomes; keep low-confidence/ungradable samples out of training by default."
     },
@@ -23,12 +33,21 @@
       "tier": "primary",
       "sourceType": "private_licensed",
       "commercialTraining": "contract_required",
-      "mapsToTargets": ["cosmetic_oil", "pore_visibility", "visible_redness", "tone_evenness", "pigmentation_spots", "fine_lines_wrinkles", "blemish_acne_like", "dryness_flaking"],
+      "mapsToTargets": [
+        "cosmetic_oil",
+        "pore_visibility",
+        "visible_redness",
+        "tone_evenness",
+        "pigmentation_spots",
+        "fine_lines_wrinkles",
+        "blemish_acne_like",
+        "dryness_flaking"
+      ],
       "whyAru": "Best bridge if public cosmetic labels are unavailable or non-commercial. Contract must allow commercial ML training, derivative models, and retention.",
       "nextAction": "Use ml/private_sources.example.json as the local contract manifest template."
     },
     {
-      "id": "ffhq_wrinkle",
+      "id": "ffhq-wrinkle",
       "tier": "auxiliary",
       "sourceType": "public_dataset",
       "url": "https://github.com/labhai/ffhq-wrinkle-dataset",
@@ -37,9 +56,18 @@
       "githubStars": null,
       "verifiedAt": "2026-07-07",
       "evidence": "1000 manual wrinkle masks and 50000 weak masks; source images include mixed Creative Commons terms and non-commercial constraints.",
-      "mapsToTargets": ["fine_lines_wrinkles", "face_roi_mask"],
-      "allowedUse": ["wrinkle pretraining", "mask architecture experiments", "non-product benchmark until license clears"],
-      "blockedUse": ["direct commercial ARU model training without license review"]
+      "mapsToTargets": [
+        "fine_lines_wrinkles",
+        "face_roi_mask"
+      ],
+      "allowedUse": [
+        "wrinkle pretraining",
+        "mask architecture experiments",
+        "non-product benchmark until license clears"
+      ],
+      "blockedUse": [
+        "direct commercial ARU model training without license review"
+      ]
     },
     {
       "id": "face_parsing_pytorch",
@@ -49,9 +77,19 @@
       "commercialTraining": "code_mit_dataset_separate",
       "githubStars": "2.6k",
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["face_roi_mask", "makeup_occlusion", "region_quality"],
-      "allowedUse": ["ROI parser benchmark", "architecture reference", "mask preprocessor if dataset/model license clears"],
-      "blockedUse": ["using bundled pretrained weights commercially without checking their training-data terms"]
+      "mapsToTargets": [
+        "face_roi_mask",
+        "makeup_occlusion",
+        "region_quality"
+      ],
+      "allowedUse": [
+        "ROI parser benchmark",
+        "architecture reference",
+        "mask preprocessor if dataset/model license clears"
+      ],
+      "blockedUse": [
+        "using bundled pretrained weights commercially without checking their training-data terms"
+      ]
     },
     {
       "id": "mediapipe",
@@ -61,9 +99,19 @@
       "commercialTraining": "code_apache_2_runtime_ok_check_model_terms",
       "githubStars": "36k",
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["capture_quality", "face_landmarks", "region_quality"],
-      "allowedUse": ["on-device landmarks", "camera QA", "mobile latency baseline"],
-      "blockedUse": ["treating landmarks as skin-condition ground truth"]
+      "mapsToTargets": [
+        "capture_quality",
+        "face_landmarks",
+        "region_quality"
+      ],
+      "allowedUse": [
+        "on-device landmarks",
+        "camera QA",
+        "mobile latency baseline"
+      ],
+      "blockedUse": [
+        "treating landmarks as skin-condition ground truth"
+      ]
     },
     {
       "id": "retinaface_pytorch",
@@ -74,9 +122,18 @@
       "commercialTraining": "code_mit_dataset_terms_separate",
       "githubStars": "3k",
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["capture_quality", "face_detection_robustness"],
-      "allowedUse": ["detector benchmark", "WIDER FACE QA", "edge detector comparison"],
-      "blockedUse": ["skin label training"]
+      "mapsToTargets": [
+        "capture_quality",
+        "face_detection_robustness"
+      ],
+      "allowedUse": [
+        "detector benchmark",
+        "WIDER FACE QA",
+        "edge detector comparison"
+      ],
+      "blockedUse": [
+        "skin label training"
+      ]
     },
     {
       "id": "acne04",
@@ -87,9 +144,17 @@
       "commercialTraining": "not_without_author_permission",
       "githubStars": 84,
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["blemish_acne_like"],
-      "allowedUse": ["research benchmark", "ordinal acne severity ideas", "label distribution learning reference"],
-      "blockedUse": ["commercial ARU product model training without permission"]
+      "mapsToTargets": [
+        "blemish_acne_like"
+      ],
+      "allowedUse": [
+        "research benchmark",
+        "ordinal acne severity ideas",
+        "label distribution learning reference"
+      ],
+      "blockedUse": [
+        "commercial ARU product model training without permission"
+      ]
     },
     {
       "id": "acnescu",
@@ -100,9 +165,16 @@
       "commercialTraining": "prohibited_without_author_permission",
       "githubStars": 5,
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["blemish_acne_like"],
-      "allowedUse": ["non-commercial research benchmark", "detector design review"],
-      "blockedUse": ["commercial model training"]
+      "mapsToTargets": [
+        "blemish_acne_like"
+      ],
+      "allowedUse": [
+        "non-commercial research benchmark",
+        "detector design review"
+      ],
+      "blockedUse": [
+        "commercial model training"
+      ]
     },
     {
       "id": "scin",
@@ -113,9 +185,19 @@
       "commercialTraining": "license_review_required",
       "githubStars": null,
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["skin_tone_coverage", "fairness_audit", "clinic_boundary_copy"],
-      "allowedUse": ["tone coverage audit", "fairness stress test", "reviewer calibration"],
-      "blockedUse": ["direct cosmetic recommendation training"]
+      "mapsToTargets": [
+        "skin_tone_coverage",
+        "fairness_audit",
+        "clinic_boundary_copy"
+      ],
+      "allowedUse": [
+        "tone coverage audit",
+        "fairness stress test",
+        "reviewer calibration"
+      ],
+      "blockedUse": [
+        "direct cosmetic recommendation training"
+      ]
     },
     {
       "id": "hyperskin",
@@ -126,9 +208,17 @@
       "commercialTraining": "eula_required",
       "githubStars": null,
       "verifiedAt": "2026-07-07",
-      "mapsToTargets": ["tone_evenness", "color_constancy", "lighting_robustness"],
-      "allowedUse": ["spectral/color research after EULA approval"],
-      "blockedUse": ["mobile-selfie product training without protocol validation"]
+      "mapsToTargets": [
+        "tone_evenness",
+        "color_constancy",
+        "lighting_robustness"
+      ],
+      "allowedUse": [
+        "spectral/color research after EULA approval"
+      ],
+      "blockedUse": [
+        "mobile-selfie product training without protocol validation"
+      ]
     }
   ]
 }
