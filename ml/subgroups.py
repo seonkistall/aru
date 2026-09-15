@@ -465,6 +465,112 @@ def ordinal_quality_check(
     return report, blockers
 
 
+def beats_heuristic_check(
+    overall: dict,
+    axes: tuple[str, ...],
+    baseline: dict | None,
+    min_qwk_gain: float,
+    baseline_axes: tuple[str, ...] = (),
+) -> tuple[dict, list[str]]:
+    """Does the model actually beat the rule it would replace? Per axis, on qwk.
+
+    Every other rule in this gate asks whether the model is good in absolute terms.
+    None of them asks the question the gate exists for: *should this model REPLACE the
+    heuristic the app already ships?* A model can clear the subgroup gap, clear the qwk
+    floor, and still be worse than the three thresholds in lib/skin.ts — and promoting
+    it would make the product worse with every number in the report looking healthy.
+
+    `baseline_axes` names the axes the shipped heuristic actually covers. For an axis
+    outside it there is no rule to beat and nothing is asked. For an axis INSIDE it, a
+    missing or unscored baseline is a blocker: "we never scored the heuristic" must not
+    read the same as "the model won". That is what makes a pretrain on external data,
+    which carries none of ARU's ROI features, correctly unpromotable.
+
+    Compared on qwk rather than accuracy because accuracy is exactly the metric a
+    degenerate predictor wins on, and a threshold heuristic on skewed data is itself
+    close to degenerate.
+    """
+    report: dict[str, dict] = {}
+    blockers: list[str] = []
+    covered = set(baseline_axes)
+    baseline = baseline or {}
+
+    for axis in axes:
+        if axis not in covered:
+            continue
+
+        entry: dict = {"minQwkGain": min_qwk_gain}
+        base = baseline.get(axis)
+        base_qwk = base.get("qwk") if isinstance(base, dict) else None
+        model_qwk = overall.get(axis, {}).get("qwk") if isinstance(overall.get(axis), dict) else None
+        scored_rows = base.get("scoredRows") if isinstance(base, dict) else None
+
+        def _usable(value: object) -> bool:
+            return (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+            )
+
+        entry["heuristicQwk"] = base_qwk if _usable(base_qwk) else None
+        entry["modelQwk"] = model_qwk if _usable(model_qwk) else None
+        entry["scoredRows"] = scored_rows
+
+        if not isinstance(base, dict) or not scored_rows:
+            entry["beats"] = False
+            entry["reason"] = "the heuristic was never scored on this split"
+            report[axis] = entry
+            blockers.append(
+                f"[{axis}] the shipped heuristic was not scored on this validation split, so "
+                "there is nothing to show the model beats. Its ROI feature is missing from the "
+                "data."
+            )
+            continue
+
+        # The two qwk values must come from the SAME rows or the comparison is
+        # meaningless. The model is scored on every labelled row; the heuristic can only
+        # be scored on labelled rows that also carry its ROI feature. If any row has a
+        # label but no feature, the heuristic was measured on a strict subset and the
+        # difference is not attributable to the model. Block rather than compare across
+        # unequal footing — the operator can see skippedNoFeature and fix the export.
+        model_n = overall.get(axis, {}).get("n") if isinstance(overall.get(axis), dict) else None
+        entry["modelScoredRows"] = model_n
+        if not isinstance(model_n, int) or scored_rows != model_n:
+            entry["beats"] = False
+            entry["reason"] = "model and heuristic were scored on different rows"
+            report[axis] = entry
+            skipped = base.get("skippedNoFeature")
+            blockers.append(
+                f"[{axis}] the heuristic was scored on {scored_rows} rows but the model on "
+                f"{model_n} ({skipped} labelled rows had no ROI feature), so the two qwk values "
+                "do not come from the same rows and cannot be compared"
+            )
+            continue
+
+        if not _usable(base_qwk) or not _usable(model_qwk):
+            entry["beats"] = False
+            entry["reason"] = "model or heuristic qwk is not a usable number"
+            report[axis] = entry
+            blockers.append(
+                f"[{axis}] model or heuristic qwk is missing or not a usable number, so the "
+                "comparison against the shipped rule is unverified"
+            )
+            continue
+
+        gain = model_qwk - base_qwk
+        entry["gain"] = gain
+        entry["beats"] = gain > min_qwk_gain
+        report[axis] = entry
+        if not entry["beats"]:
+            blockers.append(
+                f"[{axis}] model qwk {model_qwk:.3f} does not beat the shipped heuristic's "
+                f"{base_qwk:.3f} by more than {min_qwk_gain:.3f} (gain {gain:+.3f}, scored on "
+                f"{scored_rows} rows). Replacing the heuristic would not improve this axis."
+            )
+
+    return report, blockers
+
+
 def promotion_check(
     overall: dict,
     by_dimension: dict,
@@ -474,6 +580,9 @@ def promotion_check(
     *,
     min_qwk: float,
     min_pearson: float,
+    baseline: dict | None = None,
+    min_qwk_gain: float = 0.0,
+    baseline_axes: tuple[str, ...] = (),
 ) -> dict:
     """Can this model replace the heuristic? Subgroup gaps decide, not the mean.
 
@@ -541,14 +650,19 @@ def promotion_check(
             "evaluated": bool(worst_acc.get("evaluated")),
         }
     quality, quality_blockers = ordinal_quality_check(overall, axes, min_qwk, min_pearson)
-    reasons = quality_blockers + reasons
+    beats, beat_blockers = beats_heuristic_check(
+        overall, axes, baseline, min_qwk_gain, baseline_axes
+    )
+    reasons = quality_blockers + beat_blockers + reasons
     return {
         "meanAccuracy": mean_acc,
         "maxAllowedGap": max_gap,
         "minSamplesPerGroup": min_cell,
         "minQwk": min_qwk,
         "minPearson": min_pearson,
+        "minQwkGainOverHeuristic": min_qwk_gain,
         "ordinalQuality": quality,
+        "beatsHeuristic": beats,
         "dimensions": results,
         "promotable": not reasons,
         "blockers": reasons,

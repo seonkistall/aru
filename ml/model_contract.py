@@ -70,6 +70,27 @@ def min_pearson() -> float:
     return float(promotion_gate()["minPearson"])
 
 
+def min_qwk_gain_over_heuristic() -> float:
+    """How far a model must beat the shipped heuristic's qwk before it may replace it.
+
+    0.0 means strictly greater: a model that merely ties the rule it would replace has
+    not earned the swap. A positive margin should exceed validation noise, and nothing
+    in the pipeline estimates that noise yet, so inventing one would be a fake number.
+    """
+    return float(promotion_gate().get("minQwkGainOverHeuristic", 0.0))
+
+
+def fallback_heuristic() -> dict:
+    """The ROI rule the app ships, as the manifest publishes it.
+
+    Thresholds live in lib/skin.ts; this block mirrors them so the Python side can
+    score the same rule, and tests/skin-index-contract.test.ts fails on drift. Empty
+    when the manifest is missing — callers must treat that as "cannot score", never
+    as "nothing to beat".
+    """
+    return load_manifest().get("fallbackHeuristic") or {}
+
+
 def declared_dimensions() -> list[str]:
     """Subgroup dimensions the manifest says the gate covers."""
     declared = promotion_gate().get("dimensions") or []

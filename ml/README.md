@@ -213,6 +213,43 @@ has almost no gap between its mean and its worst group. Fed the majority-class
 confusion, `metrics_from_confusion` returns accuracy 0.80, `within_one_grade` 0.95,
 `qwk` 0.0 and `pearson` 0.0 — which used to pass.
 
+### The model must beat the heuristic it would replace
+
+Since 2026-09-15 the gate also scores the **shipped ROI heuristic** — the three
+threshold pairs in `lib/skin.ts` — on the same validation rows, through the same
+confusion-matrix code (`ml/heuristic_baseline.py` -> `ml/ordinal_metrics.py`), and
+requires the model's `qwk` to exceed it per axis by `minQwkGainOverHeuristic`.
+
+Every other rule asks whether the model is good in absolute terms. None of them asked
+the question the gate exists for: *should this model REPLACE what already ships?* A
+model can clear the subgroup gap, clear the qwk floor, and still be worse than three
+numbers in a TypeScript file — and promoting it would make the product worse with every
+figure in the report looking healthy.
+
+- **0.0 means strictly greater.** A model that ties the rule it would replace has not
+  earned the swap. It is 0.0 rather than a positive margin on purpose: a margin should
+  exceed validation noise, and nothing here estimates that noise yet, so any specific
+  margin would be an invented number.
+- **Compared on `qwk`, not accuracy.** Accuracy is the metric a degenerate predictor
+  wins, and a threshold rule on skewed data is itself close to degenerate.
+- **An unscored heuristic blocks.** "We never scored it" must not read the same as "the
+  model won". This is what correctly makes a pretrain on external data — which carries
+  none of ARU's ROI features — unpromotable.
+- **Both numbers must come from the same rows.** The model is scored on every labelled
+  validation row; the heuristic can only be scored on labelled rows that also carry its
+  ROI feature. If even one row has a label and no feature, the two qwk values describe
+  different row sets and their difference is not attributable to the model, so the gate
+  blocks and names the count. `skippedNoFeature` in `metrics.json` says how many, and
+  the fix is the export, not the gate.
+- **Only the three axes with a scalar ROI feature are covered.** The rest have no
+  heuristic to beat and the gate asks nothing of them.
+
+The thresholds live in `lib/skin.ts` and are mirrored into the manifest's
+`fallbackHeuristic` block so Python can score the identical rule;
+`tests/skin-index-contract.test.ts` fails if the two drift, and also checks that
+applying the manifest rule to real `analyzeSkin` output reproduces the levels the app
+reports, cut-point edge convention included.
+
 `minQwk`/`minPearson` are currently **0.4, and provisional**. It is a floor against
 degeneracy, not a quality claim: 0.4 sits near the fair/moderate boundary of the
 commonly cited Landis & Koch kappa bands — whose *moderate* band actually begins at

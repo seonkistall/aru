@@ -25,9 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aru_axes  # noqa: E402
 import calibrate  # noqa: E402
 import external_manifest  # noqa: E402
+import heuristic_baseline  # noqa: E402
 import ita  # noqa: E402
 import licensing  # noqa: E402
 import model_contract  # noqa: E402
+import ordinal_metrics  # noqa: E402
 import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
@@ -607,6 +609,195 @@ class PromotionGate(unittest.TestCase):
         trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
         self.assertNotIn("def promotion_check(", trainer)
         self.assertIn("promotion_check = subgroups.promotion_check", trainer)
+
+
+
+class _FakeRow:
+    """The two fields heuristic_baseline.score reads off the trainer's Row."""
+
+    def __init__(self, labels, meta):
+        self.labels = labels
+        self.meta = meta
+
+
+class HeuristicBaseline(unittest.TestCase):
+    """The rule a trained model has to beat before it may replace it."""
+
+    def test_the_cut_convention_matches_lib_skin_ts(self):
+        """`bucket()` is `value < lo ? 0 : value < hi ? 1 : 2`.
+
+        A value sitting exactly ON a cut lands in the HIGHER level. Disagreeing on this
+        edge would show up as a fake accuracy gap between the heuristic and the app.
+        """
+        lo, hi = 0.05, 0.16
+        cuts = [lo, hi]
+        self.assertEqual(heuristic_baseline.predict_level(lo - 1e-9, cuts), 0)
+        self.assertEqual(heuristic_baseline.predict_level(lo, cuts), 1)
+        self.assertEqual(heuristic_baseline.predict_level(hi - 1e-9, cuts), 1)
+        self.assertEqual(heuristic_baseline.predict_level(hi, cuts), 2)
+        self.assertEqual(heuristic_baseline.predict_level(1e6, cuts), 2)
+
+    def test_it_reads_the_shipped_thresholds_rather_than_its_own(self):
+        covered = heuristic_baseline.covered_axes()
+        self.assertEqual(set(covered), {"oil", "redness", "pores"})
+        for axis in covered:
+            spec = model_contract.fallback_heuristic()["axes"][axis]
+            self.assertEqual(len(spec["thresholds"]), aru_axes.levels_for(axis) - 1)
+            self.assertTrue(spec["feature"])
+
+    def test_a_perfect_heuristic_scores_one_and_a_useless_one_scores_zero(self):
+        """Scored through ordinal_metrics, the same code that scores the model."""
+        levels = {"oil": 3}
+        # Features placed squarely inside each band, labels agreeing.
+        perfect = [
+            _FakeRow({"oil": 0}, {"shine": "0.01"}),
+            _FakeRow({"oil": 1}, {"shine": "0.10"}),
+            _FakeRow({"oil": 2}, {"shine": "0.30"}),
+        ] * 10
+        report = heuristic_baseline.score(perfect, ("oil",), levels)["oil"]
+        self.assertEqual(report["scoredRows"], 30)
+        self.assertEqual(report["accuracy"], 1.0)
+        self.assertEqual(report["qwk"], 1.0)
+
+        # Same features, labels shuffled so the rule carries nothing.
+        useless = [_FakeRow({"oil": i % 3}, {"shine": "0.01"}) for i in range(30)]
+        useless_report = heuristic_baseline.score(useless, ("oil",), levels)["oil"]
+        self.assertEqual(useless_report["qwk"], 0.0)
+
+    def test_rows_without_the_feature_are_reported_not_guessed(self):
+        """"The heuristic scored well" and "it was scored on two rows" must differ."""
+        rows = [
+            _FakeRow({"oil": 0}, {"shine": "0.01"}),
+            _FakeRow({"oil": 2}, {"shine": "0.30"}),
+            _FakeRow({"oil": 1}, {"shine": ""}),      # unmeasured
+            _FakeRow({"oil": 1}, {}),                  # column absent
+            _FakeRow({"oil": 1}, {"shine": "n/a"}),   # unparseable
+            _FakeRow({"oil": None}, {"shine": "0.1"}),  # unlabelled: not counted at all
+        ]
+        report = heuristic_baseline.score(rows, ("oil",), {"oil": 3})["oil"]
+        self.assertEqual(report["labelledRows"], 5)
+        self.assertEqual(report["scoredRows"], 2)
+        self.assertEqual(report["skippedNoFeature"], 3)
+
+    def test_an_axis_the_heuristic_does_not_cover_is_absent(self):
+        report = heuristic_baseline.score(
+            [_FakeRow({"wrinkles": 1}, {"shine": "0.1"})], ("wrinkles",), {"wrinkles": 4}
+        )
+        self.assertNotIn("wrinkles", report)
+
+
+class BeatsHeuristic(unittest.TestCase):
+    DIMS = {"tone": {
+        "light": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 40},
+        "tan": {"accuracy": 0.88, "ordinal_mae": 0.1, "n": 40},
+    }}
+
+    def gate(self, model_qwk, baseline, covered=("oil",), gain=0.0):
+        # scoredRows in these fixtures matches n: the subset-equality rule is exercised
+        # by its own cases below, not smuggled into every other assertion.
+        overall = {"oil": {"n": 100, "accuracy": 0.90, "qwk": model_qwk, "pearson": 0.75}}
+        return subgroups.promotion_check(
+            overall, self.DIMS, ("oil",), 20, 0.1,
+            min_qwk=0.4, min_pearson=0.4,
+            baseline=baseline, min_qwk_gain=gain, baseline_axes=covered,
+        )
+
+    def test_a_model_worse_than_the_heuristic_is_not_promotable(self):
+        """Every absolute bar passes; it is still worse than what ships today."""
+        gate = self.gate(0.55, {"oil": {"qwk": 0.60, "scoredRows": 100}})
+        self.assertTrue(gate["ordinalQuality"]["oil"]["evaluated"])
+        self.assertFalse(gate["promotable"])
+        self.assertIn("does not beat the shipped heuristic", " ".join(gate["blockers"]))
+
+    def test_a_tie_does_not_count_as_beating_it(self):
+        gate = self.gate(0.60, {"oil": {"qwk": 0.60, "scoredRows": 100}})
+        self.assertFalse(gate["promotable"])
+        self.assertEqual(gate["beatsHeuristic"]["oil"]["gain"], 0.0)
+
+    def test_a_model_that_beats_it_passes(self):
+        gate = self.gate(0.70, {"oil": {"qwk": 0.60, "scoredRows": 100}})
+        self.assertTrue(gate["promotable"], gate["blockers"])
+        self.assertTrue(gate["beatsHeuristic"]["oil"]["beats"])
+        self.assertAlmostEqual(gate["beatsHeuristic"]["oil"]["gain"], 0.10)
+
+    def test_an_unscored_heuristic_blocks_rather_than_being_a_free_pass(self):
+        """A pretrain on external data carries none of ARU's ROI features.
+
+        "We never scored the heuristic" must not read the same as "the model won".
+        """
+        for baseline in (None, {}, {"oil": {"qwk": 0.5, "scoredRows": 0}}):
+            with self.subTest(baseline=baseline):
+                gate = self.gate(0.90, baseline)
+                self.assertFalse(gate["promotable"])
+                self.assertIn("was not scored on this validation split", " ".join(gate["blockers"]))
+
+    def test_a_comparison_across_different_rows_blocks(self):
+        """The load-bearing property: both qwk values must come from the same rows.
+
+        The model is scored on every labelled row; the heuristic can only be scored on
+        labelled rows that also carry its ROI feature. If even one row has a label and
+        no feature, the difference between the two numbers is not attributable to the
+        model, so there is nothing to conclude from it.
+        """
+        overall = {"oil": {"n": 100, "accuracy": 0.90, "qwk": 0.90, "pearson": 0.75}}
+        base = {"oil": {"qwk": 0.10, "scoredRows": 93, "skippedNoFeature": 7}}
+        gate = subgroups.promotion_check(
+            overall, self.DIMS, ("oil",), 20, 0.1, min_qwk=0.4, min_pearson=0.4,
+            baseline=base, min_qwk_gain=0.0, baseline_axes=("oil",),
+        )
+        # The model "wins" by 0.80 and it still must not pass.
+        self.assertFalse(gate["promotable"])
+        self.assertIn("do not come from the same rows", " ".join(gate["blockers"]))
+        self.assertEqual(gate["beatsHeuristic"]["oil"]["modelScoredRows"], 100)
+
+    def test_equal_row_counts_are_required_not_merely_reported(self):
+        overall = {"oil": {"n": 50, "accuracy": 0.90, "qwk": 0.70, "pearson": 0.75}}
+        for scored, ok in ((50, True), (49, False), (51, False)):
+            with self.subTest(scored=scored):
+                gate = subgroups.promotion_check(
+                    overall, self.DIMS, ("oil",), 20, 0.1, min_qwk=0.4, min_pearson=0.4,
+                    baseline={"oil": {"qwk": 0.50, "scoredRows": scored, "skippedNoFeature": 0}},
+                    min_qwk_gain=0.0, baseline_axes=("oil",),
+                )
+                self.assertEqual(gate["promotable"], ok)
+
+    def test_a_non_finite_qwk_on_either_side_blocks(self):
+        for bad in (float("nan"), float("inf")):
+            with self.subTest(bad=bad):
+                self.assertFalse(self.gate(0.9, {"oil": {"qwk": bad, "scoredRows": 50}})["promotable"])
+                self.assertFalse(self.gate(bad, {"oil": {"qwk": 0.5, "scoredRows": 50}})["promotable"])
+
+    def test_an_uncovered_axis_is_asked_nothing(self):
+        """No heuristic exists for it, so there is nothing to beat."""
+        gate = self.gate(0.70, {}, covered=())
+        self.assertTrue(gate["promotable"], gate["blockers"])
+        self.assertEqual(gate["beatsHeuristic"], {})
+
+    def test_the_margin_comes_from_the_shipped_manifest(self):
+        self.assertEqual(
+            model_contract.min_qwk_gain_over_heuristic(),
+            float(model_contract.promotion_gate()["minQwkGainOverHeuristic"]),
+        )
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        self.assertIn("model_contract.min_qwk_gain_over_heuristic()", trainer)
+        self.assertIn("heuristic_baseline.score(", trainer)
+        self.assertIn("heuristic_baseline.covered_axes()", trainer)
+
+
+class OrdinalMetrics(unittest.TestCase):
+    def test_a_majority_class_predictor_scores_zero_agreement(self):
+        """The numbers quoted throughout the docs, from the real function."""
+        got = ordinal_metrics.metrics_from_confusion({"oil": [[80, 0, 0], [15, 0, 0], [5, 0, 0]]})["oil"]
+        self.assertEqual(got["n"], 100)
+        self.assertAlmostEqual(got["accuracy"], 0.80)
+        self.assertAlmostEqual(got["within_one_grade"], 0.95)
+        self.assertEqual(got["qwk"], 0.0)
+        self.assertEqual(got["pearson"], 0.0)
+
+    def test_the_trainer_does_not_keep_a_second_copy(self):
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        self.assertNotIn("def metrics_from_confusion(", trainer)
+        self.assertIn("metrics_from_confusion = ordinal_metrics.metrics_from_confusion", trainer)
 
 
 

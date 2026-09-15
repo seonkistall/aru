@@ -38,6 +38,33 @@
       "결 뚜렷"
     ]
   },
+  "fallbackHeuristic": {
+    "version": "roi-calibrated-2026-09-14",
+    "note": "The ROI heuristic the app ships today, and the thing a trained model has to beat before it may replace it. These are ATTR_THRESHOLDS and ATTR_RAW_KEY in lib/skin.ts, mirrored here so the Python side can score the SAME rule on the SAME validation split without re-deriving it. tests/skin-index-contract.test.ts fails if the two drift. Only the three axes with a scalar ROI feature are listed; the rest have no heuristic to beat, so the gate asks nothing of them.",
+    "axes": {
+      "oil": {
+        "feature": "shine",
+        "thresholds": [
+          0.05,
+          0.16
+        ]
+      },
+      "redness": {
+        "feature": "relRedness",
+        "thresholds": [
+          0.012,
+          0.03
+        ]
+      },
+      "pores": {
+        "feature": "cov",
+        "thresholds": [
+          0.085,
+          0.14
+        ]
+      }
+    }
+  },
   "promotionGate": {
     "minTrainingCrops": 300,
     "minPilotParticipants": 30,
@@ -53,8 +80,9 @@
       "maxAccuracyGap": 0.1,
       "minQwk": 0.4,
       "minPearson": 0.4,
+      "minQwkGainOverHeuristic": 0.0,
       "calibrationFile": "tone_calibration.json",
-      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently. Accuracy alone cannot carry this: on a skewed ordinal scale a majority-class predictor reaches accuracy 0.80 and within_one_grade 0.95 while qwk and pearson are exactly 0, and it has almost no subgroup gap, so the gap test is EASIEST to pass for a model that learned nothing. minQwk and minPearson are therefore checked per axis on the final validation confusion, and an axis whose metric is missing, non-finite, or has no validation samples blocks rather than passing. PROVISIONAL, and not a quality claim: 0.4 is a floor against degeneracy, chosen near the fair/moderate boundary of the commonly cited Landis & Koch kappa bands (their moderate band begins at 0.41). That convention could not be checked against its primary source from the build network, and 0.4 has not been measured on ARU data. The bar that actually matters is 'beats the shipped heuristic on the same validation set', which needs a heuristic baseline the pipeline does not record yet."
+      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently. Accuracy alone cannot carry this: on a skewed ordinal scale a majority-class predictor reaches accuracy 0.80 and within_one_grade 0.95 while qwk and pearson are exactly 0, and it has almost no subgroup gap, so the gap test is EASIEST to pass for a model that learned nothing. minQwk and minPearson are therefore checked per axis on the final validation confusion, and an axis whose metric is missing, non-finite, or has no validation samples blocks rather than passing. PROVISIONAL, and not a quality claim: 0.4 is a floor against degeneracy, chosen near the fair/moderate boundary of the commonly cited Landis & Koch kappa bands (their moderate band begins at 0.41). That convention could not be checked against its primary source from the build network, and 0.4 has not been measured on ARU data. The bar that actually matters is 'beats the shipped heuristic on the same validation set', which needs a heuristic baseline the pipeline does not record yet. Separately, minQwkGainOverHeuristic requires the model to BEAT the shipped ROI heuristic, per axis, on qwk, scored on the same validation split by the same code (ml/heuristic_baseline.py -> ml/ordinal_metrics.py). 0.0 means strictly greater: a model that merely ties the heuristic it would replace does not pass. It is 0.0 and not a positive margin on purpose — a margin should be larger than validation noise, and nothing here estimates that noise yet, so an invented margin would be a fake number. An axis the heuristic covers but whose features are missing from the data blocks: you cannot claim to beat a baseline you never scored."
     }
   },
   "axes": {

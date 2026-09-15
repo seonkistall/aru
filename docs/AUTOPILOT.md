@@ -178,15 +178,18 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Next
 
-- [AI] The promotion gate's `minQwk`/`minPearson` floors are **0.4 and provisional**:
-  a floor against degeneracy, not a quality claim. 0.4 sits near the fair/moderate
-  boundary of the commonly cited Landis & Koch kappa bands — their moderate band
-  begins at 0.41, and the primary source is egress-blocked from this worker, so the
-  convention itself is recorded as unverified. It has not been measured on ARU data.
-  The bar that actually matters is *beats the shipped heuristic on the same
-  validation set*, and the pipeline records no heuristic baseline to compare against.
-  Next step: score `lib/skin.ts`'s thresholds on the same validation split, write it
-  into `metrics.json`, and make the gate require the model to beat it.
+- [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
+  model that beats the heuristic by 0.001 on one validation split passes, and that
+  gain may be noise. Estimate the band: bootstrap the validation rows, report a CI on
+  the qwk difference, and require the gain to clear it. That is the honest version of
+  a margin, and the reason no positive number was invented for it.
+- [AI] `minQwk`/`minPearson` remain **0.4 and provisional**: a floor against
+  degeneracy, not a quality claim. 0.4 sits near the fair/moderate boundary of the
+  commonly cited Landis & Koch kappa bands — their moderate band begins at 0.41, and
+  the primary source is egress-blocked from this worker, so the convention itself is
+  recorded as unverified. It has not been measured on ARU data. With the heuristic
+  baseline now in the gate, this floor matters less than it did: "beats what ships"
+  is the bar that carries the decision.
 - [AI] `minSamplesPerBand` is compared against the wrong unit. `_aggregate` in
   `ml/train_visible_attributes.py` sums `n` ACROSS axes, and `worst_group` gates on
   that sum. Reproduced by feeding the real `_aggregate` one cell of 10 samples
@@ -371,3 +374,46 @@ Two things follow for anyone editing the Routine:
     - [oil] qwk 0.000 is below the 0.400 floor (...)
     - [oil] pearson 0.000 is below the 0.400 floor (...)
   ```
+- 2026-09-15 (3) — ML track, continued at the owner's direction: the heuristic
+  baseline. The gate now scores the **shipped ROI heuristic** — the three threshold
+  pairs in `lib/skin.ts` — on the same validation rows, through the same
+  confusion-matrix code, and blocks a model that does not beat it per axis on qwk.
+
+  This closes the gap the last two cycles kept naming. Every rule in the gate asked
+  whether the model was good in absolute terms; none asked whether it should REPLACE
+  what already ships. A model could clear the subgroup gap, clear the qwk floor, and
+  still be worse than three numbers in a TypeScript file — and promoting it would have
+  made the product worse with every figure in the report looking healthy.
+
+  - `ml/ordinal_metrics.py` (new, stdlib-only): `quadratic_weighted_kappa`,
+    `pearson_from_confusion`, `metrics_from_confusion` moved out of the torch-importing
+    trainer, which re-exports them. Model and heuristic are now scored by the same code
+    — a baseline from a second implementation is not a baseline.
+  - `ml/heuristic_baseline.py` (new, stdlib-only): applies the shipped rule to the
+    recorded ROI features and reports `scoredRows` / `skippedNoFeature`, so "the
+    heuristic scored well" and "the heuristic was scored on nine rows" cannot look the
+    same.
+  - The manifest gains a `fallbackHeuristic` block mirroring `ATTR_THRESHOLDS` and
+    `ATTR_RAW_KEY`, so Python never re-declares them.
+    `tests/skin-index-contract.test.ts` fails on drift AND checks that applying the
+    manifest rule to real `analyzeSkin` output reproduces the levels the app reports,
+    cut-point edge convention included. Verified the guard bites: drifting one
+    threshold 0.05 -> 0.06 fails with
+    `AssertionError: oil: expected [ 0.05, 0.16 ] to deeply equal [ 0.06, 0.16 ]`.
+  - Fails closed. An axis the heuristic covers but whose feature is missing from the
+    data blocks, which is what correctly makes a pretrain on external data
+    unpromotable: it carries none of ARU's ROI features.
+  - **Both numbers must come from the same rows**, and this was a real flaw found in
+    this cycle's own draft. The model is scored on every labelled validation row; the
+    heuristic can only be scored on labelled rows that also carry its ROI feature. The
+    first version compared the two qwk values anyway, so a heuristic measured on a
+    strict subset would have been presented as a like-for-like baseline. The gate now
+    requires `scoredRows == n` per axis and blocks otherwise, naming the count. A test
+    pins it with a model "winning" by 0.80 on mismatched rows and still not passing.
+
+  A tie does not pass — `minQwkGainOverHeuristic` is 0.0 meaning strictly greater. It
+  is 0.0 rather than a positive margin because a margin should exceed validation noise
+  and nothing estimates that noise yet; inventing one would have been a fake number.
+  The bootstrap that would earn a real margin is now the top ML backlog item.
+
+  Verified: `python ml/selftest.py` 61 -> 77 tests, OK.

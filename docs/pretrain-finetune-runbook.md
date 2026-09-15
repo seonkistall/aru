@@ -173,7 +173,7 @@ python ml/train_visible_attributes.py \
 
 ## 5단계: 승급 판정
 
-`metrics.json`에서 세 가지를 본다.
+`metrics.json`에서 네 가지를 본다.
 
 1. **`promotion_gate.promotable`** — 두 규칙을 **모두** 통과해야 true다.
    (a) 톤/나이/교차 셀 최악 그룹이 평균 대비 `maxAccuracyGap` 안에 드는지. 표본
@@ -193,7 +193,28 @@ python ml/train_visible_attributes.py \
 
    게이트는 fail-closed다. 축이 `overall`에 없거나, 검증 표본이 0이거나,
    `accuracy`/`qwk`/`pearson`이 없거나 NaN/inf면 통과가 아니라 차단이다.
-3. **`lineage`** — 출시하려는 가중치가 거쳐온 모든 출처. 여기 비상업이 하나라도
+3. **`heuristic_baseline` — 현행 휴리스틱을 이겼는지.** `lib/skin.ts`의 임계값 규칙을
+   **같은 검증 행**에 **같은 confusion 코드**로 채점한 결과다. 축별로 모델 `qwk`가
+   휴리스틱 `qwk`를 `minQwkGainOverHeuristic`(현재 0.0, 즉 **엄격히 초과**)만큼
+   넘어야 한다. 비기면 통과가 아니다.
+
+   이게 승급 판정의 핵심 질문이다. 나머지 규칙은 "모델이 절대적으로 괜찮은가"를
+   묻지만, 게이트가 존재하는 이유는 "**지금 출시 중인 규칙을 대체해야 하는가**"다.
+   서브그룹 격차도 통과하고 qwk floor도 통과하면서 TypeScript 파일의 숫자 3쌍보다
+   나쁠 수 있고, 그걸 승급시키면 리포트의 모든 수치가 멀쩡해 보이는 채로 제품이
+   나빠진다.
+
+   `scoredRows`를 반드시 같이 볼 것. 휴리스틱이 **채점되지 않았으면 차단**이다 —
+   "휴리스틱을 재본 적이 없다"와 "모델이 이겼다"가 같게 보이면 안 된다. 외부
+   데이터 pretrain은 ARU의 ROI feature가 없으므로 여기서 막히는 게 정상이다.
+
+   **두 qwk는 같은 행에서 나와야 한다.** 모델은 라벨이 있는 모든 검증 행에서
+   채점되지만, 휴리스틱은 라벨과 ROI feature를 **둘 다** 가진 행에서만 채점된다.
+   한 행이라도 라벨만 있고 feature가 없으면 두 숫자는 서로 다른 행 집합을 설명하는
+   것이고, 그 차이는 모델 덕분이라고 말할 수 없다. 그래서 `scoredRows != n`이면
+   차단한다. `skippedNoFeature`가 몇 개인지 알려주고, 고칠 곳은 게이트가 아니라
+   export다.
+4. **`lineage`** — 출시하려는 가중치가 거쳐온 모든 출처. 여기 비상업이 하나라도
    있으면 그 모델은 출시 불가다.
 
 기준값은 `public/models/visible-attributes/manifest.json`이 단일 소스이고
