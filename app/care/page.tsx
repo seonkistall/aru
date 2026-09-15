@@ -10,6 +10,7 @@ import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
 import { FlowSteps } from "@/app/components/flow-steps";
+import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { ProductVisual } from "@/app/components/product-visual";
 import { t, useLanguage } from "@/lib/i18n";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
@@ -138,6 +139,7 @@ export default function CarePage() {
               <Xiaohei size={54} pose="carry" />
             </span>
           </div>
+          <CommerceDisclosure style={{ marginTop: 2, marginBottom: 12 }} />
           {topPicks.map((pick) => {
             const links = productSearchLinks(pick.sku, `care_${lang}`);
             const expanded = Boolean(expandedMerchants[pick.sku.id]);

@@ -5,6 +5,7 @@ import { useState } from "react";
 // prices are shown only as broad budget bands; current sale information stays
 // with the merchant.
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
+import { CommerceDisclosure } from "./commerce-disclosure";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { recordProductUse } from "@/lib/store";
 import type { Recommendation } from "@/lib/recommend";
@@ -74,6 +75,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
       <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginTop: 11 }}>{pick.reason}</p>
       {pick.watchOut && <p style={watchOutStyle}>{t(pick.watchOut)}</p>}
       <p style={merchantNote}>{t("현재 가격, 옵션, 전성분은 판매처에서 다시 확인해 주세요.")}</p>
+      <CommerceDisclosure style={{ marginTop: 6, marginBottom: 10 }} />
 
       <a
         href={commerceOutHref(sku.id, commerce.merchant, placement)}

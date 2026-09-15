@@ -26,11 +26,26 @@ out-link (`/api/out` → `lib/commerce.ts`).
 | Quantity | Value | Where it comes from |
 |---|---|---|
 | Typical Korean skincare basket | ~₩30,000 (~$22) | catalogue price band in `lib/skus.ts` |
-| Affiliate commission | 3–10% depending on programme | Coupang Partners / Naver / Olive Young terms |
-| Revenue per converted click | ~$0.7–2.2 | basket × commission |
-| Conversions needed per month | **~4,500–14,000** | $10,000 ÷ revenue per conversion |
+| Affiliate commission | **7%** on a recommended item, 3% on another item bought through the link | 올리브영 쇼핑 큐레이터 terms, 2026-09-15 |
+| Revenue per converted click | ~₩2,100 (~$1.5) at 7% | basket × commission |
+| Conversions needed per month | **~6,700** | $10,000 ÷ revenue per conversion |
 | Scan→purchase conversion (optimistic) | 2–5% | affiliate-content benchmark, unverified for this product |
 | Monthly scans implied | **~100,000–700,000** | conversions ÷ conversion rate |
+
+Two things follow, and every cycle should act on them rather than re-deriving them:
+
+Rates by programme, as far as they could be verified on 2026-09-15 (Korean sites are
+blocked from the build network, so these come from search results, not from pages this
+repository opened):
+
+| Programme | Rate | Channel it accepts | Verified? |
+|---|---|---|---|
+| 올리브영 쇼핑 큐레이터 | 7% recommended item / 3% other item via the link | in-app curator links, shared to external channels | rate stated consistently across sources |
+| 네이버 쇼핑 커넥트 | 5–28% per product, 1.8% cross-store | creator space + an owned channel | whether a web service qualifies is **unverified** |
+| 쿠팡 파트너스 | **unverified** — sources say 3%, 1–3%, and 5% for beauty | website and mobile-app URLs may be registered | channel support is stated in the official guide |
+
+Note the programme name: it is **네이버 쇼핑 커넥트**, not "쇼핑파트너" (쇼핑파트너센터 is
+the seller-side console). An earlier version of this file had it wrong.
 
 Two things follow, and every cycle should act on them rather than re-deriving them:
 
@@ -38,6 +53,10 @@ Two things follow, and every cycle should act on them rather than re-deriving th
    no affiliate or partner id. `COMMERCE_LINK_OVERRIDES_JSON` is the designed
    insertion point for real affiliate URLs. Until the owner signs up for the
    programmes, 100% of traffic monetises at zero, whatever the loop builds.
+   **When that env is set, `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` must be set in the same
+   deploy** — see `affiliateDisclosureActive()`. Live affiliate URLs with the
+   disclosure still reading "no commission" is a false statement to users and, under
+   올리브영's curator terms, forfeits the payout.
 2. **Traffic is the binding constraint, not features.** At six figures of monthly
    scans the product needs to be excellent; at zero scans it does not matter how
    excellent it is. Cycles should prefer work that either (a) makes the product
@@ -220,9 +239,11 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   skin levels in server and messenger logs. Needs an owner call, not a loop decision.
 - [AI] `viralActivation` now has a denominator but no baseline. Once any real traffic
   exists, read it before changing the share surface again.
-- [OWNER] **Apply to the affiliate programmes** (Coupang Partners, Naver 쇼핑파트너,
-  Olive Young). Until then every out-click earns $0. This is the single highest-
-  leverage item on the whole list.
+- [OWNER] **Apply to the affiliate programmes** — 쿠팡 파트너스 (self-serve, accepts a
+  website or app URL as the channel), 올리브영 쇼핑 큐레이터 (in-app, 7%/3%), 네이버 쇼핑
+  커넥트 (5–28%, confirm a web service counts as a channel). Until then every out-click
+  earns $0. This is the single highest-leverage item on the whole list. The in-product
+  disclosure is already shipped and waiting on `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`.
 - [OWNER] AI-Hub 71645 data application (domestic applicant, account required).
 - [OWNER] Golden set: 20–30 real photos with two-operator consensus labels, so the
   camera thresholds come from faces instead of from a synthetic frame.

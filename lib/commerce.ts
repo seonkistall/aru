@@ -119,6 +119,19 @@ export function addCommerceTracking(value: string, input: { sku: string; merchan
   return url.toString();
 }
 
+/**
+ * Whether the out-links currently earn ARU a commission.
+ *
+ * Drives the wording of `CommerceDisclosure`. It is a separate switch from
+ * `COMMERCE_LINK_OVERRIDES_JSON` only because that one is read on the server and the
+ * product cards render on the client — so **set both in the same deploy**. Affiliate
+ * URLs live with this off is precisely the state the disclosure exists to prevent,
+ * and under 올리브영's curator terms a missing disclosure forfeits the payout.
+ */
+export function affiliateDisclosureActive(): boolean {
+  return process.env.NEXT_PUBLIC_COMMERCE_AFFILIATE === "on";
+}
+
 export function commerceOverrideUrl(skuId: string, merchant: MerchantId): string | null {
   try {
     const raw = process.env.COMMERCE_LINK_OVERRIDES_JSON;
