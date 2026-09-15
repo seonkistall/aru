@@ -44,6 +44,47 @@ Two things follow, and every cycle should act on them rather than re-deriving th
    worth returning to and sharing, or (b) instruments what actually happens, over
    work that only adds surface.
 
+## Standing objective: run until $10,000/month
+
+The owner's instruction, 2026-09-15: keep the 6-hourly cycle running until ARU earns
+more than **$10,000 in a month**. Two things must be said plainly so no cycle pretends
+otherwise.
+
+**The loop cannot see revenue.** Nothing in this repository records a sale. Affiliate
+earnings live in the merchants' dashboards, behind accounts the loop has no business
+touching. So the stop condition is owner-reported: the owner writes the month's figure
+into the table below, and until a line there exceeds $10,000 the cycle keeps running.
+A cycle must never infer, estimate, or celebrate revenue from anything in the codebase.
+
+**The loop cannot create demand.** It can make the product worth returning to and worth
+sending to a friend; it cannot sign an affiliate contract or bring traffic. Those stay
+in BLOCKERS and stay the owner's.
+
+### Revenue log (owner fills this in)
+
+| Month | Revenue | Source | Note |
+|---|---|---|---|
+| 2026-09 | $0 | — | No affiliate id exists in the codebase; every out-click earns $0. |
+
+### What "revenue-upstream" means when ordering the backlog
+
+While that table reads $0, prefer work in this order. It is not a rule against quality
+work — a broken product converts nothing — but a tie-breaker when two items look equally
+worth doing.
+
+1. **Anything that makes an existing click earn money.** The affiliate plumbing is the
+   clearest case: `COMMERCE_LINK_OVERRIDES_JSON` is the designed insertion point and is
+   empty, and every link currently lands on a *search results page* rather than a product
+   page. That second one is a conversion leak the loop can fix today, without waiting for
+   the owner's programme applications.
+2. **Anything that makes the funnel observable.** Optimising what you cannot measure is
+   guessing. `lib/funnel.ts` is still localStorage-only.
+3. **Anything that makes one user bring another.** The share loop is the only organic
+   acquisition path the product has.
+4. **Everything else** — model quality, subgroup fairness, defects, polish. Still real
+   work, still lands every cycle; it just does not win a tie against 1-3 while the
+   revenue line reads zero.
+
 ## One cycle
 
 Each firing does all of this, in order. One coherent improvement per track is
@@ -124,6 +165,16 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Now
 
+- [AI] **Deep-link the commerce out-links to product pages.** Every entry in
+  `buildCommerceLinks` (`lib/commerce.ts`) currently points at a merchant *search* URL —
+  `oliveYoungSearchUrl`, `naverShoppingSearchUrl`, `coupangSearchUrl` all build
+  `?query=<brand> <name>`. A user who taps "올리브영" lands on a result list and has to
+  pick the product again, which is the largest avoidable drop between intent and
+  purchase, and it will still be there the day affiliate ids arrive. Resolve stable
+  product URLs per SKU where they exist, keep the search URL as the fallback for the
+  ones that do not, and keep `isAllowedCommerceUrl` as the gate. Do not invent URLs:
+  a link that 404s is worse than a search page, so anything unverified stays a search
+  URL and gets recorded as unverified.
 - [AI] `confidenceLabel` no longer distinguishes reading ambiguity. After the
   2026-09-15 fix, a frame whose three capture signals all pass lands in
   [0.7804, 0.9424], and the 높음 gate is 0.78 — so it reads 높음 even when all three
@@ -330,3 +381,5 @@ Two things follow for anyone editing the Routine:
   structurally impossible while the levels live in the fragment, demonstrated with a
   local HTTP probe and the Next 16.2.9 docs shipped in `node_modules`. Kakao's own spec
   is egress-blocked and is recorded as unverified rather than guessed.
+- 2026-09-15 — Standing objective recorded: run until $10,000/month, owner-reported,
+  with a revenue-upstream tie-breaker for backlog ordering. First cycle landed (PR #66).
