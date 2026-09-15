@@ -392,23 +392,59 @@ def ordinal_quality_check(
     cell. Accuracy plus gap is therefore EASIEST to pass for a model that learned
     nothing, which is the opposite of what a promotion gate is for.
 
-    Fails closed. An axis whose metrics are absent blocks rather than passing, because
-    "the number is missing" and "the number is fine" must never look the same here.
+    Fails closed, and the list is exhaustive: an axis missing from `overall`, one whose
+    entry is not a dict, one with no labelled validation samples, one whose metric is
+    absent or a non-number, and one whose metric is NaN or infinite ALL block. "The
+    number is missing" and "the number is fine" must never look the same here.
     """
     floors = {"qwk": min_qwk, "pearson": min_pearson}
     report: dict[str, dict] = {}
     blockers: list[str] = []
+
+    def _blank(n: object, reason: str) -> dict:
+        """Every branch returns the SAME keys.
+
+        An unevaluated axis used to ship a short dict with no floors in it, and with
+        zero consented crops that short shape is what the FIRST real metrics.json
+        would contain — so the first consumer written against the evaluated shape
+        would break on the common case, not the rare one.
+        """
+        entry = {"evaluated": False, "reason": reason, "n": n}
+        for key, _ in ORDINAL_QUALITY_METRICS:
+            entry[key] = None
+            entry[f"min{key[:1].upper()}{key[1:]}"] = floors[key]
+        return entry
+
     for axis in axes:
         metrics = overall.get(axis)
         if not isinstance(metrics, dict):
-            report[axis] = {"evaluated": False, "reason": "no validation metrics for this axis"}
+            report[axis] = _blank(None, "no validation metrics for this axis")
             blockers.append(f"[{axis}] no validation metrics, so ordinal quality is unverified")
             continue
         if not metrics.get("n"):
-            report[axis] = {"evaluated": False, "reason": "no labelled validation samples"}
+            report[axis] = _blank(metrics.get("n"), "no labelled validation samples")
             blockers.append(f"[{axis}] no labelled validation samples, so ordinal quality is unverified")
             continue
-        entry: dict = {"evaluated": True, "n": metrics.get("n")}
+        # `accuracy` is not floor-checked here — the subgroup gap rule owns it — but it
+        # must EXIST and be a real number, because promotion_check folds it into
+        # meanAccuracy, which is the baseline the gap is measured against. Letting a
+        # missing accuracy default to 0.0 there would quietly drag the mean down and
+        # make the gap test easier to pass, so an axis that cannot supply it is
+        # unevaluated, not zero.
+        accuracy = metrics.get("accuracy")
+        if (
+            not isinstance(accuracy, (int, float))
+            or isinstance(accuracy, bool)
+            or not math.isfinite(accuracy)
+        ):
+            report[axis] = _blank(metrics.get("n"), "accuracy is missing or not a usable number")
+            blockers.append(
+                f"[{axis}] accuracy is missing or not a usable number, so the subgroup mean it "
+                "feeds cannot be trusted"
+            )
+            continue
+
+        entry: dict = {"evaluated": True, "reason": "", "n": metrics.get("n")}
         for key, meaning in ORDINAL_QUALITY_METRICS:
             value = metrics.get(key)
             floor = floors[key]
@@ -469,9 +505,17 @@ def promotion_check(
     subgroup with too few samples counts as unevaluated, which blocks promotion rather
     than passing silently."
     """
-    mean_acc = sum(overall[axis]["accuracy"] * overall[axis]["n"] for axis in axes) / max(
-        1, sum(overall[axis]["n"] for axis in axes)
-    )
+    # Read through .get so a malformed `overall` is REPORTED by ordinal_quality_check
+    # below rather than raising here. A crash is fail-closed in effect — no metrics.json,
+    # no promotion — but it throws away the whole run's report and it is not what this
+    # function documents, so the two must not disagree.
+    def _metric(axis: str, key: str, fallback: float = 0.0) -> float:
+        entry = overall.get(axis)
+        value = entry.get(key, fallback) if isinstance(entry, dict) else fallback
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else fallback
+
+    total_n = sum(_metric(axis, "n") for axis in axes)
+    mean_acc = sum(_metric(axis, "accuracy") * _metric(axis, "n") for axis in axes) / max(1, total_n)
     results = {}
     reasons = []
     for dimension, groups in by_dimension.items():

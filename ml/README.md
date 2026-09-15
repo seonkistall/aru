@@ -195,8 +195,13 @@ Since 2026-09-15 this is **enforced, not just advised**. The manifest's
 applies them per axis to the final validation confusion. Three properties worth
 knowing before you tune them:
 
-- **It fails closed.** An axis with no validation samples, or whose `qwk`/`pearson`
-  is absent, blocks. "Not measured" and "fine" must not look the same in a gate.
+- **It fails closed, and the list is exhaustive.** An axis missing from the metrics,
+  one whose entry is not a dict, one with no validation samples, and one whose
+  `accuracy`, `qwk` or `pearson` is absent, non-numeric, NaN or infinite ALL block.
+  "Not measured" and "fine" must not look the same in a gate. `accuracy` is in that
+  list even though the floor does not apply to it, because it feeds the mean the
+  subgroup gap is measured against — defaulting it to 0 would drag that mean down and
+  make the gap test easier to pass.
 - **The floor is per axis, not on the mean.** A strong mean cannot hide one dead head.
 - **The floor is on the overall confusion, not per subgroup cell.** At
   `minSamplesPerBand: 20` a per-cell QWK is mostly noise; the subgroup rule stays the

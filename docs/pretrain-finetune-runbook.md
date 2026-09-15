@@ -46,6 +46,7 @@ $ python ml/train_visible_attributes.py --data .../crops \
 init-from ...: loaded 242 tensors, skipped 4 shape-mismatched, 4 left at init
 epoch=01 ...
 promotion gate: BLOCKED
+  - [oil] no labelled validation samples, so ordinal quality is unverified ...
   - [tone] no cell reached n>=20. Tone is measured on every scan, so ...
   - [age] no cell reached n>=20. Age is only collected in consented pilot ...
   - [tone_x_age] no cell reached n>=20. The joint cell needs both ...
@@ -56,6 +57,9 @@ promotion gate: BLOCKED
 > 2026-09-15부터 **평가 불가 차원은 예외 없이 차단**한다. 이전에는 `tone`과 `age`만
 > 이름으로 걸려 있어서, 매니페스트가 선언한 `tone_x_age`는 평가되지 않아도 아무
 > 블로커를 남기지 않고 통과했다.
+> 같은 날 축별 `qwk`/`pearson` floor가 추가됐다. ordinal 블로커가 **앞에** 붙으므로
+> 실제 출력의 첫 줄은 대개 차원이 아니라 축이다 — 지금처럼 동의된 crop이 0이면 모든
+> 축이 `n == 0`이라 위 첫 줄이 먼저 나온다.
 
 라이선스는 통과하고 **승급 게이트에서 막힌다.** 그게 정확히 맞는 상태다 — 합성
 데이터에는 서브그룹이 없으니까. 실데이터가 쌓이면 이 세 줄이 해제 조건이다.
@@ -171,10 +175,24 @@ python ml/train_visible_attributes.py \
 
 `metrics.json`에서 세 가지를 본다.
 
-1. **`promotion_gate.promotable`** — 톤/나이/교차 셀 최악 그룹이 평균 대비
-   `maxAccuracyGap` 안에 드는지. 표본 부족 셀은 통과가 아니라 **차단**이다.
-2. **축별 `qwk`와 `pearson`** — 정확도와 `within_one_grade`만 보면 안 된다.
-   치우친 등급 분포에서 다수 등급만 찍는 모델이 90%를 받는다. QWK는 그 모델에 0을 준다.
+1. **`promotion_gate.promotable`** — 두 규칙을 **모두** 통과해야 true다.
+   (a) 톤/나이/교차 셀 최악 그룹이 평균 대비 `maxAccuracyGap` 안에 드는지. 표본
+   부족 셀은 통과가 아니라 **차단**이다. (b) 축별 `qwk`/`pearson`이 `minQwk` /
+   `minPearson` 이상인지.
+2. **축별 `qwk`와 `pearson`** — **2026-09-15부터 게이트가 자동으로 막는다.**
+   수동 판단 항목이 아니다. 치우친 등급 분포에서 다수 등급만 찍는 모델이 정확도
+   0.80과 `within_one_grade` 0.95를 받고 QWK는 0이 된다. 그런 모델은 모든 셀에서
+   똑같이 틀리므로 서브그룹 격차도 거의 없어서, (a)만으로는 **아무것도 학습하지
+   못한 모델이 가장 쉽게 통과**했다. 그래서 (b)가 있다.
+
+   판정하는 사람이 알아야 할 것: **현재 floor는 0.4이고 잠정값이다.** ARU 데이터로
+   측정한 값이 아니라 degeneracy 방어선이고, 품질 기준이 아니다. 실제로 필요한
+   기준은 "같은 validation split에서 현행 휴리스틱을 이긴다"인데 파이프라인이 아직
+   휴리스틱 베이스라인을 기록하지 않는다. **0.4를 넘겼다는 사실만으로 승급을
+   정당화하지 말 것.**
+
+   게이트는 fail-closed다. 축이 `overall`에 없거나, 검증 표본이 0이거나,
+   `accuracy`/`qwk`/`pearson`이 없거나 NaN/inf면 통과가 아니라 차단이다.
 3. **`lineage`** — 출시하려는 가중치가 거쳐온 모든 출처. 여기 비상업이 하나라도
    있으면 그 모델은 출시 불가다.
 

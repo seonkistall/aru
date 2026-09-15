@@ -538,6 +538,54 @@ class PromotionGate(unittest.TestCase):
         self.assertEqual(gate["minQwk"], 0.4)
         self.assertEqual(gate["minPearson"], 0.4)
 
+    def test_every_malformed_axis_blocks_instead_of_crashing(self):
+        """The docstring promises these BLOCK. They used to raise.
+
+        promotion_check computed meanAccuracy straight off overall[axis]["accuracy"]
+        before the ordinal check ran, so a missing axis, n or accuracy raised KeyError
+        and an entry of None raised TypeError. A crash is fail-closed in effect, but it
+        throws away the whole run's report and it is not what the function documents.
+        """
+        good = {"n": 100, "accuracy": 0.90, "qwk": 0.72, "pearson": 0.75}
+        cases = {
+            "axis absent from overall": ({"oil": good}, ("oil", "redness")),
+            "entry is not a dict": ({"oil": None}, ("oil",)),
+            "n missing": ({"oil": {k: v for k, v in good.items() if k != "n"}}, ("oil",)),
+            "accuracy missing": ({"oil": {k: v for k, v in good.items() if k != "accuracy"}}, ("oil",)),
+            "accuracy is NaN": ({"oil": dict(good, accuracy=float("nan"))}, ("oil",)),
+            "accuracy is a bool": ({"oil": dict(good, accuracy=True)}, ("oil",)),
+        }
+        for name, (overall, axes) in cases.items():
+            with self.subTest(case=name):
+                gate = subgroups.promotion_check(
+                    overall, self.GOOD_DIMS, axes, 20, 0.1, min_qwk=0.4, min_pearson=0.4
+                )
+                self.assertFalse(gate["promotable"], name)
+
+    def test_accuracy_missing_does_not_quietly_lower_the_mean(self):
+        """Reading the mean through .get must not turn a hole into a free pass.
+
+        Defaulting a missing accuracy to 0.0 would drag meanAccuracy down, which makes
+        the gap test EASIER — the opposite of failing closed.
+        """
+        overall = {axis: dict(self.OVERALL[axis]) for axis in self.OVERALL}
+        del overall["oil"]["accuracy"]
+        gate = self.check(self.GOOD_DIMS, overall=overall)
+        self.assertFalse(gate["promotable"])
+        self.assertIn("[oil] accuracy is missing", " ".join(gate["blockers"]))
+
+    def test_every_ordinal_quality_entry_has_the_same_keys(self):
+        """With zero consented crops the unevaluated shape is what ships first."""
+        healthy = self.check(self.GOOD_DIMS)["ordinalQuality"]["oil"]
+        empty = subgroups.promotion_check(
+            {"oil": {"n": 0, "accuracy": 0.0, "qwk": 0.0, "pearson": 0.0}},
+            self.GOOD_DIMS, ("oil",), 20, 0.1, min_qwk=0.4, min_pearson=0.4,
+        )["ordinalQuality"]["oil"]
+        self.assertEqual(sorted(healthy), sorted(empty))
+        for shape in (healthy, empty):
+            self.assertEqual(shape["minQwk"], 0.4)
+            self.assertEqual(shape["minPearson"], 0.4)
+
     def test_the_gate_cannot_be_called_without_the_floors(self):
         """A default would let a forgetful caller silently disable the whole rule."""
         with self.assertRaises(TypeError):

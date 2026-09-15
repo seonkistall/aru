@@ -178,15 +178,15 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Next
 
-- [AI] The promotion gate's `minQwk`/`minPearson` floors are **0.4 and provisional** —
+- [AI] The promotion gate's `minQwk`/`minPearson` floors are **0.4 and provisional**:
   a floor against degeneracy, not a quality claim. 0.4 sits near the fair/moderate
-  boundary of the commonly cited Landis & Koch kappa bands (their moderate band begins
-  at 0.41; the primary source is egress-blocked from this worker, so the convention
-  itself is recorded as unverified), and it has not been measured on ARU data. The bar that actually matters is *beats the shipped heuristic on the same
+  boundary of the commonly cited Landis & Koch kappa bands — their moderate band
+  begins at 0.41, and the primary source is egress-blocked from this worker, so the
+  convention itself is recorded as unverified. It has not been measured on ARU data.
+  The bar that actually matters is *beats the shipped heuristic on the same
   validation set*, and the pipeline records no heuristic baseline to compare against.
-  Next step: score `lib/skin.ts`'s thresholds on the same validation split, write that
-  into `metrics.json`, and make the gate require the model to beat it. Until then 0.4
-  is a floor against degeneracy, not a quality claim.
+  Next step: score `lib/skin.ts`'s thresholds on the same validation split, write it
+  into `metrics.json`, and make the gate require the model to beat it.
 - [AI] `minSamplesPerBand` is compared against the wrong unit. `_aggregate` in
   `ml/train_visible_attributes.py` sums `n` ACROSS axes, and `worst_group` gates on
   that sum. Reproduced by feeding the real `_aggregate` one cell of 10 samples
@@ -342,7 +342,25 @@ Two things follow for anyone editing the Routine:
     0.0, so a caller that forgot them silently got no ordinal-quality gate at all.
     They are now keyword-only with NO default: forgetting them raises `TypeError`.
 
-  Verified: `python ml/selftest.py` 50 -> 58 tests, OK. The key case asserts its own
+  Adversarial review then found three more, all fixed in the follow-up commit:
+
+  - **`accuracy` could be missing.** `promotion_check` read `overall[axis]["accuracy"]`
+    for the mean BEFORE the ordinal check ran, so a malformed axis raised KeyError
+    instead of the blocker the docstring promised. Making the mean tolerant then
+    introduced a worse bug — a missing accuracy defaulted to 0.0, which drags the mean
+    DOWN and makes the subgroup gap test easier to pass. An axis that cannot supply a
+    finite accuracy is now unevaluated, not zero.
+  - **`ordinalQuality` shipped two shapes.** The unevaluated branch omitted the floors,
+    and with zero consented crops that short shape is exactly what the first real
+    `metrics.json` will contain — so the first consumer would break on the common case.
+    All branches now return the same keys.
+  - **The operator runbook still described the old gate.** `docs/pretrain-finetune-runbook.md`
+    is what a human reads to make the promotion call, and it told the operator to judge
+    qwk/pearson by hand — the thing this change automated — without ever mentioning the
+    floors or that 0.4 is provisional. Now corrected, including the sample BLOCKED
+    output, since ordinal blockers are prepended and every axis is `n == 0` today.
+
+  Verified: `python ml/selftest.py` 50 -> 61 tests, OK. The key case asserts its own
   precondition first — with the floors at 0.0 the majority-class confusion IS
   promotable — and then that the manifest's floors block it, so the regression is
   proven inside the test rather than by reverting the code. Real gate output on the
