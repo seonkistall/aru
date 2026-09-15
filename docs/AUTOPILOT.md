@@ -150,3 +150,5 @@ Owner-only, dated when first recorded.
 
 - 2026-09-14 — Autopilot established. Cycle protocol, guardrails, revenue
   arithmetic and backlog written down for the first time.
+
+diag A: session with source_url declared.
