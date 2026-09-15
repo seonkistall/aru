@@ -484,9 +484,18 @@ Two things follow for anyone editing the Routine:
 - 2026-09-15 — Standing objective recorded: run until $10,000/month, owner-reported,
   with a revenue-upstream tie-breaker for backlog ordering. First cycle landed (PR #66).
 - 2026-09-15 (cycle 2) — All four tracks landed, plus the commerce item they are
-  ordered behind. `npm run smoke` green before and after;
-  the baseline run needed the documented `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override and
-  nothing else.
+  ordered behind. Branch `autopilot/2026-09-15-1839`. `npm run smoke` green before any
+  change and again after all of them; the baseline run needed the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override and nothing else. Final run:
+
+  ```
+   Test Files  63 passed (63)
+        Tests  351 passed (351)
+    44 passed (3.0m)
+  Ran 66 tests in 0.014s
+  OK
+  Smoke test passed.
+  ```
 
   **commerce (revenue-upstream #1)** The top backlog item was attempted first and
   stopped on its own rule: every merchant host refuses this network, so no product URL
