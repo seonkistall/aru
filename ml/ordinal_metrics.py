@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Ordinal metrics for a confusion matrix, with no torch in sight.
+"""Ordinal scoring read off a confusion matrix. Standard library only.
 
-These three functions decide whether a model is any good, and they used to live in
-train_visible_attributes.py — which imports torch, PIL and torchvision at module
-scope. That put them out of reach of ml/selftest.py, and out of reach of anything
-that wants to score a NON-model predictor on the same footing: notably the shipped
-heuristic in lib/skin.ts, which the promotion gate now has to beat.
+Why this is its own module: these three functions decide whether a trained head is
+allowed to replace the heuristic, and they used to live in
+`train_visible_attributes.py`, which imports torch at module scope. That put the
+arithmetic behind the promotion gate out of reach of `ml/selftest.py`, exactly as
+`promotion_check` was before it moved to `ml/subgroups.py`. Nothing here needs torch.
 
-Scoring the model and the heuristic through the same code is the point. A baseline
-computed by a second implementation is a baseline nobody can trust.
-
-Read qwk and pearson, never accuracy alone. On a skewed ordinal scale a model that
-always answers the majority grade takes accuracy 0.80 and within_one_grade 0.95 while
-carrying no information at all; qwk and pearson are 0 for exactly that model.
+`quadratic_weighted_kappa` and `pearson_from_confusion` were verified against
+independent reference implementations on 2026-09-15 — see
+`docs/ordinal-metric-verification.md` for the run and its output. Agreement was to
+within 6.7e-16 (kappa, vs `sklearn.metrics.cohen_kappa_score(weights="quadratic")`)
+and 1.1e-15 (correlation, vs `scipy.stats.pearsonr`) over 1,982 random matrices.
+Change either body and that verification is void until it is re-run.
 """
 
 from __future__ import annotations
@@ -25,6 +25,10 @@ def quadratic_weighted_kappa(matrix: list[list[int]]) -> float:
     ordinal scale: a head that always predicts the majority grade can score high
     "within one grade" agreement while carrying no information. QWK goes to 0 for
     exactly that predictor.
+
+    Returns 0.0 where chance agreement is itself zero — a matrix with all its mass
+    on one cell. The reference implementation calls that undefined (nan); 0.0 is the
+    conservative reading for a gate, since it blocks rather than promotes.
     """
     levels = len(matrix)
     total = sum(sum(row) for row in matrix)

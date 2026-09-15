@@ -157,7 +157,8 @@ python ml/licensing.py --audit
     provenance ("user", "staff") in ARU's own export. Only `license_tier` distinguishes
     them; see `licensing.dataset_source_for_row`.
 18. **Never judge an ordinal head on accuracy alone** – a majority-class predictor scores
-    well on accuracy, MAE and "within one grade". Read `qwk` and `pearson`.
+    well on accuracy, MAE and "within one grade". Read `qwk` and `pearson`; the promotion
+    gate enforces a floor on both (`promotionGate.ordinal` in the model manifest).
 19. **A subgroup too small to evaluate is a blocker, not a pass** – the promotion gate
     reports it as UNEVALUATED and refuses.
 
@@ -215,6 +216,8 @@ ML PIPELINE (offline):
     ita.py             ITA from pixels, matching dominantTone in lib/skin.ts
     licensing.py       whether a dataset may be used for a given purpose
     model_contract.py  reads the shipped model manifest so training enforces its gate
+    ordinal_metrics.py qwk / pearson / per-axis metrics off a confusion matrix; the
+                       arithmetic the promotion gate's ordinal floor reads
     skin_indices.py    every pixel index's transfer class: within_image indices may
                        drive a reading, absolute ones (ITA, melanin) stratify only
 

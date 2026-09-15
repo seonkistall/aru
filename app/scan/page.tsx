@@ -8,6 +8,7 @@ import type { SampleMeta } from "@/lib/labels";
 import { getCurrentPilotSession } from "@/lib/pilot";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { shouldShowFeedback } from "@/lib/ml-collection";
+import { useFunnelPageView } from "@/app/use-funnel-page-view";
 
 import { moodShareUrl } from "@/lib/share-link";
 import type { LandmarkerWorker } from "./landmarker-client";
@@ -51,6 +52,10 @@ type Phase = "init" | "ready" | "analyzing" | "result" | "noface" | "denied" | "
 const CONSENT_STORAGE_ERROR = "동의 기록을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.";
 
 export default function Scan() {
+  // scan_started fires at the shutter, so everything /scan lost before that —
+  // above all a refused camera permission — left no trace. scan_opened is the
+  // denominator that makes that loss countable; camera_blocked below names it.
+  useFunnelPageView("scan_opened");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const phaseRef = useRef<Phase>("init");
@@ -146,6 +151,7 @@ export default function Scan() {
     setCaptureMeta(null);
     resetQualityLoop();
     if (!navigator.mediaDevices?.getUserMedia) {
+      recordFunnelEvent("camera_blocked", { reason: "unsupported" });
       setPhase("unsupported");
       return;
     }
@@ -155,7 +161,9 @@ export default function Scan() {
       opened = await openCamera((constraints) => navigator.mediaDevices.getUserMedia(constraints));
     } catch (lastError) {
       const name = (lastError as { name?: string } | null)?.name;
-      setDeniedReason(name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission");
+      const reason = name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission";
+      recordFunnelEvent("camera_blocked", { reason });
+      setDeniedReason(reason);
       setPhase("denied");
       return;
     }
@@ -182,6 +190,9 @@ export default function Scan() {
       }
       setPhase("ready");
     } catch {
+      // The stream opened and then failed to attach. A different failure from a
+      // refusal, and the user sees the same dead-end, so it is recorded separately.
+      recordFunnelEvent("camera_blocked", { reason: "attach" });
       setPhase("denied");
     }
   }, [resetQualityLoop]);

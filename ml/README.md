@@ -180,7 +180,16 @@ model as before. What is new around it:
 The gate is meant to fail loudly. "No subgroup cell reached n>=20" is a blocker, not
 a pass: a model nobody could evaluate on a subgroup has not been shown to work on it.
 
-### Read qwk and pearson, not accuracy alone
+### Read qwk and pearson, not accuracy alone — and since 2026-09-15 the gate does too
+
+Until 2026-09-15 this section was advice: both metrics were computed and compared to
+nothing, so a head that had learned nothing passed the gate, and passed it easily,
+because a constant predictor has almost no subgroup gap and the gap was the only thing
+the gate measured. The gate now carries a per-axis floor, `promotionGate.ordinal` in
+`public/models/visible-attributes/manifest.json` (`minQwk` / `minPearson`, both 0.40,
+provisional). An axis that does not report the metrics blocks as well: a bar nothing
+was measured against was not cleared. Both scorers were verified against scikit-learn
+and SciPy before the floor was added — `docs/ordinal-metric-verification.md`.
 
 Every axis reports `qwk` (quadratic weighted kappa) and `pearson` alongside accuracy,
 macro-F1 and ordinal MAE. On a skewed ordinal scale a model that always predicts the

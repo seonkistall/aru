@@ -70,6 +70,12 @@
     "minPilotParticipants": 30,
     "validation": "grouped_by_participant_stratified_by_subgroup",
     "recommendationConfidenceThreshold": 0.58,
+    "ordinal": {
+      "minQwk": 0.4,
+      "minPearson": 0.4,
+      "appliesTo": "every trained axis, on the overall validation confusion matrix",
+      "note": "Accuracy, ordinal MAE and within-one-grade agreement are all high for a head that always predicts the majority grade, so none of them can tell a learned head from a constant one. Quadratic weighted kappa and the true/predicted correlation both go to 0 for that predictor and are what this floor reads. 0.4 is provisional and was chosen from measured predictors, not from a published benchmark: see docs/ordinal-metric-verification.md."
+    },
     "subgroup": {
       "dimensions": [
         "tone",
@@ -78,11 +84,9 @@
       ],
       "minSamplesPerBand": 20,
       "maxAccuracyGap": 0.1,
-      "minQwk": 0.4,
-      "minPearson": 0.4,
       "minQwkGainOverHeuristic": 0.0,
       "calibrationFile": "tone_calibration.json",
-      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently. Accuracy alone cannot carry this: on a skewed ordinal scale a majority-class predictor reaches accuracy 0.80 and within_one_grade 0.95 while qwk and pearson are exactly 0, and it has almost no subgroup gap, so the gap test is EASIEST to pass for a model that learned nothing. minQwk and minPearson are therefore checked per axis on the final validation confusion, and an axis whose metric is missing, non-finite, or has no validation samples blocks rather than passing. PROVISIONAL, and not a quality claim: 0.4 is a floor against degeneracy, chosen near the fair/moderate boundary of the commonly cited Landis & Koch kappa bands (their moderate band begins at 0.41). That convention could not be checked against its primary source from the build network, and 0.4 has not been measured on ARU data. Separately, minQwkGainOverHeuristic requires the model to BEAT the shipped ROI heuristic, per axis, on qwk, scored on the same validation split by the same code (ml/heuristic_baseline.py -> ml/ordinal_metrics.py). 0.0 means strictly greater: a model that merely ties the heuristic it would replace does not pass. It is 0.0 and not a positive margin on purpose — a margin should be larger than validation noise, and nothing here estimates that noise yet, so an invented margin would be a fake number. An axis the heuristic covers but whose features are missing from the data blocks: you cannot claim to beat a baseline you never scored."
+      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently. The per-axis qwk/pearson floors are a separate rule and live in promotionGate.ordinal. minQwkGainOverHeuristic is a third, independent rule: the model must BEAT the shipped ROI heuristic in fallbackHeuristic, per axis, on qwk, scored on the same validation rows by the same code (ml/heuristic_baseline.py -> ml/ordinal_metrics.py). The other rules ask whether a model is good; this asks whether it should replace what already ships, which is what the gate is for. 0.0 means strictly greater: a model that merely ties the rule it would replace does not pass. It is 0.0 and not a positive margin because a margin should exceed validation noise and nothing here estimates that noise yet. An axis the heuristic covers but whose ROI feature is missing blocks, and so does a comparison whose two sides were scored on different row counts: you cannot claim to beat a baseline you never scored, or one measured on a different subset."
     }
   },
   "axes": {

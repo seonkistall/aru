@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink } from "@/lib/care";
 import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
+import { useFunnelPageView } from "@/app/use-funnel-page-view";
 import { loadLastResult } from "@/lib/last-result";
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
@@ -49,6 +50,10 @@ function loadCareView(): CareView | null {
 }
 
 export default function CarePage() {
+  // The routine page recorded only commerce_clicked, so a session that reached it
+  // and clicked nothing looked identical to one that never arrived — which is the
+  // difference between "the page does not convert" and "nobody gets here".
+  useFunnelPageView("care_viewed");
   const { lang } = useLanguage();
   const [view, setView] = useState<CareView | null>(null);
   const [viewLoaded, setViewLoaded] = useState(false);

@@ -73,23 +73,39 @@ describe("visible attribute model manifest", () => {
     // within_one_grade 0.95, and — being equally wrong everywhere — has almost no
     // subgroup gap, so accuracy plus gap is EASIEST to pass for a model that learned
     // nothing. qwk and pearson are what separate the two, so a zero or missing floor
-    // here silently reopens that path.
-    const gate = manifest.promotionGate.subgroup;
-    expect(gate.minQwk).toBeGreaterThan(0);
-    expect(gate.minPearson).toBeGreaterThan(0);
+    // here silently reopens that path. The floors live in promotionGate.ordinal,
+    // which model_contract.ordinal_gate() reads.
+    const ordinal = manifest.promotionGate.ordinal;
+    expect(ordinal.minQwk).toBeGreaterThan(0);
+    expect(ordinal.minPearson).toBeGreaterThan(0);
   });
 
-  it("reads the ordinal-quality floors from the manifest rather than hardcoding them", () => {
+  it("requires the model to beat the heuristic it would replace", () => {
+    // A separate question from "is the model any good": a model can clear every
+    // absolute bar and still be worse than the three threshold pairs in lib/skin.ts.
+    const gate = manifest.promotionGate.subgroup;
+    expect(gate.minQwkGainOverHeuristic).toBeGreaterThanOrEqual(0);
+    expect(manifest.fallbackHeuristic?.axes).toBeTruthy();
+  });
+
+  it("reads every floor from the manifest rather than hardcoding it", () => {
     const trainer = readMl("train_visible_attributes.py");
     expect(trainer).toContain("model_contract.min_qwk()");
     expect(trainer).toContain("model_contract.min_pearson()");
+    expect(trainer).toContain("model_contract.min_qwk_gain_over_heuristic()");
     expect(trainer).not.toMatch(/"--min-qwk",\s*type=float,\s*default=[\d.]+/);
     expect(trainer).not.toMatch(/"--min-pearson",\s*type=float,\s*default=[\d.]+/);
+    expect(trainer).not.toMatch(/"--min-qwk-gain",\s*type=float,\s*default=[\d.]+/);
 
     // The gate itself must actually consume them.
     const gate = readMl("subgroups.py");
-    expect(gate).toContain("def ordinal_quality_check(");
-    expect(gate).toContain("ordinalQuality");
+    expect(gate).toContain("def ordinal_check(");
+    expect(gate).toContain("def beats_heuristic_check(");
+    expect(gate).toContain("beatsHeuristic");
+
+    // And the baseline must be scored on the same rows the model was.
+    expect(trainer).toContain("heuristic_baseline.score(");
+    expect(trainer).toContain("heuristic_baseline.covered_axes()");
   });
 });
 

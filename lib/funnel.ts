@@ -15,11 +15,29 @@ export type FunnelEventKind =
   // page, client-side, from the hash that was already being read there — no new
   // network call and nothing extra leaves the device.
   | "share_landed"
+  // The landing page itself. Nothing was recorded here at all, so "arrived at ARU"
+  // had no count and every ratio below started somewhere further down the page.
+  | "home_viewed"
+  // /scan mount, as distinct from scan_started (the shutter). The gap between them
+  // is where a camera permission denial lives, which was previously invisible:
+  // a user who opened the camera and was refused left no trace in the funnel.
+  | "scan_opened"
+  // getUserMedia refused, the browser has no camera API at all, or the stream opened
+  // and failed to attach. `reason` is one of
+  // permission | busy | notfound | unsupported | attach.
+  | "camera_blocked"
   | "scan_started"
   | "scan_completed"
   | "survey_viewed"
   | "survey_completed"
   | "reco_viewed"
+  // /care mount. The page recorded only commerce_clicked, so a session that reached
+  // the routine page and bought nothing was indistinguishable from one that never
+  // got there.
+  | "care_viewed"
+  // /checkin mount — the landing page for every re-engagement email, and the only
+  // measure of whether those emails bring anyone back.
+  | "checkin_opened"
   | "share_clicked"
   | "commerce_clicked";
 
@@ -132,15 +150,30 @@ export type FunnelSummary = {
   // far as capturing; and the sets are unordered, so a sender who opens their own
   // link in a new tab (a fresh sessionId) counts as an arrival.
   viralActivation: number;
+  // Sessions that opened /scan and reached the shutter. The camera step was the
+  // funnel's own anchor, so everything it lost before the shutter — permission
+  // refused, camera busy, no camera, or simply backing out — counted as nothing
+  // having happened. Denominator is scan_opened sessions.
+  captureStart: number;
+  // The measurable part of that loss: sessions that opened /scan and hit a camera
+  // dead-end. Same denominator, but the two are NOT a partition in either direction:
+  // a session that leaves without being refused is in neither, and one that is
+  // refused, retries and then captures is in both, so they can also sum above 1.
+  cameraBlockRate: number;
 };
 
 export const FUNNEL_ORDER: FunnelEventKind[] = [
+  "home_viewed",
   "share_landed",
+  "scan_opened",
+  "camera_blocked",
   "scan_started",
   "scan_completed",
   "survey_viewed",
   "survey_completed",
   "reco_viewed",
+  "care_viewed",
+  "checkin_opened",
   "share_clicked",
   "commerce_clicked",
 ];
@@ -168,6 +201,12 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
   const completedAfterView = [...reachedSets.survey_completed].filter((id) => surveyViewedSet.has(id)).length;
   const landedSet = reachedSets.share_landed;
   const landedThenScanned = [...reachedSets.scan_started].filter((id) => landedSet.has(id)).length;
+  // Conditioned on scan_opened for the same reason the ratios above are conditioned
+  // on scan_completed: scan_started can exist without it in a log recorded before
+  // scan_opened was fired at all, and an unconditioned numerator would read >1.
+  const openedSet = reachedSets.scan_opened;
+  const withinOpened = (kind: FunnelEventKind) => [...reachedSets[kind]].filter((id) => openedSet.has(id)).length;
+  const ofOpened = (num: number) => (openedSet.size ? num / openedSet.size : 0);
 
   return {
     events: events.length,
@@ -177,6 +216,8 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
     surveyCompletion: surveyViewedSet.size ? completedAfterView / surveyViewedSet.size : 0,
     shareRate: ratio(withinCompleted("share_clicked")),
     viralActivation: landedSet.size ? landedThenScanned / landedSet.size : 0,
+    captureStart: ofOpened(withinOpened("scan_started")),
+    cameraBlockRate: ofOpened(withinOpened("camera_blocked")),
   };
 }
 

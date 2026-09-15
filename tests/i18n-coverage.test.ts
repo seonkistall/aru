@@ -44,6 +44,36 @@ describe("dictionary coverage for runtime-composed strings", () => {
     }
   });
 
+  it("covers the source label of every analysis source", () => {
+    // sourceLabel is stored in a map and passed to t() as a variable, so the
+    // literal scan below cannot see it. It went untranslated in all four
+    // languages — including English, the default — and showed raw Korean as the
+    // first chip on the /report trust card.
+    const sources = ["roi-calibrated", "vision-api", "ml-model"] as const;
+    for (const source of sources) {
+      const trust = buildReportTrust(
+        {
+          confidence: 0.5,
+          confidenceLabel: "보통",
+          retakeRecommended: false,
+          retakeReasons: [],
+          source,
+          signals: [],
+        },
+        source === "vision-api"
+      );
+      expectCovered(trust.sourceLabel);
+    }
+  });
+
+  it("covers the live camera quality checklist labels", () => {
+    // Same shape: app/scan/guide.tsx builds [label, ok] pairs and renders t(label),
+    // so these are invisible to a regex over t("…") literals.
+    for (const label of ["얼굴", "측정영역", "거리", "밝기", "반사 없음", "피부 선명도", "흔들림 없음"]) {
+      expectCovered(label);
+    }
+  });
+
   it("covers every mood share-link label in every language", () => {
     for (const lang of ["en", "ja", "zh", "ar"] as const) {
       setCurrentLang(lang);

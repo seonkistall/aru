@@ -42,6 +42,16 @@ FALLBACK_GATE = {
     "dimensions": ["tone", "age", "tone_x_age"],
 }
 
+#: The overall per-axis quality floor, a sibling of the subgroup bar rather than part
+#: of it: a subgroup gap asks "is the model even-handed", these ask "did it learn
+#: anything at all". A model can be perfectly even-handed by being uniformly useless —
+#: a constant predictor has almost no subgroup gap — so the subgroup block alone lets
+#: a head that learned nothing through. Same fallback rule: manifest wins.
+FALLBACK_ORDINAL_GATE = {
+    "minQwk": 0.40,
+    "minPearson": 0.40,
+}
+
 
 def load_manifest() -> dict:
     """Parsed manifest, or {} when it is missing or malformed."""
@@ -62,26 +72,30 @@ def promotion_gate() -> dict:
     return merged
 
 
+def ordinal_gate() -> dict:
+    """Per-axis floor on how much a head must actually have learned."""
+    gate = (load_manifest().get("promotionGate") or {}).get("ordinal") or {}
+    merged = dict(FALLBACK_ORDINAL_GATE)
+    for key, value in gate.items():
+        if value not in (None, ""):
+            merged[key] = value
+    return merged
+
+
+def min_qwk() -> float:
+    return float(ordinal_gate()["minQwk"])
+
+
+def min_pearson() -> float:
+    return float(ordinal_gate()["minPearson"])
+
+
 def min_samples_per_band() -> int:
     return int(promotion_gate()["minSamplesPerBand"])
 
 
 def max_accuracy_gap() -> float:
     return float(promotion_gate()["maxAccuracyGap"])
-
-
-def min_qwk() -> float:
-    """Ordinal-agreement floor, per axis, on the final validation confusion.
-
-    Accuracy and the subgroup gap cannot carry the gate on their own: a majority-class
-    predictor on a skewed ordinal scale scores well on both and has qwk exactly 0.
-    """
-    return float(promotion_gate()["minQwk"])
-
-
-def min_pearson() -> float:
-    """Correlation floor, per axis. Zero for a predictor whose output never varies."""
-    return float(promotion_gate()["minPearson"])
 
 
 def min_qwk_gain_over_heuristic() -> float:
