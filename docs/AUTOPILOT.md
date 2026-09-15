@@ -439,6 +439,20 @@ Two things follow for anyone editing the Routine:
   declaration. It will silently do nothing.
 - A run that ends in a few minutes having pushed nothing is this failure, not a fast cycle.
 
+## Supervisor findings not yet actioned
+
+Verified by the supervisor during a cycle, recorded here so the next one can pick them
+up rather than rediscover them.
+
+- **2026-09-15 — `confidenceLabel` exists twice, byte-for-byte.** `lib/skin.ts:373` and
+  `confidenceLabelFor` in `app/scan/capture-analysis.ts:223` both read
+  `>= 0.78 → 높음, >= 0.58 → 보통`. Not a bug today: the values are identical, and
+  `distanceConfidence` has only one definition, so the 2026-09-15 sign-inversion fix
+  did not miss a copy. It is a latent divergence — change one threshold and the
+  vision-API path disagrees with the ROI path, silently. Worth a contract test that
+  fails when the two drift, not a refactor: the two call sites have different shapes
+  and merging them would be wider than the problem.
+
 ## Changelog
 
 - 2026-09-14 — Autopilot established. Cycle protocol, guardrails, revenue
@@ -667,3 +681,12 @@ Two things follow for anyone editing the Routine:
   corrected three stale comments (`supabase/schema.sql`'s funnel-kind list, the
   `camera_blocked` reason list, and the claim that the two new rates cannot sum above
   1 — a session refused once and then capturing is in both).
+- 2026-09-15 — Second autopilot cycle landed (PR #70). Consent: `latestConsent` matched
+  loosely when unscoped, so a consumer's crop consent could dedupe against a pilot
+  participant's grant and never be recorded. ML: a per-axis QWK/correlation floor now
+  blocks a head that learned nothing, with ARU's scorers first checked against sklearn
+  and scipy to 6.7e-16 over 1,982 matrices. Commerce: override rejections are visible,
+  and the playbook's own naver example turned out to use a host that is not on the
+  allowlist. Funnel: page views on the four surfaces that fired nothing. Supervisor
+  re-ran `npm run smoke` independently (351 vitest, 66 Python self-tests, 0 lint errors)
+  and reproduced the stdlib metric table byte-for-byte.
