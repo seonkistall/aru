@@ -51,11 +51,16 @@ const emptyFunnel: FunnelSummary = {
   events: 0,
   sessions: 0,
   steps: {
+    home_viewed: 0,
+    scan_opened: 0,
+    camera_blocked: 0,
     scan_started: 0,
     scan_completed: 0,
     survey_viewed: 0,
     survey_completed: 0,
     reco_viewed: 0,
+    care_viewed: 0,
+    checkin_opened: 0,
     share_clicked: 0,
     commerce_clicked: 0,
     share_landed: 0,
@@ -64,6 +69,8 @@ const emptyFunnel: FunnelSummary = {
   surveyCompletion: 0,
   shareRate: 0,
   viralActivation: 0,
+  captureStart: 0,
+  cameraBlockRate: 0,
 };
 
 const emptySnapshot: OpsSnapshot = {
@@ -230,10 +237,33 @@ export default function OpsPage() {
           </div>
           <div style={{ marginTop: 12 }}>
             <Row label="Sessions" value={`${snapshot.funnel.sessions}`} />
+            <Row label="Home viewed" value={`${snapshot.funnel.steps.home_viewed}`} />
+            <Row label="Scan opened" value={`${snapshot.funnel.steps.scan_opened}`} />
+            {/* Both rates divide by scan_opened sessions. Every log recorded before
+                scan_opened existed has none, and printing that as "0%" would read as
+                a measurement of total failure rather than as no data. */}
+            <Row
+              label="Reached the shutter"
+              value={
+                snapshot.funnel.steps.scan_opened
+                  ? `${Math.round(snapshot.funnel.captureStart * 100)}% of scan opens`
+                  : "— (no scan opens recorded)"
+              }
+            />
+            <Row
+              label="Camera blocked"
+              value={
+                snapshot.funnel.steps.scan_opened
+                  ? `${snapshot.funnel.steps.camera_blocked} (${Math.round(snapshot.funnel.cameraBlockRate * 100)}% of scan opens)`
+                  : `${snapshot.funnel.steps.camera_blocked} (no scan opens recorded)`
+              }
+            />
             <Row label="Survey viewed" value={`${snapshot.funnel.steps.survey_viewed}`} />
             <Row label="Survey completion" value={`${Math.round(snapshot.funnel.surveyCompletion * 100)}%`} />
             <Row label="Share clicked" value={`${snapshot.funnel.steps.share_clicked}`} />
             <Row label="Share rate" value={`${Math.round(snapshot.funnel.shareRate * 100)}%`} />
+            <Row label="Care viewed" value={`${snapshot.funnel.steps.care_viewed}`} />
+            <Row label="Check-in opened" value={`${snapshot.funnel.steps.checkin_opened}`} />
             <Row label="Share landed" value={`${snapshot.funnel.steps.share_landed}`} />
             <Row label="Share activation" value={`${Math.round(snapshot.funnel.viralActivation * 100)}%`} />
           </div>

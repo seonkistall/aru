@@ -41,15 +41,13 @@ the other on the client, so nothing couples them automatically. Set both, then l
 Use `COMMERCE_LINK_OVERRIDES_JSON` to replace default links without changing
 the product recommendation code.
 
-Example:
+Example the gate accepts today:
 
 ```json
 {
   "tn1": {
-    "oliveyoung": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=PARTNER_GOODS_NO"
-  },
-  "sr2": {
-    "naver-shopping": "https://smartstore.naver.com/PARTNER/products/PARTNER_PRODUCT_ID"
+    "oliveyoung": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=PARTNER_GOODS_NO",
+    "coupang": "https://www.coupang.com/vp/products/PARTNER_PRODUCT_ID"
   }
 }
 ```
@@ -61,8 +59,33 @@ Only HTTPS links on the allowlist are accepted:
 - `www.coupang.com`
 - `www.google.com`
 
-Add new partner domains to `lib/commerce.ts` only after the deal and tracking
-terms are clear.
+`tests/commerce.test.ts` pins that list against `ALLOWED_HOSTS` in
+`lib/commerce.ts`, and pins that every URL in the block above passes the gate.
+Until 2026-09-15 this section's worked example for `naver-shopping` was a
+`smartstore.naver.com` URL, which is **not** on that list — so following this
+runbook exactly produced an override the code discarded without a word, while
+`NEXT_PUBLIC_COMMERCE_AFFILIATE=on` told users the link earned a commission.
+
+### Hosts a real affiliate link may need, which are NOT accepted yet
+
+Not guesses to code around — decisions to make once the programme is signed and
+the real link format is in hand. None of these were verifiable from the build
+network (every Korean commerce host refuses the connection; see BLOCKERS in
+`docs/AUTOPILOT.md`), so the allowlist was deliberately left alone:
+
+| Programme | Link host the override will probably need | Status |
+|---|---|---|
+| 네이버 쇼핑 커넥트 | a smart-store or brand-store host, e.g. `smartstore.naver.com` | unverified, not on the allowlist |
+| 쿠팡 파트너스 | a partner redirect host, e.g. `link.coupang.com` | unverified, not on the allowlist |
+| 올리브영 쇼핑 큐레이터 | `www.oliveyoung.co.kr` product detail | already on the allowlist |
+
+Adding one is a one-line change to `ALLOWED_HOSTS` in `lib/commerce.ts` plus the
+bullet list above — do it when the deal and tracking terms are clear, and never
+on a host nobody has seen a real link on. A rejected override is now logged with
+the sku, the merchant and the URL — once per distinct value of the env var, from
+`/api/out`, so it lands in the request log on the first out-click after a deploy
+rather than in the deploy log itself. Check there once after setting the env, or
+load `/report` and confirm the disclosure reads 제휴 링크.
 
 ## Deal Priorities
 

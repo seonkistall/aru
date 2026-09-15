@@ -28,6 +28,7 @@ import external_manifest  # noqa: E402
 import ita  # noqa: E402
 import licensing  # noqa: E402
 import model_contract  # noqa: E402
+import ordinal_metrics  # noqa: E402
 import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
@@ -386,17 +387,32 @@ class PromotionGate(unittest.TestCase):
     scope, so none of this could be reached from here.
     """
 
-    #: Three axes at 100 samples each, all comfortably accurate.
+    #: Three axes at 100 samples each, all comfortably accurate AND carrying real
+    #: ordinal signal. Both halves matter: the accuracy clears the subgroup bar, the
+    #: qwk/pearson clear the ordinal floor, and a fixture missing either is blocked.
     OVERALL = {
-        "oil": {"accuracy": 0.90, "n": 100},
-        "redness": {"accuracy": 0.90, "n": 100},
-        "pores": {"accuracy": 0.90, "n": 100},
+        "oil": {"accuracy": 0.90, "n": 100, "qwk": 0.80, "pearson": 0.82},
+        "redness": {"accuracy": 0.90, "n": 100, "qwk": 0.80, "pearson": 0.82},
+        "pores": {"accuracy": 0.90, "n": 100, "qwk": 0.80, "pearson": 0.82},
     }
 
-    def check(self, by_dimension, min_cell=20, max_gap=0.1):
+    def check(self, by_dimension, min_cell=20, max_gap=0.1, overall=None, min_qwk=0.4, min_pearson=0.4):
         return subgroups.promotion_check(
-            self.OVERALL, by_dimension, ("oil", "redness", "pores"), min_cell, max_gap
+            overall if overall is not None else self.OVERALL,
+            by_dimension,
+            ("oil", "redness", "pores"),
+            min_cell,
+            max_gap,
+            min_qwk,
+            min_pearson,
         )
+
+    #: A subgroup layout that passes on its own, so an ordinal blocker is the only
+    #: thing a test using it can be failing on.
+    CLEAN_TONE = {"tone": {
+        "light": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 40},
+        "tan": {"accuracy": 0.86, "ordinal_mae": 0.1, "n": 40},
+    }}
 
     def test_an_evaluable_dimension_within_the_gap_passes(self):
         gate = self.check({"tone": {
@@ -458,6 +474,154 @@ class PromotionGate(unittest.TestCase):
         trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
         self.assertNotIn("def promotion_check(", trainer)
         self.assertIn("promotion_check = subgroups.promotion_check", trainer)
+
+    def test_a_head_that_learned_nothing_is_blocked_even_with_no_subgroup_gap(self):
+        """The gap says 'even-handed'. A constant predictor is perfectly even-handed.
+
+        These are the metrics the repo's own metrics_from_confusion returns for a
+        majority-class predictor on a skewed 3-level scale — accuracy 0.8,
+        within-one-grade 0.95, qwk and pearson exactly 0.
+        """
+        constant = ordinal_metrics.metrics_from_confusion({
+            axis: [[80, 0, 0], [15, 0, 0], [5, 0, 0]] for axis in ("oil", "redness", "pores")
+        })
+        self.assertAlmostEqual(constant["oil"]["accuracy"], 0.80)
+        self.assertAlmostEqual(constant["oil"]["within_one_grade"], 0.95)
+        gate = self.check(self.CLEAN_TONE, overall=constant)
+        self.assertFalse(gate["promotable"], "a constant predictor must not be promotable")
+        self.assertTrue(gate["dimensions"]["tone"]["evaluated"], "the subgroup half must still pass")
+        self.assertIn("qwk", " ".join(gate["blockers"]))
+        self.assertIn("pearson", " ".join(gate["blockers"]))
+
+    def test_each_floor_blocks_on_its_own(self):
+        for metric, failing in (("qwk", {"qwk": 0.39, "pearson": 0.82}), ("pearson", {"qwk": 0.80, "pearson": 0.39})):
+            with self.subTest(metric=metric):
+                overall = {axis: {"accuracy": 0.90, "n": 100, **failing} for axis in ("oil", "redness", "pores")}
+                gate = self.check(self.CLEAN_TONE, overall=overall)
+                self.assertFalse(gate["promotable"])
+                self.assertIn(metric, " ".join(gate["blockers"]))
+
+    def test_one_bad_axis_blocks_the_whole_model(self):
+        overall = dict(self.OVERALL)
+        overall["pores"] = {"accuracy": 0.90, "n": 100, "qwk": 0.05, "pearson": 0.06}
+        gate = self.check(self.CLEAN_TONE, overall=overall)
+        self.assertFalse(gate["promotable"])
+        self.assertIn("pores", " ".join(gate["blockers"]))
+
+    def test_an_unreported_ordinal_metric_blocks_rather_than_passing(self):
+        """Same rule as an unevaluated subgroup: a bar nothing was measured against
+        was not cleared."""
+        overall = {axis: {"accuracy": 0.90, "n": 100} for axis in ("oil", "redness", "pores")}
+        gate = self.check(self.CLEAN_TONE, overall=overall)
+        self.assertFalse(gate["promotable"])
+        self.assertIn("never checked", " ".join(gate["blockers"]))
+
+    def test_the_shipped_manifest_declares_the_ordinal_floor(self):
+        """The floor must come from the manifest, not from the fallback.
+
+        Asserting the value alone proves nothing: FALLBACK_ORDINAL_GATE carries the
+        same numbers, so deleting promotionGate.ordinal from the shipped manifest
+        would leave this green while the app advertised no floor at all.
+        """
+        manifest = model_contract.load_manifest()
+        declared = (manifest.get("promotionGate") or {}).get("ordinal") or {}
+        self.assertIn("minQwk", declared, "the shipped manifest must declare the floor")
+        self.assertIn("minPearson", declared)
+        self.assertEqual(model_contract.min_qwk(), declared["minQwk"])
+        self.assertEqual(model_contract.min_pearson(), declared["minPearson"])
+
+    def test_the_manifest_beats_the_fallback_when_the_two_disagree(self):
+        original = dict(model_contract.FALLBACK_ORDINAL_GATE)
+        try:
+            model_contract.FALLBACK_ORDINAL_GATE["minQwk"] = 0.99
+            self.assertEqual(
+                model_contract.min_qwk(),
+                (model_contract.load_manifest()["promotionGate"]["ordinal"])["minQwk"],
+                "a manifest value must override the built-in fallback",
+            )
+        finally:
+            model_contract.FALLBACK_ORDINAL_GATE.clear()
+            model_contract.FALLBACK_ORDINAL_GATE.update(original)
+
+    def test_a_non_finite_score_blocks_rather_than_slipping_past_the_comparison(self):
+        """`float("nan") < 0.4` is False, so NaN would otherwise clear the floor.
+
+        And NaN is the likely value: the reference implementations this floor was
+        verified against return it for the degenerate matrices where ARU's own
+        scorers return 0.0.
+        """
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=bad):
+                overall = {axis: {"accuracy": 0.90, "n": 100, "qwk": bad, "pearson": bad}
+                           for axis in ("oil", "redness", "pores")}
+                gate = self.check(self.CLEAN_TONE, overall=overall)
+                self.assertFalse(gate["promotable"])
+                self.assertIn("never checked", " ".join(gate["blockers"]))
+
+    def test_evaluating_no_axis_at_all_blocks(self):
+        gate = subgroups.promotion_check(self.OVERALL, self.CLEAN_TONE, (), 20, 0.1, 0.4, 0.4)
+        self.assertFalse(gate["promotable"])
+
+    def test_the_trainer_passes_the_manifest_floor_through_to_the_gate(self):
+        """A floor the trainer never forwards is a floor in name only."""
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        self.assertIn("default=model_contract.min_qwk()", trainer)
+        self.assertIn("default=model_contract.min_pearson()", trainer)
+        self.assertIn("args.min_qwk, args.min_pearson", trainer)
+
+    def test_the_ordinal_floor_falls_back_when_the_manifest_omits_it(self):
+        original = model_contract.MANIFEST_PATH
+        try:
+            model_contract.MANIFEST_PATH = Path(tempfile.gettempdir()) / "aru-no-such-manifest.json"
+            self.assertEqual(model_contract.min_qwk(), model_contract.FALLBACK_ORDINAL_GATE["minQwk"])
+            self.assertEqual(model_contract.min_pearson(), model_contract.FALLBACK_ORDINAL_GATE["minPearson"])
+        finally:
+            model_contract.MANIFEST_PATH = original
+
+
+class OrdinalMetrics(unittest.TestCase):
+    """The arithmetic the ordinal floor reads.
+
+    Verified against sklearn.metrics.cohen_kappa_score(weights="quadratic") and
+    scipy.stats.pearsonr on 2026-09-15 — see docs/ordinal-metric-verification.md.
+    Those libraries are not dependencies of this repo, so the values that run
+    reported are pinned here.
+    """
+
+    MAJORITY = [[80, 0, 0], [15, 0, 0], [5, 0, 0]]
+    PERFECT = [[40, 0, 0], [0, 30, 0], [0, 0, 30]]
+    INVERTED = [[0, 0, 40], [0, 30, 0], [30, 0, 0]]
+
+    def test_a_constant_predictor_scores_zero(self):
+        self.assertEqual(ordinal_metrics.quadratic_weighted_kappa(self.MAJORITY), 0.0)
+        self.assertEqual(ordinal_metrics.pearson_from_confusion(self.MAJORITY), 0.0)
+
+    def test_a_perfect_predictor_scores_one(self):
+        self.assertAlmostEqual(ordinal_metrics.quadratic_weighted_kappa(self.PERFECT), 1.0)
+        self.assertAlmostEqual(ordinal_metrics.pearson_from_confusion(self.PERFECT), 1.0)
+
+    def test_worse_than_chance_goes_negative(self):
+        """A floor that only ever saw non-negative values would not be a floor."""
+        self.assertAlmostEqual(ordinal_metrics.quadratic_weighted_kappa(self.INVERTED), -0.971831, places=6)
+        self.assertAlmostEqual(ordinal_metrics.pearson_from_confusion(self.INVERTED), -1.0)
+
+    def test_all_mass_on_one_cell_reads_zero_not_one(self):
+        """Chance agreement is zero here, so kappa is undefined; 0.0 blocks, 1.0 would
+        promote a model evaluated on a single-grade validation set."""
+        self.assertEqual(ordinal_metrics.quadratic_weighted_kappa([[80, 0], [0, 0]]), 0.0)
+        self.assertEqual(ordinal_metrics.pearson_from_confusion([[80, 0], [0, 0]]), 0.0)
+
+    def test_an_empty_or_degenerate_matrix_does_not_raise(self):
+        for matrix in ([], [[0]], [[0, 0], [0, 0]], [[1]]):
+            with self.subTest(matrix=matrix):
+                self.assertEqual(ordinal_metrics.quadratic_weighted_kappa(matrix), 0.0)
+                self.assertEqual(ordinal_metrics.pearson_from_confusion(matrix), 0.0)
+
+    def test_the_trainer_does_not_keep_a_second_copy_of_the_scorers(self):
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        for name in ("quadratic_weighted_kappa", "pearson_from_confusion", "metrics_from_confusion"):
+            self.assertNotIn(f"def {name}(", trainer)
+            self.assertIn(f"{name} = ordinal_metrics.{name}", trainer)
 
 
 

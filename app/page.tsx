@@ -5,6 +5,7 @@ import { t } from "@/lib/i18n/core";
 import { Xiaohei } from "./components/sketch";
 import { ReturnBanner } from "./components/return-banner";
 import { MoodFromLink } from "./components/mood-from-link";
+import { useFunnelPageView } from "./use-funnel-page-view";
 
 function Arrow() {
   return (
@@ -16,6 +17,9 @@ function Arrow() {
 }
 
 export default function Home() {
+  // Top of the funnel. Without it the first countable step was the shutter, so
+  // everyone who arrived and never opened the camera was invisible.
+  useFunnelPageView("home_viewed");
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
       <header className="flex items-center justify-between px-6 pt-7" style={{ paddingInlineEnd: 118 }}>

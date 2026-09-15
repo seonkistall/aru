@@ -44,8 +44,21 @@ export function consentEventCount(): number {
 export function latestConsent(kind: ConsentKind, scope?: { participantId?: string; sessionId?: string }): ConsentEvent | null {
   const events = getConsentEvents().filter((event) => {
     if (event.kind !== kind) return false;
-    if (scope?.participantId && event.participantId !== scope.participantId) return false;
-    if (scope?.sessionId && event.sessionId !== scope.sessionId) return false;
+    // Exact scope match, undefined===undefined included. This used to skip the
+    // comparison entirely when the caller passed no scope, so an unscoped read saw
+    // every participant's events — the same fail-open shape `latestConsentGranted`
+    // in lib/sync-payload.ts already guards against, and the last place still using
+    // the loose form. Two consequences, both measured:
+    //
+    //   * recordConsentEvent dedupes against this. On a device that had run a pilot
+    //     session, a consumer ticking 학습용 크롭 저장 matched P001's grant, so the
+    //     "already in this state" short-circuit wrote NO event. The UI showed the
+    //     toggle on, resolveCaptureConsent (which matches scope exactly) then found
+    //     no unscoped grant and discarded the crop, and the person's own consent
+    //     decision never entered the audit trail.
+    //   * /ops reported that participant's decision as the device's consent state.
+    if ((event.participantId ?? undefined) !== (scope?.participantId ?? undefined)) return false;
+    if ((event.sessionId ?? undefined) !== (scope?.sessionId ?? undefined)) return false;
     return true;
   });
   return events.length ? events[events.length - 1] : null;
