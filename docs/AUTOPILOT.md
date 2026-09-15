@@ -146,7 +146,56 @@ Owner-only, dated when first recorded.
 - 2026-09-14 — Real golden-set photos with consensus labels.
 - 2026-09-14 — Physical-device QA: iPhone Safari matrix, Play internal track.
 
+## How the schedule actually runs
+
+A Routine that creates its own fresh session **cannot do this job**, and the reason is
+worth keeping written down because it costs a day to rediscover.
+
+`create_trigger` has no parameter for a repository source, so every session it spawns
+starts with `sources: []`. A session without the repo declared as a source hits an
+approval prompt the moment it writes to that repo, and an unattended session has nobody
+to approve it, so it stops and goes idle. From the outside this looks like a run that
+"succeeded": the routine records SUCCEEDED, the session burned real tokens, and nothing
+was pushed.
+
+Measured on 2026-09-15, four fires, four empty results:
+
+| fire | model | ran for | output tokens | branch pushed |
+|---|---|---|---|---|
+| 09-14 21:26 manual | Sonnet 5 | 4m43s | 10,308 | none |
+| 09-15 06:39 scheduled | Sonnet 5 | 1m54s | 4,617 | none |
+| 09-15 13:20 manual | Opus 5 | 5m49s | 17,967 | none |
+| 09-15 13:27 minimal push test | Opus 5 | 4m52s | 12,563 | none |
+
+Then two sessions differing in exactly one variable:
+
+| session | `source_url` | outcome |
+|---|---|---|
+| diag A | declared | pushed `diag/with-source` |
+| diag B | absent | BLOCKED: `"confirm: proceed with git push to seonkistall/aru?"` |
+
+So the working shape is:
+
+```
+Routine (cron)  ->  supervisor session (has the repo, GitHub MCP, push rights)
+                       -> create_session(source_url=...) -> worker does the cycle, pushes a branch
+                       -> supervisor reviews the diff, opens the PR, merges it
+```
+
+The worker gets a fresh context every cycle, which is the point. The supervisor does the
+parts the worker cannot: review with tools the worker lacks, and merge.
+
+Two things follow for anyone editing the Routine:
+
+- Never move the cycle back into a fresh-session Routine without also solving the source
+  declaration. It will silently do nothing.
+- A run that ends in a few minutes having pushed nothing is this failure, not a fast cycle.
+
 ## Changelog
 
 - 2026-09-14 — Autopilot established. Cycle protocol, guardrails, revenue
   arithmetic and backlog written down for the first time.
+- 2026-09-15 — Four scheduled fires produced nothing. Root cause found and
+  fixed: fired sessions had no declared repository source, so every push blocked on an
+  approval prompt nobody could answer. The Routine now wakes a supervisor session that
+  spawns a properly sourced worker.
