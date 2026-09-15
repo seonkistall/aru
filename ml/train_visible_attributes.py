@@ -719,58 +719,11 @@ def label_distribution(rows: list[Row], axes: tuple[str, ...]) -> dict[str, dict
     return dist
 
 
-def promotion_check(
-    overall: dict,
-    by_dimension: dict,
-    axes: tuple[str, ...],
-    min_cell: int,
-    max_gap: float,
-) -> dict:
-    """Can this model replace the heuristic? Subgroup gaps decide, not the mean.
-
-    Each dimension is judged on its own so that missing age data blocks an
-    age-robustness claim without hiding a tone gap that IS measurable.
-    """
-    mean_acc = sum(overall[axis]["accuracy"] * overall[axis]["n"] for axis in axes) / max(
-        1, sum(overall[axis]["n"] for axis in axes)
-    )
-    results = {}
-    reasons = []
-    for dimension, groups in by_dimension.items():
-        worst_acc = subgroups.worst_group(groups, "accuracy", min_n=min_cell)
-        worst_mae = subgroups.worst_group(groups, "ordinal_mae", min_n=min_cell)
-        gap = None
-        if worst_acc.get("evaluated"):
-            gap = mean_acc - worst_acc["worstValue"]
-            if gap > max_gap:
-                reasons.append(
-                    f"[{dimension}] worst group {worst_acc['worstCell']} is {gap:.3f} below the "
-                    f"mean (limit {max_gap:.3f})"
-                )
-        elif dimension == "tone":
-            reasons.append(
-                f"[tone] no tone band reached n>={min_cell}. Tone is measured on every scan, so "
-                "this means too little data, not missing metadata."
-            )
-        elif dimension == "age":
-            reasons.append(
-                "[age] no age band reached n>={0}. Age is only collected in consented pilot "
-                "sessions; without it the model may not be claimed to hold across age groups.".format(min_cell)
-            )
-        results[dimension] = {
-            "worstAccuracy": worst_acc,
-            "worstOrdinalMae": worst_mae,
-            "gapToMean": gap,
-            "evaluated": bool(worst_acc.get("evaluated")),
-        }
-    return {
-        "meanAccuracy": mean_acc,
-        "maxAllowedGap": max_gap,
-        "minSamplesPerGroup": min_cell,
-        "dimensions": results,
-        "promotable": not reasons,
-        "blockers": reasons,
-    }
+# promotion_check lives in ml/subgroups.py: this module imports torch at module
+# scope, which kept the repo's highest-consequence rule out of reach of
+# ml/selftest.py. Re-exported here so the call site and any existing caller are
+# unchanged.
+promotion_check = subgroups.promotion_check
 
 
 def main() -> None:

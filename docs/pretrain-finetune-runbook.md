@@ -46,12 +46,19 @@ $ python ml/train_visible_attributes.py --data .../crops \
 init-from ...: loaded 242 tensors, skipped 4 shape-mismatched, 4 left at init
 epoch=01 ...
 promotion gate: BLOCKED
-  - [tone] no tone band reached n>=20. ...
-  - [age] no age band reached n>=20. ...
+  - [tone] no cell reached n>=20. Tone is measured on every scan, so ...
+  - [age] no cell reached n>=20. Age is only collected in consented pilot ...
+  - [tone_x_age] no cell reached n>=20. The joint cell needs both ...
 ```
 
+> 위 블록은 실제 실행 출력이 아니라 형태를 보여주는 예시다 (torch 필요). 문구는
+> `ml/subgroups.py`의 `promotion_check` / `_UNEVALUATED_NOTE`가 원본이다.
+> 2026-09-15부터 **평가 불가 차원은 예외 없이 차단**한다. 이전에는 `tone`과 `age`만
+> 이름으로 걸려 있어서, 매니페스트가 선언한 `tone_x_age`는 평가되지 않아도 아무
+> 블로커를 남기지 않고 통과했다.
+
 라이선스는 통과하고 **승급 게이트에서 막힌다.** 그게 정확히 맞는 상태다 — 합성
-데이터에는 서브그룹이 없으니까. 실데이터가 쌓이면 이 두 줄이 해제 조건이다.
+데이터에는 서브그룹이 없으니까. 실데이터가 쌓이면 이 세 줄이 해제 조건이다.
 
 체크포인트에 기록된 계보:
 

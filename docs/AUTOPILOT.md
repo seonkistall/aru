@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## What this is for
 
@@ -53,6 +53,22 @@ better than four half-finished ones.
    CHANGELOG entries so the cycle does not redo finished work.
 2. **Verify green.** `npm run smoke` must pass before any change. If it is red,
    fixing that is the whole cycle.
+
+   In a sandboxed worker, export `PLAYWRIGHT_CHROMIUM_EXECUTABLE` first:
+
+   ```bash
+   PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run smoke
+   ```
+
+   `@playwright/test` 1.61.1 pins chromium build 1228; the container ships 1194, and
+   `npx playwright install chromium` is refused by the egress proxy
+   (`403 ... no rule or allowlist entry allows host "cdn.playwright.dev"`). Without the
+   override all 44 mobile E2E specs fail at browser launch and smoke reads red while
+   nothing in the product is broken. Unset, Playwright resolves its own build, so CI is
+   unchanged. Find the path with `ls /opt/pw-browsers` — the build number moves.
+
+   Also: pipe smoke through `tee` and it reports `tee`'s exit code, not its own. Check for
+   the literal `Smoke test passed.` line, not `$?` at the end of a pipeline.
 3. **Research** (자료조사). One concrete question that the next step needs
    answered — a dataset licence, a Play policy, a Korean affiliate programme's
    terms, a competitor's onboarding, an ML technique. Verify against a primary
@@ -108,16 +124,51 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Now
 
+- [AI] `confidenceLabel` no longer distinguishes reading ambiguity. After the
+  2026-09-15 fix, a frame whose three capture signals all pass lands in
+  [0.7804, 0.9424], and the 높음 gate is 0.78 — so it reads 높음 even when all three
+  readings sit exactly on their cut points. The label is now a restatement of capture
+  quality, and it clears the gate by 0.0004, so any later nudge of the 0.695 floor or
+  the 0.78 threshold flips every well-captured scan at once. Decide whether the
+  attribute term should get more travel in `readsFromRaw`, or whether the label should
+  be dropped to two levels. Note `confidenceLabel` is duplicated byte-for-byte in
+  `app/scan/capture-analysis.ts`.
+- [AI] Decide whether ONE failed capture signal should force a retake. Measured after
+  the 2026-09-15 `distanceConfidence` fix: `retakeRecommended` is
+  `confidence < 0.58 || retakeReasons.length >= 2`, and with confidence no longer
+  collapsing on unambiguous readings the lowest reachable value with 2 of 3 signals
+  passing is 0.6871, so a single failed signal can no longer trip the gate. Two or more
+  failures still do, via the reason count. The old code caught the single-failure case
+  only as a side effect of the inversion — i.e. by accident — but "피부 영역" failing
+  alone does genuinely undermine the pores reading, so this deserves an explicit rule
+  rather than an accident. Numbers above are from a `node` evaluation of the new
+  function against the real `attrConfidence * 0.72 + signalScore * 0.28` weighting.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
 - [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
-  can see where users drop off. Without it every UX cycle is guessing.
+  can see where users drop off. Without it every UX cycle is guessing. (Still open —
+  2026-09-15 added `share_landed` and `viralActivation`, but they are still on-device.)
+- [AI] Four more drop-offs are uninstrumented, found while adding `share_landed`:
+  the home page fires nothing; `/scan` records `scan_started` only at shutter, so a
+  camera permission denial is invisible; `/care` records only `commerce_clicked`; and
+  `/checkin` — the landing page for every re-engagement email — has no funnel import
+  at all.
 - [AI] Measure the real per-scan cost of the new within-image indices on a mid-range
   phone profile, not on the build container.
-- [AI] Share surface: a scan result worth sending to a friend is the only organic
-  acquisition loop the product has. Audit `app/components/share-card.tsx` against
-  what actually renders in KakaoTalk.
+- [~] [AI] Share surface: audit `app/components/share-card.tsx` against what actually
+  renders in KakaoTalk. **Partly answered** 2026-09-15 in `docs/share-preview-findings.md`
+  — the structural half is settled, the Kakao-render half is not and needs a phone. The
+  og tags are already correct and already static; the blocker is structural, not a bug.
+  A per-result preview is impossible while the levels live in the URL fragment, which
+  is the very thing that keeps them off the server. Kakao's own scraper spec could not
+  be fetched (egress-blocked), so the Kakao-specific half of this item is now in BLOCKERS.
+  The receiving half of the loop is now instrumented (`share_landed`).
+- [AI] Decide the share-preview fork recorded in `docs/share-preview-findings.md`.
+  Option B (levels in a query param) is the only way to a per-result card and it puts
+  skin levels in server and messenger logs. Needs an owner call, not a loop decision.
+- [AI] `viralActivation` now has a denominator but no baseline. Once any real traffic
+  exists, read it before changing the share surface again.
 - [OWNER] **Apply to the affiliate programmes** (Coupang Partners, Naver 쇼핑파트너,
   Olive Young). Until then every out-click earns $0. This is the single highest-
   leverage item on the whole list.
@@ -127,6 +178,42 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Next
 
+- [AI] The promotion gate still reads only `accuracy` and the unused `worstOrdinalMae`.
+  `qwk` and `pearson` are computed in `ml/train_visible_attributes.py` and compared to
+  nothing, so a head that has learned nothing passes — and passes *easily*, because a
+  constant predictor has almost no subgroup gap, which is the only thing the gate
+  measures. Fed the repo's own `metrics_from_confusion` (ast-extracted, since the
+  module imports torch) a majority-class predictor on a skewed 3-level scale
+  (`{"oil": [[80,0,0],[15,0,0],[5,0,0]]}` — always predicts level 0):
+
+  ```
+  oil {'n': 100, 'accuracy': 0.8, 'macro_f1': 0.2963, 'ordinal_mae': 0.25,
+       'within_one_grade': 0.95, 'qwk': 0.0, 'pearson': 0.0}
+  ```
+
+  Accuracy 0.80 and "within one grade" 0.95 both look fine; `qwk` and `pearson` are
+  exactly 0. `ml/README.md` already says to read them. Add `minQwk`/`minPearson` to the
+  manifest gate and to `model_contract.FALLBACK_GATE`. This is the next ML item.
+- [AI] `minSamplesPerBand` is compared against the wrong unit. `_aggregate` in
+  `ml/train_visible_attributes.py` sums `n` ACROSS axes, and `worst_group` gates on
+  that sum. Reproduced by feeding the real `_aggregate` one cell of 10 samples
+  labelled on the three default axes:
+
+  ```
+  real samples in the cell:  10
+  labelled axes           :  3
+  n reported to worst_group: 30
+  manifest minSamplesPerBand: 20
+  clears the floor?          True
+  ```
+
+  So a subgroup a third the size of the documented floor is evaluated as if it met it.
+  `fit_tone_calibration` in the same file uses the correct per-axis unit, and
+  `coverage_warnings` uses raw row counts — three meanings for one manifest number.
+- [AI] `raw.toneIta` has no behavioural test anywhere, and it is the sole input to tone
+  band assignment on both first-party ingest paths. A radians/degrees slip in
+  `lib/skin.ts` would put every sample in `brown_dark`, collapse the tone dimension to
+  one cell, and every existing check would still pass.
 - [AI] Tone and dryness have no label source. Propose the smallest consented way to
   collect one, with the PIPA consequences spelled out; do not implement it alone.
 - [AI] Recommendation quality: the reasons are LLM-generated and efficacy-filtered,
@@ -145,6 +232,16 @@ Owner-only, dated when first recorded.
   reading of the terms; the data still needs an approved application.
 - 2026-09-14 — Real golden-set photos with consensus labels.
 - 2026-09-14 — Physical-device QA: iPhone Safari matrix, Play internal track.
+- 2026-09-15 — The share-preview fork in `docs/share-preview-findings.md`. Per-result
+  link previews require moving the skin levels out of the URL fragment and into the
+  request target, where ARU's server and the messenger's scraper both log them. PIPA
+  consequence, owner decision.
+- 2026-09-15 — Egress. This worker cannot reach `developers.kakao.com`, `ogp.me`,
+  `www.rfc-editor.org`, `partners.coupang.com`, `adpartners.coupang.com`,
+  `partner.naver.com`, `www.oliveyoung.co.kr` or `cdn.playwright.dev`. So the research
+  track cannot verify Kakao's scraper spec or any affiliate commission term from a
+  primary source, and the `3-10%` commission band in the revenue table above stays
+  unverified. Either allowlist those hosts for the worker or the owner reads the terms.
 
 ## How the schedule actually runs
 
@@ -199,3 +296,37 @@ Two things follow for anyone editing the Routine:
   fixed: fired sessions had no declared repository source, so every push blocked on an
   approval prompt nobody could answer. The Routine now wakes a supervisor session that
   spawns a properly sourced worker.
+- 2026-09-15 — First worker cycle to land all four tracks.
+  **smoke** was red on arrival for an environment reason (pinned Playwright browser
+  build absent, CDN egress-blocked); `playwright.mobile.config.ts` gained an opt-in
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override and the prerequisite is written into
+  "One cycle" above.
+  **bug** `distanceConfidence` in `lib/skin.ts` was sign-inverted outside the threshold
+  band — confidence peaked at the decision boundary (0.9159 just below `lo`) and fell to
+  0 for unambiguous readings. A clean capture of very calm skin scored 0.5759, under the
+  0.58 gate, so the user was told 재촬영 권장 with an empty `retakeReasons` and
+  `shouldApplyScan` discarded the scan entirely. Fixed; the same capture now scores
+  0.9124. `tests/confidence-monotonicity.regression-12.test.ts` pins the invariant and
+  7 of its 8 cases fail against the old body. Known consequence, now a backlog item: a
+  single failed capture signal can no longer trip the confidence gate on its own (two
+  or more still do, through `retakeReasons.length >= 2`), and `confidenceLabel` now
+  reads 높음 for any frame whose three capture signals pass. Both are backlog items.
+  Scope of the bug, measured on a feature grid rather than one hand-picked triple
+  (shine 0-0.5, relRedness -0.03-0.08, cov 0-0.3, 51 steps each, all signals passing):
+  41.54% of 132,651 points scored under the 0.58 gate before, 0% after, and no point
+  moved the other way.
+  **ML** `promotion_check` moved from the torch-importing trainer into stdlib-only
+  `ml/subgroups.py`, which is what put it in reach of `ml/selftest.py` for the first
+  time, and its `elif dimension == "tone" / elif "age"` chain became an unconditional
+  `else`. `tone_x_age` — declared by the shipped manifest and structurally unevaluable
+  on consumer scans, since every joint cell is `<tone>/unknown` — previously appended no
+  blocker, so a run could report `promotable: True` with a declared fairness dimension
+  never checked. That contradicted the manifest's own note. selftest went 44 -> 50 tests;
+  3 of the new ones fail against the old branch.
+  **UX** `share_landed` + `viralActivation`: the share loop counted sends and never
+  arrivals, so it had a numerator and no denominator. Fired from the hash
+  `MoodFromLink` already parses, surfaced in `/ops`.
+  **research** `docs/share-preview-findings.md` — a per-result link preview is
+  structurally impossible while the levels live in the fragment, demonstrated with a
+  local HTTP probe and the Next 16.2.9 docs shipped in `node_modules`. Kakao's own spec
+  is egress-blocked and is recorded as unverified rather than guessed.

@@ -4,16 +4,29 @@
 // skin mood and a scan CTA. Reads the hash after mount (client-only), so there's
 // no SSR/hydration mismatch. The hash is never sent to the server.
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { moodSummary, readMoodFromHash, type MoodLevels } from "@/lib/share-link";
+import { recordFunnelEvent } from "@/lib/funnel";
 import { t } from "@/lib/i18n/core";
 
 export function MoodFromLink() {
   const [mood, setMood] = useState<MoodLevels | null>(null);
+  // StrictMode double-invokes effects in dev. Same guard as app/survey/page.tsx.
+  const landingRecorded = useRef(false);
 
   useEffect(() => {
+    const arrived = readMoodFromHash(window.location.hash);
     /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    setMood(readMoodFromHash(window.location.hash));
+    setMood(arrived);
+    // The receiving half of the share loop. share_clicked counted sends; nothing
+    // counted arrivals, so the loop had no denominator and no UX cycle could tell
+    // whether a change to the share surface did anything. Reads the hash already
+    // parsed above — no new network call, nothing extra leaves the device, and
+    // recordFunnelEvent swallows its own storage failures.
+    if (arrived && !landingRecorded.current) {
+      landingRecorded.current = true;
+      recordFunnelEvent("share_landed");
+    }
   }, []);
 
   if (!mood) return null;

@@ -379,5 +379,87 @@ class AdapterSpecs(unittest.TestCase):
             external_manifest.build(Path("/nonexistent"), spec, "product_training")
 
 
+class PromotionGate(unittest.TestCase):
+    """The gate that decides whether a model may replace the heuristic.
+
+    It used to live in train_visible_attributes.py, which imports torch at module
+    scope, so none of this could be reached from here.
+    """
+
+    #: Three axes at 100 samples each, all comfortably accurate.
+    OVERALL = {
+        "oil": {"accuracy": 0.90, "n": 100},
+        "redness": {"accuracy": 0.90, "n": 100},
+        "pores": {"accuracy": 0.90, "n": 100},
+    }
+
+    def check(self, by_dimension, min_cell=20, max_gap=0.1):
+        return subgroups.promotion_check(
+            self.OVERALL, by_dimension, ("oil", "redness", "pores"), min_cell, max_gap
+        )
+
+    def test_an_evaluable_dimension_within_the_gap_passes(self):
+        gate = self.check({"tone": {
+            "light": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 40},
+            "tan": {"accuracy": 0.86, "ordinal_mae": 0.1, "n": 40},
+        }})
+        self.assertTrue(gate["promotable"], gate["blockers"])
+        self.assertTrue(gate["dimensions"]["tone"]["evaluated"])
+
+    def test_a_subgroup_gap_blocks(self):
+        gate = self.check({"tone": {
+            "light": {"accuracy": 0.95, "ordinal_mae": 0.1, "n": 40},
+            "brown_dark": {"accuracy": 0.60, "ordinal_mae": 0.4, "n": 40},
+        }})
+        self.assertFalse(gate["promotable"])
+        self.assertIn("brown_dark", " ".join(gate["blockers"]))
+
+    def test_an_unevaluated_joint_cell_blocks_rather_than_passing_silently(self):
+        """The hole this class exists for.
+
+        tone_x_age is declared by public/models/visible-attributes/manifest.json, and
+        on consumer scans every joint cell is "<tone>/unknown", which worst_group
+        excludes by design. The old branch named only "tone" and "age", so this
+        dimension appended no blocker and the run reported promotable: True with a
+        declared fairness dimension never actually checked.
+        """
+        gate = self.check({
+            "tone": {
+                "light": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 40},
+                "tan": {"accuracy": 0.88, "ordinal_mae": 0.1, "n": 40},
+            },
+            "tone_x_age": {
+                "light/unknown": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 400},
+                "tan/unknown": {"accuracy": 0.88, "ordinal_mae": 0.1, "n": 400},
+            },
+        })
+        self.assertFalse(gate["dimensions"]["tone_x_age"]["evaluated"])
+        self.assertFalse(gate["promotable"], "an unevaluated declared dimension must block")
+        self.assertIn("tone_x_age", " ".join(gate["blockers"]))
+
+    def test_a_dimension_nobody_named_still_blocks_when_unevaluated(self):
+        """No literal-name branch: a dimension added later must block too."""
+        gate = self.check({"device": {"pixel/unknown": {"accuracy": 0.9, "ordinal_mae": 0.1, "n": 9}}})
+        self.assertFalse(gate["promotable"])
+        self.assertIn("device", " ".join(gate["blockers"]))
+
+    def test_every_manifest_dimension_blocks_when_it_cannot_be_evaluated(self):
+        """Walk the dimensions the shipped manifest actually declares."""
+        declared = model_contract.promotion_gate().get("dimensions") or []
+        self.assertTrue(declared, "manifest declares no subgroup dimensions")
+        for dimension in declared:
+            with self.subTest(dimension=dimension):
+                gate = self.check({dimension: {"a/unknown": {"accuracy": 0.9, "ordinal_mae": 0.1, "n": 5}}})
+                self.assertFalse(gate["promotable"])
+                self.assertFalse(gate["dimensions"][dimension]["evaluated"])
+
+    def test_the_trainer_does_not_keep_a_second_copy_of_the_gate(self):
+        """Two copies would drift, and only one of them is reachable from here."""
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        self.assertNotIn("def promotion_check(", trainer)
+        self.assertIn("promotion_check = subgroups.promotion_check", trainer)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
