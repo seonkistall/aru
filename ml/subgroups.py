@@ -23,6 +23,7 @@ ITA (Individual Typology Angle) bands follow the Chardon convention and match
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
@@ -366,12 +367,77 @@ _UNEVALUATED_NOTE: dict[str, str] = {
 }
 
 
+#: Ordinal-quality metrics every axis must clear, and why each one is here.
+#: Both are read off the final validation confusion, per axis, never per subgroup
+#: cell — at minSamplesPerBand a per-cell qwk is mostly noise.
+ORDINAL_QUALITY_METRICS: tuple[tuple[str, str], ...] = (
+    ("qwk", "quadratic weighted kappa: agreement corrected for chance, 0 for a constant predictor"),
+    ("pearson", "correlation between predicted and true level, 0 when the output never varies"),
+)
+
+
+def ordinal_quality_check(
+    overall: dict,
+    axes: tuple[str, ...],
+    min_qwk: float,
+    min_pearson: float,
+) -> tuple[dict, list[str]]:
+    """Per-axis floor on qwk and pearson. Returns (per-axis report, blockers).
+
+    Why this exists, in one example that the repo's own metrics_from_confusion
+    produces: a head that always predicts level 0 on a skewed 80/15/5 scale scores
+    accuracy 0.80, within_one_grade 0.95, ordinal_mae 0.25 — and qwk 0.0, pearson 0.0.
+    The subgroup gap test does not catch it either, because a constant predictor is
+    equally wrong everywhere and so has almost no gap between its mean and its worst
+    cell. Accuracy plus gap is therefore EASIEST to pass for a model that learned
+    nothing, which is the opposite of what a promotion gate is for.
+
+    Fails closed. An axis whose metrics are absent blocks rather than passing, because
+    "the number is missing" and "the number is fine" must never look the same here.
+    """
+    floors = {"qwk": min_qwk, "pearson": min_pearson}
+    report: dict[str, dict] = {}
+    blockers: list[str] = []
+    for axis in axes:
+        metrics = overall.get(axis)
+        if not isinstance(metrics, dict):
+            report[axis] = {"evaluated": False, "reason": "no validation metrics for this axis"}
+            blockers.append(f"[{axis}] no validation metrics, so ordinal quality is unverified")
+            continue
+        if not metrics.get("n"):
+            report[axis] = {"evaluated": False, "reason": "no labelled validation samples"}
+            blockers.append(f"[{axis}] no labelled validation samples, so ordinal quality is unverified")
+            continue
+        entry: dict = {"evaluated": True, "n": metrics.get("n")}
+        for key, meaning in ORDINAL_QUALITY_METRICS:
+            value = metrics.get(key)
+            floor = floors[key]
+            entry[key] = value
+            entry[f"min{key[:1].upper()}{key[1:]}"] = floor
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                entry["evaluated"] = False
+                blockers.append(f"[{axis}] {key} is missing, so ordinal quality is unverified ({meaning})")
+            elif not math.isfinite(value):
+                # NaN and inf are checked BEFORE the floor on purpose: every comparison
+                # against NaN is False, so `value < floor` would wave a NaN straight
+                # through the gate — the one direction this check must never fail in.
+                entry["evaluated"] = False
+                blockers.append(f"[{axis}] {key} is {value}, not a usable number ({meaning})")
+            elif value < floor:
+                blockers.append(f"[{axis}] {key} {value:.3f} is below the {floor:.3f} floor ({meaning})")
+        report[axis] = entry
+    return report, blockers
+
+
 def promotion_check(
     overall: dict,
     by_dimension: dict,
     axes: tuple[str, ...],
     min_cell: int,
     max_gap: float,
+    *,
+    min_qwk: float,
+    min_pearson: float,
 ) -> dict:
     """Can this model replace the heuristic? Subgroup gaps decide, not the mean.
 
@@ -382,6 +448,17 @@ def promotion_check(
     torch at module scope, which put the single highest-consequence rule in the repo
     out of reach of ml/selftest.py. It is pure dict arithmetic over worst_group and
     needs nothing the trainer has.
+
+    Two independent bars, both of which must hold: the subgroup gap test below, and
+    ordinal_quality_check above. The gap test alone rewards a degenerate predictor,
+    so neither can carry the gate by itself.
+
+    min_qwk and min_pearson are keyword-only and have NO defaults, deliberately. A
+    default of 0.0 would mean a caller that forgot them silently got a gate with no
+    ordinal-quality rule at all, which is the failure this whole change exists to
+    remove; keyword-only means a later parameter cannot quietly capture a positional
+    argument meant for something else. The values belong to the shipped manifest —
+    ml/model_contract.min_qwk() / min_pearson() — not to this module.
 
     An unevaluated dimension is a BLOCKER, for every dimension. It used to be one only
     for "tone" and "age", named literally; "tone_x_age" — which the shipped manifest
@@ -419,10 +496,15 @@ def promotion_check(
             "gapToMean": gap,
             "evaluated": bool(worst_acc.get("evaluated")),
         }
+    quality, quality_blockers = ordinal_quality_check(overall, axes, min_qwk, min_pearson)
+    reasons = quality_blockers + reasons
     return {
         "meanAccuracy": mean_acc,
         "maxAllowedGap": max_gap,
         "minSamplesPerGroup": min_cell,
+        "minQwk": min_qwk,
+        "minPearson": min_pearson,
+        "ordinalQuality": quality,
         "dimensions": results,
         "promotable": not reasons,
         "blockers": reasons,

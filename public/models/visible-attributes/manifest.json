@@ -51,8 +51,10 @@
       ],
       "minSamplesPerBand": 20,
       "maxAccuracyGap": 0.1,
+      "minQwk": 0.4,
+      "minPearson": 0.4,
       "calibrationFile": "tone_calibration.json",
-      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently."
+      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently. Accuracy alone cannot carry this: on a skewed ordinal scale a majority-class predictor reaches accuracy 0.80 and within_one_grade 0.95 while qwk and pearson are exactly 0, and it has almost no subgroup gap, so the gap test is EASIEST to pass for a model that learned nothing. minQwk and minPearson are therefore checked per axis on the final validation confusion, and an axis whose metric is missing, non-finite, or has no validation samples blocks rather than passing. PROVISIONAL, and not a quality claim: 0.4 is a floor against degeneracy, chosen near the fair/moderate boundary of the commonly cited Landis & Koch kappa bands (their moderate band begins at 0.41). That convention could not be checked against its primary source from the build network, and 0.4 has not been measured on ARU data. The bar that actually matters is 'beats the shipped heuristic on the same validation set', which needs a heuristic baseline the pipeline does not record yet."
     }
   },
   "axes": {

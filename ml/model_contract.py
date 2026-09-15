@@ -23,6 +23,8 @@ MANIFEST_PATH = REPO_ROOT / "public" / "models" / "visible-attributes" / "manife
 FALLBACK_GATE = {
     "minSamplesPerBand": 20,
     "maxAccuracyGap": 0.10,
+    "minQwk": 0.40,
+    "minPearson": 0.40,
     "dimensions": ["tone", "age", "tone_x_age"],
 }
 
@@ -52,6 +54,20 @@ def min_samples_per_band() -> int:
 
 def max_accuracy_gap() -> float:
     return float(promotion_gate()["maxAccuracyGap"])
+
+
+def min_qwk() -> float:
+    """Ordinal-agreement floor, per axis, on the final validation confusion.
+
+    Accuracy and the subgroup gap cannot carry the gate on their own: a majority-class
+    predictor on a skewed ordinal scale scores well on both and has qwk exactly 0.
+    """
+    return float(promotion_gate()["minQwk"])
+
+
+def min_pearson() -> float:
+    """Correlation floor, per axis. Zero for a predictor whose output never varies."""
+    return float(promotion_gate()["minPearson"])
 
 
 def declared_dimensions() -> list[str]:

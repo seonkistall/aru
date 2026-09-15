@@ -386,17 +386,31 @@ class PromotionGate(unittest.TestCase):
     scope, so none of this could be reached from here.
     """
 
-    #: Three axes at 100 samples each, all comfortably accurate.
+    #: Three axes at 100 samples each, comfortably accurate AND genuinely ordinal.
+    #: qwk/pearson are carried here because the gate fails closed on a missing metric.
     OVERALL = {
-        "oil": {"accuracy": 0.90, "n": 100},
-        "redness": {"accuracy": 0.90, "n": 100},
-        "pores": {"accuracy": 0.90, "n": 100},
+        axis: {"accuracy": 0.90, "n": 100, "qwk": 0.72, "pearson": 0.75}
+        for axis in ("oil", "redness", "pores")
     }
 
-    def check(self, by_dimension, min_cell=20, max_gap=0.1):
+    def check(self, by_dimension, min_cell=20, max_gap=0.1, overall=None,
+              min_qwk=0.4, min_pearson=0.4):
         return subgroups.promotion_check(
-            self.OVERALL, by_dimension, ("oil", "redness", "pores"), min_cell, max_gap
+            overall if overall is not None else self.OVERALL,
+            by_dimension,
+            ("oil", "redness", "pores"),
+            min_cell,
+            max_gap,
+            min_qwk=min_qwk,
+            min_pearson=min_pearson,
         )
+
+    #: One healthy subgroup map, so a test about ordinal quality is not also
+    #: accidentally testing the gap rule.
+    GOOD_DIMS = {"tone": {
+        "light": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 40},
+        "tan": {"accuracy": 0.88, "ordinal_mae": 0.1, "n": 40},
+    }}
 
     def test_an_evaluable_dimension_within_the_gap_passes(self):
         gate = self.check({"tone": {
@@ -452,6 +466,93 @@ class PromotionGate(unittest.TestCase):
                 gate = self.check({dimension: {"a/unknown": {"accuracy": 0.9, "ordinal_mae": 0.1, "n": 5}}})
                 self.assertFalse(gate["promotable"])
                 self.assertFalse(gate["dimensions"][dimension]["evaluated"])
+
+    def test_a_majority_class_predictor_is_not_promotable(self):
+        """The case accuracy and the subgroup gap both wave through.
+
+        These six numbers are what the repo's own metrics_from_confusion returns for
+        a head that always predicts level 0 on a skewed 80/15/5 ordinal scale. It is
+        not merely that the gap test misses it — a constant predictor is equally
+        wrong in every cell, so it has almost NO gap, which makes the old gate
+        easiest to pass for a model that learned nothing.
+        """
+        degenerate = {axis: {
+            "n": 100, "accuracy": 0.80, "macro_f1": 0.2963, "ordinal_mae": 0.25,
+            "within_one_grade": 0.95, "qwk": 0.0, "pearson": 0.0,
+        } for axis in ("oil", "redness", "pores")}
+
+        # It clears accuracy and it clears the gap.
+        gap_only = self.check(self.GOOD_DIMS, overall=degenerate, min_qwk=0.0, min_pearson=0.0)
+        self.assertTrue(gap_only["promotable"], "precondition: the gap rule alone lets this through")
+
+        # The manifest's floors stop it.
+        gate = self.check(self.GOOD_DIMS, overall=degenerate)
+        self.assertFalse(gate["promotable"])
+        self.assertIn("qwk", " ".join(gate["blockers"]))
+        self.assertIn("pearson", " ".join(gate["blockers"]))
+
+    def test_a_missing_metric_blocks_rather_than_passing(self):
+        """Fails closed: "not measured" must never look like "fine"."""
+        for missing in ("qwk", "pearson"):
+            with self.subTest(missing=missing):
+                overall = {axis: {k: v for k, v in self.OVERALL[axis].items() if k != missing}
+                           for axis in self.OVERALL}
+                gate = self.check(self.GOOD_DIMS, overall=overall)
+                self.assertFalse(gate["promotable"])
+                self.assertIn(f"{missing} is missing", " ".join(gate["blockers"]))
+                self.assertFalse(gate["ordinalQuality"]["oil"]["evaluated"])
+
+    def test_a_nan_or_infinite_metric_blocks(self):
+        """Every comparison against NaN is False, so `value < floor` alone waves it through."""
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            for metric in ("qwk", "pearson"):
+                with self.subTest(bad=bad, metric=metric):
+                    overall = {axis: dict(self.OVERALL[axis]) for axis in self.OVERALL}
+                    overall["oil"][metric] = bad
+                    gate = self.check(self.GOOD_DIMS, overall=overall)
+                    self.assertFalse(gate["promotable"])
+                    self.assertIn("not a usable number", " ".join(gate["blockers"]))
+                    self.assertFalse(gate["ordinalQuality"]["oil"]["evaluated"])
+
+    def test_an_axis_with_no_validation_samples_blocks(self):
+        overall = dict(self.OVERALL)
+        overall["pores"] = {"accuracy": 0.0, "n": 0, "qwk": 0.0, "pearson": 0.0}
+        gate = self.check(self.GOOD_DIMS, overall=overall)
+        self.assertFalse(gate["promotable"])
+        self.assertIn("[pores] no labelled validation samples", " ".join(gate["blockers"]))
+
+    def test_one_weak_axis_blocks_even_when_the_others_are_strong(self):
+        """The floor is per axis, so a strong mean cannot hide a dead head."""
+        overall = dict(self.OVERALL)
+        overall["redness"] = {"accuracy": 0.90, "n": 100, "qwk": 0.31, "pearson": 0.80}
+        gate = self.check(self.GOOD_DIMS, overall=overall)
+        self.assertFalse(gate["promotable"])
+        blockers = " ".join(gate["blockers"])
+        self.assertIn("[redness] qwk 0.310", blockers)
+        self.assertNotIn("[oil] qwk", blockers)
+
+    def test_a_genuinely_ordinal_model_still_passes(self):
+        gate = self.check(self.GOOD_DIMS)
+        self.assertTrue(gate["promotable"], gate["blockers"])
+        self.assertTrue(gate["ordinalQuality"]["oil"]["evaluated"])
+        self.assertEqual(gate["minQwk"], 0.4)
+        self.assertEqual(gate["minPearson"], 0.4)
+
+    def test_the_gate_cannot_be_called_without_the_floors(self):
+        """A default would let a forgetful caller silently disable the whole rule."""
+        with self.assertRaises(TypeError):
+            subgroups.promotion_check(self.OVERALL, self.GOOD_DIMS, ("oil",), 20, 0.1)
+
+    def test_the_floors_come_from_the_shipped_manifest(self):
+        """A floor the trainer invents is a floor the app never promised."""
+        gate = model_contract.promotion_gate()
+        self.assertGreater(gate["minQwk"], 0.0)
+        self.assertGreater(gate["minPearson"], 0.0)
+        self.assertEqual(model_contract.min_qwk(), float(gate["minQwk"]))
+        self.assertEqual(model_contract.min_pearson(), float(gate["minPearson"]))
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        self.assertIn("model_contract.min_qwk()", trainer)
+        self.assertIn("model_contract.min_pearson()", trainer)
 
     def test_the_trainer_does_not_keep_a_second_copy_of_the_gate(self):
         """Two copies would drift, and only one of them is reachable from here."""

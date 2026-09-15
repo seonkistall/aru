@@ -190,6 +190,32 @@ comparability with published skin-grading work, but it is never a promotion sign
 its own — the survey turned up a published case of 94% within-one-grade agreement at a
 correlation of 0.25.
 
+Since 2026-09-15 this is **enforced, not just advised**. The manifest's
+`promotionGate.subgroup` carries `minQwk` and `minPearson`, and `promotion_check`
+applies them per axis to the final validation confusion. Three properties worth
+knowing before you tune them:
+
+- **It fails closed.** An axis with no validation samples, or whose `qwk`/`pearson`
+  is absent, blocks. "Not measured" and "fine" must not look the same in a gate.
+- **The floor is per axis, not on the mean.** A strong mean cannot hide one dead head.
+- **The floor is on the overall confusion, not per subgroup cell.** At
+  `minSamplesPerBand: 20` a per-cell QWK is mostly noise; the subgroup rule stays the
+  accuracy-gap test.
+
+The two rules are independent on purpose. The gap test alone *rewards* a degenerate
+predictor: a model that always answers level 0 is equally wrong in every cell, so it
+has almost no gap between its mean and its worst group. Fed the majority-class
+confusion, `metrics_from_confusion` returns accuracy 0.80, `within_one_grade` 0.95,
+`qwk` 0.0 and `pearson` 0.0 — which used to pass.
+
+`minQwk`/`minPearson` are currently **0.4, and provisional**. It is a floor against
+degeneracy, not a quality claim: 0.4 sits near the fair/moderate boundary of the
+commonly cited Landis & Koch kappa bands — whose *moderate* band actually begins at
+0.41, and which could not be checked against its primary source from the build network
+— and it has not been measured on ARU data. The bar that actually matters is *beats the
+shipped heuristic on the same validation set*, which needs a heuristic baseline the
+pipeline does not record yet.
+
 For any axis supervised by an instrument reading rather than a human grade, report
 correlation against held-out instrument values before building the head at all. Asking
 whether an axis is recoverable from RGB has to come before choosing a dataset for it.

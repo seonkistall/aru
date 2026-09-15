@@ -780,6 +780,18 @@ def main() -> None:
         default=model_contract.max_accuracy_gap(),
         help="worst-group accuracy may trail the mean by at most this (default from the model manifest)",
     )
+    parser.add_argument(
+        "--min-qwk",
+        type=float,
+        default=model_contract.min_qwk(),
+        help="per-axis quadratic weighted kappa floor (default from the model manifest)",
+    )
+    parser.add_argument(
+        "--min-pearson",
+        type=float,
+        default=model_contract.min_pearson(),
+        help="per-axis predicted-vs-true correlation floor (default from the model manifest)",
+    )
     parser.add_argument("--min-samples", type=int, default=30)
     parser.add_argument("--export-onnx", action="store_true")
     parser.add_argument("--out-dir", type=Path, default=Path("ml/artifacts"))
@@ -922,7 +934,15 @@ def main() -> None:
     )
     calibration = fit_tone_calibration(tone_stats, axes, args.min_cell)
     final_val_metrics = metrics_from_confusion(last_val_confusion)
-    gate = promotion_check(final_val_metrics, subgroup_metrics, axes, args.min_cell, args.max_subgroup_gap)
+    gate = promotion_check(
+        final_val_metrics,
+        subgroup_metrics,
+        axes,
+        args.min_cell,
+        args.max_subgroup_gap,
+        min_qwk=args.min_qwk,
+        min_pearson=args.min_pearson,
+    )
 
     calibration_path = out_dir / "tone_calibration.json"
     calibration_path.write_text(

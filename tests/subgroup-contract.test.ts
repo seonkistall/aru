@@ -67,6 +67,30 @@ describe("visible attribute model manifest", () => {
     expect(manifest.promotionGate.subgroup.maxAccuracyGap).toBeGreaterThan(0);
     expect(manifest.promotionGate.subgroup.dimensions).toContain("tone");
   });
+
+  it("requires an ordinal-quality floor, not just accuracy and a subgroup gap", () => {
+    // A majority-class predictor on a skewed ordinal scale scores accuracy 0.80 and
+    // within_one_grade 0.95, and — being equally wrong everywhere — has almost no
+    // subgroup gap, so accuracy plus gap is EASIEST to pass for a model that learned
+    // nothing. qwk and pearson are what separate the two, so a zero or missing floor
+    // here silently reopens that path.
+    const gate = manifest.promotionGate.subgroup;
+    expect(gate.minQwk).toBeGreaterThan(0);
+    expect(gate.minPearson).toBeGreaterThan(0);
+  });
+
+  it("reads the ordinal-quality floors from the manifest rather than hardcoding them", () => {
+    const trainer = readMl("train_visible_attributes.py");
+    expect(trainer).toContain("model_contract.min_qwk()");
+    expect(trainer).toContain("model_contract.min_pearson()");
+    expect(trainer).not.toMatch(/"--min-qwk",\s*type=float,\s*default=[\d.]+/);
+    expect(trainer).not.toMatch(/"--min-pearson",\s*type=float,\s*default=[\d.]+/);
+
+    // The gate itself must actually consume them.
+    const gate = readMl("subgroups.py");
+    expect(gate).toContain("def ordinal_quality_check(");
+    expect(gate).toContain("ordinalQuality");
+  });
 });
 
 describe("ML readiness bands", () => {
