@@ -79,6 +79,7 @@ describe("dictionary coverage for runtime-composed strings", () => {
       "app/survey/page.tsx",
       "app/care/page.tsx",
       "app/checkin/page.tsx",
+      "app/components/commerce-disclosure.tsx",
       "app/components/product-card.tsx",
       "app/components/product-compare.tsx",
       "app/components/reengage-optin.tsx",
