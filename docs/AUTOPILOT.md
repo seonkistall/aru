@@ -26,11 +26,26 @@ out-link (`/api/out` → `lib/commerce.ts`).
 | Quantity | Value | Where it comes from |
 |---|---|---|
 | Typical Korean skincare basket | ~₩30,000 (~$22) | catalogue price band in `lib/skus.ts` |
-| Affiliate commission | 3–10% depending on programme | Coupang Partners / Naver / Olive Young terms |
-| Revenue per converted click | ~$0.7–2.2 | basket × commission |
-| Conversions needed per month | **~4,500–14,000** | $10,000 ÷ revenue per conversion |
+| Affiliate commission | **7%** on a recommended item, 3% on another item bought through the link | 올리브영 쇼핑 큐레이터 terms, 2026-09-15 |
+| Revenue per converted click | ~₩2,100 (~$1.5) at 7% | basket × commission |
+| Conversions needed per month | **~6,700** | $10,000 ÷ revenue per conversion |
 | Scan→purchase conversion (optimistic) | 2–5% | affiliate-content benchmark, unverified for this product |
 | Monthly scans implied | **~100,000–700,000** | conversions ÷ conversion rate |
+
+Two things follow, and every cycle should act on them rather than re-deriving them:
+
+Rates by programme, as far as they could be verified on 2026-09-15 (Korean sites are
+blocked from the build network, so these come from search results, not from pages this
+repository opened):
+
+| Programme | Rate | Channel it accepts | Verified? |
+|---|---|---|---|
+| 올리브영 쇼핑 큐레이터 | 7% recommended item / 3% other item via the link | in-app curator links, shared to external channels | rate stated consistently across sources |
+| 네이버 쇼핑 커넥트 | 5–28% per product, 1.8% cross-store | creator space + an owned channel | whether a web service qualifies is **unverified** |
+| 쿠팡 파트너스 | **unverified** — sources say 3%, 1–3%, and 5% for beauty | website and mobile-app URLs may be registered | channel support is stated in the official guide |
+
+Note the programme name: it is **네이버 쇼핑 커넥트**, not "쇼핑파트너" (쇼핑파트너센터 is
+the seller-side console). An earlier version of this file had it wrong.
 
 Two things follow, and every cycle should act on them rather than re-deriving them:
 
@@ -38,11 +53,56 @@ Two things follow, and every cycle should act on them rather than re-deriving th
    no affiliate or partner id. `COMMERCE_LINK_OVERRIDES_JSON` is the designed
    insertion point for real affiliate URLs. Until the owner signs up for the
    programmes, 100% of traffic monetises at zero, whatever the loop builds.
+   **When that env is set, `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` must be set in the same
+   deploy** — see `affiliateDisclosureActive()`. Live affiliate URLs with the
+   disclosure still reading "no commission" is a false statement to users and, under
+   올리브영's curator terms, forfeits the payout.
 2. **Traffic is the binding constraint, not features.** At six figures of monthly
    scans the product needs to be excellent; at zero scans it does not matter how
    excellent it is. Cycles should prefer work that either (a) makes the product
    worth returning to and sharing, or (b) instruments what actually happens, over
    work that only adds surface.
+
+## Standing objective: run until $10,000/month
+
+The owner's instruction, 2026-09-15: keep the 6-hourly cycle running until ARU earns
+more than **$10,000 in a month**. Two things must be said plainly so no cycle pretends
+otherwise.
+
+**The loop cannot see revenue.** Nothing in this repository records a sale. Affiliate
+earnings live in the merchants' dashboards, behind accounts the loop has no business
+touching. So the stop condition is owner-reported: the owner writes the month's figure
+into the table below, and until a line there exceeds $10,000 the cycle keeps running.
+A cycle must never infer, estimate, or celebrate revenue from anything in the codebase.
+
+**The loop cannot create demand.** It can make the product worth returning to and worth
+sending to a friend; it cannot sign an affiliate contract or bring traffic. Those stay
+in BLOCKERS and stay the owner's.
+
+### Revenue log (owner fills this in)
+
+| Month | Revenue | Source | Note |
+|---|---|---|---|
+| 2026-09 | $0 | — | No affiliate id exists in the codebase; every out-click earns $0. |
+
+### What "revenue-upstream" means when ordering the backlog
+
+While that table reads $0, prefer work in this order. It is not a rule against quality
+work — a broken product converts nothing — but a tie-breaker when two items look equally
+worth doing.
+
+1. **Anything that makes an existing click earn money.** The affiliate plumbing is the
+   clearest case: `COMMERCE_LINK_OVERRIDES_JSON` is the designed insertion point and is
+   empty, and every link currently lands on a *search results page* rather than a product
+   page. That second one is a conversion leak the loop can fix today, without waiting for
+   the owner's programme applications.
+2. **Anything that makes the funnel observable.** Optimising what you cannot measure is
+   guessing. `lib/funnel.ts` is still localStorage-only.
+3. **Anything that makes one user bring another.** The share loop is the only organic
+   acquisition path the product has.
+4. **Everything else** — model quality, subgroup fairness, defects, polish. Still real
+   work, still lands every cycle; it just does not win a tie against 1-3 while the
+   revenue line reads zero.
 
 ## One cycle
 
@@ -124,6 +184,16 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Now
 
+- [AI] **Deep-link the commerce out-links to product pages.** Every entry in
+  `buildCommerceLinks` (`lib/commerce.ts`) currently points at a merchant *search* URL —
+  `oliveYoungSearchUrl`, `naverShoppingSearchUrl`, `coupangSearchUrl` all build
+  `?query=<brand> <name>`. A user who taps "올리브영" lands on a result list and has to
+  pick the product again, which is the largest avoidable drop between intent and
+  purchase, and it will still be there the day affiliate ids arrive. Resolve stable
+  product URLs per SKU where they exist, keep the search URL as the fallback for the
+  ones that do not, and keep `isAllowedCommerceUrl` as the gate. Do not invent URLs:
+  a link that 404s is worse than a search page, so anything unverified stays a search
+  URL and gets recorded as unverified.
 - [AI] `confidenceLabel` no longer distinguishes reading ambiguity. After the
   2026-09-15 fix, a frame whose three capture signals all pass lands in
   [0.7804, 0.9424], and the 높음 gate is 0.78 — so it reads 높음 even when all three
@@ -169,9 +239,11 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   skin levels in server and messenger logs. Needs an owner call, not a loop decision.
 - [AI] `viralActivation` now has a denominator but no baseline. Once any real traffic
   exists, read it before changing the share surface again.
-- [OWNER] **Apply to the affiliate programmes** (Coupang Partners, Naver 쇼핑파트너,
-  Olive Young). Until then every out-click earns $0. This is the single highest-
-  leverage item on the whole list.
+- [OWNER] **Apply to the affiliate programmes** — 쿠팡 파트너스 (self-serve, accepts a
+  website or app URL as the channel), 올리브영 쇼핑 큐레이터 (in-app, 7%/3%), 네이버 쇼핑
+  커넥트 (5–28%, confirm a web service counts as a channel). Until then every out-click
+  earns $0. This is the single highest-leverage item on the whole list. The in-product
+  disclosure is already shipped and waiting on `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`.
 - [OWNER] AI-Hub 71645 data application (domestic applicant, account required).
 - [OWNER] Golden set: 20–30 real photos with two-operator consensus labels, so the
   camera thresholds come from faces instead of from a synthetic frame.
@@ -326,6 +398,8 @@ Two things follow for anyone editing the Routine:
   structurally impossible while the levels live in the fragment, demonstrated with a
   local HTTP probe and the Next 16.2.9 docs shipped in `node_modules`. Kakao's own spec
   is egress-blocked and is recorded as unverified rather than guessed.
+- 2026-09-15 — Standing objective recorded: run until $10,000/month, owner-reported,
+  with a revenue-upstream tie-breaker for backlog ordering. First cycle landed (PR #66).
 - 2026-09-15 (2) — ML track only, at the owner's direction: the qwk/pearson gate.
   `promotionGate.subgroup` in the shipped manifest now carries `minQwk` and
   `minPearson` (0.4, provisional), `model_contract` exposes them, and a new

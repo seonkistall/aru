@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
+import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { loadLastResult, saveLastResult } from "@/lib/last-result";
@@ -374,6 +375,7 @@ export default function Report() {
                   {topCommerce ? t("{label}에서 제품 보기", { label: t(topCommerce.label) }) : t("제품 검색하기")}
                 </a>
                 <Link href="/care" style={commerceCareBtn}>{t("제품과 상담 정보 보기")}</Link>
+                <CommerceDisclosure style={{ width: "100%", marginTop: 4 }} />
               </section>
             )}
           </>

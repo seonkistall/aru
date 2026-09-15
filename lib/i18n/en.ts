@@ -499,6 +499,8 @@ export const EN: Record<string, string> = {
   "카메라에서 확인한 피부 특징을 항목별로 살펴볼 수 있어요.": "You can review the skin features seen on camera by category.",
   "피부 고민이 계속 신경 쓰인다면": "If a skin concern keeps bothering you",
   "피하고 싶다고 답한 성분이 없는 제품을 우선 살펴봤어요.": "We looked first at products without the ingredients you wanted to avoid.",
+  "판매처로 이동하는 제휴 링크예요. 구매가 이뤄지면 ARU가 수수료를 받아요. 가격은 달라지지 않아요.": "These go to the retailer through an affiliate link. If you buy, ARU earns a commission. Your price is the same.",
+  "판매처로 이동하는 링크예요. ARU는 이 링크로 수수료를 받지 않아요.": "This goes to the retailer. ARU earns no commission from this link.",
   "현재 가격, 옵션, 전성분은 판매처에서 다시 확인해 주세요.": "Check the retailer for current prices, options, and the full ingredient list.",
   "2주 뒤, 루틴은 잘 맞는지 같이 확인해 볼까요?": "Let's check in on your routine in two weeks",
   "2주와 4주 뒤에 한 번씩 이메일로 가볍게 알려드릴게요. 원할 때 언제든 그만 받을 수 있어요.": "We'll send a light check-in at two and four weeks. You can stop the emails at any time.",
