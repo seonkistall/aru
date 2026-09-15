@@ -26,6 +26,16 @@ FALLBACK_GATE = {
     "dimensions": ["tone", "age", "tone_x_age"],
 }
 
+#: The overall per-axis quality floor, a sibling of the subgroup bar rather than part
+#: of it: a subgroup gap asks "is the model even-handed", these ask "did it learn
+#: anything at all". A model can be perfectly even-handed by being uniformly useless —
+#: a constant predictor has almost no subgroup gap — so the subgroup block alone lets
+#: a head that learned nothing through. Same fallback rule: manifest wins.
+FALLBACK_ORDINAL_GATE = {
+    "minQwk": 0.40,
+    "minPearson": 0.40,
+}
+
 
 def load_manifest() -> dict:
     """Parsed manifest, or {} when it is missing or malformed."""
@@ -44,6 +54,24 @@ def promotion_gate() -> dict:
         if value not in (None, ""):
             merged[key] = value
     return merged
+
+
+def ordinal_gate() -> dict:
+    """Per-axis floor on how much a head must actually have learned."""
+    gate = (load_manifest().get("promotionGate") or {}).get("ordinal") or {}
+    merged = dict(FALLBACK_ORDINAL_GATE)
+    for key, value in gate.items():
+        if value not in (None, ""):
+            merged[key] = value
+    return merged
+
+
+def min_qwk() -> float:
+    return float(ordinal_gate()["minQwk"])
+
+
+def min_pearson() -> float:
+    return float(ordinal_gate()["minPearson"])
 
 
 def min_samples_per_band() -> int:

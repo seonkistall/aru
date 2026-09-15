@@ -1,4 +1,7 @@
-export type MerchantId = "oliveyoung" | "naver-shopping" | "coupang" | "global-search";
+// One runtime list, with the type derived from it, so the override audit can check
+// a merchant key against the same source the type comes from.
+export const MERCHANT_IDS = ["oliveyoung", "naver-shopping", "coupang", "global-search"] as const;
+export type MerchantId = (typeof MERCHANT_IDS)[number];
 export type CommerceKind = "marketplace" | "global";
 
 export type CommerceLink = {
@@ -132,10 +135,92 @@ export function affiliateDisclosureActive(): boolean {
   return process.env.NEXT_PUBLIC_COMMERCE_AFFILIATE === "on";
 }
 
+export type CommerceOverrideIssue = {
+  sku: string;
+  merchant: string;
+  value: string;
+  reason: "not-https-or-allowlisted" | "unknown-merchant";
+};
+
+export type CommerceOverrideAudit = {
+  configured: boolean;
+  /** False when the env var is set but is not parseable JSON — every override is lost. */
+  parsed: boolean;
+  accepted: { sku: string; merchant: string; value: string }[];
+  issues: CommerceOverrideIssue[];
+};
+
+/**
+ * What `COMMERCE_LINK_OVERRIDES_JSON` actually resolves to, rejections included.
+ *
+ * This exists because the rejections used to be invisible. `commerceOverrideUrl`
+ * returned null for a malformed blob, an unknown sku and a blocked host alike, and
+ * the caller falls back to the search URL, so a wrong affiliate link looked exactly
+ * like no affiliate link at all. That is the one misconfiguration that costs money
+ * silently: `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` is a separate switch, so the product
+ * can be telling users it earns a commission on links that are still plain search
+ * URLs because the gate dropped every override without a word.
+ *
+ * `docs/commerce-partnership-playbook.md` walked straight into it — its worked
+ * example for `naver-shopping` is a `smartstore.naver.com` URL, which is not on
+ * ALLOWED_HOSTS, so following the runbook exactly produced a silent no-op.
+ */
+export function auditCommerceOverrides(
+  raw: string | undefined = process.env.COMMERCE_LINK_OVERRIDES_JSON
+): CommerceOverrideAudit {
+  if (!raw) return { configured: false, parsed: true, accepted: [], issues: [] };
+  let parsed: Record<string, Partial<Record<MerchantId, string>>>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, Partial<Record<MerchantId, string>>>;
+  } catch {
+    return { configured: true, parsed: false, accepted: [], issues: [] };
+  }
+  const accepted: CommerceOverrideAudit["accepted"] = [];
+  const issues: CommerceOverrideIssue[] = [];
+  const known = new Set<string>(MERCHANT_IDS);
+  for (const [sku, byMerchant] of Object.entries(parsed || {})) {
+    for (const [merchant, value] of Object.entries(byMerchant || {})) {
+      if (typeof value !== "string" || !value) continue;
+      // A misspelled merchant key never matches a lookup, so the override is a no-op
+      // that looks exactly like a missing one — the same silent failure as a blocked
+      // host. Note the sku half is NOT checked here: this module cannot import the
+      // catalogue without a cycle (lib/skus.ts imports this file), so a typo'd sku id
+      // is still a silent no-op. Recorded in docs/AUTOPILOT.md.
+      if (!known.has(merchant)) issues.push({ sku, merchant, value, reason: "unknown-merchant" });
+      else if (isAllowedCommerceUrl(value)) accepted.push({ sku, merchant, value });
+      else issues.push({ sku, merchant, value, reason: "not-https-or-allowlisted" });
+    }
+  }
+  return { configured: true, parsed: true, accepted, issues };
+}
+
+// Warn once per distinct env value, not once per click: /api/out reads the override
+// on every out-link and a per-request warning would bury the log it belongs in. A Set
+// rather than a last-seen string so flipping back to an earlier value stays quiet too.
+const warnedFor = new Set<string>();
+
+function warnOnce(raw: string | undefined) {
+  if (raw === undefined || warnedFor.has(raw)) return;
+  warnedFor.add(raw);
+  const audit = auditCommerceOverrides(raw);
+  if (!audit.parsed) {
+    console.warn("[commerce] COMMERCE_LINK_OVERRIDES_JSON is not valid JSON — every override is being ignored.");
+    return;
+  }
+  for (const issue of audit.issues) {
+    const why =
+      issue.reason === "unknown-merchant"
+        ? `"${issue.merchant}" is not a merchant id (${MERCHANT_IDS.join(", ")})`
+        : `${issue.value} is not an https URL on the allowlist (${[...ALLOWED_HOSTS].join(", ")})`;
+    console.warn(`[commerce] override for ${issue.sku}/${issue.merchant} ignored: ${why}. The link is still a search URL.`);
+  }
+}
+
 export function commerceOverrideUrl(skuId: string, merchant: MerchantId): string | null {
   try {
     const raw = process.env.COMMERCE_LINK_OVERRIDES_JSON;
     if (!raw) return null;
+    warnOnce(raw);
     const parsed = JSON.parse(raw) as Record<string, Partial<Record<MerchantId, string>>>;
     const value = parsed[skuId]?.[merchant];
     return value && isAllowedCommerceUrl(value) ? value : null;

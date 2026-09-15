@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from math import isfinite
 
 #: Chardon ITA bands, ordered light to dark. Upper bound is exclusive of the next band.
 ITA_BANDS: tuple[tuple[str, float], ...] = (
@@ -366,12 +367,56 @@ _UNEVALUATED_NOTE: dict[str, str] = {
 }
 
 
+def ordinal_check(overall: dict, axes: tuple[str, ...], min_qwk: float, min_pearson: float) -> tuple[dict, list[str]]:
+    """Did each head learn anything at all? Returns (per-axis report, blockers).
+
+    The subgroup gap cannot answer this and never could: it asks whether the model is
+    even-handed across tone and age, and a head that always predicts the majority
+    grade is perfectly even-handed. Fed the repo's own `metrics_from_confusion` a
+    constant predictor on a skewed 3-level scale, accuracy reads 0.80 and
+    within-one-grade 0.95 while qwk and pearson are exactly 0. Those two are the only
+    reported metrics that collapse for that predictor, so they are what this floor
+    reads, per axis, on the overall validation confusion.
+
+    A missing metric BLOCKS rather than passes, for the same reason an unevaluated
+    subgroup does: a bar nothing was measured against was not cleared.
+    """
+    report: dict[str, dict] = {}
+    reasons: list[str] = []
+    if not axes:
+        return report, ["no axis was evaluated, so the ordinal floor was never checked"]
+    for axis in axes:
+        metrics = overall.get(axis) or {}
+        qwk = metrics.get("qwk")
+        pearson = metrics.get("pearson")
+        report[axis] = {"qwk": qwk, "pearson": pearson}
+        # NaN must block, and it will not block by itself: `float("nan") < 0.4` is
+        # False, so a NaN would sail through the comparisons below. It is the likely
+        # value too — the reference implementations this floor was verified against
+        # return NaN for the degenerate matrices where ARU's own scorers return 0.0,
+        # so any scorer swapped in here brings NaN with it.
+        if qwk is None or pearson is None or not isfinite(qwk) or not isfinite(pearson):
+            reasons.append(
+                f"[{axis}] qwk/pearson missing or not a finite number ({qwk!r}, {pearson!r}), "
+                f"so the ordinal floor (qwk>={min_qwk:.3f}, pearson>={min_pearson:.3f}) "
+                f"was never checked"
+            )
+            continue
+        if qwk < min_qwk:
+            reasons.append(f"[{axis}] qwk {qwk:.3f} is below the floor {min_qwk:.3f}")
+        if pearson < min_pearson:
+            reasons.append(f"[{axis}] pearson {pearson:.3f} is below the floor {min_pearson:.3f}")
+    return report, reasons
+
+
 def promotion_check(
     overall: dict,
     by_dimension: dict,
     axes: tuple[str, ...],
     min_cell: int,
     max_gap: float,
+    min_qwk: float,
+    min_pearson: float,
 ) -> dict:
     """Can this model replace the heuristic? Subgroup gaps decide, not the mean.
 
@@ -395,8 +440,8 @@ def promotion_check(
     mean_acc = sum(overall[axis]["accuracy"] * overall[axis]["n"] for axis in axes) / max(
         1, sum(overall[axis]["n"] for axis in axes)
     )
+    ordinal, reasons = ordinal_check(overall, axes, min_qwk, min_pearson)
     results = {}
-    reasons = []
     for dimension, groups in by_dimension.items():
         worst_acc = worst_group(groups, "accuracy", min_n=min_cell)
         worst_mae = worst_group(groups, "ordinal_mae", min_n=min_cell)
@@ -423,6 +468,9 @@ def promotion_check(
         "meanAccuracy": mean_acc,
         "maxAllowedGap": max_gap,
         "minSamplesPerGroup": min_cell,
+        "minQwk": min_qwk,
+        "minPearson": min_pearson,
+        "ordinal": ordinal,
         "dimensions": results,
         "promotable": not reasons,
         "blockers": reasons,

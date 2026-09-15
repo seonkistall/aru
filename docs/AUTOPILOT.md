@@ -194,6 +194,29 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   ones that do not, and keep `isAllowedCommerceUrl` as the gate. Do not invent URLs:
   a link that 404s is worse than a search page, so anything unverified stays a search
   URL and gets recorded as unverified.
+  **2026-09-15: attempted and stopped, deliberately.** Every merchant host refuses this
+  network, so not one product URL could be verified to resolve, and the item's own rule
+  says an unverifiable URL stays a search URL. Verbatim:
+
+  ```
+  --- https://www.oliveyoung.co.kr/store/main/main.do
+  curl: (56) CONNECT tunnel failed, response 403
+  --- https://search.shopping.naver.com/search/all?query=test
+  curl: (56) CONNECT tunnel failed, response 403
+  --- https://www.coupang.com/np/search?q=test
+  curl: (56) CONNECT tunnel failed, response 403
+  --- https://global.oliveyoung.com/
+  curl: (56) CONNECT tunnel failed, response 403
+  --- https://www.google.com/search?q=test
+  curl: (56) CONNECT tunnel failed, response 403
+  ```
+
+  Nor is the answer hiding in the repo: the 22 files in `public/products` are named
+  `cl1.jpg`…`tn3.jpg` and carry no merchant goods number, and the only `goodsNo` string
+  anywhere in the tree is the `PARTNER_GOODS_NO` placeholder in the playbook. So this
+  needs either an allowlisted host for the worker or the owner pasting real product
+  URLs. What the cycle *could* fix without a network is the override path those URLs
+  will arrive through — see the changelog entry below; it was silently discarding them.
 - [AI] `confidenceLabel` no longer distinguishes reading ambiguity. After the
   2026-09-15 fix, a frame whose three capture signals all pass lands in
   [0.7804, 0.9424], and the 높음 gate is 0.78 — so it reads 높음 even when all three
@@ -216,16 +239,62 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
+- [AI] **The report headline survives the vision merge and can contradict the rows
+  under it.** `mergeVisionAnalysis` (`app/scan/capture-analysis.ts:186`) rewrites
+  `oil`, `redness`, `pores`, `confidence`, `confidenceLabel`, `retakeRecommended` and
+  `source`, but `headline` arrives through `...base` and is never recomputed — and
+  `headlineFor`/`narrativeParts` are module-private in `lib/skin.ts`, so it cannot be.
+  With a vision key set and the user consenting, the `<h1>` on `/report` and the scan
+  receipt can read 피부 컨디션이 비교적 안정적이에요 directly above rows reading
+  붉은기 뚜렷. `readsFromRaw` on the ML path derives both from the merged buckets, so
+  the two paths already disagree. Second-order: `localizedNarrative` rebuilds the
+  sentence from the levels for non-Korean locales but returns the stored Korean one
+  as-is, so a Korean user sees the stale narrative and an English user the corrected
+  one from the same object. Fix by exporting the two helpers and recomputing from
+  `next.*` after the per-attribute loop, keeping `payload.narrative` as the override
+  it already is. Found 2026-09-15; not fixed in that cycle only to keep the diff
+  surgical.
+- [AI] `blemishDensity` in `lib/skin.ts` counts on a fixed 90-cell grid and divides by
+  an area in real capture pixels, so it scales as roughly 1/faceWidth² and is not
+  comparable across capture resolutions. Nothing user-visible reads it today, but it
+  feeds the device/tone subgroup work. Noted 2026-09-15, not measured.
+- [AI] `auditCommerceOverrides` (`lib/commerce.ts`) has no production caller — only
+  the internal `warnOnce` and its tests — so its accepted/rejected split is visible in
+  the request log and nowhere an operator would look. Surface it: `/ops`, or the
+  `/api/sync` GET status handler, is the natural home, and doing so would also let it
+  check the sku id against the catalogue, which it cannot do from inside
+  `lib/commerce.ts` (`lib/skus.ts` imports that module, so it would be a cycle). Until
+  then a misspelled sku in `COMMERCE_LINK_OVERRIDES_JSON` is still a silent no-op —
+  pinned by `tests/commerce.test.ts` "does not yet catch a misspelled sku id".
+- [AI] Two camera dead-ends are still off the funnel or mislabelled. `interruptCamera`
+  (`app/scan/page.tsx`) puts the UI in a dead end with a 카메라 다시 켜기 button when
+  the live track dies — another app taking the camera — and records nothing; the fix
+  belongs at the `watchCameraStream` callback, not inside `interruptCamera`, whose
+  other two callers are `visibilitychange`/`pagehide` and are just backgrounding. And
+  the stream-attach failure path records `camera_blocked {reason:"attach"}` and calls
+  `setPhase("denied")` without `setDeniedReason`, so the screen shows whichever reason
+  was last set (default 권한). Both found 2026-09-15 by adversarial review of that
+  cycle's own diff.
 - [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
   can see where users drop off. Without it every UX cycle is guessing. (Still open —
   2026-09-15 added `share_landed` and `viralActivation`, but they are still on-device.)
-- [AI] Four more drop-offs are uninstrumented, found while adding `share_landed`:
-  the home page fires nothing; `/scan` records `scan_started` only at shutter, so a
-  camera permission denial is invisible; `/care` records only `commerce_clicked`; and
-  `/checkin` — the landing page for every re-engagement email — has no funnel import
-  at all.
+- [x] [AI] ~~Four more drop-offs are uninstrumented~~ — done 2026-09-15. `home_viewed`,
+  `scan_opened`, `camera_blocked`, `care_viewed` and `checkin_opened` now fire, with
+  `captureStart` and `cameraBlockRate` in the summary and in `/ops`. Still on-device:
+  the server-side item above is what makes any of this readable by a human.
 - [AI] Measure the real per-scan cost of the new within-image indices on a mid-range
   phone profile, not on the build container.
+- [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
+  predictors because no labelled ARU validation set exists yet
+  (`docs/ordinal-metric-verification.md`). The first real training run should report
+  its own qwk and pearson and the floor should be re-set against those, not against
+  the synthetic table. Do not raise it on a hunch, and do not lower it to make a run
+  pass.
+- [AI] `funnelDropoff` still anchors its cumulative chart on `scan_started`, so the
+  camera loss `scan_opened` now measures does not appear in the drop-off bars — it is
+  only in the summary (`captureStart`, `cameraBlockRate`). Moving the anchor would
+  zero every stage of an event log recorded before `scan_opened` existed, because the
+  chart is an intersection from stage 0. Revisit once logs in hand all contain it.
 - [~] [AI] Share surface: audit `app/components/share-card.tsx` against what actually
   renders in KakaoTalk. **Partly answered** 2026-09-15 in `docs/share-preview-findings.md`
   — the structural half is settled, the Kakao-render half is not and needs a phone. The
@@ -250,22 +319,15 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 
 ### Next
 
-- [AI] The promotion gate still reads only `accuracy` and the unused `worstOrdinalMae`.
-  `qwk` and `pearson` are computed in `ml/train_visible_attributes.py` and compared to
-  nothing, so a head that has learned nothing passes — and passes *easily*, because a
-  constant predictor has almost no subgroup gap, which is the only thing the gate
-  measures. Fed the repo's own `metrics_from_confusion` (ast-extracted, since the
-  module imports torch) a majority-class predictor on a skewed 3-level scale
-  (`{"oil": [[80,0,0],[15,0,0],[5,0,0]]}` — always predicts level 0):
+- [x] [AI] ~~The promotion gate still reads only `accuracy` and the unused
+  `worstOrdinalMae`~~ — done 2026-09-15. `promotionGate.ordinal` in the shipped
+  manifest now carries `minQwk` / `minPearson` (both 0.40, provisional), mirrored in
+  `model_contract.FALLBACK_ORDINAL_GATE`, and `subgroups.ordinal_check` blocks per
+  axis — including when an axis reports no qwk at all, on the same rule that makes an
+  unevaluated subgroup a blocker. Both scorers were verified against scikit-learn and
+  SciPy first (`docs/ordinal-metric-verification.md`); the floor was chosen from a
+  measured table of predictors, not from a benchmark nobody here can open.
 
-  ```
-  oil {'n': 100, 'accuracy': 0.8, 'macro_f1': 0.2963, 'ordinal_mae': 0.25,
-       'within_one_grade': 0.95, 'qwk': 0.0, 'pearson': 0.0}
-  ```
-
-  Accuracy 0.80 and "within one grade" 0.95 both look fine; `qwk` and `pearson` are
-  exactly 0. `ml/README.md` already says to read them. Add `minQwk`/`minPearson` to the
-  manifest gate and to `model_contract.FALLBACK_GATE`. This is the next ML item.
 - [AI] `minSamplesPerBand` is compared against the wrong unit. `_aggregate` in
   `ml/train_visible_attributes.py` sums `n` ACROSS axes, and `worst_group` gates on
   that sum. Reproduced by feeding the real `_aggregate` one cell of 10 samples
@@ -314,6 +376,23 @@ Owner-only, dated when first recorded.
   track cannot verify Kakao's scraper spec or any affiliate commission term from a
   primary source, and the `3-10%` commission band in the revenue table above stays
   unverified. Either allowlist those hosts for the worker or the owner reads the terms.
+  Re-probed 2026-09-15 and widened: `search.shopping.naver.com`, `www.coupang.com`,
+  `global.oliveyoung.com` and `www.google.com` all refuse too (`CONNECT tunnel failed,
+  response 403`), which is what stops the deep-link item, and so do
+  `developer.mozilla.org`, `en.wikipedia.org`, `scikit-learn.org`, `arxiv.org`,
+  `support.google.com` and `developers.google.com`. The second group was first recorded
+  as `http=000`, which is the same refusal seen through a curl invocation that swallows
+  the message — not a different outcome. Of everything probed only `pypi.org` answered
+  (`http=200`), which is the one thing that made this cycle's metric verification
+  possible at all.
+- 2026-09-15 — Which host a real affiliate link lands on. The override allowlist in
+  `lib/commerce.ts` accepts `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
+  `www.coupang.com` and `www.google.com`. A 네이버 쇼핑 커넥트 link is likely on a
+  smart-store or brand-store host and a 쿠팡 파트너스 link on a redirect host, neither
+  of which is on the list, and neither could be verified from here. It is a one-line
+  change once the owner has a real link in hand — but it must not be guessed, because
+  the allowlist is what stops `/api/out` becoming an open redirect. A wrong host now
+  logs loudly instead of failing silently.
 
 ## How the schedule actually runs
 
@@ -404,3 +483,187 @@ Two things follow for anyone editing the Routine:
   is egress-blocked and is recorded as unverified rather than guessed.
 - 2026-09-15 — Standing objective recorded: run until $10,000/month, owner-reported,
   with a revenue-upstream tie-breaker for backlog ordering. First cycle landed (PR #66).
+- 2026-09-15 (cycle 2) — All four tracks landed, plus the commerce item they are
+  ordered behind. Branch `autopilot/2026-09-15-1839`. `npm run smoke` green before any
+  change and again after all of them; the baseline run needed the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override and nothing else. Final run:
+
+  ```
+   Test Files  63 passed (63)
+        Tests  351 passed (351)
+    44 passed (3.0m)
+  Ran 66 tests in 0.014s
+  OK
+  Smoke test passed.
+  ```
+
+  **commerce (revenue-upstream #1)** The top backlog item was attempted first and
+  stopped on its own rule: every merchant host refuses this network, so no product URL
+  could be verified and none was invented. Recorded in the backlog entry with the
+  verbatim curl output. What *was* fixable without a network is the path those URLs
+  will arrive through, and it was broken. `commerceOverrideUrl` returned `null`
+  identically for "not configured", "unparseable JSON" and "host not on the
+  allowlist", and the caller falls back to the search URL — so a wrong affiliate URL
+  is indistinguishable from no affiliate URL, while `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`
+  is separately telling users the link earns a commission. The repo walked into this
+  itself: `docs/commerce-partnership-playbook.md` documented a `smartstore.naver.com`
+  override as its worked example for `naver-shopping`, and the gate rejects that host.
+  Measured against `isAllowedCommerceUrl` before the fix:
+
+  ```
+  ALLOW  https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000123456
+  ALLOW  https://search.shopping.naver.com/search/all?query=x
+  BLOCK  https://shopping.naver.com/catalog/12345678
+  BLOCK  https://smartstore.naver.com/brand/products/12345678
+  BLOCK  https://brand.naver.com/brand/products/12345678
+  ALLOW  https://www.coupang.com/vp/products/1234567890
+  BLOCK  https://link.coupang.com/a/abcdef
+  BLOCK  https://global.oliveyoung.com/product/detail?prdtNo=GA123456
+  override returned: null
+  ```
+
+  Fixed by making the rejection loud, not by widening the allowlist: `ALLOWED_HOSTS` is
+  what keeps `/api/out` from being an open redirect and none of the blocked hosts above
+  could be verified as a real affiliate link host from here. New
+  `auditCommerceOverrides()` separates accepted from rejected and distinguishes
+  unparseable JSON from unset; `commerceOverrideUrl` warns once per distinct env value
+  naming the sku, merchant and URL. The runbook's example is now one the gate accepts,
+  the hosts a real link may need are listed as explicitly unverified, and
+  `tests/commerce.test.ts` pins the runbook's allowlist and its worked example against
+  the code so the two cannot drift again. A misspelled *merchant* key is reported too;
+  a misspelled *sku* id is not, because `lib/skus.ts` imports `lib/commerce.ts` and
+  checking the catalogue there would be a cycle — that gap is pinned by a test and
+  listed in the backlog rather than left implied. With `lib/commerce.ts` and the
+  playbook reverted to `origin/main`, `6 failed | 7 passed (13)` — the file has 5
+  pre-existing cases and 8 new ones, of which 6 fail without the fix, three with
+  `TypeError: auditCommerceOverrides is not a function`. The two new cases that pass
+  either way are no-regression guards, not evidence.
+
+  **ML** The promotion gate now refuses a head that learned nothing. `qwk` and
+  `pearson` were computed and compared to nothing, so the only thing the gate measured
+  was the subgroup gap — which a constant predictor passes easily, being perfectly
+  even-handed. `promotionGate.ordinal` (`minQwk` / `minPearson`, both 0.40) is in the
+  shipped manifest and in `model_contract.FALLBACK_ORDINAL_GATE`, and
+  `subgroups.ordinal_check` blocks per axis, including when an axis reports no qwk at
+  all. Fed the repo's own `metrics_from_confusion` a majority-class predictor on three
+  axes with a subgroup layout that passes on its own:
+
+  ```
+  per-axis metrics of a majority-class predictor (3 axes, 100 samples each):
+    oil      accuracy=0.8000 within_one_grade=0.9500 ordinal_mae=0.2500 qwk=0.0000 pearson=0.0000
+    redness  accuracy=0.8000 within_one_grade=0.9500 ordinal_mae=0.2500 qwk=0.0000 pearson=0.0000
+    pores    accuracy=0.8000 within_one_grade=0.9500 ordinal_mae=0.2500 qwk=0.0000 pearson=0.0000
+
+  BEFORE (origin/main):  promotable = True   blockers = []
+  AFTER  (this branch):  promotable = False
+     blocker: [oil] qwk 0.000 is below the floor 0.400
+     blocker: [oil] pearson 0.000 is below the floor 0.400
+     blocker: [redness] qwk 0.000 is below the floor 0.400
+     ...
+  ```
+
+  A non-finite score blocks too, which it does not do by itself: `float("nan") < 0.4`
+  is `False`, and NaN is exactly what the reference implementations return on the
+  degenerate matrices where ARU's own scorers return 0.0. So is a run that evaluated
+  no axis at all. The three scorers moved out of the torch-importing trainer into
+  stdlib-only `ml/ordinal_metrics.py` — the same move `promotion_check` made, for the
+  same reason: it is what puts them in reach of `ml/selftest.py`, and an AST
+  comparison against `origin/main` confirms all three bodies are unchanged. selftest
+  went 50 -> 66 tests.
+
+  **research** `docs/ordinal-metric-verification.md`. Gating on a metric means first
+  checking it is the metric. `pypi.org` turned out to be the only reachable host of
+  eight probed, which made reference implementations available: over 1,982 random
+  confusion matrices, ARU's kappa agrees with
+  `sklearn.metrics.cohen_kappa_score(weights="quadratic")` to **6.661e-16** and its
+  correlation with `scipy.stats.pearsonr` to **1.110e-15**. The two deliberate
+  divergences are both where the reference is undefined, and both resolve conservatively
+  (0.0, which blocks). The 0.40 floor was then chosen from a measured table of nine
+  predictors rather than a benchmark band, because no page stating those bands is
+  reachable — which the doc says outright rather than citing one from memory. Neither
+  library is or becomes a dependency.
+
+  **UX** The funnel started at the shutter, so everything lost before it counted as
+  nothing having happened — a refused camera permission in particular was invisible.
+  `home_viewed`, `scan_opened`, `camera_blocked` (with a `reason` of
+  permission/busy/notfound/unsupported/attach), `care_viewed` and `checkin_opened` now
+  fire, the last of which is the only measure of whether the re-engagement emails bring
+  anyone back. `captureStart` and `cameraBlockRate` are conditioned on `scan_opened`
+  and shown in `/ops`. The existing drop-off chart was deliberately left anchored on
+  `scan_started`: it is a cumulative intersection from stage 0, so re-anchoring it
+  would zero every stage of an event log recorded before this change. A shared
+  `useFunnelPageView` hook carries the StrictMode double-invoke guard the four pages
+  would otherwise each need.
+
+  **bug** Two, both found by an adversarial hunt rather than a report, both with tests
+  that fail against `origin/main`.
+
+  `latestConsent` (`lib/consent.ts`) skipped its scope filter entirely when the caller
+  passed no scope, so an unscoped read saw every participant's events — the exact
+  fail-open shape `latestConsentGranted` in `lib/sync-payload.ts` already carries a
+  comment warning about, and the last place still using the loose form.
+  `recordConsentEvent` dedupes against it, so on a device that had ever run a pilot
+  session, a consumer ticking 학습용 크롭 저장 matched P001's grant and **no event was
+  written at all**: the UI showed the toggle on, `resolveCaptureConsent` (which does
+  match scope exactly) then found no unscoped grant and discarded the crop, and the
+  person's own consent decision never entered the audit trail. Guardrail 4. Measured
+  before the fix:
+
+  ```
+  stored after the pilot grant      : 1
+  consumer grant returns pid        : "P001" (expected undefined)
+  stored after the consumer grant   : 1 (expected 2)
+  resolveCaptureConsent(no scope)   : null -> crop discarded
+  latestConsent(no scope).pid       : "P001"
+  ```
+
+  Fail-closed, so nothing was captured that should not have been — but `/ops` was also
+  reporting that participant's decision as the device's consent state. 4 of the 5 new
+  cases in `tests/consent-storage.test.ts` fail against `origin/main`.
+
+  Second: `buildReportTrust().sourceLabel` is stored in a map and passed to `t()` as a
+  variable, so `tests/i18n-coverage.test.ts`'s regex over `t("…")` literals never saw
+  it, and neither `기기에서 확인` nor `기기 확인 + 선택한 AI 분석` existed as a key in
+  any of the four dictionaries. English is the default language, so the first chip on
+  the `/report` trust card read raw Korean for every non-Korean user. `피부 선명도` in
+  the live camera checklist was missing from `ja` and `zh` for the same reason. Both
+  fixed, and the coverage test now walks all three `AnalysisSource` values and the
+  camera checklist labels explicitly — the two new cases fail against `origin/main`
+  with `"기기에서 확인" missing from en dictionary` and `"피부 선명도" missing from ja
+  dictionary`.
+
+  **review** The diff was reviewed adversarially by a subagent before commit, and the
+  review changed it. Worth recording because the cycle protocol asks for this step and
+  it is only worth the tokens if it finds things:
+
+  - The stated justification for the 0.40 floor was **refuted by row 7 of its own
+    table**. The draft claimed the floor separates predictors that beat the trivial
+    baseline from those that do not; "correct 60%, else off by exactly one" scores
+    accuracy 0.7696 (below always-majority's 0.8000) at qwk 0.6657, so it clears the
+    floor while being less accurate than the baseline. The numbers were real, the
+    inference over them was not. `docs/ordinal-metric-verification.md` now states only
+    what the table supports and says plainly what the earlier draft got wrong.
+  - NaN bypassed the new gate (above).
+  - `test_the_manifest_supplies_the_ordinal_floor` asserted `0.4`, which
+    `FALLBACK_ORDINAL_GATE` supplies whether or not the manifest declares it — so
+    reverting the shipped manifest left selftest green and the guardrail-8 half of the
+    change had no coverage. Replaced with a test that reads the manifest, plus one
+    that makes the fallback disagree and checks the manifest wins.
+  - `/ops` printed "0% of scan opens" where there were no scan opens at all, turning
+    "no data" into a measurement of total failure. Now renders `—`.
+  - A misspelled merchant key was reported as *accepted* — the same silent no-op the
+    change claims to close. Now an `unknown-merchant` issue; the sku half is a
+    documented, tested gap rather than an implied fix.
+  - Two numbers in this changelog were wrong: "4 of the 7 new commerce cases" (the
+    file has 8 new cases and 6 of them fail without the fix), and the blockers list
+    presented `http=000` and `CONNECT tunnel failed` as two different outcomes when
+    they are one failure seen through two curl invocations. Both corrected.
+  - The verification scripts were uncommitted, so the research numbers rested on
+    something nobody could re-run. They are now `ml/tools/verify_ordinal_metrics.py`
+    and `ml/tools/ordinal_floor_table.py`, seeded, with the optional imports inside
+    `main()`; both reproduce the doc's tables exactly.
+
+  Also dropped a `props` parameter from `useFunnelPageView` that nothing passed, and
+  corrected three stale comments (`supabase/schema.sql`'s funnel-kind list, the
+  `camera_blocked` reason list, and the claim that the two new rates cannot sum above
+  1 — a session refused once and then capturing is in both).

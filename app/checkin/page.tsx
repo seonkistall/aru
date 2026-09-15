@@ -7,6 +7,7 @@ import { SKUS } from "@/lib/skus";
 import { ProductVisual } from "@/app/components/product-visual";
 import { Xiaohei } from "@/app/components/sketch";
 import { t } from "@/lib/i18n/core";
+import { useFunnelPageView } from "@/app/use-funnel-page-view";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // The check-in round from REAL elapsed time. 0 = not yet due after the user
@@ -17,6 +18,10 @@ const roundFor = (ts: number) => {
 };
 
 export default function Checkin() {
+  // The landing page for every re-engagement email, and until now the only step
+  // of the journey that recorded nothing at all — so nobody could tell whether
+  // those emails bring anyone back.
+  useFunnelPageView("checkin_opened");
   const [productUses, setProductUses] = useState<ProductUse[] | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
 

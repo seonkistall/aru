@@ -173,3 +173,61 @@ describe("share loop instrumentation", () => {
     expect(stages[0].ofStart).toBe(1);
   });
 });
+
+describe("the camera step, which the funnel used to start after", () => {
+  // scan_started fires at the shutter. Everything /scan lost before that — a
+  // refused permission above all — was invisible: the session simply did not
+  // appear in the funnel at all, which reads as "never arrived" rather than
+  // "arrived and was turned away".
+  it("counts the new page-view and refusal steps", () => {
+    for (const kind of ["home_viewed", "scan_opened", "camera_blocked", "care_viewed", "checkin_opened"] as const) {
+      expect(FUNNEL_ORDER).toContain(kind);
+    }
+  });
+
+  it("measures how many scan opens reach the shutter", () => {
+    const events = [
+      ev("s1", "scan_opened"),
+      ev("s1", "scan_started"),
+      ev("s2", "scan_opened"),
+      ev("s2", "camera_blocked"),
+      ev("s3", "scan_opened"), // opened, left without being refused
+      ev("s4", "scan_opened"),
+      ev("s4", "scan_started"),
+    ];
+    const summary = summarizeFunnel(events);
+    expect(summary.steps.scan_opened).toBe(4);
+    expect(summary.steps.camera_blocked).toBe(1);
+    expect(summary.captureStart).toBe(0.5);
+    expect(summary.cameraBlockRate).toBe(0.25);
+    // The two do not partition the opens: s3 is in neither.
+    expect(summary.captureStart + summary.cameraBlockRate).toBeLessThan(1);
+  });
+
+  it("reports zero rather than NaN when nobody opened the camera", () => {
+    const summary = summarizeFunnel([ev("s1", "home_viewed")]);
+    expect(summary.captureStart).toBe(0);
+    expect(summary.cameraBlockRate).toBe(0);
+  });
+
+  it("keeps the ratios at or below 1 on a log recorded before scan_opened existed", () => {
+    // Every event log already on a user's device has scan_started and no
+    // scan_opened. An unconditioned numerator would read 2/1 here.
+    const events = [
+      ev("s1", "scan_started"),
+      ev("s2", "scan_started"),
+      ev("s3", "scan_opened"),
+      ev("s3", "scan_started"),
+    ];
+    expect(summarizeFunnel(events).captureStart).toBe(1);
+  });
+
+  it("leaves the existing drop-off chart anchored where it was", () => {
+    // Making scan_opened the first stage would zero every stage of a log that
+    // predates it, because the chart is a cumulative intersection from stage 0.
+    const stages = funnelDropoff([ev("s1", "scan_opened"), ev("s1", "scan_started")]);
+    expect(stages[0].kind).toBe("scan_started");
+    expect(stages[0].ofStart).toBe(1);
+    expect(stages.map((stage) => stage.kind)).not.toContain("scan_opened");
+  });
+});
