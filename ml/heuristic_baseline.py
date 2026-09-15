@@ -105,6 +105,20 @@ def score(
         feature_key = spec.get("feature")
         thresholds = list(spec.get("thresholds") or [])
         levels = levels_for[axis]
+
+        # A malformed threshold list must not be quietly tolerated. A list one cut too
+        # SHORT makes the heuristic weaker, which makes the gate EASIER to pass — the
+        # one direction this must never fail in. Measured on a fixture where the rule
+        # is a perfect predictor: the correct [0.05, 0.16] scores qwk 1.000, dropping
+        # to [0.05] scores 0.667, and a descending [0.16, 0.05] scores 0.800.
+        if len(thresholds) != levels - 1:
+            raise ValueError(
+                f"{axis}: heuristic declares {len(thresholds)} cut point(s) for a "
+                f"{levels}-level axis; expected {levels - 1}. Fix the manifest's "
+                "fallbackHeuristic block rather than scoring a weaker baseline."
+            )
+        if any(b <= a for a, b in zip(thresholds, thresholds[1:])):
+            raise ValueError(f"{axis}: heuristic cut points must ascend, got {thresholds}")
         matrix = [[0] * levels for _ in range(levels)]
         labelled = 0
         skipped = 0
@@ -113,13 +127,18 @@ def score(
             truth = row.labels.get(axis)
             if truth is None:
                 continue
+            # The production path validates labels (parse_level -> validate_level), but
+            # this module is documented as standalone: a negative label would index from
+            # the end of the matrix and corrupt the counts silently, and an out-of-range
+            # one would raise only after a full training run.
+            if not isinstance(truth, int) or isinstance(truth, bool) or not 0 <= truth < levels:
+                raise ValueError(f"{axis}: label {truth!r} outside 0..{levels - 1}")
             labelled += 1
             value = _as_float((row.meta or {}).get(feature_key))
             if value is None:
                 skipped += 1
                 continue
-            predicted = min(predict_level(value, thresholds), levels - 1)
-            matrix[int(truth)][predicted] += 1
+            matrix[truth][predict_level(value, thresholds)] += 1
 
         scored = labelled - skipped
         entry = {

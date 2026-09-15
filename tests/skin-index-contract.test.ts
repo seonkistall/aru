@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeSkin } from "@/lib/skin";
+import { analyzeSkin, levelFor } from "@/lib/skin";
 
 const root = resolve(import.meta.dirname, "..");
 const readMl = (file: string) => readFileSync(resolve(root, "ml", file), "utf8");
@@ -236,11 +236,27 @@ describe("shipped heuristic contract", () => {
     }
   });
 
+  it("covers exactly the axes lib/skin.ts buckets, in both directions", () => {
+    // Every other check here loops over the MANIFEST's axes, so an axis added to
+    // ATTR_RAW_KEY but never declared in the manifest was invisible to all of them —
+    // and it would silently fall out of covered_axes(), so the gate would never ask a
+    // model to beat the shipped rule for it.
+    const rawKeyBlock = skinTs.slice(
+      skinTs.indexOf("const ATTR_RAW_KEY"),
+      skinTs.indexOf("export function levelFor")
+    );
+    expect(rawKeyBlock).toBeTruthy();
+    const inSkinTs = [...rawKeyBlock.matchAll(/^\s{2}(\w+):\s*"\w+"/gm)].map((m) => m[1]).sort();
+    const inManifest = Object.keys(manifest.fallbackHeuristic.axes).sort();
+    expect(inSkinTs.length).toBeGreaterThan(0);
+    expect(inManifest).toEqual(inSkinTs);
+  });
+
   it("publishes the same raw feature key lib/skin.ts reads each axis from", () => {
     const declared = manifest.fallbackHeuristic.axes as Record<string, { feature: string }>;
     const block = skinTs.slice(
       skinTs.indexOf("const ATTR_RAW_KEY"),
-      skinTs.indexOf("function levelFor")
+      skinTs.indexOf("export function levelFor")
     );
     expect(block).toBeTruthy();
 
@@ -283,8 +299,29 @@ describe("shipped heuristic contract", () => {
   });
 
   it("puts a value sitting exactly on a cut point in the higher level", () => {
-    // bucket() in lib/skin.ts is `value < lo ? 0 : value < hi ? 1 : 2`, so the cut
-    // belongs to the band above it. ml/heuristic_baseline.predict_level matches.
+    // This asserts against the REAL exported bucketing rule, not a local copy of it.
+    // The first version of this test defined its own `predict` and compared it with
+    // itself, so flipping `<` to `<=` in lib/skin.ts left the whole suite green while
+    // the Python baseline and the shipped app silently disagreed on every value
+    // sitting on a cut.
+    for (const [axis, spec] of Object.entries(
+      manifest.fallbackHeuristic.axes as Record<string, { thresholds: [number, number] }>
+    )) {
+      const attr = axis as "oil" | "redness" | "pores";
+      const [lo, hi] = spec.thresholds;
+      expect(levelFor(attr, lo * 0.5), `${axis} below lo`).toBe(0);
+      expect(levelFor(attr, lo - Math.abs(lo) * 1e-9), `${axis} just under lo`).toBe(0);
+      expect(levelFor(attr, lo), `${axis} exactly on lo must round UP`).toBe(1);
+      expect(levelFor(attr, (lo + hi) / 2), `${axis} mid band`).toBe(1);
+      expect(levelFor(attr, hi - Math.abs(hi) * 1e-9), `${axis} just under hi`).toBe(1);
+      expect(levelFor(attr, hi), `${axis} exactly on hi must round UP`).toBe(2);
+      expect(levelFor(attr, hi * 10), `${axis} far above hi`).toBe(2);
+    }
+  });
+
+  it("agrees with the manifest rule across a sweep, cut points included", () => {
+    // Same rule ml/heuristic_baseline.predict_level applies, checked against the
+    // shipped function rather than against another copy of itself.
     const predict = (value: number, thresholds: number[]) => {
       let level = 0;
       for (const cut of thresholds) {
@@ -293,10 +330,26 @@ describe("shipped heuristic contract", () => {
       }
       return level;
     };
-    const [lo, hi] = manifest.fallbackHeuristic.axes.oil.thresholds as [number, number];
-    expect(predict(lo - Number.EPSILON, [lo, hi])).toBe(0);
-    expect(predict(lo, [lo, hi])).toBe(1);
-    expect(predict(hi, [lo, hi])).toBe(2);
+    for (const [axis, spec] of Object.entries(
+      manifest.fallbackHeuristic.axes as Record<string, { thresholds: [number, number] }>
+    )) {
+      const attr = axis as "oil" | "redness" | "pores";
+      const [lo, hi] = spec.thresholds;
+      const span = hi - lo;
+      const probes = [lo - span, lo, hi, hi + span, (lo + hi) / 2, 0, -span, hi * 5];
+      for (let i = 0; i <= 40; i += 1) probes.push(lo - span + (span * 3 * i) / 40);
+      for (const value of probes) {
+        expect(predict(value, spec.thresholds), `${axis} @ ${value}`).toBe(levelFor(attr, value));
+      }
+    }
+  });
+
+  it("keeps bucket() and levelFor() on one comparison rule", () => {
+    // Two copies of the cut rule live in lib/skin.ts. levelFor is the one the tests
+    // above pin; if bucket() drifted from it, the displayed level and the gate's
+    // baseline would diverge with every test still green.
+    const expr = /value < lo \? 0 : value < hi \? 1 : 2/g;
+    expect(skinTs.match(expr)?.length, "bucket() and levelFor() must share the rule").toBe(2);
   });
 
   it("declares a heuristic axis only where the Python calibrator has a feature for it", () => {

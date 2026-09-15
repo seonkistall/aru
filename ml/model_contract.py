@@ -20,6 +20,20 @@ MANIFEST_PATH = REPO_ROOT / "public" / "models" / "visible-attributes" / "manife
 
 #: Used only when the manifest is missing or unreadable, e.g. running the trainer
 #: from a checkout without the web app. Kept deliberately strict.
+#: The shipped ROI rule, mirrored for the same reason as FALLBACK_GATE: running the
+#: trainer from a checkout without the web app must not silently DELETE a gate rule.
+#: An empty heuristic block means "cannot score", never "nothing to beat" — and the
+#: difference decides whether a model is promoted without ever being compared to what
+#: it would replace. Kept in step with lib/skin.ts by tests/skin-index-contract.test.ts.
+FALLBACK_HEURISTIC = {
+    "version": "roi-calibrated-2026-09-14",
+    "axes": {
+        "oil": {"feature": "shine", "thresholds": [0.05, 0.16]},
+        "redness": {"feature": "relRedness", "thresholds": [0.012, 0.03]},
+        "pores": {"feature": "cov", "thresholds": [0.085, 0.14]},
+    },
+}
+
 FALLBACK_GATE = {
     "minSamplesPerBand": 20,
     "maxAccuracyGap": 0.10,
@@ -83,12 +97,20 @@ def min_qwk_gain_over_heuristic() -> float:
 def fallback_heuristic() -> dict:
     """The ROI rule the app ships, as the manifest publishes it.
 
-    Thresholds live in lib/skin.ts; this block mirrors them so the Python side can
-    score the same rule, and tests/skin-index-contract.test.ts fails on drift. Empty
-    when the manifest is missing — callers must treat that as "cannot score", never
-    as "nothing to beat".
+    Thresholds live in lib/skin.ts; the manifest mirrors them so the Python side can
+    score the same rule, and tests/skin-index-contract.test.ts fails on drift.
+
+    Falls back to FALLBACK_HEURISTIC rather than to {} when the manifest is missing or
+    declares no block. Returning {} here made the gate fail OPEN: covered_axes() went
+    empty, the beats-the-heuristic rule skipped every axis, and a model was promotable
+    having never been compared to the rule it would replace — in exactly the scenario
+    FALLBACK_GATE's comment already anticipates, a checkout without the web app. Every
+    other floor survived that; this one evaporated.
     """
-    return load_manifest().get("fallbackHeuristic") or {}
+    declared = load_manifest().get("fallbackHeuristic")
+    if isinstance(declared, dict) and declared.get("axes"):
+        return declared
+    return FALLBACK_HEURISTIC
 
 
 def declared_dimensions() -> list[str]:

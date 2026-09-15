@@ -23,6 +23,8 @@ const mlFiles = [
   "ml/external_manifest.py",
   "ml/model_contract.py",
   "ml/skin_indices.py",
+  "ml/ordinal_metrics.py",
+  "ml/heuristic_baseline.py",
   "ml/selftest.py",
 ];
 

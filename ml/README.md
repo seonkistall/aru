@@ -254,9 +254,8 @@ reports, cut-point edge convention included.
 degeneracy, not a quality claim: 0.4 sits near the fair/moderate boundary of the
 commonly cited Landis & Koch kappa bands — whose *moderate* band actually begins at
 0.41, and which could not be checked against its primary source from the build network
-— and it has not been measured on ARU data. The bar that actually matters is *beats the
-shipped heuristic on the same validation set*, which needs a heuristic baseline the
-pipeline does not record yet.
+— and it has not been measured on ARU data. That bar is now enforced separately by
+`minQwkGainOverHeuristic` (above), which is the rule carrying the decision.
 
 For any axis supervised by an instrument reading rather than a human grade, report
 correlation against held-out instrument values before building the head at all. Asking

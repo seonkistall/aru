@@ -679,6 +679,29 @@ class HeuristicBaseline(unittest.TestCase):
         self.assertEqual(report["scoredRows"], 2)
         self.assertEqual(report["skippedNoFeature"], 3)
 
+    def test_a_malformed_threshold_list_is_rejected_not_masked(self):
+        """A short list makes the heuristic WEAKER, which makes the gate easier."""
+        rows = [_FakeRow({"oil": 0}, {"shine": "0.01"})]
+        for bad in ([0.05], [0.05, 0.16, 0.5], [0.16, 0.05], []):
+            with self.subTest(thresholds=bad):
+                spec = {"axes": {"oil": {"feature": "shine", "thresholds": bad}}}
+                original = heuristic_baseline.model_contract.fallback_heuristic
+                heuristic_baseline.model_contract.fallback_heuristic = lambda: spec
+                try:
+                    with self.assertRaises(ValueError):
+                        heuristic_baseline.score(rows, ("oil",), {"oil": 3})
+                finally:
+                    heuristic_baseline.model_contract.fallback_heuristic = original
+
+    def test_an_out_of_range_label_is_rejected(self):
+        """A negative label would index from the end of the matrix and corrupt counts."""
+        for bad in (-1, 3, True, "1"):
+            with self.subTest(label=bad):
+                with self.assertRaises(ValueError):
+                    heuristic_baseline.score(
+                        [_FakeRow({"oil": bad}, {"shine": "0.01"})], ("oil",), {"oil": 3}
+                    )
+
     def test_an_axis_the_heuristic_does_not_cover_is_absent(self):
         report = heuristic_baseline.score(
             [_FakeRow({"wrinkles": 1}, {"shine": "0.1"})], ("wrinkles",), {"wrinkles": 4}
@@ -772,6 +795,38 @@ class BeatsHeuristic(unittest.TestCase):
         gate = self.gate(0.70, {}, covered=())
         self.assertTrue(gate["promotable"], gate["blockers"])
         self.assertEqual(gate["beatsHeuristic"], {})
+
+    def test_a_missing_manifest_does_not_delete_the_rule(self):
+        """The gate used to fail OPEN here, in the scenario the repo already anticipates.
+
+        fallback_heuristic() returned {} when the manifest was unreadable, so
+        covered_axes() went empty, every axis was skipped, and a model was promotable
+        having never been compared to the rule it would replace. Every other floor
+        survived that; this one evaporated.
+        """
+        original = model_contract.MANIFEST_PATH
+        model_contract.MANIFEST_PATH = Path("/nonexistent/manifest.json")
+        try:
+            self.assertIn("built-in fallback", model_contract.source())
+            covered = heuristic_baseline.covered_axes()
+            self.assertEqual(set(covered), {"oil", "redness", "pores"})
+            gate = subgroups.promotion_check(
+                {"oil": {"n": 100, "accuracy": 0.9, "qwk": 0.9, "pearson": 0.9}},
+                self.DIMS, ("oil",), 20, 0.1, min_qwk=0.4, min_pearson=0.4,
+                baseline={}, min_qwk_gain=0.0, baseline_axes=covered,
+            )
+            self.assertFalse(gate["promotable"])
+        finally:
+            model_contract.MANIFEST_PATH = original
+
+    def test_the_fallback_heuristic_matches_the_shipped_one(self):
+        """Two copies of the rule; they must not drift."""
+        shipped = model_contract.load_manifest()["fallbackHeuristic"]["axes"]
+        fallback = model_contract.FALLBACK_HEURISTIC["axes"]
+        self.assertEqual(set(shipped), set(fallback))
+        for axis, spec in shipped.items():
+            self.assertEqual(spec["feature"], fallback[axis]["feature"])
+            self.assertEqual(list(spec["thresholds"]), list(fallback[axis]["thresholds"]))
 
     def test_the_margin_comes_from_the_shipped_manifest(self):
         self.assertEqual(

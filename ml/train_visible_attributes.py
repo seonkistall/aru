@@ -862,7 +862,16 @@ def main() -> None:
         model, val_rows, val_tf, device, axes, aux_heads, args.batch_size
     )
     calibration = fit_tone_calibration(tone_stats, axes, args.min_cell)
-    final_val_metrics = metrics_from_confusion(last_val_confusion)
+    # Score the checkpoint that is actually being promoted, not whatever the last
+    # epoch happened to produce. `model` carries the best checkpoint's weights by this
+    # point (reloaded above), but last_val_confusion is the FINAL epoch's — so the qwk
+    # the gate compares against the heuristic, and the qwk/pearson floors, belonged to
+    # weights nobody was going to ship. Re-running one validation pass is cheap next to
+    # being wrong about which model was judged.
+    _, promoted_val_confusion, _ = run_epoch(
+        model, val_loader, None, device, axes, aux_heads, args.loss, args.aux_weight
+    )
+    final_val_metrics = metrics_from_confusion(promoted_val_confusion)
     # The rule the model wants to replace, scored on the SAME validation rows through
     # the SAME confusion-matrix code. A baseline on a different split, or from a second
     # implementation, would not be a baseline.
@@ -931,8 +940,13 @@ def main() -> None:
         "split": split_info,
         "best_epoch": best_epoch,
         "best_mean_val_accuracy": best,
-        "final_val_confusion": last_val_confusion,
+        # Both describe the PROMOTED checkpoint. `last_epoch_val_confusion` is kept
+        # beside them because it is what `history` reports, and a reader comparing the
+        # two should be able to see they are different things.
+        "final_val_confusion": promoted_val_confusion,
         "final_val_metrics": final_val_metrics,
+        "final_val_scored": "best_checkpoint",
+        "last_epoch_val_confusion": last_val_confusion,
         "heuristic_baseline": {"spec": heuristic_baseline.describe(), "metrics": baseline_metrics},
         "history": history,
         "artifacts": artifacts,

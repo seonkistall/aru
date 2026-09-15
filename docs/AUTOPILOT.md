@@ -416,4 +416,34 @@ Two things follow for anyone editing the Routine:
   and nothing estimates that noise yet; inventing one would have been a fake number.
   The bootstrap that would earn a real margin is now the top ML backlog item.
 
-  Verified: `python ml/selftest.py` 61 -> 77 tests, OK.
+  **Not exercised on real data.** There are zero consented crops, so this gate has
+  never produced a `metrics.json` containing a `heuristic_baseline` block, and
+  `score()` has never run against a real trainer `Row` — every case uses a fake row or
+  a hand-built dict. Verified by construction and by selftest, not by a training run.
+
+  Adversarial review then found two blocking defects in this cycle's own draft:
+
+  - **It failed OPEN when the manifest was missing.** `fallback_heuristic()` returned
+    `{}`, so `covered_axes()` went empty, the beats-the-heuristic rule skipped every
+    axis, and a model was promotable having never been compared to the rule it would
+    replace — in exactly the scenario `FALLBACK_GATE`'s own comment anticipates, a
+    checkout without the web app. Every other floor survived that; this one evaporated.
+    There is now a `FALLBACK_HEURISTIC` constant beside `FALLBACK_GATE`.
+  - **The cut-point guarantee was false.** The edge test defined its own copy of the
+    rule and asserted the copy against itself, and all three synthetic frames land in
+    level 0, so nothing exercised a cut point. Confirmed by flipping `<` to `<=` in
+    `lib/skin.ts`: all 13 tests stayed green. `levelFor` is now exported and the test
+    asserts the REAL function at `lo`, `lo-ε`, `hi`, `hi-ε` for every axis, plus a
+    41-point sweep and a check that `bucket()` and `levelFor()` share one expression.
+    Re-verified after the fix: flipping either copy, or both, fails 3 tests.
+
+  Also fixed from the same review: the gate scored the LAST epoch's confusion while
+  promoting the BEST checkpoint, so the qwk being compared belonged to weights nobody
+  was going to ship; the drift guard only looked one way, so an axis added to
+  `lib/skin.ts` and absent from the manifest was invisible; a malformed threshold list
+  was masked rather than rejected, and a short list makes the heuristic WEAKER and the
+  gate easier; labels were never range-checked; and four stale sentences still said the
+  pipeline records no heuristic baseline, one of them three lines above the section
+  describing it.
+
+  Verified: `python ml/selftest.py` 61 -> 81 tests, OK.

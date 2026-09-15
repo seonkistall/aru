@@ -421,7 +421,11 @@ const ATTR_RAW_KEY: Record<SkinAttr, "shine" | "relRedness" | "cov"> = {
   pores: "cov",
 };
 
-function levelFor(attr: SkinAttr, value: number): SkinLevel {
+// Exported so tests/skin-index-contract.test.ts can exercise the REAL bucketing rule
+// at its cut points. The Python baseline scorer applies the same rule to the same
+// recorded features; a test that re-implements it and asserts the copy against itself
+// proves nothing, which is exactly what the first version of that test did.
+export function levelFor(attr: SkinAttr, value: number): SkinLevel {
   const [lo, hi] = ATTR_THRESHOLDS[attr];
   return (value < lo ? 0 : value < hi ? 1 : 2) as SkinLevel;
 }

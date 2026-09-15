@@ -465,6 +465,10 @@ def ordinal_quality_check(
     return report, blockers
 
 
+def _usable_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def beats_heuristic_check(
     overall: dict,
     axes: tuple[str, ...],
@@ -505,25 +509,23 @@ def beats_heuristic_check(
         model_qwk = overall.get(axis, {}).get("qwk") if isinstance(overall.get(axis), dict) else None
         scored_rows = base.get("scoredRows") if isinstance(base, dict) else None
 
-        def _usable(value: object) -> bool:
-            return (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(value)
-            )
-
-        entry["heuristicQwk"] = base_qwk if _usable(base_qwk) else None
-        entry["modelQwk"] = model_qwk if _usable(model_qwk) else None
+        entry["heuristicQwk"] = base_qwk if _usable_number(base_qwk) else None
+        entry["modelQwk"] = model_qwk if _usable_number(model_qwk) else None
         entry["scoredRows"] = scored_rows
 
         if not isinstance(base, dict) or not scored_rows:
             entry["beats"] = False
             entry["reason"] = "the heuristic was never scored on this split"
             report[axis] = entry
+            labelled = base.get("labelledRows") if isinstance(base, dict) else None
+            cause = (
+                "no labelled validation rows for this axis"
+                if labelled == 0
+                else "its ROI feature is missing from the data"
+            )
             blockers.append(
                 f"[{axis}] the shipped heuristic was not scored on this validation split, so "
-                "there is nothing to show the model beats. Its ROI feature is missing from the "
-                "data."
+                f"there is nothing to show the model beats: {cause}."
             )
             continue
 
@@ -547,7 +549,7 @@ def beats_heuristic_check(
             )
             continue
 
-        if not _usable(base_qwk) or not _usable(model_qwk):
+        if not _usable_number(base_qwk) or not _usable_number(model_qwk):
             entry["beats"] = False
             entry["reason"] = "model or heuristic qwk is not a usable number"
             report[axis] = entry

@@ -175,10 +175,11 @@ python ml/train_visible_attributes.py \
 
 `metrics.json`에서 네 가지를 본다.
 
-1. **`promotion_gate.promotable`** — 두 규칙을 **모두** 통과해야 true다.
+1. **`promotion_gate.promotable`** — 세 규칙을 **모두** 통과해야 true다.
    (a) 톤/나이/교차 셀 최악 그룹이 평균 대비 `maxAccuracyGap` 안에 드는지. 표본
    부족 셀은 통과가 아니라 **차단**이다. (b) 축별 `qwk`/`pearson`이 `minQwk` /
-   `minPearson` 이상인지.
+   `minPearson` 이상인지. (c) 축별 모델 `qwk`가 현행 휴리스틱을
+   `minQwkGainOverHeuristic`만큼 넘는지 (아래 3번).
 2. **축별 `qwk`와 `pearson`** — **2026-09-15부터 게이트가 자동으로 막는다.**
    수동 판단 항목이 아니다. 치우친 등급 분포에서 다수 등급만 찍는 모델이 정확도
    0.80과 `within_one_grade` 0.95를 받고 QWK는 0이 된다. 그런 모델은 모든 셀에서
@@ -186,10 +187,9 @@ python ml/train_visible_attributes.py \
    못한 모델이 가장 쉽게 통과**했다. 그래서 (b)가 있다.
 
    판정하는 사람이 알아야 할 것: **현재 floor는 0.4이고 잠정값이다.** ARU 데이터로
-   측정한 값이 아니라 degeneracy 방어선이고, 품질 기준이 아니다. 실제로 필요한
-   기준은 "같은 validation split에서 현행 휴리스틱을 이긴다"인데 파이프라인이 아직
-   휴리스틱 베이스라인을 기록하지 않는다. **0.4를 넘겼다는 사실만으로 승급을
-   정당화하지 말 것.**
+   측정한 값이 아니라 degeneracy 방어선이고, 품질 기준이 아니다. **0.4를 넘겼다는
+   사실만으로 승급을 정당화하지 말 것** — 실제로 결정을 지는 규칙은 아래 3번,
+   "현행 휴리스틱을 이겼는가"다.
 
    게이트는 fail-closed다. 축이 `overall`에 없거나, 검증 표본이 0이거나,
    `accuracy`/`qwk`/`pearson`이 없거나 NaN/inf면 통과가 아니라 차단이다.
@@ -214,6 +214,11 @@ python ml/train_visible_attributes.py \
    것이고, 그 차이는 모델 덕분이라고 말할 수 없다. 그래서 `scoredRows != n`이면
    차단한다. `skippedNoFeature`가 몇 개인지 알려주고, 고칠 곳은 게이트가 아니라
    export다.
+   > **아직 실제 데이터로 돌려본 적 없음.** 동의된 crop이 0이라 이 게이트가
+   > `heuristic_baseline` 블록이 들어 있는 `metrics.json`을 만들어낸 적이 없다.
+   > 전부 selftest와 구성으로만 검증됐다. 첫 실제 학습 때 `scoredRows`와
+   > `skippedNoFeature`를 가장 먼저 볼 것 — export가 ROI feature를 제대로 싣고
+   > 있는지가 거기서 드러난다.
 4. **`lineage`** — 출시하려는 가중치가 거쳐온 모든 출처. 여기 비상업이 하나라도
    있으면 그 모델은 출시 불가다.
 
