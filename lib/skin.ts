@@ -317,10 +317,34 @@ function bucket(attr: SkinAttr, value: number, lo: number, hi: number, confidenc
   };
 }
 
-function distanceConfidence(value: number, lo: number, hi: number) {
-  const midpoint = value < lo ? lo : value > hi ? hi : (lo + hi) / 2;
+// Confidence in a bucketed reading is a function of how far the value sits from
+// the nearest CUT POINT: a reading that lands on lo or hi could have gone either
+// way, and one far outside the band is unambiguous.
+//
+// The previous form measured the out-of-band distance from the cut point but
+// still SUBTRACTED it, so confidence fell as a reading became less ambiguous —
+// it peaked at 0.916 a hair below `lo` and decayed to 0 for a plainly calm or
+// plainly pronounced face. Sweeping a plausible feature grid (shine 0-0.5,
+// relRedness -0.03-0.08, cov 0-0.3 at 51 steps each, all three capture signals
+// passing), 41.54% of it scored under the 0.58 gate — so `readsFromRaw` labelled
+// those captures 재촬영 권장 with an EMPTY `retakeReasons`, and `shouldApplyScan`
+// in lib/recommend.ts discarded the scan. That share is now 0%, and no point on
+// the grid moved the other way.
+//
+// Both branches now rise away from the cut points and meet at 0.695 on them.
+// The function is unchanged in-band, but the COMPOSITE range moves: with all
+// three signals passing, `readsFromRaw`'s confidence now lands in
+// [0.7804, 0.9424], so `confidenceLabel` reads 높음 for any well-captured frame
+// and no longer varies with how ambiguous the readings are. Whether the
+// three-level label should still carry that is a live backlog item; do not
+// nudge 0.695 or the 0.78 threshold without reading it.
+export function distanceConfidence(value: number, lo: number, hi: number) {
   const span = Math.max(0.0001, hi - lo);
-  const distance = Math.abs(value - midpoint) / span;
+  if (value < lo || value > hi) {
+    const beyond = Math.min(1, (value < lo ? lo - value : value - hi) / span);
+    return clamp01(0.695 + beyond * 0.225);
+  }
+  const distance = Math.abs(value - (lo + hi) / 2) / span;
   return clamp01(0.92 - distance * 0.45);
 }
 
@@ -385,7 +409,7 @@ export function localizedNarrative(reads: Pick<SkinReads, "oil" | "redness" | "p
   return `${parts[0]}, ${parts[1]}. ${parts[2]}.`;
 }
 
-const ATTR_THRESHOLDS: Record<SkinAttr, [number, number]> = {
+export const ATTR_THRESHOLDS: Record<SkinAttr, [number, number]> = {
   oil: [0.05, 0.16],
   redness: [0.012, 0.03],
   pores: [0.085, 0.14],

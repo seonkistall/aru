@@ -308,6 +308,7 @@ linear funnel.
 | Retake recommendation | Completed scans with `retake=true` | ≤ 25% |
 | Recommendation action | Sessions opening a retailer after viewing recommendations | ≥ 15% |
 | Share rate | Sessions sharing after scan completion | Observational |
+| Share activation | Sessions arriving on a shared `#m=` link that reached a capture | Observational |
 | 2-week check-in | Check-ins among subscribers reaching the 2-week mark | ≥ 20% |
 
 AI transmission/training consent rates are safety KPIs, not growth-optimisation

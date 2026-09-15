@@ -346,3 +346,84 @@ def worst_group(metrics_by_cell: dict[str, dict], key: str, min_n: int = 20) -> 
         "evaluatedCells": len(eligible),
         "skippedCells": skipped,
     }
+
+
+#: Why a dimension could not be evaluated, in the terms of how that data is collected.
+#: Anything not named here gets the generic sentence — a new dimension must still block.
+_UNEVALUATED_NOTE: dict[str, str] = {
+    "tone": (
+        "Tone is measured on every scan, so this means too little data, not missing metadata."
+    ),
+    "age": (
+        "Age is only collected in consented pilot sessions; without it the model may not be "
+        "claimed to hold across age groups."
+    ),
+    "tone_x_age": (
+        "The joint cell needs both a measured tone band and a reported age band. On consumer "
+        "scans every cell is '<tone>/unknown' and is excluded by design, so this dimension is "
+        "evaluable only on pilot data."
+    ),
+}
+
+
+def promotion_check(
+    overall: dict,
+    by_dimension: dict,
+    axes: tuple[str, ...],
+    min_cell: int,
+    max_gap: float,
+) -> dict:
+    """Can this model replace the heuristic? Subgroup gaps decide, not the mean.
+
+    Each dimension is judged on its own so that missing age data blocks an
+    age-robustness claim without hiding a tone gap that IS measurable.
+
+    Lives here rather than in train_visible_attributes.py because that module imports
+    torch at module scope, which put the single highest-consequence rule in the repo
+    out of reach of ml/selftest.py. It is pure dict arithmetic over worst_group and
+    needs nothing the trainer has.
+
+    An unevaluated dimension is a BLOCKER, for every dimension. It used to be one only
+    for "tone" and "age", named literally; "tone_x_age" — which the shipped manifest
+    declares, and which is structurally unevaluable on consumer scans because every
+    joint cell is "<tone>/unknown" and worst_group excludes those — fell through the
+    branch and appended nothing, so a run could report `promotable: True` with that
+    dimension silently unchecked. That contradicted the manifest's own note: "A
+    subgroup with too few samples counts as unevaluated, which blocks promotion rather
+    than passing silently."
+    """
+    mean_acc = sum(overall[axis]["accuracy"] * overall[axis]["n"] for axis in axes) / max(
+        1, sum(overall[axis]["n"] for axis in axes)
+    )
+    results = {}
+    reasons = []
+    for dimension, groups in by_dimension.items():
+        worst_acc = worst_group(groups, "accuracy", min_n=min_cell)
+        worst_mae = worst_group(groups, "ordinal_mae", min_n=min_cell)
+        gap = None
+        if worst_acc.get("evaluated"):
+            gap = mean_acc - worst_acc["worstValue"]
+            if gap > max_gap:
+                reasons.append(
+                    f"[{dimension}] worst group {worst_acc['worstCell']} is {gap:.3f} below the "
+                    f"mean (limit {max_gap:.3f})"
+                )
+        else:
+            note = _UNEVALUATED_NOTE.get(
+                dimension, "No cell in this dimension carried enough samples to evaluate."
+            )
+            reasons.append(f"[{dimension}] no cell reached n>={min_cell}. {note}")
+        results[dimension] = {
+            "worstAccuracy": worst_acc,
+            "worstOrdinalMae": worst_mae,
+            "gapToMean": gap,
+            "evaluated": bool(worst_acc.get("evaluated")),
+        }
+    return {
+        "meanAccuracy": mean_acc,
+        "maxAllowedGap": max_gap,
+        "minSamplesPerGroup": min_cell,
+        "dimensions": results,
+        "promotable": not reasons,
+        "blockers": reasons,
+    }

@@ -11,6 +11,10 @@ import { DEVICE_DATA_KEY } from "./device-data";
 // product success, or a prevented failure.
 
 export type FunnelEventKind =
+  // A visitor opened a link someone shared (#m=NNN). Recorded on the landing
+  // page, client-side, from the hash that was already being read there — no new
+  // network call and nothing extra leaves the device.
+  | "share_landed"
   | "scan_started"
   | "scan_completed"
   | "survey_viewed"
@@ -120,9 +124,18 @@ export type FunnelSummary = {
   failurePreventionConversion: number;
   surveyCompletion: number; // completed-survey sessions / survey-viewed sessions
   shareRate: number; // share clicks / completed scans
+  // Share arrivals that also reached a capture. The denominator is share
+  // ARRIVALS, not all sessions: this is the receiving half of the only organic
+  // acquisition loop the product has, and shareRate alone gives it no denominator.
+  // Two caveats before anyone reads this as a viral coefficient: `scan_started`
+  // fires at the shutter, not on /scan entry, so this counts arrivals that got as
+  // far as capturing; and the sets are unordered, so a sender who opens their own
+  // link in a new tab (a fresh sessionId) counts as an arrival.
+  viralActivation: number;
 };
 
 export const FUNNEL_ORDER: FunnelEventKind[] = [
+  "share_landed",
   "scan_started",
   "scan_completed",
   "survey_viewed",
@@ -153,6 +166,8 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
   const ratio = (num: number) => (completedSet.size ? num / completedSet.size : 0);
   const surveyViewedSet = reachedSets.survey_viewed;
   const completedAfterView = [...reachedSets.survey_completed].filter((id) => surveyViewedSet.has(id)).length;
+  const landedSet = reachedSets.share_landed;
+  const landedThenScanned = [...reachedSets.scan_started].filter((id) => landedSet.has(id)).length;
 
   return {
     events: events.length,
@@ -161,6 +176,7 @@ export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): Funn
     failurePreventionConversion: ratio(withinCompleted("commerce_clicked")),
     surveyCompletion: surveyViewedSet.size ? completedAfterView / surveyViewedSet.size : 0,
     shareRate: ratio(withinCompleted("share_clicked")),
+    viralActivation: landedSet.size ? landedThenScanned / landedSet.size : 0,
   };
 }
 

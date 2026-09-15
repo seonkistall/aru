@@ -58,10 +58,12 @@ const emptyFunnel: FunnelSummary = {
     reco_viewed: 0,
     share_clicked: 0,
     commerce_clicked: 0,
+    share_landed: 0,
   },
   failurePreventionConversion: 0,
   surveyCompletion: 0,
   shareRate: 0,
+  viralActivation: 0,
 };
 
 const emptySnapshot: OpsSnapshot = {
@@ -232,6 +234,8 @@ export default function OpsPage() {
             <Row label="Survey completion" value={`${Math.round(snapshot.funnel.surveyCompletion * 100)}%`} />
             <Row label="Share clicked" value={`${snapshot.funnel.steps.share_clicked}`} />
             <Row label="Share rate" value={`${Math.round(snapshot.funnel.shareRate * 100)}%`} />
+            <Row label="Share landed" value={`${snapshot.funnel.steps.share_landed}`} />
+            <Row label="Share activation" value={`${Math.round(snapshot.funnel.viralActivation * 100)}%`} />
           </div>
           <p style={mutedText}>Local device only until a Supabase sync flows these events to funnel_events.</p>
         </section>

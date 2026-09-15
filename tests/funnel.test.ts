@@ -135,3 +135,41 @@ describe("funnelDropoff", () => {
     expect(stages.every((s) => s.ofStart <= 1)).toBe(true);
   });
 });
+
+describe("share loop instrumentation", () => {
+  // share_clicked counted sends. Nothing counted arrivals, so the only organic
+  // acquisition loop the product has produced a numerator with no denominator.
+  it("counts share_landed as a funnel step", () => {
+    // Membership, not position: FUNNEL_ORDER is only iterated to build the step
+    // counts, so pinning an index would break on any future insertion for nothing.
+    expect(FUNNEL_ORDER).toContain("share_landed");
+  });
+
+  it("measures activation of visitors arriving from a shared link", () => {
+    const events = [
+      ev("s1", "share_landed"),
+      ev("s1", "scan_started"),
+      ev("s2", "share_landed"), // arrived, bounced
+      ev("s3", "scan_started"), // organic — must not count in either half
+    ];
+
+    const summary = summarizeFunnel(events);
+    expect(summary.steps.share_landed).toBe(2);
+    // The denominator is share ARRIVALS (2), not all sessions (3) and not all
+    // scans (2). 1/2, not 1/3 and not 2/3.
+    expect(summary.viralActivation).toBe(0.5);
+  });
+
+  it("reports no activation rather than NaN when nobody arrived from a share", () => {
+    expect(summarizeFunnel([ev("s1", "scan_started")]).viralActivation).toBe(0);
+  });
+
+  it("keeps share_landed out of the linear scan funnel", () => {
+    // STAGE_ORDER is a cumulative intersection anchored on scan_started; a
+    // side-branch arrival event in it would break monotonicity.
+    const stages = funnelDropoff([ev("s1", "share_landed"), ev("s1", "scan_started")]);
+    expect(stages.map((stage) => stage.kind)).not.toContain("share_landed");
+    expect(stages[0].kind).toBe("scan_started");
+    expect(stages[0].ofStart).toBe(1);
+  });
+});
