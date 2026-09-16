@@ -96,13 +96,51 @@ describe("within-image indices", () => {
     // Within-image: evenness and blemish count are unmoved.
     expect(brighter!.raw.toneSpread).toBeCloseTo(baseline!.raw.toneSpread, 2);
     expect(brighter!.raw.blemishCount).toBe(baseline!.raw.blemishCount);
+    // All five discs on the fixture, not a subset the detector happens to see.
+    expect(baseline!.raw.blemishCount).toBe(5);
   });
 
-  it("survives a per-channel gain change", () => {
+  // A per-channel cast is NOT survived by blemishCount, and this case says so
+  // rather than claiming otherwise. It used to assert equality and was green at
+  // 2 == 2 — the point-sampling detector found the same 2 of the 5 discs in every
+  // condition, so the equality held by blindness, not by invariance. With the
+  // stride window averaged (2026-09-16) the baseline finds all 5 and the warm
+  // cast finds 3, which is a pre-existing sensitivity the old blindness masked:
+  // dropping the gray-world gains from detectBlemishes changes neither number, so
+  // the cast moves the a* residual itself. Pinned as exact counts so any further
+  // drift in either direction fails loudly; the property this file wanted is a
+  // backlog item, not something to assert into existence here.
+  it("records how far a per-channel gain change moves the count", () => {
     const warmer = analyzeSkin(syntheticFace(1, [1.12, 1, 0.92]), landmarks);
     expect(warmer).not.toBeNull();
     expect(warmer!.raw.toneSpread).toBeCloseTo(baseline!.raw.toneSpread, 2);
-    expect(warmer!.raw.blemishCount).toBe(baseline!.raw.blemishCount);
+    expect(baseline!.raw.blemishCount).toBe(5);
+    expect(warmer!.raw.blemishCount).toBe(3);
+  });
+
+  /**
+   * The values, not only their invariance. Every other case in this file compares two
+   * readings, so a constant factor applied to an index cancels and the file stays
+   * green: multiplying toneSpread, roughnessRatio or blemishDensity by 1.5 in
+   * lib/skin.ts passed all eight cases before this was added (checked one at a time).
+   *
+   * That matters because ml/calibrate.py draws thresholds from exactly these fields
+   * (UNLABELLED_FEATURE = {tone: toneSpread, dryness: roughnessRatio}), and
+   * docs/label-free-axes.md requires a fallbackVersion bump whenever feature
+   * semantics move so old and new samples are never pooled. A scale change is such a
+   * move. Three bumps landed on 2026-09-16 because a human-written comment remembered
+   * to; nothing checked.
+   *
+   * These are self-consistency pins on the synthetic fixture, NOT outside-verified
+   * numbers like the six ITA swatches in tests/tone-ita-contract.test.ts. Their job is
+   * to make a silent scale change loud, so whoever changes one has to decide on
+   * purpose whether fallbackVersion moves with it.
+   */
+  it("pins the absolute value of each index on the fixture", () => {
+    expect(baseline!.raw.toneSpread).toBeCloseTo(0.05322874576592159, 10);
+    expect(baseline!.raw.roughnessRatio).toBeCloseTo(1.07506721426881, 10);
+    expect(baseline!.raw.blemishDensity).toBeCloseTo(2.4772157318490424, 10);
+    expect(baseline!.raw.blemishCount).toBe(5);
   });
 
   it("finds nothing on the same face with the spots removed", () => {
