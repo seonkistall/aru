@@ -12,6 +12,7 @@ const expected = [
   "aru_funnel_events_v1",
   "aru_funnel_visitor_v1",
   "aru_funnel_session_v1",
+  "aru_funnel_flushed_v1",
   "gyeol_labels_v1",
   "gyeol_pilot_notes_v1",
   "gyeol_current_pilot_session_v1",

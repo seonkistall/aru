@@ -906,4 +906,6 @@ export const EN: Record<string, string> = {
   "파일럿에서는 동의한 해당 세션의 연구 데이터만 비공개 Supabase로 동기화될 수 있고, 크롭 보존 기한은 기본 180일입니다.": "During the pilot, only consented research data from that specific session may be synced to private Supabase storage. The default crop retention period is 180 days.",
   "리마인더 이메일 기록에는 이메일, 동의 버전, 발송 시각이 저장됩니다. 해지하면 즉시 발송 대상에서 제외되고 기록은 30일 안에 삭제됩니다.": "Reminder email records store your email, consent version, and send timestamps. Unsubscribing removes you from future sends immediately, and the record is deleted within 30 days.",
   "기기 데이터 삭제는 이 서버 기록을 삭제하지 않습니다. 리마인더는 받은 이메일의 해지 링크로, 연구 데이터는 파일럿 운영자에게 참여자·세션 ID로 요청해 주세요.": "Deleting device data does not delete these server records. Use the unsubscribe link in a reminder email, or ask the pilot operator about research data using your participant and session IDs.",
+  "이용 기록 전송": "Usage log transfer",
+  "화면 이동과 버튼 누름 같은 이용 기록이 ARU 서버로 전송돼요. 사진, 직접 입력한 내용, 이름이나 연락처는 보내지 않고, 이 기기에서 만든 무작위 방문자·세션 번호만 함께 저장돼요.": "Usage records such as page views and button taps are sent to ARU's servers. No photos, no text you typed, and no name or contact details are sent — only the random visitor and session numbers this device generated are stored alongside them.",
 };

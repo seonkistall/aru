@@ -7,6 +7,10 @@ export const DEVICE_DATA_KEY = {
   funnelEvents: "aru_funnel_events_v1",
   funnelVisitor: "aru_funnel_visitor_v1",
   funnelSession: "aru_funnel_session_v1",
+  // Ids already acknowledged by a server, so a flush does not re-send them.
+  // Listed below like every other key: "delete my device data" must clear the
+  // cursor too, or a wiped device would go on suppressing its own events.
+  funnelFlushed: "aru_funnel_flushed_v1",
   labels: "gyeol_labels_v1",
   pilotNotes: "gyeol_pilot_notes_v1",
   pilotSession: "gyeol_current_pilot_session_v1",
@@ -31,6 +35,7 @@ export const DEVICE_DATA_KEYS = [
   { key: DEVICE_DATA_KEY.funnelEvents, area: "local", group: "analytics" },
   { key: DEVICE_DATA_KEY.funnelVisitor, area: "local", group: "analytics" },
   { key: DEVICE_DATA_KEY.funnelSession, area: "session", group: "analytics" },
+  { key: DEVICE_DATA_KEY.funnelFlushed, area: "local", group: "analytics" },
   { key: DEVICE_DATA_KEY.labels, area: "local", group: "research" },
   { key: DEVICE_DATA_KEY.pilotNotes, area: "local", group: "research" },
   { key: DEVICE_DATA_KEY.pilotSession, area: "local", group: "research" },

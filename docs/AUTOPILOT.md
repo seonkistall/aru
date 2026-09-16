@@ -99,7 +99,20 @@ worth doing.
 2. **Anything that makes the funnel observable.** Optimising what you cannot measure is
    guessing. `lib/funnel.ts` is still localStorage-only.
 3. **Anything that makes one user bring another.** The share loop is the only organic
-   acquisition path the product has.
+   acquisition path the product has. **It depends on item 2 and the ordering did not
+   say so** (supervisor, 2026-09-16): `share_clicked` is recorded in the sender's
+   browser (`app/scan/page.tsx`, `app/studio/page.tsx`) and `share_landed` in the
+   receiver's (`app/components/mood-from-link.tsx`). Two devices, both localStorage,
+   and `/ops` reads one browser — so landings per send, the only number the loop has,
+   is not merely unmeasured today but **structurally uncomputable**: no store anywhere
+   has ever held both halves. Server-side collection is what makes item 3 possible at
+   all, which is part of why item 2 went first this cycle.
+
+   What collection would still not give: `#m=NNN` encodes mood levels, not a share id
+   (`lib/share-link.ts`), so the aggregate ratio becomes computable and per-share
+   attribution does not. Adding a share id would put a new identifier into a URL people
+   paste to each other — a privacy decision, not a plumbing one, and not an obvious fix
+   to reach for.
 4. **Everything else** — model quality, subgroup fairness, defects, polish. Still real
    work, still lands every cycle; it just does not win a tie against 1-3 while the
    revenue line reads zero.
@@ -338,9 +351,33 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   the same thing: a user whose camera was seized by another app was being asked to turn
   their camera back on, which is not the action available to them.
   `tests/camera-interrupt-reason.test.ts`, 4 of its 5 cases fail against `origin/main`.
-- [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
-  can see where users drop off. Without it every UX cycle is guessing. (Still open —
-  2026-09-15 added `share_landed` and `viralActivation`, but they are still on-device.)
+- [~] [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
+  can see where users drop off. Without it every UX cycle is guessing. (2026-09-15 added
+  `share_landed` and `viralActivation`, but they are still on-device.)
+  **2026-09-16, cycle 6: the flush path is built and it is off, and the reason it is off
+  is a blocker.** Confirmed first, not assumed: the only two `fetch("/api/sync"` call
+  sites in the tree are both `app/ops/page.tsx` (lines 168 and 440), and `/ops` is a 404
+  in production unless `INTERNAL_TOOLS_USER`/`INTERNAL_TOOLS_PASSWORD` are set
+  (`internalAccessDecision`), on top of needing `SUPABASE_SYNC_TOKEN` typed in. So every
+  real user's funnel data has been written to their own browser and read by nobody.
+  `lib/funnel-flush.ts` + `app/components/funnel-flush.tsx` are the missing call site,
+  behind `NEXT_PUBLIC_FUNNEL_FLUSH` (exact `"on"`, default off, same shape as
+  `NEXT_PUBLIC_COMMERCE_AFFILIATE`). **It cannot authenticate**: `POST /api/sync`
+  requires `SUPABASE_SYNC_TOKEN` and a browser cannot hold a secret, so the flush is
+  refused 401 — pinned against the real route handler so nobody switches the flag on
+  believing otherwise. Full write-up, redaction rules, the `sendBeacon` finding and the
+  PIPA analysis: `docs/funnel-flush-design.md`. The item stays open until the ingest
+  endpoint below exists.
+- [AI] **Design the unauthenticated funnel ingest endpoint.** The thing the flush needs
+  and the thing this cycle deliberately did not rush: `POST /api/funnel` accepting only
+  a funnel-event array, unauthenticated, with its own `createRateLimiter` bucket, a body
+  cap far under `/api/sync`'s 5 MB, an origin guard, and **server-side** re-validation of
+  kind and prop keys — the client allowlist in `FUNNEL_PROP_KEYS` is a courtesy, not a
+  control, once the endpoint is public. Write `metadata.source` to something other than
+  `ops-local` so operator syncs and public ingest stay distinguishable in the table.
+  This is a new attack surface on a product that currently has none, which is why it is
+  its own item rather than a tail end of the flush. Sized in §4 of
+  `docs/funnel-flush-design.md`.
 - [x] [AI] ~~Four more drop-offs are uninstrumented~~ — done 2026-09-15. `home_viewed`,
   `scan_opened`, `camera_blocked`, `care_viewed` and `checkin_opened` now fire, with
   `captureStart` and `cameraBlockRate` in the summary and in `/ops`. Still on-device:
@@ -554,6 +591,18 @@ Owner-only, dated when first recorded.
   `developer.mozilla.org`, `en.wikipedia.org`, `law.go.kr`, `www.kcs.go.kr`, `doi.org`,
   `www.ncbi.nlm.nih.gov` and `www.w3.org` all still refuse. Full probe output is in
   `docs/tone-ita-verification.md`.
+- 2026-09-16 — **The legal basis for switching the funnel flush on.** `lib/funnel-flush.ts`
+  ships off. Turning it on starts sending a persistent random `visitorId` next to
+  behavioural events to ARU's own server, which is a new purpose that neither existing
+  consent stream (`ai_analysis`, `learning_crop`) covers, and guardrail 4 forbids
+  merging them. Whether PIPA requires a consent step or a legitimate-interest-style
+  ground applies is an owner decision informed by an actual reading of the statute: both
+  `www.law.go.kr` and `www.pipc.go.kr` refuse this network
+  (`curl: (56) CONNECT tunnel failed, response 403`, probed 2026-09-16), so no cycle can
+  settle it from a primary source and none should settle it from recall. The reasoning,
+  labelled as recalled, is §5 of `docs/funnel-flush-design.md`. No new consent kind and
+  no new consent flow was invented.
+
 - 2026-09-15 — Which host a real affiliate link lands on. The override allowlist in
   `lib/commerce.ts` accepts `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
   `www.coupang.com` and `www.google.com`. A 네이버 쇼핑 커넥트 link is likely on a
@@ -1477,3 +1526,224 @@ up rather than rediscover them.
   Verification on the merged head: vitest 391 in 70 files, `ml/selftest.py` 77, lint 2
   pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16 — the same 16 main
   carries, all in test files.
+
+- 2026-09-16 (cycle 6) — Branch `autopilot/2026-09-16-1839`. **Revenue-upstream item 2,
+  at the supervisor's correction after three cycles of item 4.** Baseline counted on
+  arrival, `npm ci` first because `node_modules` was absent again: vitest **391 in 70
+  files**, `ml/selftest.py` **77**, lint **0 errors, 2 warnings** (the same two unused
+  parameters in `lib/care.ts`), `tsc --noEmit` **13 errors, all in test files** — not
+  the 16 the cycle brief quoted, and the same 13 cycle 5 counted on arrival, in
+  `tests/skin-roi-quality.test.ts` (6), `tests/e2e/ios-safari-camera.spec.ts` (3),
+  `tests/product-use.test.ts` (3) and `tests/android-config.test.ts` (1). Recorded
+  rather than reconciled: the brief's number and this checkout's number disagree and
+  only one of them was measured here.
+
+  **funnel (revenue-upstream #2) — the pipeline had no caller, and the caller it needs
+  cannot authenticate.** Verified before acting on it, as instructed. Every
+  `/api/sync` call site in the tree:
+
+  ```
+  $ grep -rn 'fetch("/api/sync"' --include=*.ts --include=*.tsx . | grep -v node_modules
+  ./app/ops/page.tsx:168:      const resp = await fetch("/api/sync", {
+  ./app/ops/page.tsx:440:  const resp = await fetch("/api/sync", {
+  ```
+
+  Both `/ops`, and `internalAccessDecision` returns `not-found` in production unless
+  `INTERNAL_TOOLS_USER` **and** `INTERNAL_TOOLS_PASSWORD` are set — which is why smoke
+  asserts `ok GET /ops -> 404` — on top of `SUPABASE_SYNC_TOKEN` being typed into the
+  page. So five cycles of drop-off instrumentation have been writing to a store with no
+  reader.
+
+  `lib/funnel-flush.ts` is the missing call site, mounted by
+  `app/components/funnel-flush.tsx` in the root layout (flush on mount, and on
+  `visibilitychange` to hidden). `funnelFlushActive()` reads
+  `NEXT_PUBLIC_FUNNEL_FLUSH === "on"` — exact, the `affiliateDisclosureActive()` shape —
+  and unset, `flushFunnelEvents` returns `disabled` before touching the network. **No
+  browser behaviour changes until the owner sets it.**
+
+  **A defect in this cycle's own code, caught before push and written down rather than
+  quietly fixed.** The first draft read the flag as `process.env[FUNNEL_FLUSH_FLAG]`,
+  which is correct in node and therefore passed every test — and is dead in a browser.
+  Next inlines public env through webpack's DefinePlugin keyed on the literal
+  expression: `getNextPublicEnvironmentVariables` in
+  `node_modules/next/dist/lib/static-env.js` (Next 16.2.9, read in the tree) builds each
+  key as `` `process.env.${key}` ``, so the dynamic form is never replaced, reads
+  `undefined` in every client bundle, and the flag could not have been switched on at
+  all. Same class as the cycle-4 camera test and the cycle-5 blindness case: a green
+  test asserting something the shipped path does not do. Now a literal, with
+  `tests/funnel-flush.test.ts > reads the flag through a literal Next can inline`
+  pinning it (`AssertionError: expected 'export function funnelFlushActive(): …' to
+  contain 'process.env.NEXT_PUBLIC_FUNNEL_FLUSH …'` when reverted).
+
+  **The blocker, which is the cycle's actual output.** `POST /api/sync` requires
+  `SUPABASE_SYNC_TOKEN`; a browser cannot hold a secret, since anything the page can
+  send a visitor can read. The flush therefore cannot succeed against that route, and
+  that is pinned against the real handler rather than left to be discovered in
+  production (`tests/funnel-flush.test.ts > is refused 401 when posted without the sync
+  token`). The honest next step — an unauthenticated `POST /api/funnel` with its own
+  rate limit, body cap, origin guard and **server-side** re-validation — is sized in §4
+  of `docs/funnel-flush-design.md` and is now its own backlog item. It was not rushed
+  into this branch: an unauthenticated write endpoint is a new attack surface on a
+  product that has none.
+
+  **What the flush must not do, enforced three ways because one would not.** (a) The
+  body is built from scratch, not from `buildLocalSyncPayload()` — that helper reads
+  `getCropSamples()`, i.e. consented face images as base64 data URLs, plus labels,
+  pilot notes and the consent audit log, and reusing it would put face crops on a path
+  that fires automatically in a consumer browser. (b) Each event is reconstructed field
+  by field, never spread, because a stored event is JSON that sat in a browser ARU does
+  not control. (c) Prop **keys** are allowlisted per kind: `sanitizeProps` bounds value
+  types and cannot bound keys, so a future call site recording a `{ note: freeText }`
+  prop would pass it intact — on-device a contained mistake, on a flush an egress of
+  free text.
+
+  The audit the item asked for came out clean. 15 call sites pass an explicit props
+  object, enumerated from the tree; every value is a closed vocabulary (`reason`,
+  `merchant`, `source`, `mode`, `surface`, `placement`), a boolean or a small count,
+  including last cycle's `camera_blocked.reason` and `camera_interrupted.reason`. The
+  four remaining kinds go through `useFunnelPageView(kind)`, which takes no props
+  argument at all. Table in §3 of the write-up.
+
+  **research — `navigator.sendBeacon` is the obvious transport and it is the wrong
+  one**, verified against a primary source rather than recalled. `www.w3.org` and MDN
+  both refuse this network, but the W3C Beacon spec's own source does not:
+  `raw.githubusercontent.com/w3c/beacon/gh-pages/index.html`, `http=200 bytes=115132`,
+  fetched 2026-09-16. Verbatim: *"Beacon API does not provide a response callback"* and
+  *"this method does not provide any information whether the data transfer has succeeded
+  or not."* A beacon flush cannot tell 200 from 401, so it would advance the cursor over
+  the refusal and destroy exactly the events it was meant to deliver. Transport is
+  `fetch(..., { keepalive: true })`, and `markFunnelEventsFlushed` runs only after a
+  2xx; a test pins that a 401 leaves the cursor untouched.
+
+  **bug — `funnelEvents` was the one array in the sync payload with no type check.**
+  Found while reading the route for what an ingest endpoint would inherit. It is
+  optional (it arrived with `sync.v2`), `payload.funnelEvents ?? []` accepts any truthy
+  value, and `"abc".length` is 3 — so a string passes validation, enters the upsert
+  branch and reaches `.map`. Reproduced against the real handler with `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SYNC_TOKEN` all set, the only configuration
+  that gets there:
+
+  ```
+  PROBE THREW TypeError funnelEvents.map is not a function
+  ```
+
+  Uncaught, so a 500 where every other malformed array is a 400. One clause added to the
+  existing validation block.
+
+  **UX / privacy copy.** `/privacy` gains a 이용 기록 전송 paragraph rendered **only
+  while the flag is on**, the way `CommerceDisclosure` switches wording on its own flag:
+  a page must state what is true at the time it is read, and with the flush off this
+  transfer does not happen. Two keys in each of `lib/i18n/{en,ja,zh,ar}.ts`.
+  `DEVICE_DATA_KEY.funnelFlushed` is registered like every other key, so "delete my
+  device data" clears the flush cursor too — a wiped device that kept its cursor would
+  go on suppressing its own events. `tests/device-data.test.ts`'s explicit key list was
+  updated with it, which is the registry test doing its job.
+
+  **PIPA — the loop stopped where it was told to.** No new consent kind, no new consent
+  flow. `www.law.go.kr` and `www.pipc.go.kr` both answer
+  `curl: (56) CONNECT tunnel failed, response 403`, so the analysis in §5 of the
+  write-up is labelled as recalled law and cites no article number, because a citation
+  nobody can open is worse than an honest summary. Its conclusion — that an automatic
+  server transfer is a new purpose neither existing consent stream covers, and that
+  whether it needs a consent step is an owner call — is now a BLOCKER. Worth keeping:
+  the funnel carries **no** skin levels, so this is not a 민감정보 question; it would be
+  a much harder one if `reco_viewed` had ever carried them.
+
+  **verification — each new guard broken on purpose by deleting the line it protects,
+  never by editing the test.** Nine breaks, each reverted after:
+
+  - deleted `if (!funnelFlushActive()) return { outcome: "disabled", attempted: 0 };` →
+    `AssertionError: expected 'sent' to be 'disabled'` (the flag off, and it sent).
+  - `redactFunnelEvent`'s field-by-field construction replaced by `{ ...event }` →
+    `AssertionError: expected [ 'crop', 'email', 'id', 'kind', …(5) ] to deeply equal
+    [ 'id', 'kind', 'props', …(3) ]`.
+  - `redactProps` iterating the event's own keys instead of `FUNNEL_PROP_KEYS[kind]` →
+    `AssertionError: expected { reason: 'permission', …(1) } to deeply equal
+    { reason: 'permission' }`.
+  - deleted `if (!FUNNEL_ORDER.includes(event.kind)) return null;` →
+    `AssertionError: expected { id: 'evt-1', …(5) } to be null`.
+  - deleted `if (!response.ok) return { outcome: "rejected", ... };` →
+    `AssertionError: expected 'sent' to be 'rejected'` (the cursor advanced over a 401).
+  - `flushFunnelEvents` ignoring the cursor → `AssertionError: expected 2 to be 1`.
+  - `buildFunnelFlushPayload`'s explicit empty arrays replaced by
+    `{ ...buildLocalSyncPayload() }` → `AssertionError: expected [ { id: 'crop-1', …(2) } ]
+    to deeply equal []`. **This is the one that matters**, and it only fails because the
+    test seeds crops/labels/consent/pilot into storage first: every device-data getter
+    returns `[]` when `window` is undefined, so the same assertion written against a bare
+    node environment would have stayed green while the builder shipped face crops. Same
+    failure mode the supervisor caught in cycle 4's camera test.
+  - `funnelFlushActive`'s exact `=== "on"` replaced by `Boolean(...)` →
+    `AssertionError: expected true to be false`.
+  - deleted the POST `/api/sync` token check → `AssertionError: expected 503 to be 401`.
+  - deleted the new `funnelEvents` `Array.isArray` clause →
+    `TypeError: funnelEvents.map is not a function`.
+
+  One further correction made mid-cycle rather than quietly: the 401 test first used a 29-char
+  token, and `getSyncToken()` requires ≥32, so it was passing on "no token is
+  configured" rather than on "this request did not present the token" — a green test
+  asserting the wrong thing. Fixed before the break table above was produced.
+
+  **Final verification on this branch.** vitest **403 in 71 files** (from 391 in 70),
+  `ml/selftest.py` **77**, lint **0 errors, 2 warnings** (the same two in `lib/care.ts`),
+  `tsc --noEmit` **13**, unchanged — no tsc error added. `npm run smoke` green with the
+  documented `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override and nothing else. Tail, verbatim:
+
+  ```
+   Test Files  71 passed (71)
+        Tests  403 passed (403)
+    44 passed (3.1m)
+  Ran 77 tests in 0.016s
+  OK
+  ok GET /scan -> 200
+  ok GET /privacy -> 200
+  ok GET /offline.html -> 200
+  ok GET /sw.js -> 200
+  ok GET /pilot -> 404
+  ok GET /ops -> 404
+  ok GET /eval -> 404
+  ok GET /api/out?sku=tn1&merchant=oliveyoung&placement=smoke -> 302
+  ok GET /api/sync -> 200
+  ok POST /api/sync -> 401
+
+  Smoke test passed.
+  ```
+
+  A note on how that run was produced, because two earlier attempts read red and the
+  reason was mine, not the product's. The first full run on this branch passed. Killing
+  it to re-run on a later tree left a wedged `next dev` holding port 3102 at 117% CPU,
+  and `playwright.mobile.config.ts` sets `reuseExistingServer: true`, so the next two
+  attempts attached to that dead server and timed out on `config.webServer`. Killing the
+  stale process and clearing `.next` fixed it. Nothing in the diff was involved, and no
+  test was changed to make it green.
+
+  **Supervisor review, 2026-09-16 19:22–19:45 UTC.** The scope held: the flag reads an
+  exact `"on"` and `flushFunnelEvents` returns `disabled` before touching storage or the
+  network, no sync token appears in client code, and no consent kind was invented. Four
+  load-bearing guarantees were broken on purpose and each failed — a truthy-coercing flag
+  ("expected true to be false", plus the literal-form source scan), `{ ...event }` in
+  place of the field-by-field rebuild ("expected [ 'crop', 'email', 'id', 'kind', …(5) ]
+  to deeply equal [ 'id', 'kind', 'props', …(3) ]"), dropping the `response.ok` check
+  before the cursor advances ("expected 'sent' to be 'rejected'"), and removing the new
+  `Array.isArray(payload.funnelEvents)` guard, which reproduces the 500 exactly:
+  `TypeError: funnelEvents.map is not a function`.
+
+  The research citation was re-fetched rather than trusted:
+  `raw.githubusercontent.com/w3c/beacon/gh-pages/index.html` returns `http=200
+  bytes=115132` and both quoted passages are in it verbatim, tags stripped. The Next
+  DefinePlugin claim checks out against the installed source —
+  `node_modules/next/dist/lib/static-env.js` builds its define key as
+  `` `process.env.${key}` `` at lines 49 and 66, so the dynamic form really would be dead
+  in a browser.
+
+  One correction: the PR body claimed `tsc --noEmit` **13**, unchanged. It is **16**, on
+  this branch and on main alike — the same 16 pre-existing errors, all in test files. The
+  count is right that the branch adds none; the number was wrong, and the worker's status
+  line carried the same 13 last cycle. Nothing in the code depended on it. Corrected in
+  the PR body.
+
+  Also added here: the revenue-upstream ordering now records that item 3 depends on
+  item 2, because `share_clicked` and `share_landed` are recorded on different devices
+  and no store has ever held both halves.
+
+  Verification on the merged head: vitest 403 in 71 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16.
