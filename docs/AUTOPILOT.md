@@ -1004,3 +1004,22 @@ up rather than rediscover them.
     together. A redundant dictionary check duplicated `tests/i18n-coverage.test.ts` more
     weakly and its window ran past the denied block into the camera-paused one.
 
+
+  **Supervisor review, 2026-09-16 01:33–01:50 UTC.** Every number this cycle wrote into
+  a doc was re-derived by running it, not read. `ml/tools/verify_tone_ita.py`
+  reproduces its §1 table digit for digit in a fresh venv against colour-science 0.4.7
+  and scikit-image 0.26.0. Re-applying the gray-world gains to the tone path reproduces
+  the §2 "before" column exactly (grey wall 75.2, warm wood −60.5) and additionally
+  collapses all six flat swatches to ITA 90.0 — a flat frame is its own gray-world
+  reference, so the balanced tone of every swatch is neutral. `toneLstar` 70.0 → 77.6
+  at exposure ×1.12 with `toneSpread` 0.0532 → 0.0528 and `blemishCount` unchanged,
+  as `docs/label-free-axes.md` now states. Each new guard was broken on purpose and
+  failed: `confidence-label-contract` (0.78 → 0.80), `camera-denied-reason`
+  (`setDeniedReason` removed), `vision-merge-consistency` (headline rederivation
+  removed), `tone-ita-contract`. The sku check reaches `auditCommerceOverrides` by
+  injection from `/api/out`, so `lib/commerce.ts` still imports no catalogue and the
+  cycle it was avoiding does not exist. Two corrections made in review: a `value` field
+  passed to `describeCommerceOverrideIssue` in `tests/commerce.test.ts` added two
+  `tsc --noEmit` errors main does not have (16 → 18, both in test files), and
+  `docs/architecture.md` said the wall moved one face across four tone bands where the
+  measurement is three.
