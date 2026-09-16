@@ -93,8 +93,8 @@ flowchart TD
 
 > 2026-09-16: 톤(ITA/L\*) 경로에서 gray-world 게인을 제거했습니다. 게인은 프레임
 > 전체로 조명을 추정하기 때문에 뒤쪽 벽 색이 얼굴 색으로 나눠 들어갔고, 같은 얼굴이
-> 벽에 따라 tone band 4종을 오갔습니다(따뜻한 나무 벽에서 `brown_dark`, 회색 벽에서
-> `very_light`). 게인은 blemish a\* 임계값과 toneSpread 비교에는 그대로 남아 있습니다.
+> 벽에 따라 tone band 3종을 오갔습니다(따뜻한 나무 벽에서 `brown_dark`, 파란 벽에서
+> `light`, 회색·흰색·어두운 벽에서 `very_light`). 게인은 blemish a\* 임계값과 toneSpread 비교에는 그대로 남아 있습니다.
 > 측정값과 근거: `docs/tone-ita-verification.md`.
 
 ## 4. 데이터 처리 & 동의 (수집 → 학습)

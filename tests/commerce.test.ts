@@ -148,10 +148,10 @@ describe("COMMERCE_LINK_OVERRIDES_JSON rejections are visible, not silent", () =
   it("explains every issue reason in words an operator can act on", () => {
     const reasons = ["unknown-sku", "unknown-merchant", "not-https-or-allowlisted"] as const;
     for (const reason of reasons) {
-      const text = describeCommerceOverrideIssue({ sku: "x", merchant: "y", value: "https://z.example/", reason });
+      const text = describeCommerceOverrideIssue({ sku: "x", merchant: "y", reason });
       expect(text.length, reason).toBeGreaterThan(10);
     }
-    expect(describeCommerceOverrideIssue({ sku: "x", merchant: "y", value: "v", reason: "unknown-sku" })).toContain("catalogue");
+    expect(describeCommerceOverrideIssue({ sku: "x", merchant: "y", reason: "unknown-sku" })).toContain("catalogue");
   });
 
   it("reports unparseable JSON as such rather than as an empty config", () => {
