@@ -83,7 +83,7 @@ INDICES: tuple[Index, ...] = (
     Index("shine_ratio", WITHIN_IMAGE, "oil",
           "Specular-to-diffuse luminance of the T-zone against the cheeks, same frame."),
     Index("blemish_count", WITHIN_IMAGE, "trouble",
-          "Count of local a* maxima per unit face area. Morphology, not colour level."),
+          "Count of local a* maxima per face-width-squared of sampled skin. Morphology, not colour level."),
     Index("roughness_ratio", WITHIN_IMAGE, "dryness",
           "High-frequency energy of a region over a smooth reference region. The weakest "
           "of the five: phone denoising and sharpening differ, so it needs a survey answer "
@@ -167,9 +167,20 @@ def roughness_ratio(region_highfreq: float, reference_highfreq: float) -> float:
     return region_highfreq / max(reference_highfreq, 1e-6)
 
 
-def blemish_density(count: int, face_area_px: float) -> float:
-    """Blemishes per megapixel of face. WITHIN_IMAGE, scale-normalised."""
-    return count / max(face_area_px / 1e6, 1e-6)
+def blemish_density(count: int, sampled_area_px: float, face_width_px: float) -> float:
+    """Blemishes per face-width-squared of sampled skin. WITHIN_IMAGE, scale-free.
+
+    Mirrors detectBlemishes in lib/skin.ts — change one, change both.
+
+    The denominator used to be `sampled_area_px / 1e6`, which is a real-pixel area, so
+    the index scaled as roughly 1/face_width**2 and two captures of one face at
+    different resolutions landed on different scales. Measured over a 7.2x range of
+    face width on one synthetic face (docs/capture-resolution-invariance.md): the pixel
+    area moves 50.8x, `sampled_area_px / face_width_px**2` moves 1.9%. So the
+    face-relative area is the invariant denominator.
+    """
+    relative_area = sampled_area_px / max(face_width_px * face_width_px, 1e-6)
+    return count / max(relative_area, 1e-6)
 
 
 def coarse_tone_band(ita_degrees: float) -> str:

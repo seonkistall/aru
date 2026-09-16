@@ -68,6 +68,10 @@ manuscript `srt_submission/main.tex` 및 자동생성 `parameters.tex`)가 보�
 세부:
 
 - **트러블 검출**은 얼굴 랜드마크 bbox를 격자로 훑어 **국소 a\* 극대점**을 센다.
+  밀도의 분모는 표본 면적을 **얼굴 폭 제곱**으로 나눈 무차원 값이다 (2026-09-16 수정;
+  그 전에는 실제 캡처 픽셀 면적이었고, 같은 얼굴이 해상도에 따라 84.7배까지 달라졌다).
+  다만 **count 자체는 아직 해상도에 흔들린다** — 격자를 점 샘플링하기 때문이다. 백로그
+  항목이고, `docs/capture-resolution-invariance.md` §3에 수치가 있다.
   눈·눈썹·입술·콧구멍은 제외한다(전부 국소 a\* 극대점이라 그대로 두면 블러셔가
   아니라 눈썹을 트러블로 센다). 배경은 반경 5셀 윈도우의 평균 a\*이고, 거기서
   1.6 a\* 이상 튀는 셀만 후보, 반경 2셀 비최대 억제로 하나의 점은 한 번만 센다.
@@ -84,6 +88,10 @@ manuscript `srt_submission/main.tex` 및 자동생성 `parameters.tex`)가 보�
   (2026-09-16에 같은 이유로 `roi-calibrated-2026-09-16`으로 다시 올렸다 — 톤 경로에서
   gray-world 게인을 제거해 `toneIta`/`toneLstar` 값이 바뀌었다.
   `docs/tone-ita-verification.md` 참고.)
+  (2026-09-16에 한 번 더, `roi-calibrated-2026-09-16b`로 — `blemishDensity`의 분모가
+  실제 캡처 픽셀 면적에서 **얼굴 폭 제곱 단위**로 바뀌었다. 이전 값은 캡처 해상도에
+  따라 대략 1/faceWidth²로 스케일된 값이다. 측정은
+  `docs/capture-resolution-invariance.md` 참고.)
 - 불변성은 `tests/skin-index-contract.test.ts`가 고정한다. 합성 얼굴에 노출 ×1.12를
   주면 `toneLstar`는 70.0 → 77.6으로 움직이고 `toneSpread`는 0.0532 → 0.0528,
   `blemishCount`는 동일하다. 점을 지운 같은 프레임에서는 0개를 센다(노이즈 오검출 없음).

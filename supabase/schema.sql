@@ -79,6 +79,7 @@ create table if not exists funnel_events (
   kind text not null,          -- FUNNEL_ORDER in lib/funnel.ts is the source of truth; no CHECK here
                                -- on purpose, so a new event kind syncs without a migration.
                                -- home_viewed | share_landed | scan_opened | camera_blocked |
+                               -- camera_interrupted |
                                -- scan_started | scan_completed | survey_viewed | survey_completed |
                                -- reco_viewed | care_viewed | checkin_opened | share_clicked | commerce_clicked
   visitor_id text not null,
