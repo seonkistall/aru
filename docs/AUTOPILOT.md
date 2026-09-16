@@ -99,7 +99,20 @@ worth doing.
 2. **Anything that makes the funnel observable.** Optimising what you cannot measure is
    guessing. `lib/funnel.ts` is still localStorage-only.
 3. **Anything that makes one user bring another.** The share loop is the only organic
-   acquisition path the product has.
+   acquisition path the product has. **It depends on item 2 and the ordering did not
+   say so** (supervisor, 2026-09-16): `share_clicked` is recorded in the sender's
+   browser (`app/scan/page.tsx`, `app/studio/page.tsx`) and `share_landed` in the
+   receiver's (`app/components/mood-from-link.tsx`). Two devices, both localStorage,
+   and `/ops` reads one browser — so landings per send, the only number the loop has,
+   is not merely unmeasured today but **structurally uncomputable**: no store anywhere
+   has ever held both halves. Server-side collection is what makes item 3 possible at
+   all, which is part of why item 2 went first this cycle.
+
+   What collection would still not give: `#m=NNN` encodes mood levels, not a share id
+   (`lib/share-link.ts`), so the aggregate ratio becomes computable and per-share
+   attribution does not. Adding a share id would put a new identifier into a URL people
+   paste to each other — a privacy decision, not a plumbing one, and not an obvious fix
+   to reach for.
 4. **Everything else** — model quality, subgroup fairness, defects, polish. Still real
    work, still lands every cycle; it just does not win a tie against 1-3 while the
    revenue line reads zero.
@@ -1702,3 +1715,35 @@ up rather than rediscover them.
   attempts attached to that dead server and timed out on `config.webServer`. Killing the
   stale process and clearing `.next` fixed it. Nothing in the diff was involved, and no
   test was changed to make it green.
+
+  **Supervisor review, 2026-09-16 19:22–19:45 UTC.** The scope held: the flag reads an
+  exact `"on"` and `flushFunnelEvents` returns `disabled` before touching storage or the
+  network, no sync token appears in client code, and no consent kind was invented. Four
+  load-bearing guarantees were broken on purpose and each failed — a truthy-coercing flag
+  ("expected true to be false", plus the literal-form source scan), `{ ...event }` in
+  place of the field-by-field rebuild ("expected [ 'crop', 'email', 'id', 'kind', …(5) ]
+  to deeply equal [ 'id', 'kind', 'props', …(3) ]"), dropping the `response.ok` check
+  before the cursor advances ("expected 'sent' to be 'rejected'"), and removing the new
+  `Array.isArray(payload.funnelEvents)` guard, which reproduces the 500 exactly:
+  `TypeError: funnelEvents.map is not a function`.
+
+  The research citation was re-fetched rather than trusted:
+  `raw.githubusercontent.com/w3c/beacon/gh-pages/index.html` returns `http=200
+  bytes=115132` and both quoted passages are in it verbatim, tags stripped. The Next
+  DefinePlugin claim checks out against the installed source —
+  `node_modules/next/dist/lib/static-env.js` builds its define key as
+  `` `process.env.${key}` `` at lines 49 and 66, so the dynamic form really would be dead
+  in a browser.
+
+  One correction: the PR body claimed `tsc --noEmit` **13**, unchanged. It is **16**, on
+  this branch and on main alike — the same 16 pre-existing errors, all in test files. The
+  count is right that the branch adds none; the number was wrong, and the worker's status
+  line carried the same 13 last cycle. Nothing in the code depended on it. Corrected in
+  the PR body.
+
+  Also added here: the revenue-upstream ordering now records that item 3 depends on
+  item 2, because `share_clicked` and `share_landed` are recorded on different devices
+  and no store has ever held both halves.
+
+  Verification on the merged head: vitest 403 in 71 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16.
