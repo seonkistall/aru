@@ -50,6 +50,14 @@ describe("a camera interruption carries why it happened", () => {
     );
   });
 
+  it("stores the reason, so the screen can branch on it", () => {
+    // Without this the render below branches on a state that never leaves its initial
+    // "backgrounded" value, so a seized camera shows the backgrounding copy — the bug
+    // this file exists for, with every other assertion here still passing. Found by
+    // deleting the line and watching the suite stay green.
+    expect(page).toContain("setInterruptReason(reason)");
+  });
+
   it("records the interruption in the funnel, with the reason attached", () => {
     expect(page).toContain('recordFunnelEvent("camera_interrupted", { reason })');
     expect(FUNNEL_ORDER).toContain("camera_interrupted");

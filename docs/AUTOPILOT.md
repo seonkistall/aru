@@ -226,6 +226,30 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   attribute term should get more travel in `readsFromRaw`, or whether the label should
   be dropped to two levels. Note `confidenceLabel` is duplicated byte-for-byte in
   `app/scan/capture-analysis.ts`.
+
+  **2026-09-16, supervisor: the numbers above are right and the conclusion is not.**
+  Reproduced exactly — `distanceConfidence` is bounded to [0.695, 0.92] for every
+  input, the three attribute weights sum to 1, so all-signals-pass gives
+  [0.7804, 0.9424] and clears 0.78 by 0.0004. But that is the NON-burst path, and the
+  non-burst path is `/eval` only. `app/scan/use-capture-analysis.ts:216` calls
+  `analyzeSkinBurst`, which passes `burst`, and `lib/skin.ts:743` then multiplies by
+  `0.9 + 0.1 * meanAgreement`. With three frames, per-attribute agreement is a third,
+  two thirds or one, so the reachable floors on the path real users take are:
+
+  ```
+  agreement 1.00/1.00/1.00  mean 1.0000  ->  0.7804 .. 0.9424   높음 at the floor
+  agreement 1.00/1.00/0.67  mean 0.8889  ->  0.7717 .. 0.9319   보통 at the floor
+  agreement 0.67/0.67/0.67  mean 0.6667  ->  0.7544 .. 0.9110   보통 at the floor
+  agreement 0.33/0.33/0.33  mean 0.3333  ->  0.7284 .. 0.8796   보통 at the floor
+  ```
+
+  (node, against the real weights in `readsFromRaw`.) One attribute disagreeing on one
+  of three frames drops the floor to 0.7717 and flips 높음 to 보통. So in production the
+  label reports **burst frame stability**, not capture quality and not reading
+  ambiguity — a third thing, and one the user is never told about. Both remedies the
+  item proposes would be chosen against the `/eval` picture. Decide what axis the label
+  should report first. Note also that `meanAgreement < 0.67` already pushes its own
+  retake reason, so the multiplier and the reason count read one signal twice.
 - [AI] Decide whether ONE failed capture signal should force a retake. Measured after
   the 2026-09-15 `distanceConfidence` fix: `retakeRecommended` is
   `confidence < 0.58 || retakeReasons.length >= 2`, and with confidence no longer
@@ -1199,3 +1223,29 @@ up rather than rediscover them.
   - `interruptCamera`'s parameter and the funnel call removed → 4 of the 5 cases in
     `tests/camera-interrupt-reason.test.ts` fail. The fifth pins the copy branch and
     survives that particular break, which is stated here rather than counted as evidence.
+
+  **Supervisor review, 2026-09-16 07:20–07:35 UTC.** Every figure re-derived by running
+  it. `ml/tools/verify_subgroup_sample_unit.py` reproduces the unit bug against the live
+  manifest floor: a cell of 10 real samples on 3 axes reports `observations=30`, clears
+  a floor of 20 on the old unit and is refused on the new one, `worst_group evaluated?
+  False`. The resolution sweep reproduces every row of
+  `docs/capture-resolution-invariance.md` — `areaPx` 10,577 → 537,804 (50.8x),
+  `areaPx / faceW²` 2.0403 → 2.0012 (1.9%), pre-fix density 472.72 → 5.58 (84.7x), and
+  the noise-free counts 2/4/2/4/3/5/3 that §3 is honest about. Guardrail 8 respected:
+  the manifest change is `fallbackVersion` only.
+
+  Two corrections made in review. The README entry was inserted between the tone line
+  and its own parenthetical, so the tone note rendered as a description of the new
+  capture-resolution doc; the new entry now carries its own. And
+  `tests/camera-interrupt-reason.test.ts` had a hole: deleting `setInterruptReason(reason)`
+  from `interruptCamera` left all five assertions green while the render branched on a
+  state that never left its initial `"backgrounded"` value — every seized camera would
+  have shown the backgrounding copy, which is the exact bug the item existed to fix. One
+  assertion added; it fails on that deletion. The other new guards were broken on purpose
+  and did fail: `blemish-density-scale` (denominator back to `/1e6`, "expected 50.8 to be
+  less than 1.03") and the four `SubgroupSampleUnit` cases in `ml/selftest.py`
+  (`"n": observations`, "10 real samples must not be reported as 30").
+
+  Verification on the merged head: vitest 386 in 69 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16 errors — the same 16
+  main carries, all in test files.

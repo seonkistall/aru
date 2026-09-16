@@ -21,9 +21,11 @@ recommendation flow can also be completed with the questionnaire alone.
 - Release procedure: [docs/production-release-checklist.md](docs/production-release-checklist.md)
 - Continuous improvement loop: [docs/AUTOPILOT.md](docs/AUTOPILOT.md) (cycle protocol, guardrails, backlog)
 - Tone / ITA, checked against outside references: [docs/tone-ita-verification.md](docs/tone-ita-verification.md)
-- Capture-resolution invariance of the ROI indices: [docs/capture-resolution-invariance.md](docs/capture-resolution-invariance.md)
   (what `toneIta` is worth, and what it is not — it is the only tone stratifier the
   fairness gate uses)
+- Capture-resolution invariance of the ROI indices:
+  [docs/capture-resolution-invariance.md](docs/capture-resolution-invariance.md)
+  (`blemishDensity` was resolution-dependent; the blemish *count* still is)
 
 ## Current release state
 
