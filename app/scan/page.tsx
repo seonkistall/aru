@@ -15,7 +15,7 @@ import type { LandmarkerWorker } from "./landmarker-client";
 import { useLandmarker } from "./use-landmarker";
 import { useQualityLoop } from "./use-quality-loop";
 import { useCaptureAnalysis } from "./use-capture-analysis";
-import { openCamera, stopMediaStream, watchCameraStream } from "./camera-stream";
+import { openCamera, stopMediaStream, watchCameraStream, type CameraInterruptionReason } from "./camera-stream";
 import {
   scanCaptureButtonLabel,
   scanCaptureReady,
@@ -72,6 +72,11 @@ export default function Scan() {
   // the user to grant a permission they have already granted — pinned by
   // tests/camera-denied-reason.test.ts.
   const [deniedReason, setDeniedReason] = useState<"permission" | "busy" | "notfound" | "attach">("permission");
+  // Why the live camera stopped. "backgrounded" is ARU stopping its own stream when
+  // the tab is hidden; "muted"/"ended" is the track dying under it, which on a phone
+  // is almost always another app taking the camera. The user can act on the second
+  // and not on the first, so the screen must not tell them the same thing.
+  const [interruptReason, setInterruptReason] = useState<CameraInterruptionReason | "backgrounded">("backgrounded");
   const [reads, setReads] = useState<SkinReads | null>(null);
   const [err, setErr] = useState("");
   const [shareCopied, setShareCopied] = useState(false);
@@ -235,11 +240,16 @@ export default function Scan() {
     setReads,
   });
 
-  const interruptCamera = useCallback(() => {
+  const interruptCamera = useCallback((reason: CameraInterruptionReason | "backgrounded") => {
     if (phaseRef.current !== "ready" && phaseRef.current !== "analyzing") return;
     cancelCapture();
     stopCamera();
     setErr("");
+    setInterruptReason(reason);
+    // A live camera dying was the one camera dead-end the funnel recorded nothing for.
+    // The reason is carried from the call site rather than derived here, because the
+    // backgrounding callers reach the same function and are not a loss.
+    recordFunnelEvent("camera_interrupted", { reason });
     setPhase("interrupted");
   }, [cancelCapture, stopCamera]);
 
@@ -255,9 +265,9 @@ export default function Scan() {
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden) interruptCamera();
+      if (document.hidden) interruptCamera("backgrounded");
     };
-    const handlePageHide = () => interruptCamera();
+    const handlePageHide = () => interruptCamera("backgrounded");
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pagehide", handlePageHide);
     return () => {
@@ -424,7 +434,11 @@ export default function Scan() {
                   <p style={{ ...fallbackText, color: "var(--ink)", fontWeight: 700, marginBottom: 6 }}>
                     {t("카메라가 잠시 멈췄어요.")}
                   </p>
-                  <p style={{ ...fallbackText, marginBottom: 12 }}>{t("계속하려면 카메라를 다시 켜주세요.")}</p>
+                  <p style={{ ...fallbackText, marginBottom: 12 }}>
+                    {interruptReason === "backgrounded"
+                      ? t("계속하려면 카메라를 다시 켜주세요.")
+                      : t("다른 앱이 카메라를 쓰고 있을 수 있어요. 그 앱을 닫고 다시 켜주세요.")}
+                  </p>
                   <button onClick={() => void startCamera()} style={primaryBtn}>{t("카메라 다시 켜기")}</button>
                   <a href="/survey" style={ghostLink}>{t("카메라 없이 설문으로 시작하기")}</a>
                 </div>

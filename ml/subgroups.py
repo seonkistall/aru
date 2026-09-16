@@ -23,9 +23,15 @@ ITA (Individual Typology Angle) bands follow the Chardon convention and match
 
 from __future__ import annotations
 
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from math import isfinite
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import ordinal_metrics  # noqa: E402
 
 #: Chardon ITA bands, ordered light to dark. Upper bound is exclusive of the next band.
 ITA_BANDS: tuple[tuple[str, float], ...] = (
@@ -251,7 +257,16 @@ def coverage(rows: list[dict]) -> Coverage:
 
 
 def coverage_warnings(cov: Coverage, min_cell: int = 20, min_groups_per_cell: int = 3) -> list[str]:
-    """Human-readable reasons this dataset cannot yet support a subgroup claim."""
+    """Human-readable reasons this dataset cannot yet support a subgroup claim.
+
+    min_cell is the same manifest number aggregate_by_cell and fit_tone_calibration
+    read, but counted here in ROWS, because coverage runs on metadata before any label
+    is read and cannot see which axes a row carries. A row count is an UPPER bound on
+    the per-axis count the gate actually applies: a cell of 30 rows labelled on one
+    axis each passes here and is still refused by worst_group. So a silent coverage
+    report is not a promise that the gate will find the cell evaluable — it is the
+    weaker claim that the cell is not thin on rows.
+    """
     out: list[str] = []
     if cov.total == 0:
         return ["No rows to evaluate."]
@@ -322,11 +337,77 @@ def stratified_group_folds(rows: list[dict], n_folds: int = 5) -> list[int]:
     return assignment
 
 
+def aggregate_by_cell(confusion_by_group: dict) -> dict:
+    """Per-cell metrics from per-cell, per-axis confusion matrices.
+
+    Lives here rather than in train_visible_attributes.py for the reason
+    promotion_check and the ordinal scorers moved: that module imports torch at module
+    scope, which put the arithmetic feeding the fairness gate out of reach of
+    ml/selftest.py. It is pure dict arithmetic over metrics_from_confusion.
+
+    What "n" means, and why it changed
+    ----------------------------------
+    "n" is the sample count worst_group compares against the manifest's
+    `promotionGate.subgroup.minSamplesPerBand`, so the unit it is counted in decides
+    what that published number promises. It used to be the sum of the per-axis label
+    counts, which is neither samples nor anything a floor can be written about: one
+    cell of 10 real samples labelled on the three default axes reported n=30 and
+    cleared a floor of 20, so a subgroup a third the documented size was evaluated as
+    if it met it.
+
+    **One meaning, chosen: n is a count of labelled samples on ONE axis** — the
+    smallest count among the axes that carry any label in this cell. That is the unit
+    fit_tone_calibration already gates on (it fits a band's offset per axis, on that
+    axis's own count), so the manifest number now means the same thing in both places:
+    "at least this many labelled samples behind every axis of this claim".
+
+    The minimum rather than the mean or the max, because the cell's accuracy is a
+    label-weighted average ACROSS axes: a cell whose pores head saw 3 samples and
+    whose oil head saw 200 has an aggregate number that says nothing trustworthy
+    about pores, and the floor exists to refuse exactly that. Axes with no label at
+    all in the cell are skipped rather than counted as zero — they contribute nothing
+    to the average, so the cell's number makes no claim about them, and counting them
+    would make every cell permanently unevaluable on any axis the dataset does not
+    label everywhere. A cell with no labels on any axis reports 0 and cannot clear a
+    positive floor.
+
+    "observations" keeps the old sum under a name that says what it is: the
+    denominator of the weighted averages below. Nothing gates on it.
+    """
+    out = {}
+    for group, confusion in confusion_by_group.items():
+        per_axis = ordinal_metrics.metrics_from_confusion(confusion)
+        observations = sum(values["n"] for values in per_axis.values())
+        labelled_axes = [values["n"] for values in per_axis.values() if values["n"] > 0]
+        out[group] = {
+            "n": min(labelled_axes) if labelled_axes else 0,
+            "observations": observations,
+            "labelledAxes": len(labelled_axes),
+            "accuracy": (
+                sum(values["accuracy"] * values["n"] for values in per_axis.values()) / observations
+                if observations else 0.0
+            ),
+            "ordinal_mae": (
+                sum(values["ordinal_mae"] * values["n"] for values in per_axis.values()) / observations
+                if observations else 0.0
+            ),
+            "qwk": (
+                sum(values["qwk"] * values["n"] for values in per_axis.values()) / observations
+                if observations else 0.0
+            ),
+            "perAxis": per_axis,
+        }
+    return out
+
+
 def worst_group(metrics_by_cell: dict[str, dict], key: str, min_n: int = 20) -> dict:
     """Worst evaluated cell for one metric, and what was skipped for being too small.
 
     Returns "evaluated": False when nothing clears min_n — a model with no evaluable
     subgroup has not passed a fairness check, it has skipped one.
+
+    min_n is read in the unit aggregate_by_cell writes into "n": labelled samples on
+    the thinnest axis of the cell, NOT the total across axes. See that docstring.
     """
     eligible = {
         cell: values for cell, values in metrics_by_cell.items()

@@ -226,6 +226,30 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   attribute term should get more travel in `readsFromRaw`, or whether the label should
   be dropped to two levels. Note `confidenceLabel` is duplicated byte-for-byte in
   `app/scan/capture-analysis.ts`.
+
+  **2026-09-16, supervisor: the numbers above are right and the conclusion is not.**
+  Reproduced exactly — `distanceConfidence` is bounded to [0.695, 0.92] for every
+  input, the three attribute weights sum to 1, so all-signals-pass gives
+  [0.7804, 0.9424] and clears 0.78 by 0.0004. But that is the NON-burst path, and the
+  non-burst path is `/eval` only. `app/scan/use-capture-analysis.ts:216` calls
+  `analyzeSkinBurst`, which passes `burst`, and `lib/skin.ts:743` then multiplies by
+  `0.9 + 0.1 * meanAgreement`. With three frames, per-attribute agreement is a third,
+  two thirds or one, so the reachable floors on the path real users take are:
+
+  ```
+  agreement 1.00/1.00/1.00  mean 1.0000  ->  0.7804 .. 0.9424   높음 at the floor
+  agreement 1.00/1.00/0.67  mean 0.8889  ->  0.7717 .. 0.9319   보통 at the floor
+  agreement 0.67/0.67/0.67  mean 0.6667  ->  0.7544 .. 0.9110   보통 at the floor
+  agreement 0.33/0.33/0.33  mean 0.3333  ->  0.7284 .. 0.8796   보통 at the floor
+  ```
+
+  (node, against the real weights in `readsFromRaw`.) One attribute disagreeing on one
+  of three frames drops the floor to 0.7717 and flips 높음 to 보통. So in production the
+  label reports **burst frame stability**, not capture quality and not reading
+  ambiguity — a third thing, and one the user is never told about. Both remedies the
+  item proposes would be chosen against the `/eval` picture. Decide what axis the label
+  should report first. Note also that `meanAgreement < 0.67` already pushes its own
+  retake reason, so the multiplier and the reason count read one signal twice.
 - [AI] Decide whether ONE failed capture signal should force a retake. Measured after
   the 2026-09-15 `distanceConfidence` fix: `retakeRecommended` is
   `confidence < 0.58 || retakeReasons.length >= 2`, and with confidence no longer
@@ -253,10 +277,25 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   one object; with the stored sentence rederived, the two agree.
   `tests/vision-merge-consistency.test.ts` covers all three fields, the payload
   override, and a no-op merge.
-- [AI] `blemishDensity` in `lib/skin.ts` counts on a fixed 90-cell grid and divides by
-  an area in real capture pixels, so it scales as roughly 1/faceWidth² and is not
-  comparable across capture resolutions. Nothing user-visible reads it today, but it
-  feeds the device/tone subgroup work. Noted 2026-09-15, not measured.
+- [x] [AI] ~~`blemishDensity` divides by an area in real capture pixels~~ — done
+  2026-09-16, measured first. Over a 7.2x range of face width on one synthetic face the
+  pixel area moves **50.8x** (10,577 → 537,804) while `areaPx / faceW²` moves **1.9%**
+  (2.0403 → 2.0012), and `blemishDensity` collapses **84.7x** (472.72 → 5.58) with the
+  count staying between 2 and 8. So the sampled area is already invariant in face-width
+  units and the pixel denominator was the only scale-dependent term. `detectBlemishes`
+  now returns `areaFace`; `ml/skin_indices.blemish_density` takes `face_width_px` and
+  uses the same unit. `fallbackVersion` → `roi-calibrated-2026-09-16b` in both places
+  (not guardrail 8: `status` and `promotionGate` untouched). Table and method in
+  `docs/capture-resolution-invariance.md`, re-runnable from the committed test.
+- [AI] **The blemish COUNT is itself resolution-sensitive, and the density fix does not
+  touch it.** Same face, same five spots, pixel noise off: the count reads 2, 4, 2, 4,
+  3, 5, 3 across the sweep above, because the detector point-samples its grid and a
+  disc landing between sample points is missed outright, and `round(faceW / 90)` moves
+  the effective grid between 72 and 108 cells across. After the denominator fix the
+  density spans 2.54x with no trend, where before it spanned 33.9x monotonically — a
+  systematic bias became scatter, which is a different and smaller problem but not no
+  problem. Fixing it means interpolating the grid or averaging over the stride window,
+  and it should be measured the same way before it is changed. Noted 2026-09-16.
 - [x] [AI] ~~`auditCommerceOverrides` has no production caller, and cannot check the
   sku id without an import cycle~~ — done 2026-09-16, both halves. The cycle is avoided
   by injection rather than by a new module: `auditCommerceOverrides(raw, { knownSkus })`
@@ -285,11 +324,14 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   clears it. `tests/camera-denied-reason.test.ts` fails if any future `setPhase("denied")`
   forgets its reason, which matters because the render chain ends in the 권한 branch as
   its `else` and so fails silently rather than loudly.
-  **Still open:** `interruptCamera` records nothing when the live track dies — another
-  app taking the camera — and discards the `"muted"`/`"ended"` reason that
-  `watchCameraStream` hands it. The fix belongs at that callback, not inside
-  `interruptCamera`, whose other two callers are `visibilitychange`/`pagehide` and are
-  just backgrounding, so the two cases have to be told apart before either is counted.
+  **The other half is fixed too, 2026-09-16.** `interruptCamera` now takes the reason
+  from its call site — `"muted"`/`"ended"` straight through from `watchCameraStream`,
+  `"backgrounded"` from `visibilitychange`/`pagehide` — so the two cases are told apart
+  before either is counted, which was the condition this item put on its own fix. New
+  `camera_interrupted` funnel kind carries it. The screen stopped telling both groups
+  the same thing: a user whose camera was seized by another app was being asked to turn
+  their camera back on, which is not the action available to them.
+  `tests/camera-interrupt-reason.test.ts`, 4 of its 5 cases fail against `origin/main`.
 - [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
   can see where users drop off. Without it every UX cycle is guessing. (Still open —
   2026-09-15 added `share_landed` and `viralActivation`, but they are still on-device.)
@@ -342,6 +384,23 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   unevaluated subgroup a blocker. Both scorers were verified against scikit-learn and
   SciPy first (`docs/ordinal-metric-verification.md`); the floor was chosen from a
   measured table of predictors, not from a benchmark nobody here can open.
+
+- [x] [AI] ~~`minSamplesPerBand` is compared against the wrong unit~~ — done 2026-09-16.
+  The reproduction ran and matched the backlog exactly (`n reported to worst_group: 30`
+  for 10 real samples, `clears the floor? True`). `_aggregate` moved out of the
+  torch-importing trainer into stdlib-only `ml/subgroups.py` as `aggregate_by_cell`,
+  which is what put it in reach of `ml/selftest.py` — the same move and the same reason
+  as `promotion_check` and the ordinal scorers. **The one meaning chosen: `n` is a
+  count of labelled samples on ONE axis**, the smallest among the axes carrying any
+  label in the cell, which is the unit `fit_tone_calibration` already gates on. The
+  minimum rather than the mean, because the cell's accuracy is a label-weighted average
+  ACROSS axes and a cell whose pores head saw 3 samples makes no trustworthy claim about
+  pores. Axes with no label in the cell are skipped rather than counted as zero. The old
+  sum survives as `observations`, named for what it is — the denominator of those
+  averages — and nothing gates on it. `coverage_warnings` still counts rows and cannot
+  do otherwise (it runs on metadata, before any label is read); its docstring now says
+  so and says that a row count is an upper bound on the number the gate applies.
+  7 new selftest cases, 5 of which fail against the old unit.
 - [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
   model that beats the heuristic by 0.001 on one validation split passes, and that
   gain may be noise. Estimate the band: bootstrap the validation rows, report a CI on
@@ -1027,6 +1086,190 @@ up rather than rediscover them.
   `tsc --noEmit` errors main does not have (16 → 18, both in test files), and
   `docs/architecture.md` said the wall moved one face across four tone bands where the
   measurement is three.
+
+- 2026-09-16 (cycle 4) — Branch `autopilot/2026-09-16-0639`. All four tracks. Baseline on
+  arrival, with `npm ci` run first because `node_modules` was absent: `67 files / 376
+  vitest / 68 python`, lint `0 errors, 2 warnings`, `tsc --noEmit` **13 errors, all in
+  test files** — not the 16 the cycle brief expected, and the same 13 before and after
+  this diff. Final:
+
+  ```
+   Test Files  69 passed (69)
+        Tests  385 passed (385)
+  Ran 77 tests in 0.015s
+  OK
+  ```
+
+  `npm run smoke` green after every change, with the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+  override and nothing else (tail of the run, verbatim):
+
+  ```
+  Ran 77 tests in 0.014s
+  OK
+  ok GET /scan -> 200
+  ok GET /privacy -> 200
+  ok GET /offline.html -> 200
+  ok GET /sw.js -> 200
+  ok GET /pilot -> 404
+  ok GET /ops -> 404
+  ok GET /eval -> 404
+  ok GET /api/out?sku=tn1&merchant=oliveyoung&placement=smoke -> 302
+  ok GET /api/sync -> 200
+  ok POST /api/sync -> 401
+
+  Smoke test passed.
+  ```
+
+  Only the tail was captured, so the vitest and Playwright counts quoted above are from
+  the separate `npx vitest run` and `python3 ml/selftest.py` runs, not read off the
+  smoke log.
+
+  **ML — one manifest number, three meanings, and the gate was reading the wrong one.**
+  `promotionGate.subgroup.minSamplesPerBand` is published as 20. `_aggregate` handed
+  `worst_group` the SUM of the per-axis label counts, so the floor was applied to a
+  number that is neither samples nor anything a floor can be written about. The backlog's
+  reproduction was re-run against the real function (lifted out by AST, since the trainer
+  imports torch and torch is not installed here) and matched it exactly:
+
+  ```
+  real samples in the cell:  10
+  labelled axes           :  3
+  n reported to worst_group: 30
+  manifest minSamplesPerBand: 20
+  clears the floor?          True
+  ```
+
+  A subgroup a third the documented size, evaluated as if it met the floor — the same
+  class of defect as the tone bug cycle 3 found, in the same gate. After, from
+  `ml/tools/verify_subgroup_sample_unit.py`, which prints both units side by side from
+  one run of the real code rather than from a reimplementation of the old body:
+
+  ```
+  --- a cell of 10 real samples labelled on 3 axes ---
+    observations (summed across axes, the pre-fix 'n'): 30
+    n (labelled samples on the thinnest axis)         : 10
+    manifest minSamplesPerBand                        : 20
+    gating on observations: 30 >= 20 -> clears the floor
+    gating on n           : 10 >= 20 -> refused
+    worst_group evaluated?                            : False
+  --- a cell of 20 real samples labelled on 3 axes ---
+    observations (summed across axes, the pre-fix 'n'): 60
+    n (labelled samples on the thinnest axis)         : 20
+    gating on n           : 20 >= 20 -> clears the floor
+    worst_group evaluated?                            : True
+  ```
+
+  The unit chosen is the one `fit_tone_calibration` already used: labelled samples on
+  one axis. The minimum across axes rather than the mean or the max, because the cell's
+  accuracy is a label-weighted average ACROSS axes — a cell whose pores head saw 3
+  samples and whose oil head saw 200 has an aggregate number that says nothing
+  trustworthy about pores, and the floor exists to refuse exactly that. Axes carrying no
+  label in the cell are skipped rather than counted as zero, or any axis the dataset does
+  not label everywhere would make every cell permanently unevaluable. The old sum stays
+  as `observations`, named for what it is. `coverage_warnings` is the third meaning and
+  keeps counting rows, because it runs on metadata before any label is read and cannot do
+  otherwise; its docstring now says that a row count is an UPPER bound on what the gate
+  applies, so a silent coverage report is not a promise the gate will find the cell
+  evaluable. The function moved to stdlib-only `ml/subgroups.py` as `aggregate_by_cell`
+  — the move is what put it in reach of `ml/selftest.py`, same as `promotion_check` and
+  the ordinal scorers, and the trainer keeps `_aggregate = subgroups.aggregate_by_cell`
+  with a selftest that fails if a second copy reappears. selftest 68 → 77.
+
+  **bug / research — `blemishDensity` was measuring the camera, not the face.** Measured
+  before deciding the normalisation, as the item required. The
+  `tests/skin-index-contract.test.ts` synthetic face rendered at seven frame sizes, face
+  width 72px to 518.4px (7.2x), landmarks and spot radii scaling with it so it is one
+  face at seven capture resolutions:
+
+  | frame | faceW | count | areaPx | areaPx / faceW² | density (pre-fix) |
+  |---|---|---|---|---|---|
+  | 200x240 | 72.0 | 5 | 10,577 | 2.0403 | 472.72 |
+  | 400x480 | 144.0 | 2 | 42,032 | 2.0270 | 47.58 |
+  | 800x960 | 288.0 | 6 | 167,238 | 2.0163 | 35.88 |
+  | 1440x1728 | 518.4 | 3 | 537,804 | 2.0012 | 5.58 |
+
+  `areaPx` moves **50.8x**, `areaPx / faceW²` moves **1.9%**, and the density collapses
+  **84.7x** while the count stays between 2 and 8. The detector's grid stride is already
+  a fraction of the face width, so the sampled area is invariant in face-width units and
+  the pixel denominator was the only scale-dependent term in the index. `detectBlemishes`
+  now returns `areaFace`, and `ml/skin_indices.blemish_density` takes `face_width_px` so
+  the offline mirror uses the same unit — the "change one, change both" rule the tone
+  path broke in exactly this way. `fallbackVersion` → `roi-calibrated-2026-09-16b` in
+  `lib/skin.ts` and the manifest, because feature semantics moved and pre-bump values are
+  on a resolution-dependent scale; `status` and `promotionGate` untouched, so not
+  guardrail 8.
+
+  **What the fix does not fix, said plainly.** With pixel noise off the count still reads
+  2, 4, 2, 4, 3, 5, 3 across the sweep for one face with five spots on it: the detector
+  point-samples its grid and a disc landing between sample points is missed. After the
+  denominator fix the density spans 2.54x with no trend; before, 33.9x monotonically
+  decreasing. A systematic bias became scatter. That is a real improvement and it is not
+  "comparable across resolutions" — the remaining half is an aliasing defect, now its own
+  backlog item with the numbers attached. `docs/capture-resolution-invariance.md` has the
+  full tables and is re-runnable from the committed test
+  (`ARU_PRINT_SCALE_SWEEP=1 npx vitest run tests/blemish-density-scale.test.ts`), so the
+  numbers do not rest on a script nobody kept — the failure mode cycle 2's review caught.
+
+  **UX — the camera being taken away and the user switching tabs were the same event.**
+  `interruptCamera` took no argument, so `watchCameraStream`'s `"muted"`/`"ended"` reason
+  died at the callback: a live camera seized by another app mid-scan recorded nothing in
+  the funnel at all, and the screen told that user "계속하려면 카메라를 다시 켜주세요" —
+  an instruction for someone who put the camera down themselves, not for someone whose
+  camera was taken. The reason is now carried from the call site, which is what the
+  backlog item required before either case could be counted: `visibilitychange` and
+  `pagehide` pass `"backgrounded"` and are ARU stopping its own stream, not a loss. New
+  `camera_interrupted` funnel kind (`reason`: muted | ended | backgrounded), distinct
+  from `camera_blocked`, which is a camera that never opened and whose copy does not
+  apply once permission has been granted and the hardware has worked. New copy in all
+  four dictionaries.
+
+  **verification** Each new guard was broken on purpose and watched fail, which is the
+  only part of a test that is evidence:
+
+  - `aggregate_by_cell`'s `"n": min(labelled_axes)` reverted to the pre-fix sum →
+    5 of 7 new selftest cases fail, including
+    `AssertionError: 30 != 10 : 10 real samples must not be reported as 30` and
+    `AssertionError: 76 != 6`. The other two (`no labels at all`, `no second copy in the
+    trainer`) pass either way and are guards, not evidence — the second was checked
+    separately by re-adding a `def _aggregate(` to the trainer, which fails it.
+  - `blemish_density`'s denominator reverted to `sampled_area_px / 1e6` →
+    `AssertionError: 142.7483821850019 != 11.156480799696546 within 2.854967643700038
+    delta`.
+  - `detectBlemishes` reverted to `/ 1e6` → 2 of the 3 cases in
+    `tests/blemish-density-scale.test.ts` fail:
+    `expected 50.84655384324478 to be less than 1.03` and
+    `expected 0.07815486682880753 to be greater than 0.970873786407767` — i.e. the same
+    face read 12.8x apart between a 400x480 preview and a 1440x1728 still.
+  - `interruptCamera`'s parameter and the funnel call removed → 4 of the 5 cases in
+    `tests/camera-interrupt-reason.test.ts` fail. The fifth pins the copy branch and
+    survives that particular break, which is stated here rather than counted as evidence.
+
+  **Supervisor review, 2026-09-16 07:20–07:35 UTC.** Every figure re-derived by running
+  it. `ml/tools/verify_subgroup_sample_unit.py` reproduces the unit bug against the live
+  manifest floor: a cell of 10 real samples on 3 axes reports `observations=30`, clears
+  a floor of 20 on the old unit and is refused on the new one, `worst_group evaluated?
+  False`. The resolution sweep reproduces every row of
+  `docs/capture-resolution-invariance.md` — `areaPx` 10,577 → 537,804 (50.8x),
+  `areaPx / faceW²` 2.0403 → 2.0012 (1.9%), pre-fix density 472.72 → 5.58 (84.7x), and
+  the noise-free counts 2/4/2/4/3/5/3 that §3 is honest about. Guardrail 8 respected:
+  the manifest change is `fallbackVersion` only.
+
+  Two corrections made in review. The README entry was inserted between the tone line
+  and its own parenthetical, so the tone note rendered as a description of the new
+  capture-resolution doc; the new entry now carries its own. And
+  `tests/camera-interrupt-reason.test.ts` had a hole: deleting `setInterruptReason(reason)`
+  from `interruptCamera` left all five assertions green while the render branched on a
+  state that never left its initial `"backgrounded"` value — every seized camera would
+  have shown the backgrounding copy, which is the exact bug the item existed to fix. One
+  assertion added; it fails on that deletion. The other new guards were broken on purpose
+  and did fail: `blemish-density-scale` (denominator back to `/1e6`, "expected 50.8 to be
+  less than 1.03") and the four `SubgroupSampleUnit` cases in `ml/selftest.py`
+  (`"n": observations`, "10 real samples must not be reported as 30").
+
+  Verification on the merged head: vitest 386 in 69 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16 errors — the same 16
+  main carries, all in test files.
 - 2026-09-15 (2) — ML track: the qwk/pearson gate, **superseded before it merged.**
   This branch built `promotionGate.subgroup.minQwk` / `minPearson` and an
   `ordinal_quality_check`; cycle 2 on `autopilot/2026-09-15-1839` independently built

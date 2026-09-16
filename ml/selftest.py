@@ -340,10 +340,32 @@ class SkinIndices(unittest.TestCase):
         self.assertAlmostEqual(skin_indices.shine_ratio(0.30 * 1.7, 0.10 * 1.7), 3.0)
         self.assertAlmostEqual(skin_indices.roughness_ratio(0.8 * 0.4, 0.2 * 0.4), 4.0)
 
-    def test_blemish_density_is_normalised_by_face_size(self):
-        near = skin_indices.blemish_density(12, 4_000_000)
-        far = skin_indices.blemish_density(3, 1_000_000)
-        self.assertAlmostEqual(near, far)
+    def test_blemish_density_does_not_move_with_capture_resolution(self):
+        """The defect the third argument exists for.
+
+        The two (area, face width) pairs are what lib/skin.ts actually reported for
+        ONE synthetic face rendered at 400x480 and at 1440x1728 — the sweep in
+        docs/capture-resolution-invariance.md. Held at the same count, the density
+        must not care which of the two frames it came from.
+
+        The old signature took only the pixel area, so it did: the same face at 3.6x
+        the capture width read 12.8x lower.
+        """
+        small = skin_indices.blemish_density(6, 42_032, 144.0)
+        large = skin_indices.blemish_density(6, 537_804, 518.4)
+        self.assertAlmostEqual(small, large, delta=0.02 * small)
+
+        old_small = 6 / (42_032 / 1e6)
+        old_large = 6 / (537_804 / 1e6)
+        self.assertGreater(old_small / old_large, 10.0)
+
+    def test_blemish_density_is_linear_in_the_count(self):
+        one = skin_indices.blemish_density(1, 42_032, 144.0)
+        four = skin_indices.blemish_density(4, 42_032, 144.0)
+        self.assertAlmostEqual(four, 4 * one, places=9)
+
+    def test_blemish_density_survives_a_degenerate_face_width(self):
+        self.assertEqual(skin_indices.blemish_density(0, 0.0, 0.0), 0.0)
 
     def test_coarse_bands_merge_the_pairs_that_disagree_across_devices(self):
         self.assertEqual(skin_indices.coarse_tone_band(60), "light")
@@ -611,6 +633,97 @@ class PromotionGate(unittest.TestCase):
             self.assertEqual(model_contract.min_pearson(), model_contract.FALLBACK_ORDINAL_GATE["minPearson"])
         finally:
             model_contract.MANIFEST_PATH = original
+
+
+class SubgroupSampleUnit(unittest.TestCase):
+    """What the manifest's minSamplesPerBand is counted in.
+
+    The number is published in public/models/visible-attributes/manifest.json and read
+    in three places. aggregate_by_cell used to hand worst_group the SUM of the per-axis
+    label counts, so one cell of 10 real samples labelled on the three default axes
+    reported n=30 and cleared a floor of 20 — a subgroup a third the documented size
+    evaluated as if it met it. These pin the unit, not the floor's value.
+    """
+
+    AXES = ("oil", "redness", "pores")
+
+    @staticmethod
+    def diagonal(n: int, levels: int = 3) -> list[list[int]]:
+        """A perfect-prediction confusion matrix carrying exactly n samples."""
+        matrix = [[0] * levels for _ in range(levels)]
+        for i in range(n):
+            matrix[i % levels][i % levels] += 1
+        return matrix
+
+    def cell(self, **per_axis_n: int) -> dict:
+        return {axis: self.diagonal(count) for axis, count in per_axis_n.items()}
+
+    def test_n_counts_labelled_samples_on_one_axis_not_the_sum_across_axes(self):
+        """The reproduction from the backlog, run against the real aggregator."""
+        agg = subgroups.aggregate_by_cell(
+            {"light/30s": self.cell(oil=10, redness=10, pores=10)}
+        )["light/30s"]
+        self.assertEqual(agg["n"], 10, "10 real samples must not be reported as 30")
+        self.assertEqual(agg["observations"], 30)
+        self.assertEqual(agg["labelledAxes"], 3)
+
+    def test_a_cell_of_ten_does_not_clear_the_manifest_floor(self):
+        floor = model_contract.min_samples_per_band()
+        self.assertGreater(floor, 10, "fixture assumes the shipped floor is above 10")
+        agg = subgroups.aggregate_by_cell(
+            {"light/30s": self.cell(oil=10, redness=10, pores=10)}
+        )
+        self.assertFalse(subgroups.worst_group(agg, "accuracy", min_n=floor)["evaluated"])
+        enough = subgroups.aggregate_by_cell(
+            {"light/30s": self.cell(oil=floor, redness=floor, pores=floor)}
+        )
+        evaluated = subgroups.worst_group(enough, "accuracy", min_n=floor)
+        self.assertTrue(evaluated["evaluated"])
+        self.assertEqual(evaluated["worstN"], floor)
+
+    def test_the_thinnest_labelled_axis_decides(self):
+        """The cell's accuracy is an average ACROSS axes, so the weakest one governs."""
+        agg = subgroups.aggregate_by_cell(
+            {"tan/40s": self.cell(oil=40, redness=30, pores=6)}
+        )["tan/40s"]
+        self.assertEqual(agg["n"], 6)
+        self.assertEqual(agg["observations"], 76)
+
+    def test_an_axis_with_no_label_in_the_cell_is_skipped_not_counted_as_zero(self):
+        """Otherwise any axis the dataset does not label everywhere zeroes every cell."""
+        agg = subgroups.aggregate_by_cell(
+            {"light/20s": self.cell(oil=30, redness=30, pores=0)}
+        )["light/20s"]
+        self.assertEqual(agg["n"], 30)
+        self.assertEqual(agg["labelledAxes"], 2)
+        self.assertTrue(
+            subgroups.worst_group({"light/20s": agg}, "accuracy", min_n=20)["evaluated"]
+        )
+
+    def test_a_cell_with_no_labels_at_all_reports_zero_and_is_unevaluable(self):
+        agg = subgroups.aggregate_by_cell(
+            {"light/20s": self.cell(oil=0, redness=0, pores=0)}
+        )
+        self.assertEqual(agg["light/20s"]["n"], 0)
+        self.assertEqual(agg["light/20s"]["labelledAxes"], 0)
+        self.assertFalse(subgroups.worst_group(agg, "accuracy", min_n=1)["evaluated"])
+
+    def test_the_averages_still_weight_by_label_count_over_all_observations(self):
+        """Changing the gating unit must not change the numbers being gated."""
+        wrong_by_one = [[0, 5, 0], [0, 0, 0], [0, 0, 0]]
+        agg = subgroups.aggregate_by_cell(
+            {"light/20s": {"oil": self.diagonal(10), "redness": wrong_by_one}}
+        )["light/20s"]
+        self.assertEqual(agg["observations"], 15)
+        self.assertEqual(agg["n"], 5)
+        self.assertAlmostEqual(agg["accuracy"], (1.0 * 10 + 0.0 * 5) / 15, places=12)
+        self.assertAlmostEqual(agg["ordinal_mae"], (0.0 * 10 + 1.0 * 5) / 15, places=12)
+
+    def test_the_trainer_does_not_keep_a_second_copy_of_the_aggregator(self):
+        """Same guard the ordinal scorers carry: one body, reachable from here."""
+        trainer = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+        self.assertNotIn("def _aggregate(", trainer)
+        self.assertIn("_aggregate = subgroups.aggregate_by_cell", trainer)
 
 
 class OrdinalMetrics(unittest.TestCase):

@@ -23,6 +23,9 @@ recommendation flow can also be completed with the questionnaire alone.
 - Tone / ITA, checked against outside references: [docs/tone-ita-verification.md](docs/tone-ita-verification.md)
   (what `toneIta` is worth, and what it is not — it is the only tone stratifier the
   fairness gate uses)
+- Capture-resolution invariance of the ROI indices:
+  [docs/capture-resolution-invariance.md](docs/capture-resolution-invariance.md)
+  (`blemishDensity` was resolution-dependent; the blemish *count* still is)
 
 ## Current release state
 

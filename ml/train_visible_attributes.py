@@ -440,25 +440,11 @@ def check_declared_dimensions() -> list[str]:
     return declared or list(SUBGROUP_DIMENSIONS)
 
 
-def _aggregate(confusion_by_group: dict) -> dict:
-    out = {}
-    for group, confusion in confusion_by_group.items():
-        per_axis = metrics_from_confusion(confusion)
-        n = sum(values["n"] for values in per_axis.values())
-        out[group] = {
-            "n": n,
-            "accuracy": (
-                sum(values["accuracy"] * values["n"] for values in per_axis.values()) / n if n else 0.0
-            ),
-            "ordinal_mae": (
-                sum(values["ordinal_mae"] * values["n"] for values in per_axis.values()) / n if n else 0.0
-            ),
-            "qwk": (
-                sum(values["qwk"] * values["n"] for values in per_axis.values()) / n if n else 0.0
-            ),
-            "perAxis": per_axis,
-        }
-    return out
+# Per-cell aggregation lives in ml/subgroups.py next to worst_group, which reads the
+# "n" it writes against the manifest floor. Same move, same reason as the scorers above:
+# this module imports torch, ml/selftest.py cannot. It also fixes the unit that "n" is
+# counted in — the sum across axes used to clear a per-axis floor three times over.
+_aggregate = subgroups.aggregate_by_cell
 
 
 @torch.no_grad()
