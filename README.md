@@ -26,6 +26,10 @@ recommendation flow can also be completed with the questionnaire alone.
 - Capture-resolution invariance of the ROI indices:
   [docs/capture-resolution-invariance.md](docs/capture-resolution-invariance.md)
   (`blemishDensity` was resolution-dependent; the blemish *count* still is)
+- Server-side funnel telemetry:
+  [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
+  (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; read §4 before
+  setting it, because a browser cannot hold the sync token)
 
 ## Current release state
 

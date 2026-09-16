@@ -5,6 +5,7 @@ import { SketchDefs } from "./components/sketch";
 import { LanguageProvider } from "../lib/i18n";
 import { LanguageSwitcher } from "./components/language-switcher";
 import { ServiceWorkerRegistration } from "./components/service-worker-registration";
+import { FunnelFlush } from "./components/funnel-flush";
 
 // Self-hosted Korean display handwriting — used only for short brand moments.
 
@@ -45,6 +46,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full">
         <ServiceWorkerRegistration />
+        <FunnelFlush />
         <SketchDefs />
         <LanguageProvider>
           <LanguageSwitcher />
