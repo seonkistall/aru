@@ -8,6 +8,7 @@ import { clearLabels, exportLabels, labelCount } from "@/lib/labels";
 import { careIntentCount, clearCareIntents } from "@/lib/store";
 import { t, useLanguage } from "@/lib/i18n";
 import { clearAllDeviceData } from "@/lib/device-data";
+import { funnelFlushActive } from "@/lib/funnel-flush";
 
 export default function PrivacyPage() {
   useLanguage();
@@ -96,6 +97,17 @@ export default function PrivacyPage() {
             <h2 style={detailTitle}>{t("제품·상담 링크")}</h2>
             <p style={bodyText}>{t("제품 판매처나 상담 링크를 누르면 링크 종류, 판매처, 언어와 위치가 이 기기에 기록돼요. 링크 클릭은 구매를 뜻하지 않으며, ARU는 결제나 주문 정보를 저장하지 않아요.")}</p>
             <p style={{ ...bodyText, marginTop: 8 }}>{t("제품 사용 시작을 직접 기록하면 제품 ID, 이름과 시작 시각이 2주·4주 체크인을 위해 이 기기에 저장돼요.")}</p>
+
+            {funnelFlushActive() && (
+              <>
+                {/* Rendered only while NEXT_PUBLIC_FUNNEL_FLUSH is on, for the same
+                    reason CommerceDisclosure switches wording on its own flag: the
+                    page must state what is true at the time it is read, and with the
+                    flush off this transfer does not happen. */}
+                <h2 style={detailTitle}>{t("이용 기록 전송")}</h2>
+                <p style={bodyText}>{t("화면 이동과 버튼 누름 같은 이용 기록이 ARU 서버로 전송돼요. 사진, 직접 입력한 내용, 이름이나 연락처는 보내지 않고, 이 기기에서 만든 무작위 방문자·세션 번호만 함께 저장돼요.")}</p>
+              </>
+            )}
 
             <h2 style={detailTitle}>{t("서버 기록 삭제")}</h2>
             <p style={bodyText}>{t("이 기기의 데이터를 지워도 이메일 알림과 연구 서버 기록은 삭제되지 않아요. 이메일은 받은 메일의 해지 링크로, 연구 데이터는 파일럿 운영자에게 참여자·세션 ID로 요청해 주세요.")}</p>

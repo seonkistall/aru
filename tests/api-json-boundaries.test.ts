@@ -27,6 +27,33 @@ describe("remaining JSON API boundaries", () => {
     expect(route).not.toContain("const rateLimit = new Map");
   });
 
+  // funnelEvents is optional (added in sync.v2) and was the only array in the payload
+  // with no Array.isArray check. A non-array truthy value passed validation, and
+  // `funnelEvents.length` is defined on a string, so the route reached
+  // `funnelEvents.map(...)` and threw: `TypeError: funnelEvents.map is not a function`,
+  // uncaught, i.e. a 500 where every other malformed array is a 400. Reproduced with
+  // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SYNC_TOKEN all set, which is
+  // the only configuration that reaches the upsert.
+  it("rejects a non-array funnelEvents before it reaches the upsert", async () => {
+    process.env.SUPABASE_SYNC_TOKEN = "tok-0123456789012345678901234567890123";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_abcdefghijklmnop";
+    const payload = {
+      schemaVersion: "2026-07-04.sync.v2",
+      clientGeneratedAt: 1,
+      source: "ops-local",
+      labels: [],
+      cropSamples: [],
+      pilotNotes: [],
+      consentEvents: [],
+      funnelEvents: "abc",
+    };
+    const response = await syncPost(jsonRequest("http://localhost/api/sync", { payload }, {
+      authorization: "Bearer tok-0123456789012345678901234567890123",
+    }));
+    expect(response.status).toBe(400);
+  });
+
   it("rejects an oversized subscription body using actual bytes", async () => {
     const response = await subscribePost(jsonRequest("http://localhost/api/reengage/subscribe", {
       email: "a@example.com",

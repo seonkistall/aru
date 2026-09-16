@@ -93,7 +93,12 @@ export async function POST(request: Request) {
     !Array.isArray(payload.labels) ||
     !Array.isArray(payload.cropSamples) ||
     !Array.isArray(payload.pilotNotes) ||
-    !Array.isArray(payload.consentEvents)
+    !Array.isArray(payload.consentEvents) ||
+    // Optional since v2, and therefore the one array in the payload that was never
+    // type-checked. `funnelEvents ?? []` accepts any truthy value, and a string gets
+    // as far as `.length` before `.map` throws — an uncaught TypeError, i.e. a 500
+    // where every other malformed array is a 400.
+    (payload.funnelEvents !== undefined && !Array.isArray(payload.funnelEvents))
   ) {
     return Response.json(result(false, ["Unsupported or missing sync payload."]), { status: 400 });
   }
