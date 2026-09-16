@@ -1436,3 +1436,44 @@ up rather than rediscover them.
 
   An earlier draft of this entry recorded smoke as skipped for budget. It was then run
   and it passed, so the entry says what happened rather than what was planned.
+
+  **Supervisor review, 2026-09-16 13:20–13:40 UTC.** Every figure re-derived by running
+  it. The sweep reproduces §5.2's "after" column exactly — noise-free counts
+  2, 4, 3, 3, 3, 3, 3 where cycle 4 measured 2, 4, 2, 4, 3, 5, 3 — and the denominator
+  spread, `areaPx / faceW²` max/min 1.0199 → 1.0109, recomputes from those rows.
+  §5.3's channel-cast finding reproduces including its control: 5 and 3 with the
+  gray-world gains applied in `detectBlemishes`, 5 and 3 with them removed, so the cast
+  moves the a* residual itself. Exposure ×1.12 still reads 5. Both halves of the fix
+  are guarded — point-sampling restored gives "counts across resolutions: 2, 3, 2, 4, 2",
+  re-rounding the stride gives "2, 6, 3, 5, 2", and each also fails the two
+  `skin-index-contract` count pins.
+
+  Two corrections made in review.
+
+  **§5.4's cost table was one run, and its trend does not survive three.** The draft
+  read +54% / +45% / +24% / +11% and explained the fall as the rest of `analyzeSkin`
+  being O(frame) and dominating at high resolution. Re-measured with 5 warm-up calls,
+  30 timed calls and three repeats per condition, the last row is +28%, not +11% — the
+  draft's 12.95 ms "before" at 1440x1728 is high against 12.30 / 11.66 / 11.58 here,
+  which is what made the increase look small. Medians: +53% / +33% / +24% / +28%,
+  i.e. **+3 to +5 ms per frame**, +9 to +15 ms for a three-frame burst. The mechanism
+  is plausible and this data does not show it, so it is out. Reading a monotone pattern
+  off one sample is interpretation, not measurement, and the same guardrail that bans
+  invented numbers should ban invented trends in them.
+
+  **`tests/skin-index-contract.test.ts` tested only invariance, never a value.** Every
+  case in it compares two readings, so a constant factor cancels. Verified by mutating
+  `lib/skin.ts` one line at a time on main at 90611f9 and again on this branch:
+  `toneSpread * 1.5`, `roughnessRatio * 1.5` and `blemishDensity * 1.5` each left all
+  eight cases green. `ml/calibrate.py` draws thresholds from exactly those fields, and
+  `docs/label-free-axes.md` requires a `fallbackVersion` bump when feature semantics
+  move — a scale change is such a move, and three bumps landed on 2026-09-16 because a
+  comment remembered to, not because anything checked. Absolute pins added for
+  `toneSpread` (0.05322874576592159), `roughnessRatio` (1.07506721426881),
+  `blemishDensity` (2.4772157318490424) and `blemishCount` (5); each of the three
+  mutations now fails it. They are self-consistency pins, not outside-verified numbers
+  like the ITA swatches, and the comment says so.
+
+  Verification on the merged head: vitest 391 in 70 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16 — the same 16 main
+  carries, all in test files.
