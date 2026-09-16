@@ -131,6 +131,27 @@ describe("blemishDensity is comparable across capture resolutions", () => {
     }
   });
 
+  // The count, not just the denominator. Before the stride window was averaged the
+  // detector point-sampled its grid, so a disc landing between two sample points was
+  // missed outright and the same five-spot face read 2, 4, 2, 4, 3, 5, 3 across these
+  // seven frames with pixel noise off. The two smallest frames are excluded on
+  // purpose and named here rather than quietly dropped: at face width 72px the stride
+  // clamps at one whole pixel, so the grid is 72 cells across the face instead of 90
+  // and the detector is in a different regime from every frame above it.
+  it("finds the same spots on one face at every realistic capture resolution", () => {
+    const realistic = frames.filter(([w]) => 0.36 * w >= 144);
+    expect(realistic.length).toBe(5);
+    const counts = realistic.map(([w, h]) => {
+      const read = analyzeSkin(syntheticFace(w, h, 0), faceLandmarks());
+      expect(read, `${w}x${h} produced no reading`).not.toBeNull();
+      return read!.raw.blemishCount;
+    });
+    // Every frame must agree, and agree on a count the detector could not reach by
+    // finding nothing: a sequence of zeros would otherwise satisfy "all equal".
+    expect(new Set(counts).size, `counts across resolutions: ${counts.join(", ")}`).toBe(1);
+    expect(counts[0]).toBeGreaterThan(0);
+  });
+
   it("stays finite at every frame size", () => {
     // The new denominator is a ratio of two measured quantities, so a degenerate
     // face box must not turn it into NaN or Infinity on its way to the sync payload.

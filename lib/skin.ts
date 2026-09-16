@@ -159,7 +159,7 @@ export const VISIBLE_MODEL_CONTRACT = {
   // Note the four "Bumped" lines describe fallbackVersion below, not
   // inputSchemaVersion above: the crop contract the model consumes is unchanged, the
   // derived feature values are not. Keep the manifest's copy in step.
-  fallbackVersion: "roi-calibrated-2026-09-16b",
+  fallbackVersion: "roi-calibrated-2026-09-16c",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
 
@@ -570,7 +570,12 @@ function detectBlemishes(
   const faceH = maxY - minY;
   if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaFace: 0 };
 
-  const stride = Math.max(1, Math.round(faceW / BLEMISH.gridAcrossFace));
+  // Fractional on purpose. Rounding it to whole pixels moved the effective grid
+  // between 72 and 108 cells across the face over a 7.2x resolution sweep, which
+  // changes both the sampling density and — since backgroundRadius and
+  // suppressionRadius are counted in CELLS — the physical size of every window the
+  // detector uses. A fractional stride keeps all three fixed in face-width units.
+  const stride = Math.max(1, faceW / BLEMISH.gridAcrossFace);
   const x0 = Math.max(0, Math.floor(minX));
   const y0 = Math.max(0, Math.floor(minY));
   const gw = Math.floor((Math.min(w - 1, Math.ceil(maxX)) - x0) / stride) + 1;
@@ -588,23 +593,45 @@ function detectBlemishes(
   const valid = new Uint8Array(gw * gh);
   for (let gy = 0; gy < gh; gy += 1) {
     for (let gx = 0; gx < gw; gx += 1) {
-      const px = x0 + gx * stride;
-      const py = y0 + gy * stride;
-      if (px >= w || py >= h) continue;
+      const cx = x0 + gx * stride;
+      const cy = y0 + gy * stride;
+      if (cx >= w || cy >= h) continue;
       let nearNonSkin = false;
       for (const point of excluded) {
-        const dx = px - point.x;
-        const dy = py - point.y;
+        const dx = cx - point.x;
+        const dy = cy - point.y;
         if (dx * dx + dy * dy < excludeR * excludeR) {
           nearNonSkin = true;
           break;
         }
       }
       if (nearNonSkin) continue;
-      const o = (py * w + px) * 4;
-      const r = data[o];
-      const g = data[o + 1];
-      const b = data[o + 2];
+      // Average the stride window rather than reading its corner pixel. Point
+      // sampling missed a blemish outright whenever it fell between two sample
+      // points, so the count depended on where the grid happened to land; the
+      // windows tile the face box, so this costs one pass over it however fine
+      // the grid is.
+      const bx0 = Math.max(0, Math.round(cx - stride / 2));
+      const by0 = Math.max(0, Math.round(cy - stride / 2));
+      const bx1 = Math.min(w - 1, Math.max(bx0, Math.round(cx + stride / 2) - 1));
+      const by1 = Math.min(h - 1, Math.max(by0, Math.round(cy + stride / 2) - 1));
+      let sr = 0;
+      let sg = 0;
+      let sb = 0;
+      let n = 0;
+      for (let by = by0; by <= by1; by += 1) {
+        for (let bx = bx0; bx <= bx1; bx += 1) {
+          const o = (by * w + bx) * 4;
+          sr += data[o];
+          sg += data[o + 1];
+          sb += data[o + 2];
+          n += 1;
+        }
+      }
+      if (n === 0) continue;
+      const r = sr / n;
+      const g = sg / n;
+      const b = sb / n;
       const L = lum(r, g, b);
       // Hair, shadow and blown highlights are not gradable skin.
       if (L < 40 || L > 230 || r <= b) continue;

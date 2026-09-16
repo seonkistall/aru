@@ -287,15 +287,21 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   uses the same unit. `fallbackVersion` → `roi-calibrated-2026-09-16b` in both places
   (not guardrail 8: `status` and `promotionGate` untouched). Table and method in
   `docs/capture-resolution-invariance.md`, re-runnable from the committed test.
-- [AI] **The blemish COUNT is itself resolution-sensitive, and the density fix does not
-  touch it.** Same face, same five spots, pixel noise off: the count reads 2, 4, 2, 4,
-  3, 5, 3 across the sweep above, because the detector point-samples its grid and a
-  disc landing between sample points is missed outright, and `round(faceW / 90)` moves
-  the effective grid between 72 and 108 cells across. After the denominator fix the
-  density spans 2.54x with no trend, where before it spanned 33.9x monotonically — a
-  systematic bias became scatter, which is a different and smaller problem but not no
-  problem. Fixing it means interpolating the grid or averaging over the stride window,
-  and it should be measured the same way before it is changed. Noted 2026-09-16.
+- [x] [AI] ~~**The blemish COUNT is itself resolution-sensitive**~~ — done 2026-09-16
+  (cycle 5), measured before and after with the committed sweep. Both candidate fixes
+  the item named turned out to be needed, and each is load-bearing on its own. The
+  stride is no longer rounded to whole pixels: `round(faceW / 90)` moved the effective
+  grid between 72 and 108 cells across, and because `backgroundRadius` (5) and
+  `suppressionRadius` (2) are counted in CELLS, it moved the physical size of every
+  window the detector uses. And the stride window is averaged rather than
+  point-sampled at its corner, so a disc landing between two sample points is no longer
+  missed outright. Noise-free counts over face widths 144px to 518.4px went
+  **2, 4, 3, 5, 3 → 3, 3, 3, 3, 3**; `areaPx / faceW²` tightened 1.0199 → 1.0109. The
+  two smallest frames (faceW 72 and 108) are excluded by name rather than quietly, both
+  in the test and in the doc: at 72px the stride clamps at one whole pixel. Cost is
+  measured, not waved at — §5.4 of `docs/capture-resolution-invariance.md`.
+  `fallbackVersion` → `roi-calibrated-2026-09-16c` in `lib/skin.ts` AND the manifest
+  (guardrail 8 respected: `status` and `promotionGate` untouched).
 - [x] [AI] ~~`auditCommerceOverrides` has no production caller, and cannot check the
   sku id without an import cycle~~ — done 2026-09-16, both halves. The cycle is avoided
   by injection rather than by a new module: `auditCommerceOverrides(raw, { knownSkus })`
@@ -416,6 +422,19 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   scale, the ordering, and six swatch angles checked against scikit-image and
   colour-science; `ml/selftest.py` pins the same six for the Python side. Numbers and
   method in `docs/tone-ita-verification.md`.
+- [AI] `blemishCount` is sensitive to a per-channel colour cast, and cycle 5's
+  aliasing fix is what made it visible. `tests/skin-index-contract.test.ts` asserted
+  `warmer.blemishCount === baseline.blemishCount` and was green at **2 == 2**: the
+  point-sampling detector found the same 2 of the fixture's 5 discs in every condition,
+  so the equality held by blindness rather than by invariance. With the stride window
+  averaged the baseline finds all 5 and a `[1.12, 1, 0.92]` cast finds 3, while an
+  exposure change of ×1.12 is still exactly invariant at 5. Dropping the gray-world
+  gains from `detectBlemishes` changes neither number, so the cast moves the a*
+  residual itself and this is pre-existing, not caused by the fix. Same cast and same
+  synthetic face as the ITA cast sensitivity two items up — likely one remedy
+  (a face-region illuminant estimate) for both, which is the argument for not patching
+  the residual floor on its own. The test case now records the two counts exactly
+  rather than asserting a property that is false. Noted 2026-09-16.
 - [AI] Tone and dryness have no label source. Propose the smallest consented way to
   collect one, with the PIPA consequences spelled out; do not implement it alone.
 - [AI] Recommendation quality: the reasons are LLM-generated and efficacy-filtered,
@@ -483,15 +502,17 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   that ARU computes the *angle* correctly to 1.8e-02 degrees against two references;
   where to cut it is a separate question and stays unverified. Nothing depends on moving
   them, but it must not be written down as verified. Noted 2026-09-16.
-- [AI] The `0.58` confidence threshold exists in five places: `confidenceLabel` and
-  `confidenceLabelFor` (held together by `tests/confidence-label-contract.test.ts`),
-  `overallFor`'s 재촬영 권장 branch, and `retakeRecommended` in each of `lib/skin.ts` and
-  `app/scan/capture-analysis.ts`. Moving it in the two labels alone still passes every
-  test while leaving a scan at 0.59 reading 낮음 next to 대체로 안정 and
-  `retakeRecommended: false` — the same self-contradiction
-  `tests/vision-merge-consistency.test.ts` exists to prevent, one field over. A test
-  covering all five is the fix; deliberately not folded into the label contract test,
-  whose scope the supervisor set. Noted 2026-09-16.
+- [x] [AI] ~~The `0.58` confidence threshold exists in five places~~ — done 2026-09-16
+  (cycle 5) as the test the item specified, a separate file so the label contract test's
+  scope stays where the supervisor set it. `tests/confidence-threshold-agreement.test.ts`
+  pins the three exported sites behaviourally (2001-point sweep asserting 낮음 ⟺
+  재촬영 권장, plus both boundaries at ±1e-9 and ±1e-12) and all five as source literals,
+  the two inline ones by regex with the anchor failing loudly if the code moves. Verified
+  by moving 0.58 → 0.62 in BOTH `confidenceLabel` copies — the combination the existing
+  contract test permits: all 3 new cases fail
+  (`confidence 0.58: label 낮음=true but 전반 재촬영 권장=false`,
+  `the five sites carry: 0.62, 0.58, 0.58, 0.62, 0.58`) while
+  `tests/confidence-label-contract.test.ts` stays green, which is the gap.
 - [OWNER] Google Play Console identity, payment account, support email, App Signing.
 
 ## Blockers
@@ -1249,3 +1270,169 @@ up rather than rediscover them.
   Verification on the merged head: vitest 386 in 69 files, `ml/selftest.py` 77, lint 2
   pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16 errors — the same 16
   main carries, all in test files.
+
+- 2026-09-16 (cycle 5) — Branch `autopilot/2026-09-16-1239`. All four tracks; the
+  supervisor's pre-sized item covered ML and bug, as instructed. Baseline counted on
+  arrival, with `npm ci` run first because `node_modules` was absent again:
+  `69 files / 386 vitest / 77 python`, lint `0 errors, 2 warnings` (the same two unused
+  parameters in `lib/care.ts`), `tsc --noEmit` **13 errors, all in test files** — not
+  the 16 the cycle brief quoted, and the same 13 cycle 4 counted. Final:
+
+  ```
+   Test Files  70 passed (70)
+        Tests  390 passed (390)
+  Ran 77 tests in 0.018s
+  OK
+  ✖ 2 problems (0 errors, 2 warnings)
+  ```
+
+  `tsc --noEmit` is 13 again at the end. It was **14** mid-cycle — the new test typed a
+  `Bucket.level` as `number` where the type is `SkinLevel = 0 | 1 | 2` — and that is
+  recorded rather than quietly fixed, because "the branch must not add a tsc error" is
+  only a real check if a breach gets written down when it happens.
+
+  **ML + bug — the blemish count was resolution-sensitive, and both named fixes were
+  needed.** Measured first with the committed sweep, as the item required:
+
+  ```
+  ARU_PRINT_SCALE_SWEEP=1 npx vitest run tests/blemish-density-scale.test.ts
+  ```
+
+  Noise off, one synthetic face, five discs on it, face width 72px to 518.4px:
+
+  | frame | faceW | count before | count after |
+  |---|---|---|---|
+  | 200x240 | 72.0 | 2 | 2 |
+  | 300x360 | 108.0 | 4 | 4 |
+  | 400x480 | 144.0 | 2 | **3** |
+  | 600x720 | 216.0 | 4 | **3** |
+  | 800x960 | 288.0 | 3 | **3** |
+  | 1080x1296 | 388.8 | 5 | **3** |
+  | 1440x1728 | 518.4 | 3 | **3** |
+
+  Over face widths 144px to 518.4px (3.6x) the sequence went **2, 4, 3, 5, 3 →
+  3, 3, 3, 3, 3**. The backlog named two candidate fixes and it turned out to need both,
+  each verified load-bearing by deletion (below). The first is the one the item did not
+  name as the larger half: `stride = Math.round(faceW / 90)` moved the effective grid
+  between 72 and 108 cells across, and since `backgroundRadius` (5) and
+  `suppressionRadius` (2) are counted in CELLS, the rounding moved the *physical size of
+  every window the detector uses*, not just the sampling density. A fractional stride
+  fixes all three in face-width units. The second is the aliasing the item did name:
+  the stride window is averaged instead of its corner pixel being read, so a disc
+  between two sample points is no longer missed. The windows tile the face box, so the
+  cost is one pass over it however fine the grid gets. `areaPx / faceW²` tightened from
+  1.0199 to **1.0109** as a side effect.
+
+  The two smallest frames still disagree and are excluded **by name** in the test and
+  the doc rather than dropped: at faceW 72px `Math.max(1, ...)` clamps the stride to one
+  whole pixel, so the grid is 72 cells across instead of 90 and the detector is in a
+  different regime from every frame above it. Neither is a face size a real capture
+  produces.
+
+  `fallbackVersion` → `roi-calibrated-2026-09-16c` in `lib/skin.ts` and in
+  `public/models/visible-attributes/manifest.json`, because feature semantics moved and
+  pre-bump `blemishCount` values are on a different scale. **Saying it loudly as
+  guardrail 8 requires: the manifest diff is one line and it is `fallbackVersion` only —
+  `status` and `promotionGate` are untouched.** `ml/skin_indices.py` needs no matching
+  change: it carries `blemish_density(count, sampled_area_px, face_width_px)` and no
+  detector, so the "change one, change both" rule has nothing to mirror here.
+
+  **What the fix uncovered, which is the part worth reading.**
+  `tests/skin-index-contract.test.ts`'s `survives a per-channel gain change` asserted
+  `warmer.blemishCount === baseline.blemishCount` and was green. It was green at
+  **2 == 2**: the point-sampling detector found the same 2 of the 5 discs in every
+  condition, so a test written to pin device-invariance was passing on blindness. With
+  the window averaged the baseline finds all 5 and the `[1.12, 1, 0.92]` cast finds 3.
+  Probed before concluding — removing the gray-world gains from `detectBlemishes`
+  leaves both numbers at 5 and 3, so the cast moves the a* residual itself and the
+  sensitivity is pre-existing, not introduced. The exposure case (×1.12) is still
+  exactly invariant, at 5. That test case now records the two counts exactly, with the
+  reason in its own comment, instead of asserting a property that is false; the
+  property is a new backlog item, next to the ITA cast sensitivity it shares a cast and
+  a fixture with.
+
+  **research — the cost of the change, because O(grid cells) became O(face box).**
+  The backlog's per-scan cost item is answered by half and the half that is not is said
+  so. `analyzeSkin` over 20 runs on the same synthetic face, build container, node
+  v22.22.2:
+
+  | frame | before | after | increase | per 3-frame burst |
+  |---|---|---|---|---|
+  | 400x480 | 8.61 ms | 13.25 ms | +54% | +13.9 ms |
+  | 640x480 | 5.61 ms | 8.15 ms | +45% | +7.6 ms |
+  | 960x1280 | 12.40 ms | 15.42 ms | +24% | +9.1 ms |
+  | 1440x1728 | 12.95 ms | 14.35 ms | +11% | +4.2 ms |
+
+  The relative increase falls as resolution rises because `sampleRegion` and
+  `frameChannelGains` are already O(frame) and dominate there. The scan path uses
+  `video.videoWidth || 720` (`app/scan/use-capture-analysis.ts:123`), so it sits between
+  the middle two rows. **This is a container measurement, not a device measurement.** The
+  backlog item asks for a mid-range phone profile and stays open; no multiplier was
+  applied to these numbers to manufacture a phone figure, because that would be an
+  estimate written down as a measurement.
+
+  **UI/UX — one screen could disagree with itself about whether the scan was any
+  good.** The backlog item, done as the test it asked for. The `0.58` floor lives in
+  five places: `confidenceLabel` and `confidenceLabelFor` (the two byte-identical
+  copies), `overallFor`'s 재촬영 권장 branch, and `retakeRecommended` inline in each of
+  `lib/skin.ts` and `app/scan/capture-analysis.ts`. Moving it in the two *labels* — the
+  pair `tests/confidence-label-contract.test.ts` was built to hold together — passed
+  every test in the repo while leaving a scan at 0.59 rendering 낮음 in the confidence
+  chip directly above 대체로 안정 in the 전반 row, with `retakeRecommended: false`. Same
+  class of self-contradiction `tests/vision-merge-consistency.test.ts` exists to
+  prevent, one field over.
+  `tests/confidence-threshold-agreement.test.ts` pins the three exported sites
+  behaviourally — a 2001-point sweep asserting 낮음 ⟺ 재촬영 권장 and that the two label
+  copies agree at every point, plus both boundaries at ±1e-9 and ±1e-12 — and all five
+  sites as source literals, the two inline ones by regex whose anchor fails loudly
+  rather than silently matching nothing if the code moves. Kept out of the label
+  contract test on purpose: the supervisor set that file's scope, and the open
+  `confidenceLabel` item may still move the numbers it deliberately does not pin.
+
+  **verification — each new guard broken on purpose, by deleting the line it protects
+  rather than by editing the test.**
+
+  - `stride` reverted to `Math.max(1, Math.round(faceW / BLEMISH.gridAcrossFace))`, one
+    line, box average left in place → 3 cases fail:
+    `AssertionError: counts across resolutions: 2, 6, 3, 5, 2: expected 4 to be 1`,
+    and both skin-index-contract cases with `expected 2 to be 5`.
+  - The box average collapsed back to a corner point-sample (`bx1 = bx0; by1 = by0`),
+    fractional stride left in place → 3 cases fail:
+    `AssertionError: counts across resolutions: 2, 3, 5, 5, 4: expected 4 to be 1`,
+    `expected 5 to be 4`, `expected 4 to be 5`.
+    So neither half of the fix is decoration; the count is wrong in a different way
+    without each.
+  - `0.58` → `0.62` in BOTH `confidenceLabel` copies and nowhere else → all 3 cases of
+    `tests/confidence-threshold-agreement.test.ts` fail
+    (`confidence 0.58: label 낮음=true but 전반 재촬영 권장=false`,
+    `expected '낮음' not to be '낮음'`,
+    `the five sites carry: 0.62, 0.58, 0.58, 0.62, 0.58`) while
+    `tests/confidence-label-contract.test.ts` reports `4 passed` — which is precisely
+    the hole the backlog item described.
+
+  **smoke.** Green, with the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+  override and nothing else. Tail, verbatim:
+
+  ```
+   Test Files  70 passed (70)
+        Tests  390 passed (390)
+    44 passed (3.2m)
+  Ran 77 tests in 0.016s
+  OK
+  ok GET /scan -> 200
+  ok GET /privacy -> 200
+  ok GET /offline.html -> 200
+  ok GET /sw.js -> 200
+  ok GET /pilot -> 404
+  ok GET /ops -> 404
+  ok GET /eval -> 404
+  ok GET /api/out?sku=tn1&merchant=oliveyoung&placement=smoke -> 302
+  ok GET /api/sync -> 200
+  ok POST /api/sync -> 401
+
+  Smoke test passed.
+  ```
+
+  An earlier draft of this entry recorded smoke as skipped for budget. It was then run
+  and it passed, so the entry says what happened rather than what was planned.

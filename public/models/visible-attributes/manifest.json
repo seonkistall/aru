@@ -4,7 +4,7 @@
   "modelVersion": null,
   "modelPath": null,
   "inputSchemaVersion": "2026-06-30.visible-face-crop.v1",
-  "fallbackVersion": "roi-calibrated-2026-09-16b",
+  "fallbackVersion": "roi-calibrated-2026-09-16c",
   "runtime": {
     "featureFlag": "NEXT_PUBLIC_VISIBLE_ATTR_MODEL=on",
     "package": "onnxruntime-web",
