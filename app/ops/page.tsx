@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { describeCommerceOverrideIssue, type CommerceOverrideIssue } from "@/lib/commerce";
 import { CONSENT_VERSION, consentEventCount, exportConsentEvents, latestConsent } from "@/lib/consent";
 import { cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { exportFunnelEvents, funnelDropoff, summarizeFunnel, type FunnelStage, type FunnelSummary } from "@/lib/funnel";
@@ -30,6 +31,14 @@ type SyncStatus = {
   originGuardConfigured: boolean;
   maxBytes: number;
   rateLimit: { windowMs: number; max: number };
+  commerceOverrides?: {
+    configured: boolean;
+    parsed: boolean;
+    accepted: number;
+    // sku/merchant are absent on the unknown-* rows — see the comment in
+    // app/api/sync/route.ts for why that route will not name them.
+    issues: { sku?: string; merchant?: string; reason: CommerceOverrideIssue["reason"] }[];
+  };
 };
 
 const emptyPilot: PilotSummary = {
@@ -87,6 +96,8 @@ const emptySnapshot: OpsSnapshot = {
 export default function OpsPage() {
   const [snapshot, setSnapshot] = useState<OpsSnapshot>(emptySnapshot);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncStatusLoading, setSyncStatusLoading] = useState(true);
+  const syncTokenRef = useRef("");
   const [syncToken, setSyncToken] = useState("");
   const [dryRun, setDryRun] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -98,13 +109,32 @@ export default function OpsPage() {
 
   function refresh() {
     setSnapshot(readSnapshot());
-    void fetchSyncStatus().then(setSyncStatus).catch(() => setSyncStatus(null));
+    setSyncStatusLoading(true);
+    void fetchSyncStatus(syncTokenRef.current)
+      .then(setSyncStatus)
+      .catch(() => setSyncStatus(null))
+      .finally(() => setSyncStatusLoading(false));
   }
 
   useEffect(() => {
     const timer = window.setTimeout(refresh, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  // Re-read the status once a token is typed, so the override audit appears without a
+  // page reload. Debounced because this fires on every keystroke of a pasted token.
+  useEffect(() => {
+    syncTokenRef.current = syncToken.trim();
+    if (!syncToken.trim()) return;
+    const timer = window.setTimeout(() => {
+      setSyncStatusLoading(true);
+      void fetchSyncStatus(syncToken.trim())
+        .then(setSyncStatus)
+        .catch(() => setSyncStatus(null))
+        .finally(() => setSyncStatusLoading(false));
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [syncToken]);
 
   const completionRate = snapshot.pilot.total ? Math.round((snapshot.pilot.completed / snapshot.pilot.total) * 100) : 0;
   const cropConsentRate = snapshot.pilot.total ? Math.round((snapshot.pilot.cropConsent / snapshot.pilot.total) * 100) : 0;
@@ -296,6 +326,16 @@ export default function OpsPage() {
         </section>
 
         <section style={sectionStyle}>
+          <p style={sectionLabel}>commerce</p>
+          <h2 style={sectionTitle}>Affiliate link overrides</h2>
+          {/* A rejected override is indistinguishable from no override at the link
+              itself — both fall back to the merchant search URL — while
+              NEXT_PUBLIC_COMMERCE_AFFILIATE may separately be telling users the link
+              earns a commission. This is the only screen that shows the difference. */}
+          <CommerceOverridePanel status={syncStatus?.commerceOverrides} loading={syncStatusLoading} />
+        </section>
+
+        <section style={sectionStyle}>
           <p style={sectionLabel}>supabase sync</p>
           <h2 style={sectionTitle}>Backend upload gate</h2>
           {syncStatus && (
@@ -351,8 +391,55 @@ function buildRoster() {
   });
 }
 
-async function fetchSyncStatus(): Promise<SyncStatus> {
-  const resp = await fetch("/api/sync", { method: "GET" });
+function CommerceOverridePanel({ status, loading }: { status: SyncStatus["commerceOverrides"]; loading: boolean }) {
+  if (loading) return <p style={bodyText}>Reading /api/sync…</p>;
+  // Absent rather than failed: the audit only comes back with a valid sync token.
+  if (!status) return <p style={bodyText}>Enter the SUPABASE_SYNC_TOKEN below to read the override audit.</p>;
+  if (!status.configured) {
+    return (
+      <>
+        <div style={{ ...statusPill, color: "var(--ink-soft)" }}>COMMERCE_LINK_OVERRIDES_JSON not set</div>
+        <p style={bodyText}>Every out-link is a merchant search URL and earns nothing. Set the env with real affiliate URLs, and set NEXT_PUBLIC_COMMERCE_AFFILIATE=on in the same deploy.</p>
+      </>
+    );
+  }
+  if (!status.parsed) {
+    return (
+      <>
+        <div style={{ ...statusPill, color: "var(--plum)" }}>unparseable JSON — every override lost</div>
+        <p style={bodyText}>COMMERCE_LINK_OVERRIDES_JSON is set but is not valid JSON, so not one override is in effect.</p>
+      </>
+    );
+  }
+  // Defensive: an older deploy's cached response may carry commerceOverrides without
+  // issues, and reading .length off it would take the whole page down inside render.
+  const issues = status.issues ?? [];
+  return (
+    <>
+      <div style={{ ...statusPill, color: issues.length ? "var(--plum)" : "var(--success)" }}>
+        {status.accepted ?? 0} accepted | {issues.length} rejected
+      </div>
+      {issues.length > 0 && (
+        <ul style={{ ...bodyText, paddingLeft: 18, margin: "0 0 8px" }}>
+          {issues.map((issue, index) => (
+            <li key={`${issue.sku ?? ""}/${issue.merchant ?? ""}/${issue.reason}/${index}`}>
+              {issue.sku && issue.merchant ? <><strong>{issue.sku}</strong>/{issue.merchant} — </> : null}
+              {describeCommerceOverrideIssue(issue)}. Still a search URL.
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+async function fetchSyncStatus(token?: string): Promise<SyncStatus> {
+  // The override audit is only in the response when the token is valid — see the
+  // comment on GET in app/api/sync/route.ts. Everything else comes back either way.
+  const resp = await fetch("/api/sync", {
+    method: "GET",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   if (!resp.ok) throw new Error("Sync status unavailable.");
   return (await resp.json()) as SyncStatus;
 }

@@ -42,7 +42,12 @@ EfficientNet-B0 전이학습(피부타입 80%/여드름 68%), K-means 피부톤,
 ## 트랙 2 — 캘리브레이션 (크롭 <30에서도 가능)
 
 - [ ] `ml/calibrate.py`로 threshold 보정 — 첫 10~30개 라벨만으로 oil/redness/pores 경계값(0.05/0.16 등) 재조정
-- [ ] **조명 정규화**: gray-world 화이트밸런스 보정을 raw feature 추출 전에 적용 (조명 색온도에 따른 relRedness 왜곡 완화) — lib/skin.ts extractRawFeatures 확장
+- [ ] **조명 정규화** — 2026-09-16 재정의. 원래 문구는 "gray-world 화이트밸런스 보정을
+  raw feature 추출 전에 적용"이었는데, 그대로 하면 이번에 톤 경로에서 제거한 것을 다시
+  넣는 셈이다. gray-world는 프레임 전체(배경 포함)로 조명을 추정하므로 뒤 벽 색이 얼굴로
+  들어간다 — 같은 얼굴이 벽에 따라 tone band 3종을 오갔다. 남은 진짜 과제는 **얼굴 영역
+  기준** 조명 추정이고, `lib/skin.ts`와 `ml/ita.py`에 동일하게 적용해야 한다(한쪽만 하면
+  방금 닫은 불일치가 되살아난다). 측정값: `docs/tone-ita-verification.md`.
 - [ ] **ROI 확장 실험**: 현재 T존+양볼 → 턱/코옆 추가 시 신호 안정성 비교 (SAMPLING_LANDMARKS 이미 노출됨)
 - [ ] **버스트 파라미터 튜닝**: 3프레임/140ms가 최적인지 — 5프레임/100ms 대비 노이즈 감소 vs 지연 측정
 

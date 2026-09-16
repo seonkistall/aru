@@ -139,8 +139,19 @@ export type CommerceOverrideIssue = {
   sku: string;
   merchant: string;
   value: string;
-  reason: "not-https-or-allowlisted" | "unknown-merchant";
+  reason: "not-https-or-allowlisted" | "unknown-merchant" | "unknown-sku";
 };
+
+/**
+ * The catalogue's sku ids, supplied by the caller rather than imported.
+ *
+ * `lib/skus.ts` imports this module to build its commerce links, so importing it back
+ * would be a cycle. Passing the ids in keeps the check in the one place that resolves
+ * overrides while leaving this module with no dependency of its own — and a caller
+ * that genuinely has no catalogue to hand (a config linter, a test) simply omits it
+ * and gets the old behaviour.
+ */
+export type CommerceOverrideAuditOptions = { knownSkus?: Iterable<string> };
 
 export type CommerceOverrideAudit = {
   configured: boolean;
@@ -166,7 +177,8 @@ export type CommerceOverrideAudit = {
  * ALLOWED_HOSTS, so following the runbook exactly produced a silent no-op.
  */
 export function auditCommerceOverrides(
-  raw: string | undefined = process.env.COMMERCE_LINK_OVERRIDES_JSON
+  raw: string | undefined = process.env.COMMERCE_LINK_OVERRIDES_JSON,
+  options: CommerceOverrideAuditOptions = {}
 ): CommerceOverrideAudit {
   if (!raw) return { configured: false, parsed: true, accepted: [], issues: [] };
   let parsed: Record<string, Partial<Record<MerchantId, string>>>;
@@ -177,16 +189,19 @@ export function auditCommerceOverrides(
   }
   const accepted: CommerceOverrideAudit["accepted"] = [];
   const issues: CommerceOverrideIssue[] = [];
-  const known = new Set<string>(MERCHANT_IDS);
+  const knownMerchants = new Set<string>(MERCHANT_IDS);
+  const knownSkus = options.knownSkus ? new Set<string>(options.knownSkus) : null;
   for (const [sku, byMerchant] of Object.entries(parsed || {})) {
     for (const [merchant, value] of Object.entries(byMerchant || {})) {
       if (typeof value !== "string" || !value) continue;
-      // A misspelled merchant key never matches a lookup, so the override is a no-op
-      // that looks exactly like a missing one — the same silent failure as a blocked
-      // host. Note the sku half is NOT checked here: this module cannot import the
-      // catalogue without a cycle (lib/skus.ts imports this file), so a typo'd sku id
-      // is still a silent no-op. Recorded in docs/AUTOPILOT.md.
-      if (!known.has(merchant)) issues.push({ sku, merchant, value, reason: "unknown-merchant" });
+      // Checked in the order the lookup resolves them — `parsed[skuId]?.[merchant]` —
+      // so the issue names the first thing that would miss. A misspelled key of either
+      // kind never matches, so the override is a no-op that looks exactly like a
+      // missing one: the same silent failure as a blocked host, and the one that costs
+      // money, because NEXT_PUBLIC_COMMERCE_AFFILIATE is a separate switch and may be
+      // telling users the link earns a commission while it is still a search URL.
+      if (knownSkus && !knownSkus.has(sku)) issues.push({ sku, merchant, value, reason: "unknown-sku" });
+      else if (!knownMerchants.has(merchant)) issues.push({ sku, merchant, value, reason: "unknown-merchant" });
       else if (isAllowedCommerceUrl(value)) accepted.push({ sku, merchant, value });
       else issues.push({ sku, merchant, value, reason: "not-https-or-allowlisted" });
     }
@@ -199,28 +214,72 @@ export function auditCommerceOverrides(
 // rather than a last-seen string so flipping back to an earlier value stays quiet too.
 const warnedFor = new Set<string>();
 
-function warnOnce(raw: string | undefined) {
-  if (raw === undefined || warnedFor.has(raw)) return;
-  warnedFor.add(raw);
-  const audit = auditCommerceOverrides(raw);
+/**
+ * Why one override was dropped, in words an operator can act on.
+ *
+ * Takes only the identifying fields, never `value`. /ops renders this, and it reads
+ * the audit through the unauthenticated `/api/sync` GET, which withholds the override
+ * URL — so a description that needed the URL could only ever have been used by the log
+ * this change exists to stop relying on. The log appends the URL itself.
+ *
+ * `sku` and `merchant` are optional for the same reason: `/api/sync` withholds them on
+ * the `unknown-*` rows, where by definition they are ids that are NOT in the catalogue
+ * and so not already public.
+ */
+export function describeCommerceOverrideIssue(
+  issue: Pick<CommerceOverrideIssue, "reason"> & Partial<Pick<CommerceOverrideIssue, "sku" | "merchant">>
+): string {
+  if (issue.reason === "unknown-sku") {
+    return issue.sku ? `"${issue.sku}" is not a sku id in the catalogue` : "the override names a sku id that is not in the catalogue";
+  }
+  if (issue.reason === "unknown-merchant") {
+    return issue.merchant
+      ? `"${issue.merchant}" is not a merchant id (${MERCHANT_IDS.join(", ")})`
+      : `the override names something that is not a merchant id (${MERCHANT_IDS.join(", ")})`;
+  }
+  return `the URL is not an https URL on the allowlist (${[...ALLOWED_HOSTS].join(", ")})`;
+}
+
+// Keyed on whether the catalogue was available too, because a call with the sku list
+// reports strictly more than one without it. So each env value warns once per flavour,
+// not once overall: a process that resolves overrides from both kinds of caller logs
+// the shared issues twice. Preferred over losing the sku findings to whichever caller
+// happened to run first.
+function warnOnce(raw: string | undefined, options: CommerceOverrideAuditOptions) {
+  if (raw === undefined) return;
+  const key = `${options.knownSkus ? "skus" : "no-skus"}\u0000${raw}`;
+  if (warnedFor.has(key)) return;
+  warnedFor.add(key);
+  const audit = auditCommerceOverrides(raw, options);
   if (!audit.parsed) {
     console.warn("[commerce] COMMERCE_LINK_OVERRIDES_JSON is not valid JSON — every override is being ignored.");
     return;
   }
   for (const issue of audit.issues) {
-    const why =
-      issue.reason === "unknown-merchant"
-        ? `"${issue.merchant}" is not a merchant id (${MERCHANT_IDS.join(", ")})`
-        : `${issue.value} is not an https URL on the allowlist (${[...ALLOWED_HOSTS].join(", ")})`;
-    console.warn(`[commerce] override for ${issue.sku}/${issue.merchant} ignored: ${why}. The link is still a search URL.`);
+    // The log is the one place the rejected URL belongs — it is server-side, and it is
+    // what an operator needs to see to spot a typo'd host.
+    const where = issue.reason === "not-https-or-allowlisted" ? ` (${issue.value})` : "";
+    console.warn(
+      `[commerce] override for ${issue.sku}/${issue.merchant} ignored: ${describeCommerceOverrideIssue(issue)}${where}. The link is still a search URL.`
+    );
   }
 }
 
-export function commerceOverrideUrl(skuId: string, merchant: MerchantId): string | null {
+/**
+ * `knownSkus` is optional so this module stays free of the catalogue (see
+ * CommerceOverrideAuditOptions). `/api/out` already holds `SKUS` to resolve the click,
+ * so it passes them and a misspelled sku id gets named in the log instead of silently
+ * resolving to the search URL.
+ */
+export function commerceOverrideUrl(
+  skuId: string,
+  merchant: MerchantId,
+  options: CommerceOverrideAuditOptions = {}
+): string | null {
   try {
     const raw = process.env.COMMERCE_LINK_OVERRIDES_JSON;
     if (!raw) return null;
-    warnOnce(raw);
+    warnOnce(raw, options);
     const parsed = JSON.parse(raw) as Record<string, Partial<Record<MerchantId, string>>>;
     const value = parsed[skuId]?.[merchant];
     return value && isAllowedCommerceUrl(value) ? value : null;

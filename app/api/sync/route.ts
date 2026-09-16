@@ -1,3 +1,5 @@
+import { auditCommerceOverrides } from "@/lib/commerce";
+import { SKUS } from "@/lib/skus";
 import { getSupabaseAdmin, hasValidSyncToken, isSupabaseSyncConfigured } from "@/lib/supabase-admin";
 import { createRateLimiter, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 import { latestConsentGranted, SYNC_SCHEMA_VERSIONS, type GyeolSyncPayload, type SyncResult } from "@/lib/sync-payload";
@@ -15,7 +17,35 @@ type SyncRequest = {
   payload?: GyeolSyncPayload;
 };
 
-export async function GET() {
+/**
+ * What `COMMERCE_LINK_OVERRIDES_JSON` actually resolved to, rejections included.
+ *
+ * `auditCommerceOverrides` had no production caller, so a rejected affiliate override
+ * was visible only in the request log. It is reported here because this is the status
+ * handler /ops already fetches, and COMMERCE_LINK_OVERRIDES_JSON is server-side env
+ * the client cannot read for itself.
+ *
+ * Behind the sync token, and that is not incidental. The rest of this response is
+ * booleans about whether env is set; this is the only field that echoes env string
+ * content, and an `unknown-sku` or `unknown-merchant` row is by construction a key that
+ * is NOT in the catalogue — a sku staged ahead of a launch, a partner not yet
+ * announced. GET is otherwise unauthenticated (no origin guard, no rate limit — both
+ * are POST-only) and /api/sync is not in the proxy.ts matcher that 404s /ops, so
+ * without the token this would be world-readable while the screen that renders it is
+ * not. `value` is never included even so: /ops does not need the URL, and the server
+ * log already carries it.
+ */
+function commerceOverrideStatus() {
+  const audit = auditCommerceOverrides(undefined, { knownSkus: SKUS.map((sku) => sku.id) });
+  return {
+    configured: audit.configured,
+    parsed: audit.parsed,
+    accepted: audit.accepted.length,
+    issues: audit.issues.map(({ sku, merchant, reason }) => ({ sku, merchant, reason })),
+  };
+}
+
+export async function GET(request: Request) {
   return Response.json({
     configured: isSupabaseSyncConfigured(),
     cropBucketConfigured: Boolean(process.env.SUPABASE_CROP_BUCKET),
@@ -25,6 +55,7 @@ export async function GET() {
       windowMs: RATE_LIMIT_WINDOW_MS,
       max: RATE_LIMIT_MAX,
     },
+    ...(hasValidSyncToken(request) ? { commerceOverrides: commerceOverrideStatus() } : {}),
   });
 }
 
