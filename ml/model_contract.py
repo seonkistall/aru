@@ -28,7 +28,7 @@ MANIFEST_PATH = REPO_ROOT / "public" / "models" / "visible-attributes" / "manife
 FALLBACK_HEURISTIC = {
     # Only used when the manifest is unreadable; the live value is its fallbackVersion,
     # and tests/skin-index-contract.test.ts asserts the two agree there.
-    "version": "roi-calibrated-2026-09-16b",
+    "version": "roi-calibrated-2026-09-16c",
     "axes": {
         "oil": {"feature": "shine", "thresholds": [0.05, 0.16]},
         "redness": {"feature": "relRedness", "thresholds": [0.012, 0.03]},
