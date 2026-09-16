@@ -5,8 +5,10 @@ import {
   auditCommerceOverrides,
   buildCommerceLinks,
   commerceOverrideUrl,
+  describeCommerceOverrideIssue,
   isAllowedCommerceUrl,
 } from "@/lib/commerce";
+import { SKUS } from "@/lib/skus";
 
 describe("isAllowedCommerceUrl (allowlist)", () => {
   it("allows the four https merchant hosts", () => {
@@ -100,15 +102,56 @@ describe("COMMERCE_LINK_OVERRIDES_JSON rejections are visible, not silent", () =
     expect(audit.issues[0]?.reason).toBe("unknown-merchant");
   });
 
-  it("does not yet catch a misspelled sku id", () => {
-    // Documented limitation, not an oversight: lib/skus.ts imports this module, so
-    // checking the id against the catalogue here would be a cycle. Pinned so the gap
-    // is visible rather than assumed closed.
+  it("names a misspelled sku id when the caller supplies the catalogue", () => {
+    // lib/skus.ts imports this module, so importing it back would be a cycle; the ids
+    // are passed in by the caller that already holds them (/api/out, /api/sync GET).
+    const blob = JSON.stringify({
+      NOT_A_SKU: { oliveyoung: "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A1" },
+    });
+    const audit = auditCommerceOverrides(blob, { knownSkus: SKUS.map((sku) => sku.id) });
+    expect(audit.accepted).toEqual([]);
+    expect(audit.issues).toHaveLength(1);
+    expect(audit.issues[0]?.reason).toBe("unknown-sku");
+    expect(audit.issues[0]?.sku).toBe("NOT_A_SKU");
+  });
+
+  it("still accepts a real sku id from the same catalogue", () => {
+    // The other half of the check: a sku list that rejected everything would pass the
+    // test above while silently killing every working override.
+    const good = "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000123456";
+    const real = SKUS[0].id;
+    const audit = auditCommerceOverrides(JSON.stringify({ [real]: { oliveyoung: good } }), {
+      knownSkus: SKUS.map((sku) => sku.id),
+    });
+    expect(audit.issues).toEqual([]);
+    expect(audit.accepted).toEqual([{ sku: real, merchant: "oliveyoung", value: good }]);
+  });
+
+  it("leaves the sku unchecked when no catalogue is supplied", () => {
+    // The parameter is what keeps this module free of the catalogue, so the old
+    // behaviour has to survive for a caller that has none.
     const audit = auditCommerceOverrides(JSON.stringify({
       NOT_A_SKU: { oliveyoung: "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A1" },
     }));
     expect(audit.issues).toEqual([]);
     expect(audit.accepted).toHaveLength(1);
+  });
+
+  it("reports the sku before the merchant, in the order the lookup resolves them", () => {
+    // parsed[skuId]?.[merchant] misses on the sku first, so that is what to fix first.
+    const audit = auditCommerceOverrides(JSON.stringify({
+      NOT_A_SKU: { oliveyung: "https://www.coupang.com/vp/products/1" },
+    }), { knownSkus: SKUS.map((sku) => sku.id) });
+    expect(audit.issues[0]?.reason).toBe("unknown-sku");
+  });
+
+  it("explains every issue reason in words an operator can act on", () => {
+    const reasons = ["unknown-sku", "unknown-merchant", "not-https-or-allowlisted"] as const;
+    for (const reason of reasons) {
+      const text = describeCommerceOverrideIssue({ sku: "x", merchant: "y", reason });
+      expect(text.length, reason).toBeGreaterThan(10);
+    }
+    expect(describeCommerceOverrideIssue({ sku: "x", merchant: "y", reason: "unknown-sku" })).toContain("catalogue");
   });
 
   it("reports unparseable JSON as such rather than as an empty config", () => {

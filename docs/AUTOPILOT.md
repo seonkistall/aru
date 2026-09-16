@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 ## What this is for
 
@@ -239,42 +239,57 @@ These are not preferences. Breaking one is worse than skipping a cycle.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
-- [AI] **The report headline survives the vision merge and can contradict the rows
-  under it.** `mergeVisionAnalysis` (`app/scan/capture-analysis.ts:186`) rewrites
-  `oil`, `redness`, `pores`, `confidence`, `confidenceLabel`, `retakeRecommended` and
-  `source`, but `headline` arrives through `...base` and is never recomputed — and
-  `headlineFor`/`narrativeParts` are module-private in `lib/skin.ts`, so it cannot be.
-  With a vision key set and the user consenting, the `<h1>` on `/report` and the scan
-  receipt can read 피부 컨디션이 비교적 안정적이에요 directly above rows reading
-  붉은기 뚜렷. `readsFromRaw` on the ML path derives both from the merged buckets, so
-  the two paths already disagree. Second-order: `localizedNarrative` rebuilds the
-  sentence from the levels for non-Korean locales but returns the stored Korean one
-  as-is, so a Korean user sees the stale narrative and an English user the corrected
-  one from the same object. Fix by exporting the two helpers and recomputing from
-  `next.*` after the per-attribute loop, keeping `payload.narrative` as the override
-  it already is. Found 2026-09-15; not fixed in that cycle only to keep the diff
-  surgical.
+- [x] [AI] ~~**The report headline survives the vision merge and can contradict the
+  rows under it.**~~ — done 2026-09-16. `headlineFor` and `narrativeFor` are exported
+  from `lib/skin.ts` and `mergeVisionAnalysis` rederives both from `next.*` after the
+  bucket loop, with `payload.narrative` still the override it was. The report was one
+  field short: `overall` — the 전반 row on `/report`, the scan result card and
+  `/studio` — is derived from the same three buckets and also arrived through
+  `...base`, so it was stale in exactly the same way. It is now `overallFor`, extracted
+  from `readsFromRaw` so both paths compute it from one definition rather than two.
+  That also settles the second-order half: `localizedNarrative` returns the stored
+  Korean sentence as-is and rebuilds it from the levels for every other language, so a
+  stale stored sentence showed a Korean user one face and an English user another from
+  one object; with the stored sentence rederived, the two agree.
+  `tests/vision-merge-consistency.test.ts` covers all three fields, the payload
+  override, and a no-op merge.
 - [AI] `blemishDensity` in `lib/skin.ts` counts on a fixed 90-cell grid and divides by
   an area in real capture pixels, so it scales as roughly 1/faceWidth² and is not
   comparable across capture resolutions. Nothing user-visible reads it today, but it
   feeds the device/tone subgroup work. Noted 2026-09-15, not measured.
-- [AI] `auditCommerceOverrides` (`lib/commerce.ts`) has no production caller — only
-  the internal `warnOnce` and its tests — so its accepted/rejected split is visible in
-  the request log and nowhere an operator would look. Surface it: `/ops`, or the
-  `/api/sync` GET status handler, is the natural home, and doing so would also let it
-  check the sku id against the catalogue, which it cannot do from inside
-  `lib/commerce.ts` (`lib/skus.ts` imports that module, so it would be a cycle). Until
-  then a misspelled sku in `COMMERCE_LINK_OVERRIDES_JSON` is still a silent no-op —
-  pinned by `tests/commerce.test.ts` "does not yet catch a misspelled sku id".
-- [AI] Two camera dead-ends are still off the funnel or mislabelled. `interruptCamera`
-  (`app/scan/page.tsx`) puts the UI in a dead end with a 카메라 다시 켜기 button when
-  the live track dies — another app taking the camera — and records nothing; the fix
-  belongs at the `watchCameraStream` callback, not inside `interruptCamera`, whose
-  other two callers are `visibilitychange`/`pagehide` and are just backgrounding. And
-  the stream-attach failure path records `camera_blocked {reason:"attach"}` and calls
-  `setPhase("denied")` without `setDeniedReason`, so the screen shows whichever reason
-  was last set (default 권한). Both found 2026-09-15 by adversarial review of that
-  cycle's own diff.
+- [x] [AI] ~~`auditCommerceOverrides` has no production caller, and cannot check the
+  sku id without an import cycle~~ — done 2026-09-16, both halves. The cycle is avoided
+  by injection rather than by a new module: `auditCommerceOverrides(raw, { knownSkus })`
+  and `commerceOverrideUrl(sku, merchant, { knownSkus })` take the ids from the caller
+  that already holds `SKUS`, so `lib/commerce.ts` still imports nothing. `/api/out`
+  passes them, which puts the check on the production hot path; `/api/sync` GET reports
+  the accepted/rejected split and `/ops` renders it, which is the first screen an
+  operator can see it on — behind the sync token. The first draft returned the audit to
+  anyone, reasoning that sku and merchant ids are public already: true of catalogue ids,
+  false of exactly the rows the new check adds, since an `unknown-sku` key is by
+  construction NOT in the catalogue. `/api/sync` GET has no origin guard and no rate
+  limit (both are POST-only) and is not in the `proxy.ts` matcher that 404s `/ops`, so
+  the screen would have been private while the data it renders was world-readable.
+  `/ops` sends the token it already collects. `value` is never returned either way — the
+  URL stays in the server log, where an operator debugging a typo'd host needs it. New
+  `unknown-sku` issue reason.
+  `tests/commerce.test.ts` pins the catch, that a real catalogue id is still accepted,
+  and that omitting the sku list keeps the old behaviour for a caller with no
+  catalogue.
+- [~] [AI] Two camera dead-ends were off the funnel or mislabelled. **The mislabelled
+  half is fixed, 2026-09-16.** The stream-attach path now sets an `attach` reason with
+  its own copy in all four dictionaries, so someone who has already granted camera
+  permission is no longer told to grant camera permission — `getUserMedia` has resolved
+  before that path is reachable, so the 권한 copy sent them to a setting that was
+  already correct, or showed the previous attempt's reason, since `startCamera` never
+  clears it. `tests/camera-denied-reason.test.ts` fails if any future `setPhase("denied")`
+  forgets its reason, which matters because the render chain ends in the 권한 branch as
+  its `else` and so fails silently rather than loudly.
+  **Still open:** `interruptCamera` records nothing when the live track dies — another
+  app taking the camera — and discards the `"muted"`/`"ended"` reason that
+  `watchCameraStream` hands it. The fix belongs at that callback, not inside
+  `interruptCamera`, whose other two callers are `visibilitychange`/`pagehide` and are
+  just backgrounding, so the two cases have to be told apart before either is counted.
 - [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
   can see where users drop off. Without it every UX cycle is guessing. (Still open —
   2026-09-15 added `share_landed` and `viralActivation`, but they are still on-device.)
@@ -344,16 +359,97 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   So a subgroup a third the size of the documented floor is evaluated as if it met it.
   `fit_tone_calibration` in the same file uses the correct per-axis unit, and
   `coverage_warnings` uses raw row counts — three meanings for one manifest number.
-- [AI] `raw.toneIta` has no behavioural test anywhere, and it is the sole input to tone
-  band assignment on both first-party ingest paths. A radians/degrees slip in
-  `lib/skin.ts` would put every sample in `brown_dark`, collapse the tone dimension to
-  one cell, and every existing check would still pass.
+- [x] [AI] ~~`raw.toneIta` has no behavioural test anywhere~~ — done 2026-09-16, and
+  writing the test found a real defect rather than confirming the code. `lib/skin.ts`
+  applied gray-world gains to the cheek pixels before computing tone; gray-world
+  estimates the illuminant from the whole frame, so the wall behind the user was being
+  divided out of their face. One synthetic face, held byte-for-byte identical, read
+  `brown_dark` in front of warm wood and `very_light` in front of grey — three of the
+  five bands, the full width of the scale, decided by the room — while `ml/ita.py` applies no such gain offline, so
+  a dataset image and a live scan of one face landed in different cells. Worse, both
+  scales sat in one file: `ita_for_row` in `ml/prepare_crop_dataset.py` takes the app's
+  value when there is one and recomputes through `ml/ita.py` when there is not. Tone is
+  now measured on the pixels as captured. `tests/tone-ita-contract.test.ts` (5 cases,
+  all 5 fail against `origin/main`) pins the background independence, the degrees
+  scale, the ordering, and six swatch angles checked against scikit-image and
+  colour-science; `ml/selftest.py` pins the same six for the Python side. Numbers and
+  method in `docs/tone-ita-verification.md`.
 - [AI] Tone and dryness have no label source. Propose the smallest consented way to
   collect one, with the PIPA consequences spelled out; do not implement it alone.
 - [AI] Recommendation quality: the reasons are LLM-generated and efficacy-filtered,
   but nothing measures whether they are *useful*. Design a measurable proxy.
 - [AI] iPhone Safari camera matrix is code-verified but hardware-pending; extend the
   automated lifecycle coverage as far as it can go without hardware.
+- [AI] `VISIBLE_MODEL_CONTRACT.inputSchemaVersion` has never actually changed. The
+  constant still reads `2026-06-30.visible-face-crop.v1` under three "Bumped" comments
+  (07-03, 09-14 and now 09-16), each recording a real change to feature semantics, so
+  nothing downstream can tell one generation of collected features from another —
+  `ml/prepare_crop_dataset.py` and `ml/run_pipeline.py` both record the string per row
+  and it is the same string for all of them. Moving it also moves
+  `public/models/visible-attributes/manifest.json`, which `tests/ml-registry.test.ts`
+  pins to it, and that is guardrail 8 territory. Needs a deliberate decision about what
+  happens to already-collected samples, not a one-line bump. Noted 2026-09-16.
+- [AI] Illuminant correction for tone, done properly. Removing the gray-world gain
+  stopped the background deciding the tone band, but an uncorrected warm lamp still
+  moves the reading, which is the documented limit of ITA-from-a-photo. Doing better
+  needs an illuminant estimate from the face region rather than the frame mean, and it
+  would have to be applied identically in `lib/skin.ts` and `ml/ita.py` or it
+  reintroduces exactly the split that was just closed. Noted 2026-09-16.
+- [AI] The ITA band cut points (55 / 41 / 28 / 10 in `ml/subgroups.py`) are attributed
+  to the Chardon convention and no primary source for them is reachable from this
+  network. `docs/tone-ita-verification.md` establishes that ARU computes the *angle*
+  correctly to 1.8e-02 degrees against two references; where to cut it is a separate
+  question and stays unverified. Not urgent — nothing depends on moving them — but it
+  should not be written down as verified. Noted 2026-09-16.
+- [AI] **Illuminant correction for tone, done properly — the number is attached.**
+  Removing the gray-world gain stopped the *background* deciding the tone band. An
+  illuminant or device cast still moves it, now measured rather than waved at: a
+  ±12% / −8% channel cast moves swatch-3 from `light` to `very_light`, and on the
+  synthetic fixture (cheek `b* = 10.74`, low) a cool cast takes ITA from 61.8 to −87.6 —
+  `very_light` to `brown_dark` — because ITA divides by `b*` and the cast pushes it
+  through zero. Deep tones are the most stable, having the largest `b*`. Table in
+  `docs/tone-ita-verification.md` §3. Not caused by the 09-16 change and not fixed by
+  it (`ml/ita.py` has always had it), but it bounds what the stratifier can be used for:
+  good enough to catch a model failing badly on darker skin in aggregate, not good
+  enough to call one scan's band that person's tone. Doing better needs a **face-region**
+  illuminant estimate, applied identically in `lib/skin.ts` and `ml/ita.py` or it
+  reintroduces the split just closed. `docs/analysis-performance-roadmap.md` had an open
+  item whose literal wording would have re-added frame-mean gray-world; it now points
+  here. Noted 2026-09-16.
+- [AI] The "do not pool feature generations" rule is documentation and nothing else.
+  `fallbackVersion` moved to `roi-calibrated-2026-09-16` and the string is carried per
+  row (`ml/prepare_crop_dataset.py`, `ml/run_pipeline.py`), but no ML script filters,
+  groups or warns on it, and `ml/calibrate.py` has no version handling at all. So a
+  pre-09-16 and a post-09-16 tone reading still land in the same subgroup cell and the
+  same threshold fit. Cheapest useful version: a `coverage_warnings` entry when one run
+  mixes generations. Noted 2026-09-16.
+- [AI] `SampleMeta.toneBand` (`lib/labels.ts`) is declared and documented as "derived
+  on-device from the ITA already measured during the scan", and is never written by any
+  code path. `resolve_tone_band` prefers it over recomputing, so the comment describes a
+  behaviour that does not exist. Populate it or delete it; leaving it is an invitation
+  to populate it inconsistently later. Noted 2026-09-16.
+- [AI] `toneSpread` is background-coupled at about 2% through the same frame-mean gains
+  the tone path just stopped using — 0.052372 behind a blue wall, 0.053504 behind warm
+  wood, on a face held byte-for-byte identical. It is a ratio, so this is second-order
+  rather than the sign flip ITA suffered, and `tests/skin-index-contract.test.ts`'s
+  `toBeCloseTo(…, 2)` hides it — but it is compared against cut points drawn *across*
+  frames, so "within one frame" understates it. Pre-existing, same class one level down.
+  Noted 2026-09-16.
+- [AI] The ITA band cut points (55 / 41 / 28 / 10 in `ml/subgroups.py` and
+  `lib/tone-bands.ts`) are attributed to the Chardon convention and no primary source
+  for them is reachable from this network. `docs/tone-ita-verification.md` establishes
+  that ARU computes the *angle* correctly to 1.8e-02 degrees against two references;
+  where to cut it is a separate question and stays unverified. Nothing depends on moving
+  them, but it must not be written down as verified. Noted 2026-09-16.
+- [AI] The `0.58` confidence threshold exists in five places: `confidenceLabel` and
+  `confidenceLabelFor` (held together by `tests/confidence-label-contract.test.ts`),
+  `overallFor`'s 재촬영 권장 branch, and `retakeRecommended` in each of `lib/skin.ts` and
+  `app/scan/capture-analysis.ts`. Moving it in the two labels alone still passes every
+  test while leaving a scan at 0.59 reading 낮음 next to 대체로 안정 and
+  `retakeRecommended: false` — the same self-contradiction
+  `tests/vision-merge-consistency.test.ts` exists to prevent, one field over. A test
+  covering all five is the fix; deliberately not folded into the label contract test,
+  whose scope the supervisor set. Noted 2026-09-16.
 - [OWNER] Google Play Console identity, payment account, support email, App Signing.
 
 ## Blockers
@@ -385,6 +481,16 @@ Owner-only, dated when first recorded.
   the message — not a different outcome. Of everything probed only `pypi.org` answered
   (`http=200`), which is the one thing that made this cycle's metric verification
   possible at all.
+  **Re-probed 2026-09-16 and narrowed in one place.** `raw.githubusercontent.com`
+  answers with content (a real fetch of a repository README returned
+  `http=200 bytes=75536`) and `api.github.com` returns `http=200`, while `github.com`'s
+  own HTML pages return 403. `registry.npmjs.org` and `files.pythonhosted.org` answer
+  too. So a cycle can now read a file out of a public repository, which was not true
+  last cycle — useful for reading a library's source, and not a primary source for a
+  paper, a statute, or a merchant's affiliate terms. None of those became reachable:
+  `developer.mozilla.org`, `en.wikipedia.org`, `law.go.kr`, `www.kcs.go.kr`, `doi.org`,
+  `www.ncbi.nlm.nih.gov` and `www.w3.org` all still refuse. Full probe output is in
+  `docs/tone-ita-verification.md`.
 - 2026-09-15 — Which host a real affiliate link lands on. The override allowlist in
   `lib/commerce.ts` accepts `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
   `www.coupang.com` and `www.google.com`. A 네이버 쇼핑 커넥트 link is likely on a
@@ -444,14 +550,19 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
-- **2026-09-15 — `confidenceLabel` exists twice, byte-for-byte.** `lib/skin.ts:373` and
-  `confidenceLabelFor` in `app/scan/capture-analysis.ts:223` both read
-  `>= 0.78 → 높음, >= 0.58 → 보통`. Not a bug today: the values are identical, and
-  `distanceConfidence` has only one definition, so the 2026-09-15 sign-inversion fix
-  did not miss a copy. It is a latent divergence — change one threshold and the
-  vision-API path disagrees with the ROI path, silently. Worth a contract test that
-  fails when the two drift, not a refactor: the two call sites have different shapes
-  and merging them would be wider than the problem.
+- [x] **2026-09-15 — `confidenceLabel` exists twice, byte-for-byte.** ~~A latent
+  divergence: change one threshold and the vision-API path disagrees with the ROI path,
+  silently.~~ Actioned 2026-09-16 as the contract test the finding asked for, not a
+  refactor — the two functions stay where they are, each gains a comment pointing at
+  the other, and both are exported only so `tests/confidence-label-contract.test.ts`
+  can hold them together. It sweeps 0→1 in 0.0005 steps plus both boundaries at ±1e-9
+  and ±1e-12 plus four out-of-range values, and asserts equality, monotonicity, that
+  each function uses all three labels (so they cannot agree by both going constant),
+  and that the two boundaries sit in the same place to 12 decimals. Deliberately pins
+  the *agreement*, not the numbers, because the open item below may yet move the
+  thresholds or drop the label to two levels — whatever it decides has to be decided in
+  both places. Verified by drifting one copy to 0.80: 42 of 2013 sweep values disagree
+  and 2 of the 4 cases fail.
 
 ## Changelog
 
@@ -690,3 +801,225 @@ up rather than rediscover them.
   allowlist. Funnel: page views on the four surfaces that fired nothing. Supervisor
   re-ran `npm run smoke` independently (351 vitest, 66 Python self-tests, 0 lint errors)
   and reproduced the stdlib metric table byte-for-byte.
+- 2026-09-16 (cycle 3) — Branch `autopilot/2026-09-16-0039`. All four tracks plus the
+  two items the supervisor had sized. `npm run smoke` green on arrival and green again
+  after every change, both runs with the documented `PLAYWRIGHT_CHROMIUM_EXECUTABLE`
+  override and nothing else. Baseline `63 files / 351 tests / 66 python`; final:
+
+  ```
+   Test Files  67 passed (67)
+        Tests  376 passed (376)
+    44 passed (2.4m)
+  Ran 68 tests in 0.012s
+  OK
+  Smoke test passed.
+  ```
+
+  Lint was `✖ 2 problems (0 errors, 2 warnings)` before and after — the same two unused
+  parameters in `lib/care.ts`, untouched by this diff.
+
+  **ML — the tone stratifier was measuring the room.** The cycle set out to close the
+  "`raw.toneIta` has no behavioural test" gap and the test found a defect instead of
+  confirming the code. `lib/skin.ts` applied gray-world illuminant gains to the cheek
+  pixels before computing tone. Gray-world estimates the illuminant from the *whole
+  frame*, so a coloured wall behind the user was read as coloured light and divided out
+  of their face. One synthetic face, held byte-for-byte identical, with only the wall
+  changed:
+
+  | wall | toneIta before | band before | toneIta after |
+  |---|---|---|---|
+  | grey (180,180,180) | 75.2 | very_light | 61.7 |
+  | white (235,235,235) | 73.3 | very_light | 61.7 |
+  | dark (60,60,60) | 82.3 | very_light | 61.7 |
+  | cool blue (120,150,205) | 49.2 | light | 61.7 |
+  | warm wood (200,150,105) | **-60.5** | **brown_dark** | 61.7 |
+
+  Three of the five tone bands for one face — `very_light`, `light` and `brown_dark`,
+  which is the full width of the scale; `intermediate` and `tan` do not appear. `relRedness` (0.00243) and `shine`
+  (0.03973) were identical across all five rows before and after — the within-image
+  indices were never affected, which is why nothing else caught it. This is the
+  stratifier `ml/subgroups.py` derives every tone band from and the promotion gate
+  blocks on, so a subgroup that "passed" may have been a subgroup of wallpaper. The
+  `[0.6, 1.6]` clamp bounded each gain but not the angle: ITA divides by `b*`, and the
+  warm-wood gains drag `b*` through zero, so the sign flips whatever the clamp — the
+  comment claiming "extreme scenes cannot invent a tone shift" was wrong about what it
+  bounded. `ml/ita.py` applies no gain offline and its docstring already required the
+  two to match ("Change one, change both"), so the browser was the side that had
+  drifted; and the two scales were not merely in different datasets but in the same
+  file, since `ita_for_row` in `ml/prepare_crop_dataset.py` takes the app's value when
+  there is one and recomputes through `ml/ita.py` when there is not. Fixed by measuring
+  tone on the pixels as captured. `tests/tone-ita-contract.test.ts` — all 5 cases fail
+  against `origin/main`, the wall case with
+  `AssertionError: toneIta behind a warm wood wall: expected -60.5 to be 75.2`.
+
+  `fallbackVersion` moves to `roi-calibrated-2026-09-16` in `lib/skin.ts` and in
+  `public/models/visible-attributes/manifest.json` — the procedure
+  `docs/label-free-axes.md` already states for a feature-semantics change and the one
+  the 09-14 bump followed. Not guardrail 8: `status` and `promotionGate` are untouched.
+  The measured invariant in that doc moved with the change and is corrected there —
+  `toneLstar` under exposure ×1.12 now reads 70.0 → 77.6, was 69.6 → 77.2, while
+  `toneSpread` (0.0532 → 0.0528) and `blemishCount` are unchanged, which is that
+  section's own point.
+
+  **What the fix does not fix, measured rather than waved at.** A ±12% / −8% channel
+  cast still moves a mid-tone face about one band, and on a low-`b*` face it does far
+  worse — the synthetic fixture goes 61.8 → −87.6, `very_light` → `brown_dark`, because
+  ITA divides by `b*` and the cast pushes it through zero. `ml/ita.py` has always had
+  this and the change neither causes nor cures it; what the change removed is a
+  *second*, avoidable dependence on top of it. Before, one face spanned three bands with
+  the light held constant and only the wall moving, which is noise with no signal in it
+  at all. Table and the consequence for the fairness gate in
+  `docs/tone-ita-verification.md` §3; backlog item with the numbers attached.
+
+  **research — `docs/tone-ita-verification.md`.** Gating fairness on a metric means
+  first checking it is the metric, and nothing had. `pypi.org` is still reachable, so
+  colour-science 0.4.7 and scikit-image 0.26.0 gave two independent references; neither
+  is or becomes a dependency (imported inside `main()`, same pattern as
+  `ml/tools/verify_ordinal_metrics.py`). Over 4,000 random sRGB triples ARU's CIELAB
+  agrees with colour-science to `3.717e-05` in L\*, `2.412e-03` in a\*, `1.381e-02` in
+  b\*, and with scikit-image to `7.502e-03 / 2.062e-02 / 2.129e-02`; the residual is
+  ARU's four-decimal sRGB→XYZ matrix against the references' longer one. ITA agrees to
+  `4.844e-02` degrees on skin-plausible `|b*| > 5` and `2.985e-01` across the whole
+  range, the difference being the formula's own conditioning near `b*=0` rather than a
+  disagreement about colour. Six swatches are now pinned in both suites and agree with
+  both references to `1.815e-02` degrees. What is **not** verified and is now a backlog
+  item: the band cut points themselves. Also re-probed egress — `raw.githubusercontent.com`
+  returns real content and `api.github.com` answers, which was not true last cycle;
+  nothing else opened up.
+
+  **UX — the report could contradict itself.** `mergeVisionAnalysis` rewrites the three
+  buckets and `headline` arrived through `...base`, computed from the buckets as they
+  were. So did `overall`, which the original report missed — the 전반 row on `/report`,
+  the scan result card and `/studio`. Both are now rederived from `next.*`, via exported
+  `headlineFor`/`narrativeFor` and an `overallFor` extracted out of `readsFromRaw` so
+  the two paths share one definition. `payload.narrative` is still the override it was.
+  Measured by reverting only the three recompute lines and keeping the exports, so the
+  failures are behavioural rather than import errors — 5 of 6 cases fail:
+
+  ```
+  AssertionError: expected '피부 컨디션이 비교적 안정적이에요' to be '오늘은 진정 루틴이 먼저예요'
+  AssertionError: expected { value: '대체로 안정', level: +0, …(2) } to deeply equal { value: '균형 관리 필요', level: 2, …(2) }
+  ```
+
+  That headline sat above rows reading 붉은기 뚜렷, from one scan of one face. The
+  second-order half is settled by the same change: `localizedNarrative` returns the
+  stored Korean sentence as-is and rebuilds it from the levels for every other
+  language, so a stale stored sentence showed a Korean user one face and an English
+  user another.
+
+  **bug — the denied screen told users to fix something that was not broken.** The
+  stream-attach failure recorded `camera_blocked {reason:"attach"}` and called
+  `setPhase("denied")` with no `setDeniedReason`. `getUserMedia` has already resolved by
+  then, so permission was granted, and the render chain ends in the 권한 branch as its
+  `else` — the user was told to grant a permission they had already granted, or shown
+  the previous attempt's reason, since `startCamera` never clears it. Fixed with an
+  `attach` reason and its own copy in all four dictionaries.
+  `tests/camera-denied-reason.test.ts` fails on the next path that forgets, and 2 of
+  its 5 cases fail against `origin/main`.
+
+  **commerce (revenue-upstream #1) — the sku half of the override audit.** Last cycle
+  left it as a documented gap because `lib/skus.ts` imports `lib/commerce.ts`. Closed by
+  injection rather than a new module: the ids come from the caller that already holds
+  `SKUS`, so `lib/commerce.ts` still imports nothing. `/api/out` passes them, which puts
+  the check on the production hot path; `/api/sync` GET reports the accepted/rejected
+  split and `/ops` renders it, which is the first screen an operator can see it on —
+  **behind the sync token**, which the adversarial review changed (see below). `value`
+  is never returned: the URL stays in the server log, where an operator debugging a
+  typo'd host needs it. Verified against the built server with one good override and one
+  of each rejection kind:
+
+  ```
+  --- GET /api/sync  (unauthenticated) ---
+  { "configured": …, "rateLimit": {…} }            # no commerceOverrides key at all
+  --- GET /api/sync  (Bearer <SUPABASE_SYNC_TOKEN>) ---
+  "commerceOverrides": {
+    "configured": true, "parsed": true, "accepted": 1,
+    "issues": [
+      { "sku": "UNRELEASED_Q4", "merchant": "oliveyoung",     "reason": "unknown-sku" },
+      { "sku": "cl1",           "merchant": "kurly",          "reason": "unknown-merchant" },
+      { "sku": "sr1",           "merchant": "naver-shopping", "reason": "not-https-or-allowlisted" }
+    ]
+  }
+  --- GET /api/out with the one valid override ---
+  status=302
+  location=https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000123456&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=verify_tn1_oliveyoung
+  --- server log (never leaves the server) ---
+  [commerce] override for UNRELEASED_Q4/oliveyoung ignored: "UNRELEASED_Q4" is not a sku id in the catalogue. The link is still a search URL.
+  [commerce] override for cl1/kurly ignored: "kurly" is not a merchant id (oliveyoung, naver-shopping, coupang, global-search). The link is still a search URL.
+  [commerce] override for sr1/naver-shopping ignored: the URL is not an https URL on the allowlist (www.oliveyoung.co.kr, search.shopping.naver.com, www.coupang.com, www.google.com) (https://smartstore.naver.com/b/products/1). The link is still a search URL.
+  ```
+
+  The third row is worth noting on its own: `smartstore.naver.com` is the host the
+  partnership playbook used as its worked example before last cycle corrected it, and is
+  still the host a real 네이버 쇼핑 커넥트 link is most likely to be on. The allowlist
+  blocker below stays open. 3 of the 5 new cases fail against `origin/main`; the other
+  two are no-regression guards for the no-catalogue caller and are not evidence.
+
+  **confidence label — the contract test the supervisor asked for, not a refactor.**
+  Both copies stay where they are and are exported only so the test can hold them
+  together. It sweeps 0→1 in 0.0005 steps plus both boundaries at ±1e-9 and ±1e-12,
+  and asserts equality, monotonicity, that each uses all three labels, and that both
+  boundaries sit in the same place to 12 decimals. It pins the agreement rather than
+  the numbers, because the open backlog item may yet move them. Verified by drifting
+  one copy to 0.80: `42 of 2013 values disagree`, 2 of 4 cases fail. Its limits are in
+  its own header rather than left implied: `0.58` lives in five places and this holds
+  two of them, so moving it in both labels still passes. Now a backlog item.
+
+  **review** Three subagents reviewed the diff before commit, and the review changed it
+  in eight places. Recording them because the protocol asks for this step and it is only
+  worth the tokens if it finds things:
+
+  - The override audit was returned to **anyone**, justified by a claim that is true of
+    catalogue ids and false of exactly the rows the new check surfaces. Now behind the
+    sync token. Two reviewers found this independently.
+  - No version identifier moved for a feature-semantics change, against the repo's own
+    written rule and its own precedent. `fallbackVersion` now bumps in both places. An
+    earlier draft instead wrote a comment claiming the string "has never actually
+    changed" — true of `inputSchemaVersion`, false of `fallbackVersion`, which is the
+    one the three "Bumped" comments actually describe.
+  - **"four of the five tone bands" was wrong: it is three.** 75.2 / 73.3 / 82.3 / 49.2
+    / −60.5 are `very_light, very_light, very_light, light, brown_dark`; `intermediate`
+    and `tan` never appear. The table was right and the sentence over it was not, in
+    four places.
+  - The cost of the fix was described in prose and never measured. Now a table, and the
+    worst case in it (−87.6) is worse than the prose implied.
+  - `docs/label-free-axes.md` carried a measured `toneLstar` invariant this change moved
+    and no test guards (the assertion is only `> 2`). Re-measured. `docs/golden-set.md`
+    still named `roi-calibrated-2026-07-03` and "gray-world 톤 보정", and
+    `docs/analysis-performance-roadmap.md` had an open item whose literal wording would
+    have re-added frame-mean gray-world. Both corrected.
+  - `describeCommerceOverrideIssue` needed `value` for one branch, and `value` is
+    withheld from `/ops` — so the helper written for that screen could only ever be used
+    by the log it was meant to replace. It now takes only the identifying fields.
+  - The camera test's proximity window could be satisfied by the *previous* path's
+    `setDeniedReason` if the code between them shrank, one plausible refactor away from
+    silently re-admitting the exact bug. The load-bearing assertion is now a count. Its
+    `[a-z]+` regexes would also have dropped a hyphenated or camelCase reason, and an
+    extracted union type would have made `declaredReasons()` return `[]` while every
+    test still passed; both now fail loudly.
+  - `/ops` rendered "Status unavailable" on every first paint before the fetch resolved,
+    and would have crashed the page on a cached response missing `issues`. The tone test
+    re-parsed `ITA_BANDS` out of the Python when `lib/tone-bands.ts` already exports
+    `toneBandFromIta` and `tests/subgroup-contract.test.ts` already pins the two
+    together. A redundant dictionary check duplicated `tests/i18n-coverage.test.ts` more
+    weakly and its window ran past the denied block into the camera-paused one.
+
+
+  **Supervisor review, 2026-09-16 01:33–01:50 UTC.** Every number this cycle wrote into
+  a doc was re-derived by running it, not read. `ml/tools/verify_tone_ita.py`
+  reproduces its §1 table digit for digit in a fresh venv against colour-science 0.4.7
+  and scikit-image 0.26.0. Re-applying the gray-world gains to the tone path reproduces
+  the §2 "before" column exactly (grey wall 75.2, warm wood −60.5) and additionally
+  collapses all six flat swatches to ITA 90.0 — a flat frame is its own gray-world
+  reference, so the balanced tone of every swatch is neutral. `toneLstar` 70.0 → 77.6
+  at exposure ×1.12 with `toneSpread` 0.0532 → 0.0528 and `blemishCount` unchanged,
+  as `docs/label-free-axes.md` now states. Each new guard was broken on purpose and
+  failed: `confidence-label-contract` (0.78 → 0.80), `camera-denied-reason`
+  (`setDeniedReason` removed), `vision-merge-consistency` (headline rederivation
+  removed), `tone-ita-contract`. The sku check reaches `auditCommerceOverrides` by
+  injection from `/api/out`, so `lib/commerce.ts` still imports no catalogue and the
+  cycle it was avoiding does not exist. Two corrections made in review: a `value` field
+  passed to `describeCommerceOverrideIssue` in `tests/commerce.test.ts` added two
+  `tsc --noEmit` errors main does not have (16 → 18, both in test files), and
+  `docs/architecture.md` said the wall moved one face across four tone bands where the
+  measurement is three.

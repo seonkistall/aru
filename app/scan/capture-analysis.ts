@@ -1,5 +1,8 @@
 import { t } from "@/lib/i18n/core";
 import {
+  headlineFor,
+  narrativeFor,
+  overallFor,
   SKIN_LABELS,
   VISIBLE_MODEL_CONTRACT,
   type AnalysisSource,
@@ -189,7 +192,6 @@ export function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): S
     oil: { ...base.oil },
     redness: { ...base.redness },
     pores: { ...base.pores },
-    narrative: payload.narrative || base.narrative,
     source: "vision-api" satisfies AnalysisSource,
   };
 
@@ -217,10 +219,24 @@ export function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): S
     next.retakeRecommended = next.confidence < 0.58 || next.retakeReasons.length >= 2;
   }
 
+  // headline, narrative and the 전반 row are all derived from the three buckets this
+  // function has just rewritten, and arrived through `...base` derived from the old
+  // ones. Left alone, the <h1> on /report and the scan receipt could read 피부
+  // 컨디션이 비교적 안정적이에요 above a row reading 붉은기 뚜렷, from the same object.
+  // payload.narrative stays the override it already was; the template is the fallback.
+  next.headline = headlineFor(next.oil, next.redness, next.pores);
+  next.narrative = payload.narrative || narrativeFor(next.oil, next.redness, next.pores);
+  next.overall = overallFor(next.oil, next.redness, next.pores, next.confidence);
+
   return next;
 }
 
-function confidenceLabelFor(confidence: number): SkinReads["confidenceLabel"] {
+/**
+ * A byte-for-byte copy of `confidenceLabel` in lib/skin.ts, kept because the two call
+ * sites differ in shape. Exported so tests/confidence-label-contract.test.ts fails the
+ * moment one of the two thresholds moves and the other does not.
+ */
+export function confidenceLabelFor(confidence: number): SkinReads["confidenceLabel"] {
   if (confidence >= 0.78) return "높음";
   if (confidence >= 0.58) return "보통";
   return "낮음";

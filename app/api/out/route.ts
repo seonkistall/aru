@@ -16,7 +16,9 @@ export function GET(request: Request) {
     return NextResponse.json({ ok: false, reason: "unknown commerce link" }, { status: 404 });
   }
 
-  const override = commerceOverrideUrl(sku.id, merchant);
+  // SKUS is already loaded to resolve the click, so the override audit can check the
+  // sku half of every override key here without lib/commerce.ts importing the catalogue.
+  const override = commerceOverrideUrl(sku.id, merchant, { knownSkus: SKUS.map((item) => item.id) });
   const target = override || link.href;
   if (!isAllowedCommerceUrl(target)) {
     return NextResponse.json({ ok: false, reason: "blocked target" }, { status: 400 });

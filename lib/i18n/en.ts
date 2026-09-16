@@ -875,6 +875,7 @@ export const EN: Record<string, string> = {
   "촬영 프레임의 피부 신호와 설문 답변을 함께 보고 제품 추천, 루틴, 주의 성분을 연결했어요. 리포트는 의료 판단이 아니라 화장품 선택을 돕는 참고 결과입니다.": "We read the skin signals in your capture together with your survey answers to connect product picks, your routine, and ingredients to watch. This report is a reference for choosing cosmetics, not a medical judgment.",
   "카메라를 다른 앱이 사용 중이에요. 다른 앱을 닫고 다시 시도해 주세요.": "Another app is using the camera. Close it and try again.",
   "연결된 카메라를 찾지 못했어요.": "No camera was found.",
+  "카메라는 켜졌는데 화면에 연결하지 못했어요. 다시 시도해 주세요.": "The camera turned on but could not attach to the screen. Please try again.",
   "오늘 스캔과 설문 조건을 함께 보고, {budget} 예산에 가장 가까운 {category} 제품을 골랐어요. {head}도 반영했어요.": "Category: {category}. The closest option to your {budget} budget after considering today's scan and survey. {head} was also considered.",
   "설문 조건을 보고, {budget} 예산에 가장 가까운 {category} 제품을 골랐어요. {head}도 반영했어요.": "Category: {category}. The closest option to your {budget} budget after considering your survey. {head} was also considered.",
   "{type} 피부와 {concerns} 고민을 기준으로 {category} 제품을 골랐어요.": "Category: {category}. Chosen for {type} skin and {concerns} concerns.",
