@@ -236,6 +236,13 @@ describe("shipped heuristic contract", () => {
     }
   });
 
+  it("names the heuristic version the manifest actually ships", () => {
+    // The baseline report records which rule it scored. Cycle 3 bumped fallbackVersion
+    // and this block did not follow, so metrics.json would have named a heuristic that
+    // no longer matched the one being scored.
+    expect(manifest.fallbackHeuristic.version).toBe(manifest.fallbackVersion);
+  });
+
   it("covers exactly the axes lib/skin.ts buckets, in both directions", () => {
     // Every other check here loops over the MANIFEST's axes, so an axis added to
     // ATTR_RAW_KEY but never declared in the manifest was invisible to all of them —

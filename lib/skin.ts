@@ -148,7 +148,14 @@ export const VISIBLE_MODEL_CONTRACT = {
   // Bumped 07-03: trimmed region stats + tone (L*/ITA) fields change feature semantics.
   // Bumped 09-14: within-image indices added (toneSpread, roughnessRatio,
   // blemish count/density) and tone evenness now reads the four-region spread.
-  fallbackVersion: "roi-calibrated-2026-09-14",
+  // Bumped 09-16: toneIta/toneLstar are measured on the captured pixels rather than
+  // gray-world-balanced ones, so they differ from every sample collected before this
+  // date and must not be pooled with them when thresholds are drawn — the rule in
+  // docs/label-free-axes.md. Measurements in docs/tone-ita-verification.md.
+  // Note the three "Bumped" lines describe fallbackVersion below, not
+  // inputSchemaVersion above: the crop contract the model consumes is unchanged, the
+  // derived feature values are not. Keep the manifest's copy in step.
+  fallbackVersion: "roi-calibrated-2026-09-16",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
 
@@ -370,15 +377,28 @@ function buildSignals(raw: SkinRawFeatures) {
   ] satisfies ConfidenceSignal[];
 }
 
-function confidenceLabel(confidence: number): SkinReads["confidenceLabel"] {
+/**
+ * Exported only so tests/confidence-label-contract.test.ts can hold it against the
+ * byte-for-byte copy in app/scan/capture-analysis.ts. The two call sites have
+ * different shapes and merging them would be wider than the problem; what is worth
+ * preventing is one threshold moving without the other.
+ */
+export function confidenceLabel(confidence: number): SkinReads["confidenceLabel"] {
   if (confidence >= 0.78) return "높음";
   if (confidence >= 0.58) return "보통";
   return "낮음";
 }
 
-// Stored as raw Korean (SkinReads is persisted to localStorage across
-// language switches) — consumers translate at render via t()/localizedNarrative.
-function headlineFor(oil: Bucket, redness: Bucket, pores: Bucket) {
+/**
+ * Stored as raw Korean (SkinReads is persisted to localStorage across language
+ * switches) — consumers translate at render via t()/localizedNarrative.
+ *
+ * Exported because `mergeVisionAnalysis` rewrites the three buckets and has to
+ * rederive everything that was derived from them. While it could not, the `<h1>` on
+ * /report could read 피부 컨디션이 비교적 안정적이에요 directly above a row reading
+ * 붉은기 뚜렷.
+ */
+export function headlineFor(oil: Bucket, redness: Bucket, pores: Bucket) {
   if (redness.level >= 2) return "오늘은 진정 루틴이 먼저예요";
   if (oil.level >= 2 && pores.level >= 1) return "T존 유분과 피부결을 함께 볼게요";
   if (oil.level >= 2) return "T존 유분이 도드라져 보여요";
@@ -394,9 +414,17 @@ function narrativeParts(oil: Bucket, redness: Bucket, pores: Bucket) {
   ];
 }
 
-function narrativeFor(oil: Bucket, redness: Bucket, pores: Bucket) {
+export function narrativeFor(oil: Bucket, redness: Bucket, pores: Bucket) {
   const parts = narrativeParts(oil, redness, pores);
   return `${parts[0]}, ${parts[1]}. ${parts[2]}.`;
+}
+
+/** The 전반 row. Derived from the same three buckets, so it moves with them. */
+export function overallFor(oil: Bucket, redness: Bucket, pores: Bucket, confidence: number): Bucket {
+  const concerns = [oil, redness, pores].filter((b) => b.level > 0).length;
+  if (confidence < 0.58) return { value: "재촬영 권장", level: 1, calm: false, confidence };
+  if (concerns >= 2) return { value: "균형 관리 필요", level: 2, calm: false, confidence };
+  return { value: "대체로 안정", level: 0, calm: true, confidence };
 }
 
 // Render-time translation of the narrative: the stored narrative is one
@@ -431,9 +459,22 @@ export function levelFor(attr: SkinAttr, value: number): SkinLevel {
 }
 
 // Gray-world illuminant gains from the FULL frame (background included, sub-
-// sampled). Applied only to the tone estimate — oil/redness/pores stay on the
-// self-relative measures that already cancel a global color cast. Gains are
-// clamped so extreme scenes cannot invent a tone shift.
+// sampled). oil/redness/pores stay on the self-relative measures that already
+// cancel a global color cast; these feed the blemish a* threshold and the
+// toneSpread region comparison, both of which are ratios within one frame and so
+// only need the cast removed consistently, not correctly.
+//
+// NOT applied to toneIta/toneLstar. Gray-world estimates the illuminant from the
+// whole frame, so a coloured wall behind the user is read as coloured light and
+// divided out of their face. Measured on one synthetic face held fixed while only
+// the background changed, toneIta ran 75.2 / 73.3 / 82.3 / 49.2 / -60.5 across a
+// grey, white, dark, blue and warm-wood wall — very_light, very_light, very_light,
+// light and brown_dark, so three of the five bands and the full width of the scale
+// from one face. The clamp below bounds each gain but not
+// the angle: ITA divides by b*, so a gain pair that drags b* through zero flips the
+// sign whatever the clamp. Tone is therefore measured on the pixels as captured,
+// which is also what ml/ita.py does offline and what its "change one, change both"
+// contract requires. See docs/tone-ita-verification.md.
 function frameChannelGains(data: Uint8ClampedArray, width: number, height: number): { r: number; g: number; b: number } {
   let sumR = 0;
   let sumG = 0;
@@ -643,18 +684,11 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
   const tzoneL = lum(tzone.meanR, tzone.meanG, tzone.meanB);
   const rIdx = (m: RegionStats) => m.meanR / (m.meanR + m.meanG + m.meanB || 1);
   const gains = frameChannelGains(data, w, h);
-  const balance = (pixel: SkinPixel): SkinPixel => ({
-    r: Math.min(255, pixel.r * gains.r),
-    g: Math.min(255, pixel.g * gains.g),
-    b: Math.min(255, pixel.b * gains.b),
-    L: pixel.L,
-  });
-  const tone = dominantTone(cheeks.pixels.map(balance)) ?? (() => {
-    const lab = rgbToLab(
-      Math.min(255, cheeks.meanR * gains.r),
-      Math.min(255, cheeks.meanG * gains.g),
-      Math.min(255, cheeks.meanB * gains.b)
-    );
+  // Unbalanced on purpose — see the frameChannelGains comment. The same cheek
+  // pixels must yield the same band whatever is behind the person, and must match
+  // what ml/ita.py computes from a dataset image of the same face.
+  const tone = dominantTone(cheeks.pixels) ?? (() => {
+    const lab = rgbToLab(cheeks.meanR, cheeks.meanG, cheeks.meanB);
     const ita = Math.abs(lab.b) < 0.01 ? (lab.l > 50 ? 90 : -90) : (Math.atan((lab.l - 50) / lab.b) * 180) / Math.PI;
     return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
   })();
@@ -738,13 +772,7 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
         ? { label: "T존 반사광", value: "보통", calm: true, note: "이마에 옅은 반사가 보여요." }
         : { label: "T존 반사광", value: "높음", calm: false, note: "이마 반사가 강해요. 유분 또는 조명 영향이에요." };
 
-  const concerns = [merged.buckets.oil, merged.buckets.redness, merged.buckets.pores].filter((b) => b.level > 0).length;
-  const overall: Bucket =
-    confidence < 0.58
-      ? { value: "재촬영 권장", level: 1, calm: false, confidence }
-      : concerns >= 2
-        ? { value: "균형 관리 필요", level: 2, calm: false, confidence }
-        : { value: "대체로 안정", level: 0, calm: true, confidence };
+  const overall = overallFor(merged.buckets.oil, merged.buckets.redness, merged.buckets.pores, confidence);
 
   return {
     oil: merged.buckets.oil,

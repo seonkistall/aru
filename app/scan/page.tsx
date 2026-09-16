@@ -67,7 +67,11 @@ export default function Scan() {
   const cropSizeRef = useRef<{ ai?: string; learning?: string; model?: string }>({});
 
   const [phase, setPhase] = useState<Phase>("init");
-  const [deniedReason, setDeniedReason] = useState<"permission" | "busy" | "notfound">("permission");
+  // Every setPhase("denied") must set this too. The render below falls through to the
+  // permission copy for anything it does not recognise, so a path that forgets tells
+  // the user to grant a permission they have already granted — pinned by
+  // tests/camera-denied-reason.test.ts.
+  const [deniedReason, setDeniedReason] = useState<"permission" | "busy" | "notfound" | "attach">("permission");
   const [reads, setReads] = useState<SkinReads | null>(null);
   const [err, setErr] = useState("");
   const [shareCopied, setShareCopied] = useState(false);
@@ -191,8 +195,11 @@ export default function Scan() {
       setPhase("ready");
     } catch {
       // The stream opened and then failed to attach. A different failure from a
-      // refusal, and the user sees the same dead-end, so it is recorded separately.
+      // refusal, and the user sees the same dead-end, so it is recorded separately —
+      // and told separately: permission was granted here (getUserMedia resolved above),
+      // so the 권한 copy would send the user to check a setting that is already correct.
       recordFunnelEvent("camera_blocked", { reason: "attach" });
+      setDeniedReason("attach");
       setPhase("denied");
     }
   }, [resetQualityLoop]);
@@ -403,7 +410,9 @@ export default function Scan() {
                     ? t("카메라를 다른 앱이 사용 중이에요. 다른 앱을 닫고 다시 시도해 주세요.")
                     : deniedReason === "notfound"
                       ? t("연결된 카메라를 찾지 못했어요.")
-                      : t("카메라 권한이 필요해요.")}
+                      : deniedReason === "attach"
+                        ? t("카메라는 켜졌는데 화면에 연결하지 못했어요. 다시 시도해 주세요.")
+                        : t("카메라 권한이 필요해요.")}
                 </p>
                 <button onClick={() => void startCamera()} style={primaryBtn}>{t("다시 시도")}</button>
                 <a href="/survey" style={ghostLink}>{t("카메라 없이 설문으로 시작하기")}</a>

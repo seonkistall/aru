@@ -15,6 +15,7 @@ Standard library only, no torch, so it runs anywhere `py_compile` does.
 from __future__ import annotations
 
 import json
+import math
 import sys
 import tempfile
 import unittest
@@ -79,6 +80,38 @@ class ToneAndAge(unittest.TestCase):
         lstar, _, bstar = ita.rgb_to_lab(200, 160, 140)
         self.assertAlmostEqual(lstar, 69.0, delta=0.5)
         self.assertGreater(ita.ita_from_lab(lstar, bstar), 41)  # light band
+
+    #: sRGB -> (L*, ITA, band), produced by ml/tools/verify_tone_ita.py and agreeing
+    #: with scikit-image to 1.815e-02 and colour-science to 1.672e-02 degrees. The same
+    #: six rows are pinned in tests/tone-ita-contract.test.ts against lib/skin.ts, so
+    #: this is also what keeps the offline and browser tone readings on one scale.
+    ITA_FIXTURES = (
+        ((242, 223, 211), 90.0, 78.4, "very_light"),
+        ((226, 195, 176), 80.9, 66.3, "very_light"),
+        ((205, 168, 144), 71.6, 50.9, "light"),
+        ((181, 139, 110), 61.1, 27.2, "tan"),
+        ((140, 100, 74), 45.9, -11.0, "brown_dark"),
+        ((86, 58, 42), 27.2, -56.8, "brown_dark"),
+    )
+
+    def test_ita_reproduces_the_reference_verified_fixture_table(self):
+        for rgb, lstar, angle, band in self.ITA_FIXTURES:
+            got_l, _, got_b = ita.rgb_to_lab(*rgb)
+            got_ita = ita.ita_from_lab(got_l, got_b)
+            self.assertAlmostEqual(round(got_l * 10) / 10, lstar, places=6, msg=str(rgb))
+            self.assertAlmostEqual(round(got_ita * 10) / 10, angle, places=6, msg=str(rgb))
+            self.assertEqual(subgroups.tone_band_from_ita(round(got_ita * 10) / 10), band, rgb)
+
+    def test_ita_is_in_degrees(self):
+        # atan() returns radians and the slip is silent: a radian value is still a
+        # number, tone_band_from_ita still returns a band for it, and every sample
+        # lands in that one band — a subgroup gate that never blocks looks exactly
+        # like a model that is fair to everyone.
+        angles = [ita.ita_from_lab(ita.rgb_to_lab(*rgb)[0], ita.rgb_to_lab(*rgb)[2]) for rgb, *_ in self.ITA_FIXTURES]
+        self.assertGreater(max(abs(a) for a in angles), math.pi / 2)
+        self.assertGreaterEqual(len({subgroups.tone_band_from_ita(a) for a in angles}), 3)
+        radians = [math.radians(a) for a in angles]
+        self.assertEqual(len({subgroups.tone_band_from_ita(r) for r in radians}), 1)
 
 
 class Folds(unittest.TestCase):

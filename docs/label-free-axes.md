@@ -81,9 +81,15 @@ manuscript `srt_submission/main.tex` 및 자동생성 `parameters.tex`)가 보�
   밝은 얼굴을 구분하지 못한다). 트러블·건조는 기록만 하고 표시하지 않는다.
 - `fallbackVersion`을 `roi-calibrated-2026-09-14`로 올렸다. 피처 의미가 바뀌었으므로
   이전 버전으로 수집된 샘플과 섞어서 임계값을 뽑으면 안 된다.
+  (2026-09-16에 같은 이유로 `roi-calibrated-2026-09-16`으로 다시 올렸다 — 톤 경로에서
+  gray-world 게인을 제거해 `toneIta`/`toneLstar` 값이 바뀌었다.
+  `docs/tone-ita-verification.md` 참고.)
 - 불변성은 `tests/skin-index-contract.test.ts`가 고정한다. 합성 얼굴에 노출 ×1.12를
-  주면 `toneLstar`는 69.6 → 77.2로 움직이고 `toneSpread`는 0.0532 → 0.0528,
+  주면 `toneLstar`는 70.0 → 77.6으로 움직이고 `toneSpread`는 0.0532 → 0.0528,
   `blemishCount`는 동일하다. 점을 지운 같은 프레임에서는 0개를 센다(노이즈 오검출 없음).
+  (`toneLstar` 수치는 2026-09-16 게인 제거 후 재측정값이다. 이전 기록은 69.6 → 77.2였고,
+  `toneSpread`와 `blemishCount`는 변하지 않았다 — 프레임 내 지표는 게인의 영향을 받지
+  않는다는 것이 바로 이 절의 요지다.)
 
 ## 절대 지표는 계층화 변수로만
 
