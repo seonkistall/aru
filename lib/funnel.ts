@@ -26,6 +26,13 @@ export type FunnelEventKind =
   // and failed to attach. `reason` is one of
   // permission | busy | notfound | unsupported | attach.
   | "camera_blocked"
+  // A camera that was already live stopped mid-session. Distinct from camera_blocked,
+  // which is a camera that never opened: the permission is granted and the hardware
+  // was working, so nothing on the block screen applies. `reason` is one of
+  // muted | ended (the track itself died — another app took the camera) |
+  // backgrounded (the tab was hidden or unloaded, which ARU does deliberately).
+  // The two must be told apart before either is counted: only the first is a loss.
+  | "camera_interrupted"
   | "scan_started"
   | "scan_completed"
   | "survey_viewed"
@@ -167,6 +174,7 @@ export const FUNNEL_ORDER: FunnelEventKind[] = [
   "share_landed",
   "scan_opened",
   "camera_blocked",
+  "camera_interrupted",
   "scan_started",
   "scan_completed",
   "survey_viewed",

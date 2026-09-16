@@ -152,10 +152,14 @@ export const VISIBLE_MODEL_CONTRACT = {
   // gray-world-balanced ones, so they differ from every sample collected before this
   // date and must not be pooled with them when thresholds are drawn — the rule in
   // docs/label-free-axes.md. Measurements in docs/tone-ita-verification.md.
-  // Note the three "Bumped" lines describe fallbackVersion below, not
+  // Bumped 09-16b: blemishDensity is blemishes per face-width-squared of sampled
+  // skin, not per megapixel of it. Every value collected before this string is on a
+  // scale that depends on the capture resolution and must not be pooled with one
+  // after it. Measurements in docs/capture-resolution-invariance.md.
+  // Note the four "Bumped" lines describe fallbackVersion below, not
   // inputSchemaVersion above: the crop contract the model consumes is unchanged, the
   // derived feature values are not. Keep the manifest's copy in step.
-  fallbackVersion: "roi-calibrated-2026-09-16",
+  fallbackVersion: "roi-calibrated-2026-09-16b",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
 
@@ -533,6 +537,16 @@ function relativeSpread(values: number[]): number {
  * the skin immediately around it, so the count survives the device shifting
  * every a* in the frame by the same amount. Eyes, brows, lips and nostrils are
  * cut out because each of them is also a local a* maximum.
+ *
+ * The sampled area is returned in FACE WIDTHS SQUARED, not in capture pixels.
+ * The detector walks a grid whose stride is a fraction of the face width, so the
+ * count is already a face-relative quantity; dividing it by an area in capture
+ * pixels made the density scale as roughly 1/faceWidth^2 and put two scans of one
+ * face at different capture resolutions on different scales. Measured on one
+ * synthetic face over a 7.2x range of face width (docs/capture-resolution-invariance.md):
+ * the pixel area moves 50.8x while `areaPx / faceW^2` moves 1.9%, from 2.0403 to
+ * 2.0012 — so the face-relative area is the invariant one and this is the
+ * denominator a cross-device index has to use.
  */
 function detectBlemishes(
   data: Uint8ClampedArray,
@@ -540,7 +554,7 @@ function detectBlemishes(
   h: number,
   landmarks: LM[],
   gains: { r: number; g: number; b: number }
-): { count: number; areaPx: number } {
+): { count: number; areaFace: number } {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -554,14 +568,14 @@ function detectBlemishes(
   }
   const faceW = maxX - minX;
   const faceH = maxY - minY;
-  if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaPx: 0 };
+  if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaFace: 0 };
 
   const stride = Math.max(1, Math.round(faceW / BLEMISH.gridAcrossFace));
   const x0 = Math.max(0, Math.floor(minX));
   const y0 = Math.max(0, Math.floor(minY));
   const gw = Math.floor((Math.min(w - 1, Math.ceil(maxX)) - x0) / stride) + 1;
   const gh = Math.floor((Math.min(h - 1, Math.ceil(maxY)) - y0) / stride) + 1;
-  if (gw < 2 * BLEMISH.backgroundRadius || gh < 2 * BLEMISH.backgroundRadius) return { count: 0, areaPx: 0 };
+  if (gw < 2 * BLEMISH.backgroundRadius || gh < 2 * BLEMISH.backgroundRadius) return { count: 0, areaFace: 0 };
 
   const excludeR = BLEMISH.excludeFraction * faceW;
   const excluded: Array<{ x: number; y: number }> = [];
@@ -663,7 +677,7 @@ function detectBlemishes(
     }
   }
 
-  return { count, areaPx: validCells * stride * stride };
+  return { count, areaFace: (validCells * stride * stride) / (faceW * faceW) };
 }
 
 function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
@@ -726,7 +740,7 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     // and the previous sentinel of 1 was indistinguishable from a genuine even face.
     roughnessRatio: cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0,
     blemishCount: blemishes.count,
-    blemishDensity: blemishes.count / Math.max(blemishes.areaPx / 1e6, 1e-6),
+    blemishDensity: blemishes.count / Math.max(blemishes.areaFace, 1e-6),
   };
 }
 

@@ -63,6 +63,7 @@ const emptyFunnel: FunnelSummary = {
     home_viewed: 0,
     scan_opened: 0,
     camera_blocked: 0,
+    camera_interrupted: 0,
     scan_started: 0,
     scan_completed: 0,
     survey_viewed: 0,
