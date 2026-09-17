@@ -659,6 +659,89 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-17 (cycle 10) — Branch `autopilot/2026-09-17-1839`. **The protocol file was
+  66% history, and every brief told a fresh session to read all of it.** Measured before
+  anything moved: 2,329 lines, of which 1,545 (66%) were changelog. The parts a worker
+  must act on — the protocol, the ten guardrails, the live backlog — had become the
+  minority of the file it is required to read first, and the tax grew every cycle.
+  Split by what a cycle has to DO with a line, not by date alone. `docs/AUTOPILOT.md`
+  keeps the cycle protocol, the guardrails, the revenue arithmetic and the
+  revenue-upstream ordering, the standing objective, the open backlog, BLOCKERS, "How
+  the schedule actually runs", "Supervisor findings not yet actioned", and the three
+  most recent cycles under a new "Recent cycles". `docs/autopilot-changelog.md` takes
+  the closed history: changelog entries 2026-09-14 through cycle 6, and the backlog
+  items ticked `[x]`. `[~]` did not move — partly done is live work — and neither did
+  any open `[AI]`/`[OWNER]` item.
+
+  ```
+  wc -l                          before   after split   after step 8 rotation
+  docs/AUTOPILOT.md               2329          1015                     975
+  docs/autopilot-changelog.md        0          1384                    1508
+  ```
+
+  Two stages because this cycle also ran the rule it wrote: the split moved the closed
+  history, then step 8 rotated cycle 7 out to keep "Recent cycles" at three. 975 is the
+  number a cycle 11 worker actually reads.
+
+  **No content lost, checked rather than asserted**, because an assertion is exactly
+  what this file's guardrail 2 forbids. Each moved block was located in the archive by
+  content alone — asserting it appears exactly once — and compared byte-for-byte against
+  its source range in `git show HEAD:docs/AUTOPILOT.md`: 58, 49, 40, 11 and 1,187 lines,
+  each matching on sha256. Then the stronger check, which does not depend on knowing
+  where anything went: every line of the original tested against a multiset of both new
+  files. Six lines matched neither, and they are the six this cycle deliberately
+  rewrote — protocol steps 1 and 7, and the three pointers into content that moved
+  (`see the changelog entry below`, `the read side is the item below`, and the README
+  line). Nothing else in 2,330 lines changed.
+
+  **Protocol step 8 is new and is the actual fix.** A split without a rotation rule just
+  resets the counter: cycle 11 appends, and by cycle 20 the file is back. Step 8 now
+  says "Recent cycles" holds three entries, the fourth-oldest moves to the archive with
+  its text unchanged, items ticked `[x]` that cycle move with it, and the move is proved
+  with `wc -l` on both files plus a byte-identity check. It also says the thing that
+  makes date a bad sole criterion: an entry whose finding is still open is not closed
+  history. This entry rotated cycle 7 out, so the rule has been exercised once rather
+  than only written down.
+
+  **Bug fix — `AGENTS.md` advertised a file that has never existed.** Its "Key Files to
+  Know" table mapped `lib/supabase.ts`, described as "Supabase client (public, no auth)
+  + RLS note". `git log --all -- lib/supabase.ts` is empty and the only `createClient`
+  call in the tree is `lib/supabase-admin.ts:14`, so there is no anon-key client and no
+  RLS surface. The document every agent is told to read first was describing a security
+  posture the app does not have — an agent trusting it would look for RLS as the
+  protection on a path where the service-role key is the only thing in play. Row
+  replaced with what is true.
+
+  **`tests/doc-links.test.ts`** resolves all 179 relative markdown links across
+  `README.md`, `AGENTS.md`, `CLAUDE.md`, root `AUTOPILOT.md` and `docs/**/*.md`, and
+  pins the archive as reachable from the file a cycle actually reads — orphaning 1,508
+  lines of history is the specific way this split could rot. It found the `AGENTS.md`
+  row on its first run, before it was fixed. No link in the tree carries a `#fragment`
+  (counted: zero), so it checks file existence and does not pretend to check anchors.
+  Verified by breaking its subject three ways: deleting `docs/autopilot-changelog.md`
+  (`"docs/AUTOPILOT.md -> autopilot-changelog.md (no docs/autopilot-changelog.md)"`,
+  7 links, both cases fail); repointing every archive link in `AUTOPILOT.md`
+  (`AssertionError: expected '# ARU Autopilot\n\nA scheduled sessio…' to contain
+  'autopilot-changelog.md'`); and restoring the `AGENTS.md` row
+  (`"AGENTS.md -> lib/supabase.ts (no lib/supabase.ts)"`).
+
+  **ML and UI/UX were skipped this cycle, deliberately.** The split was the pre-sized
+  main item and it is a whole-file change to the one document every future cycle starts
+  from; adding an unrelated model or screen change to the same branch would have made
+  the byte-identity proof harder to read for no gain. Research likewise: nothing this
+  cycle needed an external fact, and padding the track with a lookup nobody asked for is
+  how the changelog got to 1,545 lines. The backlog is unchanged apart from the `[x]`
+  items moving — no item was closed, reworded or reordered.
+
+  Verification on this branch: `npm run smoke` green (`Smoke test passed.`), vitest
+  **466 passed in 75 files** (from 464 in 74 — the two new cases),
+  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint` **2 warnings**
+  both in `lib/care.ts` unchanged, `python ml/selftest.py` **Ran 77 tests ... OK**
+  unchanged. Baselines were re-measured from scratch rather than trusted: `node_modules`
+  arrived empty in this container, so the first `tsc` run reported 2,451 errors, all of
+  them "Cannot find module 'next/server'" and "Cannot find name 'process'". That is a
+  missing `npm ci`, not a red build; after installing, the count was 13, matching the
+  brief. Guardrail 8 untouched — no change to `status` or `promotionGate`.
 - 2026-09-17 (cycle 9) — Branch `autopilot/2026-09-17-1239`. **The recommendation gets a
   conversion number of its own.** Cycles 6-8 built the funnel write path, the public
   ingest endpoint and the read side; none of them added a ratio that says anything about
@@ -890,126 +973,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   route handler with the Supabase client mocked at the query-builder level, which pins
   the select list, the filter, the cap and the count semantics — it has never run against
   a real Postgres, for the same reason §6 step 4 is still open.
-
-- 2026-09-17 (cycle 7) — Branch `autopilot/2026-09-17-0039`. **`POST /api/funnel`, the
-  ingest endpoint** — the item cycle 6 sized and deliberately did not rush — plus the
-  research that the origin guard rests on and one defect found on the same path.
-
-  **Baselines on arrival, counted rather than recalled, with `npm ci` run first because
-  `node_modules` was absent.** The cycle brief said `tsc --noEmit` is 16. It is **13**,
-  the same 13 cycle 4 counted, all pre-existing and all in test files
-  (`tests/android-config.test.ts` ×1, `tests/e2e/ios-safari-camera.spec.ts` ×3,
-  `tests/product-use.test.ts` ×3, `tests/skin-roi-quality.test.ts` ×6). The other three
-  matched the brief: vitest `71 files / 403 tests`, `ml/selftest.py` 77, lint
-  `0 errors, 2 warnings` (the two unused parameters in `lib/care.ts`, untouched here).
-  After this diff: **72 files / 432 tests**, tsc still **13**, selftest still **77**,
-  lint still 2 warnings. Protocol note, said plainly rather than implied: the arrival
-  baseline was vitest/tsc/selftest/lint, not `npm run smoke` — smoke was run after the
-  change, green, and again with the two route checks this cycle adds to it. The final
-  run, verbatim tail, with the documented
-  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
-  override and nothing else:
-
-  ```
-   Test Files  72 passed (72)
-        Tests  432 passed (432)
-    44 passed (2.7m)
-  Ran 77 tests in 0.013s
-  OK
-  ok GET /api/sync -> 200
-  ok POST /api/sync -> 401
-  ok GET /api/funnel -> 200
-  ok POST /api/funnel -> 403
-
-  Smoke test passed.
-  ```
-
-  The last line of that list is the origin guard working from outside the process: a
-  POST with no `Origin` header is refused before the body is read.
-
-  **The route.** `app/api/funnel/route.ts` is the first unauthenticated write surface
-  the product has, so it was written as the attacker's list first and made true after.
-  32 KiB body cap against `/api/sync`'s 5 MB; its own limiter bucket at 20/60s per
-  client key, run **before** the body is read rather than after auth as `/api/sync`
-  does, because there is no auth here for it to run after; 100 events per body, refused
-  on the count before anything iterates; a same-origin guard that needs no env; and
-  server-side re-derivation of the kind and prop-key allowlist for every kind in
-  `FUNNEL_ORDER`, checked mechanically so a kind added later is covered without editing
-  the test. Rows are marked `metadata.source = "public-funnel"` — a route constant,
-  never read from the body, so a caller cannot pass its rows off as an operator sync —
-  and written with `ignoreDuplicates`, so the endpoint can only ADD. That last one is
-  the one place where reusing `/api/sync`'s plain `onConflict: "id"` upsert would have
-  been a real hole: reached through an unauthenticated door it lets anyone who guesses a
-  row id rewrite an operator's row.
-
-  **One allowlist, not two.** `FUNNEL_PROP_KEYS` was a client-side courtesy and became
-  worthless the moment the endpoint went public. It now lives in `lib/funnel-contract.ts`
-  — one copy, imported by both `lib/funnel-flush.ts` (which re-exports rather than
-  restates) and the route, and it touches no `window`, no `localStorage`, no
-  `process.env`, which is what lets a route handler import it. Two tests hold the
-  divergence shut.
-
-  **What the route honestly cannot do, recorded rather than glossed.** `visitor_id` and
-  `session_id` are device-generated and forgeable on an unauthenticated endpoint. §8.3
-  of `docs/funnel-flush-design.md` says so outright and says what is done instead
-  (source marker, `receivedAt` from ARU's clock, insert-only), and
-  `supabase/schema.sql` now carries the same warning on the column with a
-  `(metadata->>'source', ts)` index so the two populations can be read apart. A
-  `public-funnel` row is evidence about a population, not about a visitor.
-
-  **The flush.** `FUNNEL_FLUSH_ENDPOINT` is `/api/funnel` and the body is no longer a
-  `GyeolSyncPayload` with four arrays pinned empty — it is
-  `{ schemaVersion, clientGeneratedAt, events }`, which has no field for a label, a
-  crop, a pilot note or a consent event at all, so swapping in `buildLocalSyncPayload()`
-  is now a type error rather than a silently larger payload. Cycle 6's 401 from
-  `/api/sync` is still pinned, because it is still true.
-
-  **`NEXT_PUBLIC_FUNNEL_FLUSH` is still unset**, in code and in every config in the
-  repository. §5's PIPA question was not reopened, no consent kind was invented, and the
-  transport working is not permission to switch it on.
-
-  **research — the origin guard's spec claim, from a primary source.** Refusing a POST
-  that carries no `Origin` header only works if a browser always sends one. Checked
-  against the WHATWG Fetch Standard's own source (`whatwg/fetch`, `fetch.bs`, fetched
-  through `raw.githubusercontent.com`, `http=200 bytes=444022` — `www.w3.org` and MDN
-  both still refuse this network), algorithm "append a request `Origin` header":
-
-  ```
-  Otherwise, if request's method is neither `GET` nor `HEAD`, then:
-    ... Append (`Origin`, serializedOrigin) to request's header list.
-  ```
-
-  Unconditional for a POST, same-origin included. The same algorithm has two branches
-  that serialize the origin as the literal `null` — a `no-referrer` policy, and the
-  `strict-origin` family on an https→http downgrade. That mattered: had ARU shipped
-  `Referrer-Policy: no-referrer`, this guard would have 403'd its own flush. It ships
-  `strict-origin-when-cross-origin` (`next.config.ts`) and the flush is a same-origin
-  https POST, so neither branch fires, and `new URL("null")` throws into the catch
-  anyway. Both cases are pinned.
-
-  **bug — the flush cursor could re-POST the same event forever.**
-  `markFunnelEventsFlushed` was called with the ids of the **redacted** events, and
-  `redactFunnelEvent` truncates an id to 64 characters, so a longer id was acknowledged
-  under a prefix `pendingFunnelEvents` never matches. The other half: an event the
-  redactor drops outright — a retired kind, a 1970 timestamp — never reached the cursor
-  at all, so it was offered, dropped and offered again, and while it was the only thing
-  pending the flush returned `empty` and the device's real events behind it never moved
-  either. On-device that was a wasted write; against a public endpoint with a 20/min
-  budget a device could spend its whole budget re-sending one undeliverable event. Both
-  fixed by marking the ids as this device stores them and retiring the undeliverable.
-
-  **ML — nothing this cycle, deliberately.** `ml/selftest.py` is green at 77 and was not
-  touched. The ingest route was sized to take most of the cycle and did; inventing a
-  small ML change to fill a track would have been worse than saying this.
-
-  **Verification of the new tests.** All 29 new cases were checked by breaking the line
-  each exists to protect and watching it fail — 24 mutations, 23 of which failed at
-  least one test, with the exact messages in the PR body. The 24th is a finding rather
-  than a pass: deleting `if (!origin) return false;` from `originAllowed` failed
-  **nothing**, because a null origin reaches `new URL(null)` below and throws into the
-  catch. The line is redundant, the tests are held by removing the `originAllowed` call
-  instead, and the route now says so in a comment so nobody narrows the catch believing
-  the explicit check covers it. Two assertions have no line to delete at all and are
-  reported as structural rather than verified: `Object.keys(body)` on the flush body,
-  and "only `funnel_events` is ever written" — breaking either means ADDING a field,
-  which is the thing they exist to prevent.
