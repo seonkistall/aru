@@ -424,6 +424,25 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   the server-side item above is what makes any of this readable by a human.
 - [AI] Measure the real per-scan cost of the new within-image indices on a mid-range
   phone profile, not on the build container.
+- [AI] **The promotion gate is fed two different models' numbers in one call.**
+  Verified by the supervisor at main `b2ec030`, `ml/train_visible_attributes.py:805-845`,
+  independently of PR #69 which reports the same area. The training loop saves
+  `best_path` whenever `mean_val > best`, so the best checkpoint can be any epoch, and
+  separately keeps `last_val_confusion = val_confusion` every epoch, so that variable
+  always holds the FINAL epoch's. After the loop the best checkpoint is loaded, so
+  `evaluate_by_cell` produces `subgroup_metrics` from the best checkpoint — but
+  `final_val_metrics = metrics_from_confusion(last_val_confusion)` is the last epoch's,
+  from a model no longer in memory. `promotion_check` then receives both.
+
+  So the qwk/pearson floor and the heuristic comparison read one model's numbers while
+  the worst-group gap and the per-axis sample floor read another's, and `metrics.json`
+  records the pair as though they described one artifact. They agree only when the best
+  epoch happens to be the last, which is the case best-checkpoint tracking exists to not
+  assume. No live impact yet — zero consented crops, so no run has produced a
+  `metrics.json` — which also means it must be fixed before the first one does, i.e.
+  before anyone would notice it was wrong. PR #69 fixes it as part of a larger branch
+  and is waiting on an owner decision; if that branch is not wanted whole, this split is
+  a handful of lines and is a cycle item on its own. Noted 2026-09-17.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -2101,3 +2120,34 @@ up rather than rediscover them.
   `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere in the tree; a repo-wide grep finds
   only the flag's own definition, its test pin, and comments. The PIPA consent basis
   remains Sean's open decision and no consent kind or flow was invented.
+
+  **Supervisor review, 2026-09-17 07:22–07:45 UTC.** Every scoped property held. The two
+  sources are never added: `/ops` maps over `aggregate.sources` and the only whole-table
+  figure is `tableRows`, labelled as the table rather than as a funnel. `visitor_id` is
+  absent from `FUNNEL_AGGREGATE_COLUMNS` and from every response type, so no per-visitor
+  timeline is constructible from this read. Auth is `hasValidSyncToken`, checked before
+  any database work. All three unconfigured / empty / one-source-only states render a
+  sentence rather than a zero, and both source cards render even when one is empty — an
+  absent panel would let the present one read as the whole table.
+
+  Three guarantees broken on purpose, each failed: `visitor_id` appended to the select
+  columns ("expected 'kind, session_id, ts, visitor_id' not to contain 'visitor_id'"),
+  the token gate removed from the aggregate (4 cases, "expected { available: true, …(5) }
+  to be undefined"), and `not-configured` collapsed into an `available: true` with empty
+  sources ("expected { available: true, …(5) } to deeply equal { available: false, …(1) }").
+
+  Both external citations re-fetched rather than trusted. PostgREST's
+  `docs/references/api/pagination_count.rst` returns `http=200 bytes=4518` and carries
+  `Range: 0-24` and `Content-Range: 0-24/3573458` exactly as quoted, which is what makes
+  the truncation report honest — `count` is the number of rows that matched, not the
+  number returned. `@supabase/postgrest-js` is 2.108.2 in this tree, the version the
+  section names.
+
+  Also added in review, as its own backlog item: the promotion gate is fed two different
+  models' numbers in one call. I verified that independently of PR #69 rather than
+  relaying it — the mechanism is above.
+
+  Verification on the merged head: vitest 457 in 75 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `tsc --noEmit` 16 — unchanged from main — and `npm run smoke`
+  green. `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere; the branch adds a test that
+  fails if it ever is.
