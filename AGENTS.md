@@ -239,7 +239,7 @@ ML PIPELINE (offline):
 |------|---------|
 | [lib/skin.ts](lib/skin.ts) | Feature extraction heuristics, ROI landmarks, quality gates |
 | [lib/recommend.ts](lib/recommend.ts) | SKU matching algorithm, budget filter, concern scoring |
-| [lib/supabase.ts](lib/supabase.ts) | Supabase client (public, no auth) + RLS note |
+| _(no public Supabase client)_ | Every Supabase call goes through the service-role client below; there is no anon-key client and no RLS surface in this app |
 | [lib/supabase-admin.ts](lib/supabase-admin.ts) | Service-role admin client for /api/sync only |
 | [app/scan/page.tsx](app/scan/page.tsx) | Camera UI, MediaPipe integration, optional Vision API call |
 | [app/survey/page.tsx](app/survey/page.tsx) | Preferences form, sessionStorage persistence |
