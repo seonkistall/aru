@@ -973,3 +973,40 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   route handler with the Supabase client mocked at the query-builder level, which pins
   the select list, the filter, the cap and the count semantics — it has never run against
   a real Postgres, for the same reason §6 step 4 is still open.
+
+**Supervisor review, 2026-09-17 19:22–19:45 UTC.** Checked by command rather than by
+reading the PR.
+
+*Nothing lost.* Sorting `docs/AUTOPILOT.md` + `docs/autopilot-changelog.md` together
+and `comm -23`-ing against a sorted snapshot of main's `AUTOPILOT.md` at `e6efe6b`
+prints **6** non-blank lines, and all six are protocol steps the split deliberately
+rewrote to point at the archive — each one's replacement is in the file at a named
+line (125, 164, 255, 341). That matches the worker's own "6 intentional rewrites"
+exactly; it was checked, not taken.
+
+*Guardrails moved, not softened.* `diff` of the `## Hard guardrails` section against
+the snapshot: **byte-identical**.
+
+*Counts, re-derived.* `wc -l`: 2,329 → **975** live + **1,508** archive. The live file
+a cycle must read is down 58%; the pair is 154 lines larger than the original, which is
+the pointers, the archive's own header and the new rotation rule.
+
+*The structural part is better than what I asked for.* I scoped an archive and a
+pointer; the worker also added **step 8, a rotation rule** — "Recent cycles" holds
+three entries and the fourth-oldest moves to the archive as part of landing a cycle.
+Without that the file regrows and this cycle is repaid in a month. Verified: 3 entries
+inline, 11 in the archive.
+
+*Link rot is now caught.* `tests/doc-links.test.ts` walks every markdown file and
+resolves every relative link. Broken on purpose: appending `[broken](does-not-exist.md)`
+fails it, and replacing every mention of the archive filename fails both its cases
+("expected [ …(7) ] to deeply equal []"). My first attempt at the orphan break passed —
+because the mutation was incomplete, leaving 12 other mentions, not because the test is
+weak; the complete mutation fails it.
+
+*One stale reference fixed in passing*, correctly: `AGENTS.md` listed `lib/supabase.ts`,
+which does not exist in the tree — only `lib/supabase-admin.ts` does.
+
+Verification on the merged head: vitest 466 in 75 files, `ml/selftest.py` 77, lint 2
+pre-existing warnings, `tsc --noEmit` 13 errors — unchanged from main — `npm run smoke`
+green.
