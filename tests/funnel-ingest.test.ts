@@ -22,6 +22,9 @@ const store = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase-admin", () => ({
+  // This file is about the WRITE path, so the token always reads invalid: GET's
+  // aggregate read is gated on it and is covered in tests/funnel-aggregate.test.ts.
+  hasValidSyncToken: () => false,
   getSupabaseAdmin: async () =>
     store.available
       ? {
@@ -102,7 +105,10 @@ describe("send ten megabytes", () => {
   });
 
   it("publishes a cap two orders of magnitude under /api/sync's", async () => {
-    const funnel = await (await funnelGet()).json();
+    // GET takes a Request since cycle 8: with a valid sync token it also carries the
+    // aggregate read. Unauthenticated, as here, the ingest fields are unchanged.
+    const funnel = await (await funnelGet(new Request("https://aru.test/api/funnel"))).json();
+    expect(funnel.aggregate).toBeUndefined();
     const sync = readFileSync(resolve(root, "app/api/sync/route.ts"), "utf8");
     expect(sync).toContain("const MAX_SYNC_BYTES = 5 * 1024 * 1024;");
     expect(funnel.maxBytes).toBe(32 * 1024);
