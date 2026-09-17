@@ -2287,3 +2287,43 @@ up rather than rediscover them.
   pre-existing warnings, `tsc --noEmit` 16 — unchanged from main — and `npm run smoke`
   green. `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere; the branch adds a test that
   fails if it ever is.
+
+  **Supervisor review, 2026-09-17 13:22–13:45 UTC. The worker corrected me, and it is
+  right.** My cycle brief gave `tsc --noEmit` as **16** and vitest as **457 in 75
+  files**. Recounted on main at `c0f8cea`: `npx tsc --noEmit 2>&1 | grep -c "error TS"`
+  is **13**; the 16 is the raw LINE count, and the extra three lines are continuation
+  detail on one error (`Property 'autoplay' / 'playsInline' / 'muted' does not exist on
+  type 'HTMLElement'`). `Test Files 73 passed (73)`, `Tests 457 passed (457)` — the test
+  count was right, the file count was not.
+
+  I have been passing a line count as an error count into every worker brief since cycle
+  7, and telling Sean the same number in three reports. It changed nothing in any diff —
+  the claim each cycle made was "this branch adds none", and that was true every time —
+  but a worker acting on a wrong baseline could have believed it had added three errors
+  and gone looking. **The rule this cycle's brief opened with — count, do not recall —
+  applied to the person writing the brief, and the worker was the one who applied it.**
+  Baselines for the next brief: tsc 13 errors, vitest 457 in 73 files (before this diff),
+  `ml/selftest.py` 77, lint 2 warnings.
+
+  On the branch itself, every scoped property held. The numerator is an intersection on
+  sessions, so the ratio cannot exceed 1, and the comment states the denominator, the
+  ordering caveat and the inflation case outright. The decision NOT to filter by
+  `placement` is better argued than the alternative I suggested: props are not in
+  `FUNNEL_AGGREGATE_COLUMNS` and `FunnelCountable` has no field for them, so a placement
+  filter would either widen cycle 8's deliberate privacy narrowing or make the two /ops
+  panels print different numbers under one name. `failurePreventionConversion` is
+  untouched — it appears in the diff only inside a new comment.
+
+  Five probes of my own, all as documented: a `/care`-only click with no reco view sits
+  in neither half; fifty of them against one reco view leave the ratio at 0 rather than
+  at 50; the ratio reads 1 and 0.5 on the obvious fixtures; `failurePreventionConversion`
+  still reads 0.5 on its own fixture; and the documented inflation is real — a session
+  that viewed `/report` and later clicked from `/care` counts, which the comment says.
+
+  Two guarantees broken on purpose, each failed: the numerator changed to
+  `reachedSets.commerce_clicked.size` ("expected 3 to be 1"), and the denominator swapped
+  to completed scans (4 cases).
+
+  Verification on the merged head: vitest 464 in 74 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `tsc --noEmit` 13 errors — unchanged from main — and
+  `npm run smoke` green.
