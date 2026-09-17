@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 ## What this is for
 
@@ -366,18 +366,30 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   requires `SUPABASE_SYNC_TOKEN` and a browser cannot hold a secret, so the flush is
   refused 401 — pinned against the real route handler so nobody switches the flag on
   believing otherwise. Full write-up, redaction rules, the `sendBeacon` finding and the
-  PIPA analysis: `docs/funnel-flush-design.md`. The item stays open until the ingest
-  endpoint below exists.
-- [AI] **Design the unauthenticated funnel ingest endpoint.** The thing the flush needs
-  and the thing this cycle deliberately did not rush: `POST /api/funnel` accepting only
-  a funnel-event array, unauthenticated, with its own `createRateLimiter` bucket, a body
-  cap far under `/api/sync`'s 5 MB, an origin guard, and **server-side** re-validation of
-  kind and prop keys — the client allowlist in `FUNNEL_PROP_KEYS` is a courtesy, not a
-  control, once the endpoint is public. Write `metadata.source` to something other than
-  `ops-local` so operator syncs and public ingest stay distinguishable in the table.
-  This is a new attack surface on a product that currently has none, which is why it is
-  its own item rather than a tail end of the flush. Sized in §4 of
-  `docs/funnel-flush-design.md`.
+  PIPA analysis: `docs/funnel-flush-design.md`.
+  **2026-09-17, cycle 7: the endpoint exists and the flush reaches it.** The item is
+  still `[~]` and it will stay that way until an owner answers §5, because the thing
+  that keeps the flag off was never the transport. `NEXT_PUBLIC_FUNNEL_FLUSH` is unset
+  in code and in every config in the repository, and no cycle may set it.
+- [x] [AI] ~~**Design the unauthenticated funnel ingest endpoint.**~~ — built 2026-09-17
+  (cycle 7). `app/api/funnel/route.ts`: 32 KiB body cap (1/160th of `/api/sync`'s 5 MB),
+  its own `createRateLimiter` bucket at 20/60s per client key **run before the body is
+  read** (there is no auth here for it to run after, so the limiter is the outermost
+  defence rather than a second one), a same-origin guard that needs no configuration,
+  100 events per request, and server-side re-derivation of the kind and prop-key
+  allowlist. The allowlist is not duplicated: `lib/funnel-contract.ts` holds one copy
+  that both the browser flush and the route import, and two tests fail if the route ever
+  grows its own. Rows carry `metadata.source = "public-funnel"` — chosen by the route,
+  never read from the body — plus `metadata.receivedAt` from ARU's own clock, and the
+  write is `ignoreDuplicates`, so it can only ADD. That last one is the only place where
+  copying `/api/sync`'s plain upsert would have been a real hole rather than a stylistic
+  one: through an unauthenticated door it would let anyone who guesses a row id rewrite
+  an operator's row. `GyeolSyncPayload["source"]` widened to `SyncSource`
+  (`"ops-local" | "public-funnel"`) and `supabase/schema.sql` documents the vocabulary on
+  the column, with a `(metadata->>'source', ts)` index so the two populations can be
+  queried apart. Attacker table, the Fetch-spec citation under the origin guard, and what
+  the route honestly **cannot** do about a forged `visitorId`: §8 of
+  `docs/funnel-flush-design.md`. 27 new tests in `tests/funnel-ingest.test.ts`, 2 more in `tests/funnel-flush.test.ts`.
 - [x] [AI] ~~Four more drop-offs are uninstrumented~~ — done 2026-09-15. `home_viewed`,
   `scan_opened`, `camera_blocked`, `care_viewed` and `checkin_opened` now fire, with
   `captureStart` and `cameraBlockRate` in the summary and in `/ops`. Still on-device:
@@ -612,7 +624,12 @@ Owner-only, dated when first recorded.
   `developer.mozilla.org`, `en.wikipedia.org`, `law.go.kr`, `www.kcs.go.kr`, `doi.org`,
   `www.ncbi.nlm.nih.gov` and `www.w3.org` all still refuse. Full probe output is in
   `docs/tone-ita-verification.md`.
-- 2026-09-16 — **The legal basis for switching the funnel flush on.** `lib/funnel-flush.ts`
+- 2026-09-16 (re-stated 2026-09-17, and now the ONLY thing standing in the way) —
+  **The legal basis for switching the funnel flush on.** Cycle 7 built the ingest
+  endpoint, so every technical item on the §6 checklist in
+  `docs/funnel-flush-design.md` is done except a real round trip against a staging
+  Supabase, which needs credentials this environment does not have. What remains is
+  this, and it is not a loop decision. `lib/funnel-flush.ts`
   ships off. Turning it on starts sending a persistent random `visitorId` next to
   behavioural events to ARU's own server, which is a new purpose that neither existing
   consent stream (`ai_analysis`, `learning_crop`) covers, and guardrail 4 forbids
@@ -698,6 +715,130 @@ up rather than rediscover them.
   and 2 of the 4 cases fail.
 
 ## Changelog
+
+- 2026-09-17 (cycle 7) — Branch `autopilot/2026-09-17-0039`. **`POST /api/funnel`, the
+  ingest endpoint** — the item cycle 6 sized and deliberately did not rush — plus the
+  research that the origin guard rests on and one defect found on the same path.
+
+  **Baselines on arrival, counted rather than recalled, with `npm ci` run first because
+  `node_modules` was absent.** The cycle brief said `tsc --noEmit` is 16. It is **13**,
+  the same 13 cycle 4 counted, all pre-existing and all in test files
+  (`tests/android-config.test.ts` ×1, `tests/e2e/ios-safari-camera.spec.ts` ×3,
+  `tests/product-use.test.ts` ×3, `tests/skin-roi-quality.test.ts` ×6). The other three
+  matched the brief: vitest `71 files / 403 tests`, `ml/selftest.py` 77, lint
+  `0 errors, 2 warnings` (the two unused parameters in `lib/care.ts`, untouched here).
+  After this diff: **72 files / 432 tests**, tsc still **13**, selftest still **77**,
+  lint still 2 warnings. Protocol note, said plainly rather than implied: the arrival
+  baseline was vitest/tsc/selftest/lint, not `npm run smoke` — smoke was run after the
+  change, green, and again with the two route checks this cycle adds to it. The final
+  run, verbatim tail, with the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+  override and nothing else:
+
+  ```
+   Test Files  72 passed (72)
+        Tests  432 passed (432)
+    44 passed (2.7m)
+  Ran 77 tests in 0.013s
+  OK
+  ok GET /api/sync -> 200
+  ok POST /api/sync -> 401
+  ok GET /api/funnel -> 200
+  ok POST /api/funnel -> 403
+
+  Smoke test passed.
+  ```
+
+  The last line of that list is the origin guard working from outside the process: a
+  POST with no `Origin` header is refused before the body is read.
+
+  **The route.** `app/api/funnel/route.ts` is the first unauthenticated write surface
+  the product has, so it was written as the attacker's list first and made true after.
+  32 KiB body cap against `/api/sync`'s 5 MB; its own limiter bucket at 20/60s per
+  client key, run **before** the body is read rather than after auth as `/api/sync`
+  does, because there is no auth here for it to run after; 100 events per body, refused
+  on the count before anything iterates; a same-origin guard that needs no env; and
+  server-side re-derivation of the kind and prop-key allowlist for every kind in
+  `FUNNEL_ORDER`, checked mechanically so a kind added later is covered without editing
+  the test. Rows are marked `metadata.source = "public-funnel"` — a route constant,
+  never read from the body, so a caller cannot pass its rows off as an operator sync —
+  and written with `ignoreDuplicates`, so the endpoint can only ADD. That last one is
+  the one place where reusing `/api/sync`'s plain `onConflict: "id"` upsert would have
+  been a real hole: reached through an unauthenticated door it lets anyone who guesses a
+  row id rewrite an operator's row.
+
+  **One allowlist, not two.** `FUNNEL_PROP_KEYS` was a client-side courtesy and became
+  worthless the moment the endpoint went public. It now lives in `lib/funnel-contract.ts`
+  — one copy, imported by both `lib/funnel-flush.ts` (which re-exports rather than
+  restates) and the route, and it touches no `window`, no `localStorage`, no
+  `process.env`, which is what lets a route handler import it. Two tests hold the
+  divergence shut.
+
+  **What the route honestly cannot do, recorded rather than glossed.** `visitor_id` and
+  `session_id` are device-generated and forgeable on an unauthenticated endpoint. §8.3
+  of `docs/funnel-flush-design.md` says so outright and says what is done instead
+  (source marker, `receivedAt` from ARU's clock, insert-only), and
+  `supabase/schema.sql` now carries the same warning on the column with a
+  `(metadata->>'source', ts)` index so the two populations can be read apart. A
+  `public-funnel` row is evidence about a population, not about a visitor.
+
+  **The flush.** `FUNNEL_FLUSH_ENDPOINT` is `/api/funnel` and the body is no longer a
+  `GyeolSyncPayload` with four arrays pinned empty — it is
+  `{ schemaVersion, clientGeneratedAt, events }`, which has no field for a label, a
+  crop, a pilot note or a consent event at all, so swapping in `buildLocalSyncPayload()`
+  is now a type error rather than a silently larger payload. Cycle 6's 401 from
+  `/api/sync` is still pinned, because it is still true.
+
+  **`NEXT_PUBLIC_FUNNEL_FLUSH` is still unset**, in code and in every config in the
+  repository. §5's PIPA question was not reopened, no consent kind was invented, and the
+  transport working is not permission to switch it on.
+
+  **research — the origin guard's spec claim, from a primary source.** Refusing a POST
+  that carries no `Origin` header only works if a browser always sends one. Checked
+  against the WHATWG Fetch Standard's own source (`whatwg/fetch`, `fetch.bs`, fetched
+  through `raw.githubusercontent.com`, `http=200 bytes=444022` — `www.w3.org` and MDN
+  both still refuse this network), algorithm "append a request `Origin` header":
+
+  ```
+  Otherwise, if request's method is neither `GET` nor `HEAD`, then:
+    ... Append (`Origin`, serializedOrigin) to request's header list.
+  ```
+
+  Unconditional for a POST, same-origin included. The same algorithm has two branches
+  that serialize the origin as the literal `null` — a `no-referrer` policy, and the
+  `strict-origin` family on an https→http downgrade. That mattered: had ARU shipped
+  `Referrer-Policy: no-referrer`, this guard would have 403'd its own flush. It ships
+  `strict-origin-when-cross-origin` (`next.config.ts`) and the flush is a same-origin
+  https POST, so neither branch fires, and `new URL("null")` throws into the catch
+  anyway. Both cases are pinned.
+
+  **bug — the flush cursor could re-POST the same event forever.**
+  `markFunnelEventsFlushed` was called with the ids of the **redacted** events, and
+  `redactFunnelEvent` truncates an id to 64 characters, so a longer id was acknowledged
+  under a prefix `pendingFunnelEvents` never matches. The other half: an event the
+  redactor drops outright — a retired kind, a 1970 timestamp — never reached the cursor
+  at all, so it was offered, dropped and offered again, and while it was the only thing
+  pending the flush returned `empty` and the device's real events behind it never moved
+  either. On-device that was a wasted write; against a public endpoint with a 20/min
+  budget a device could spend its whole budget re-sending one undeliverable event. Both
+  fixed by marking the ids as this device stores them and retiring the undeliverable.
+
+  **ML — nothing this cycle, deliberately.** `ml/selftest.py` is green at 77 and was not
+  touched. The ingest route was sized to take most of the cycle and did; inventing a
+  small ML change to fill a track would have been worse than saying this.
+
+  **Verification of the new tests.** All 29 new cases were checked by breaking the line
+  each exists to protect and watching it fail — 24 mutations, 23 of which failed at
+  least one test, with the exact messages in the PR body. The 24th is a finding rather
+  than a pass: deleting `if (!origin) return false;` from `originAllowed` failed
+  **nothing**, because a null origin reaches `new URL(null)` below and throws into the
+  catch. The line is redundant, the tests are held by removing the `originAllowed` call
+  instead, and the route now says so in a comment so nobody narrows the catch believing
+  the explicit check covers it. Two assertions have no line to delete at all and are
+  reported as structural rather than verified: `Object.keys(body)` on the flush body,
+  and "only `funnel_events` is ever written" — breaking either means ADDING a field,
+  which is the thing they exist to prevent.
+
 
 - 2026-09-14 — Autopilot established. Cycle protocol, guardrails, revenue
   arithmetic and backlog written down for the first time.
@@ -1768,6 +1909,53 @@ up rather than rediscover them.
 
   Verification on the merged head: vitest 403 in 71 files, `ml/selftest.py` 77, lint 2
   pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16.
+
+  **Supervisor review, 2026-09-17 01:22–01:45 UTC.** Reviewed as a security review, since
+  this is the first unauthenticated write surface the product has. Every check held.
+
+  The finding I had prepared before the branch landed was the one the route answers
+  directly. `/api/sync`'s `originAllowed` returns `true` when
+  `SUPABASE_SYNC_ALLOWED_ORIGINS` is unset — defensible behind a token, and it would
+  have been decorative here, where an unset env var is the default state of every
+  unconfigured deploy. The new guard fails **closed**: same-origin by default with no
+  configuration, `FUNNEL_INGEST_ALLOWED_ORIGINS` only widening.
+
+  Three guarantees broken on purpose, each failed: removing the `originAllowed` call
+  (4 cases), `ignoreDuplicates` dropped from the upsert options ("expected
+  { onConflict: 'id' } to deeply equal { onConflict: 'id', …(1) }"), and the source
+  constant set to `ops-local` ("expected 'ops-local' to be 'public-funnel'").
+
+  Four hostile probes of my own, beyond the branch's own table, all clean: a
+  `GyeolSyncPayload`-shaped body carrying `cropSamples`, `consentEvents` and `labels`
+  alongside valid events stores **only** the events and writes only `funnel_events`
+  (no `base64`, no `ai_analysis`, no `golden-p1` anywhere in the write log); a
+  200 KB body with no `content-length` header is still 413 on real bytes; a
+  prototype-polluting `__proto__` prop and a free-text `note` are both dropped while
+  the allowlisted `merchant` survives.
+
+  The Fetch Standard citation was re-fetched, not trusted: `whatwg/fetch` `fetch.bs`
+  returns `http=200 bytes=444022` and the append-`Origin` algorithm reads as quoted —
+  for a non-GET/HEAD request the header is appended unconditionally, with the value
+  possibly the literal `null` under `no-referrer` or an https→http downgrade, which is
+  why `new URL("null")` throwing into the catch is the right handling. `next.config.ts`
+  does ship `Referrer-Policy: strict-origin-when-cross-origin`, so ARU's own
+  same-origin https flush sends its real origin.
+
+  One line added in review: the route trusts `x-forwarded-host` and now says why that
+  is sound for its stated threat model rather than by accident. A CSRF attacker is a
+  page in a victim's browser, which sets `Origin` itself and cannot be made to send
+  `x-forwarded-host`; a caller who can set both is already curl, which this check never
+  constrained. Probed: `origin: https://evil.example` with `x-forwarded-host:
+  evil.example` is accepted, and is the curl case, not a new one.
+
+  Verification on the merged head: vitest 432 in 73 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `tsc --noEmit` 16 — unchanged from main —
+  and `npm run smoke` green including the two new rows,
+  `ok GET /api/funnel -> 200` and `ok POST /api/funnel -> 403`.
+
+  `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere in the tree; a repo-wide grep finds
+  only the flag's own definition, its test pin, and comments. The PIPA consent basis
+  remains Sean's open decision and no consent kind or flow was invented.
 
 - 2026-09-15 (2) — ML track: the qwk/pearson gate, **superseded before it merged.**
   This branch built `promotionGate.subgroup.minQwk` / `minPearson` and an

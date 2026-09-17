@@ -42,6 +42,11 @@ const routeChecks = [
   // rejects first (local .env.local present). Both mean unauthenticated POSTs
   // are blocked, which is what this check asserts.
   { method: "POST", path: "/api/sync", status: [401, 403] },
+  { method: "GET", path: "/api/funnel", status: 200, bodyIncludes: '"maxEvents"' },
+  // The public ingest route, checked from outside the process: a POST with no Origin
+  // header did not come from a page fetch, and the origin guard refuses it before the
+  // body is read. 403 here is the guard working, not a misconfiguration.
+  { method: "POST", path: "/api/funnel", status: 403, headers: { "content-type": "application/json" }, body: "{}" },
 ];
 
 async function run(command, args) {

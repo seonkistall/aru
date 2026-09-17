@@ -186,7 +186,11 @@ USER JOURNEY:
 BACKEND API:
   /api/analyze    → Vision API call (Gemini/OpenAI base64 crop)
   /api/reason     → LLM-generated product copy (filtered)
-  /api/sync       → Batch upload labels/crops/consent to Supabase
+  /api/sync       → Batch upload labels/crops/consent to Supabase (sync token)
+  /api/funnel     → Public funnel-event ingest. The ONLY unauthenticated write
+                    surface: own rate-limit bucket, 32 KiB cap, origin guard,
+                    server-side kind/prop revalidation, insert-only,
+                    metadata.source = "public-funnel". See docs/funnel-flush-design.md §8
   /api/out        → Retailer click-through with attribution
   /api/reengage/* → Reminder subscribe / unsubscribe / scheduled run
 
@@ -241,6 +245,8 @@ ML PIPELINE (offline):
 | [app/survey/page.tsx](app/survey/page.tsx) | Preferences form, sessionStorage persistence |
 | [app/report/page.tsx](app/report/page.tsx) | Results display, LLM reasoning, efficacy filter |
 | [app/api/sync/route.ts](app/api/sync/route.ts) | Batch upload endpoint, rate limiting, token validation |
+| [app/api/funnel/route.ts](app/api/funnel/route.ts) | Public funnel ingest — unauthenticated; read its header before editing |
+| [lib/funnel-contract.ts](lib/funnel-contract.ts) | The kind/prop allowlist BOTH the browser flush and the ingest route import. One copy on purpose |
 | [app/ops/page.tsx](app/ops/page.tsx) | Research dashboard, ML readiness band calculation |
 | [supabase/schema.sql](supabase/schema.sql) | Database schema: labels, crops, consent, pilot_notes |
 | [ml/aru_axes.py](ml/aru_axes.py) | Axis registry: level counts, which axes get a camera head |
