@@ -998,8 +998,9 @@ Without that the file regrows and this cycle is repaid in a month. Verified: 3 e
 inline, 11 in the archive.
 
 *Link rot is now caught.* `tests/doc-links.test.ts` walks every markdown file and
-resolves every relative link. Broken on purpose: appending `[broken](does-not-exist.md)`
-fails it, and replacing every mention of the archive filename fails both its cases
+resolves every relative link. Broken on purpose: appending a markdown link to a
+`does-not-exist.md` fails it, and replacing every mention of the archive filename fails
+both its cases
 ("expected [ …(7) ] to deeply equal []"). My first attempt at the orphan break passed —
 because the mutation was incomplete, leaving 12 other mentions, not because the test is
 weak; the complete mutation fails it.
@@ -1010,3 +1011,9 @@ which does not exist in the tree — only `lib/supabase-admin.ts` does.
 Verification on the merged head: vitest 466 in 75 files, `ml/selftest.py` 77, lint 2
 pre-existing warnings, `tsc --noEmit` 13 errors — unchanged from main — `npm run smoke`
 green.
+
+*Footnote, earned the hard way.* The first draft of this very note quoted that broken
+link in its literal markdown form, and the test caught **its own review note** —
+`docs/AUTOPILOT.md -> does-not-exist.md`. Left recorded rather than tidied away: the
+guard reads prose as well as pointers, which is worth knowing before someone writes an
+example link into a doc and spends ten minutes on a red suite.
