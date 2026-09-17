@@ -371,6 +371,8 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   still `[~]` and it will stay that way until an owner answers §5, because the thing
   that keeps the flag off was never the transport. `NEXT_PUBLIC_FUNNEL_FLUSH` is unset
   in code and in every config in the repository, and no cycle may set it.
+  **2026-09-17, cycle 8: something now reads the table.** Still `[~]`, and for the same
+  §5 reason. The read side is the item below; the flag is untouched.
 - [x] [AI] ~~**Design the unauthenticated funnel ingest endpoint.**~~ — built 2026-09-17
   (cycle 7). `app/api/funnel/route.ts`: 32 KiB body cap (1/160th of `/api/sync`'s 5 MB),
   its own `createRateLimiter` bucket at 20/60s per client key **run before the body is
@@ -390,12 +392,57 @@ These are not preferences. Breaking one is worse than skipping a cycle.
   queried apart. Attacker table, the Fetch-spec citation under the origin guard, and what
   the route honestly **cannot** do about a forged `visitorId`: §8 of
   `docs/funnel-flush-design.md`. 27 new tests in `tests/funnel-ingest.test.ts`, 2 more in `tests/funnel-flush.test.ts`.
+- [x] [AI] ~~**Nobody can read `funnel_events`.**~~ — built 2026-09-17 (cycle 8). Cycle 6
+  built the flush and cycle 7 the endpoint, so the table could be written; `/ops` still
+  drew its funnel panel from `readSnapshot()` → `summarizeFunnel()` over
+  `lib/funnel.ts`, which is localStorage. With the flag on and rows arriving, the only
+  thing `/ops` would have shown is the operator's own session. `lib/funnel-aggregate.ts`
+  plus a token-gated `aggregate` field on `GET /api/funnel` is the read: the same shape
+  `/api/sync`'s GET already uses for `commerceOverrides` (`hasValidSyncToken`, field
+  absent without a valid token), and no new auth mechanism. Split by `metadata.source`,
+  one query per source on the expression `funnel_events_source_ts_idx` is declared on,
+  and the response is a **list** with no field that adds the two — the schema comment
+  on the column says not to pool them and an `/ops` screen that did would be exactly
+  the mistake it warns about. Aggregate counts only: the select list is
+  `kind, session_id, ts`, never `visitor_id`, never `props`, never `*`, and
+  `summarizeFunnel`/`funnelDropoff` now take `FunnelCountable`
+  (`Pick<FunnelEvent, "kind" | "sessionId">`) so the counters have no field for a
+  visitor to be read from. Rendered on `/ops` **next to** the on-device summary, which
+  keeps its panel and is now labelled "on-device log" — it is still the right screen for
+  an operator testing their own flow. The three states that are the normal state today
+  are decided and written down rather than defaulted (§9.4 of
+  `docs/funnel-flush-design.md`): unconfigured and query-failed are separate sentences,
+  an empty table renders both cards saying "no rows" rather than an absent panel, and
+  every ratio with a zero denominator prints "—" rather than "0%", because "0% reached
+  the shutter" is a measurement of total failure and "no scan opens recorded" is no
+  measurement. Truncation at the 5,000-row cap, rows carrying no source marker, and
+  kinds this build has no step for are all reported rather than swallowed. 25 tests in
+  `tests/funnel-aggregate.test.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` untouched.
 - [x] [AI] ~~Four more drop-offs are uninstrumented~~ — done 2026-09-15. `home_viewed`,
   `scan_opened`, `camera_blocked`, `care_viewed` and `checkin_opened` now fire, with
   `captureStart` and `cameraBlockRate` in the summary and in `/ops`. Still on-device:
   the server-side item above is what makes any of this readable by a human.
 - [AI] Measure the real per-scan cost of the new within-image indices on a mid-range
   phone profile, not on the build container.
+- [AI] **The promotion gate is fed two different models' numbers in one call.**
+  Verified by the supervisor at main `b2ec030`, `ml/train_visible_attributes.py:805-845`,
+  independently of PR #69 which reports the same area. The training loop saves
+  `best_path` whenever `mean_val > best`, so the best checkpoint can be any epoch, and
+  separately keeps `last_val_confusion = val_confusion` every epoch, so that variable
+  always holds the FINAL epoch's. After the loop the best checkpoint is loaded, so
+  `evaluate_by_cell` produces `subgroup_metrics` from the best checkpoint — but
+  `final_val_metrics = metrics_from_confusion(last_val_confusion)` is the last epoch's,
+  from a model no longer in memory. `promotion_check` then receives both.
+
+  So the qwk/pearson floor and the heuristic comparison read one model's numbers while
+  the worst-group gap and the per-axis sample floor read another's, and `metrics.json`
+  records the pair as though they described one artifact. They agree only when the best
+  epoch happens to be the last, which is the case best-checkpoint tracking exists to not
+  assume. No live impact yet — zero consented crops, so no run has produced a
+  `metrics.json` — which also means it must be fixed before the first one does, i.e.
+  before anyone would notice it was wrong. PR #69 fixes it as part of a larger branch
+  and is waiting on an owner decision; if that branch is not wanted whole, this split is
+  a handful of lines and is a cycle item on its own. Noted 2026-09-17.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -619,6 +666,16 @@ Owner-only, dated when first recorded.
   settle it from a primary source and none should settle it from recall. The reasoning,
   labelled as recalled, is §5 of `docs/funnel-flush-design.md`. No new consent kind and
   no new consent flow was invented.
+  **2026-09-17, cycle 8: the READ side now has the same missing half.** The aggregate
+  read of `funnel_events` is verified against the real route handler with the Supabase
+  client mocked at the query-builder level — which pins the select list, the
+  `metadata->>source` filter, the row cap and the count semantics, and is what makes
+  "never selects `visitor_id`" checkable. It has never run against a real Postgres, for
+  the same reason as §6 step 4: no Supabase credentials exist in this environment. So
+  the query shape is verified and the round trip is not, and that is stated rather than
+  implied. The `count: "exact"` semantics the truncation report rests on were checked
+  against PostgREST's own docs source and the installed `@supabase/postgrest-js`
+  2.108.2 — §9.5 — which is the closest a network without a database can get.
 
 - 2026-09-15 — Which host a real affiliate link lands on. The override allowlist in
   `lib/commerce.ts` accepts `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
@@ -694,6 +751,134 @@ up rather than rediscover them.
   and 2 of the 4 cases fail.
 
 ## Changelog
+
+- 2026-09-17 (cycle 8) — Branch `autopilot/2026-09-17-0639`. **The read side of
+  `funnel_events`.** Cycle 6 built the flush, cycle 7 built the endpoint that accepts
+  it, and nothing read the table. `/ops` drew its funnel panel from `readSnapshot()` →
+  `summarizeFunnel()` over `lib/funnel.ts` — localStorage, the operator's own browser —
+  so with the flag on and rows arriving, the only thing `/ops` would have shown is the
+  operator's own session. The product would have collected data and still shown nobody
+  anything.
+
+  **Baselines on arrival, counted rather than recalled, with `npm ci` run first because
+  `node_modules` was absent.** The cycle brief said `tsc --noEmit` is 16 and vitest is
+  432 in 73 files. Counted: tsc is **13** — the same 13 cycles 4 and 7 counted, all
+  pre-existing and all in test files (`tests/android-config.test.ts` ×1,
+  `tests/e2e/ios-safari-camera.spec.ts` ×3, `tests/product-use.test.ts` ×3,
+  `tests/skin-roi-quality.test.ts` ×6) — and vitest is 432 tests in **72** files, not
+  73. The other two matched: `ml/selftest.py` 77, lint `0 errors, 2 warnings` (the two
+  unused parameters in `lib/care.ts`, untouched here). After this diff: **73 files /
+  457 tests**, tsc still 13, selftest still 77, lint still 2 warnings. Final
+  `npm run smoke`, verbatim, with the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+  override and nothing else:
+
+  ```
+   Test Files  73 passed (73)
+        Tests  457 passed (457)
+    44 passed (2.5m)
+  Ran 77 tests in 0.015s
+  OK
+  ok GET /api/sync -> 200
+  ok POST /api/sync -> 401
+  ok GET /api/funnel -> 200
+  ok POST /api/funnel -> 403
+
+  Smoke test passed.
+  ```
+
+  **The read.** `lib/funnel-aggregate.ts` plus an `aggregate` field on
+  `GET /api/funnel`, present only when `hasValidSyncToken(request)` — the same shape
+  `/api/sync`'s GET already uses for `commerceOverrides`, and no new auth mechanism: no
+  second secret, no query-string key, no cookie. It is on `/api/funnel` rather than
+  `/api/sync` because that route owns the table and the source vocabulary, and because
+  `/api/sync`'s GET is a pure env-status handler `/ops` re-fetches on a debounce
+  whenever the token field changes — a database query behind that is a query per edit of
+  a password field. The token check runs **before** the query, so an unauthenticated
+  caller costs the route exactly what it cost before; the test asserts the query never
+  ran, not merely that the field is absent, and `scripts/smoke-test.mjs` gained a
+  `bodyExcludes` check so the running server is asserted from outside the process not to
+  serve `aggregate` without a token.
+
+  **Split by source, because the schema says so.** One query per source on
+  `metadata->>source` — the expression `funnel_events_source_ts_idx` is declared on —
+  and the response is a **list**, with no field anywhere that adds the two.
+  `supabase/schema.sql` says on the column itself not to pool them: `ops-local` is an
+  operator uploading their own device's log behind a typed token, `public-funnel` is an
+  unauthenticated write whose `visitor_id` nobody can vouch for, and an `/ops` screen
+  that summed them would count an operator's test session alongside the open internet.
+  Each card on `/ops` carries the provenance of its marker next to its numbers.
+
+  **Aggregate counts only, enforced in two places rather than promised once.** The
+  select list is `kind, session_id, ts` — never `visitor_id`, never `props`, never `*` —
+  and `summarizeFunnel`/`funnelDropoff` now take `FunnelCountable`
+  (`Pick<FunnelEvent, "kind" | "sessionId">`), which is what lets the route select
+  without the column instead of selecting it and undertaking not to look. Neither
+  counter ever read `visitorId`; the narrowing only names that. A test serialises the
+  whole aggregate and asserts no session id appears in it. No per-visitor timeline can
+  be assembled from what this returns, which is the thing the schema comment warns turns
+  a population into tracking.
+
+  **Next to the on-device panel, not instead of it.** The existing summary keeps its
+  section and is now labelled "on-device log" — it is still the right screen for an
+  operator testing their own flow end to end.
+
+  **The three states that are normal today, decided and written down** (§9.4 of
+  `docs/funnel-flush-design.md`). Supabase unconfigured and query-failed are separate
+  branches with separate sentences, because they need different actions and because
+  rendering either as an empty panel would read as "nobody used the product" rather than
+  "this deploy has no database". An empty table renders **both** cards saying "no rows",
+  and so does the state where only one source has any — an absent card would let the card
+  that is there be read as the whole table. `NaN` cannot reach the screen from the
+  arithmetic (`summarizeFunnel` guards every division), but `0` is the wrong string:
+  every ratio with a zero denominator prints "—" and names the missing denominator,
+  which is the distinction the on-device panel already made for its two camera rows.
+  Three more things are reported rather than swallowed: truncation at the 5,000-row cap
+  (with the warning that session counts undercount any session straddling the cut), rows
+  carrying no source marker at all, and kinds this build has no step for — the schema
+  deliberately has no CHECK on `kind`, so an older deploy reading a newer table sees
+  them, and they count towards rows and sessions and towards no step.
+
+  Why the aggregate runs in Node rather than as a SQL `GROUP BY`: `summarizeFunnel`
+  counts distinct sessions per kind over set intersections, and reimplementing that in
+  SQL would be a second definition of every number `/ops` already shows. The two would
+  drift, and the panels would stop being comparable — which is the point of putting them
+  side by side. The row cap is the cost, and it is stated on the screen rather than
+  applied silently.
+
+  **research — is `count: "exact"` the total, or the page?** The truncation report is
+  only honest if `count` is the number of rows that MATCHED. PostgREST's own
+  documentation source (`PostgREST/postgrest-docs`,
+  `docs/references/api/pagination_count.rst`, through `raw.githubusercontent.com`,
+  `http=200 bytes=4518`) shows a 25-row request answering
+  `Content-Range: 0-24/3573458`, and the installed client
+  (`@supabase/postgrest-js` 2.108.2, `dist/index.cjs`) parses
+  `count = parseInt(contentRange[1])` — the part after the slash, not `data.length`. So
+  `count > data.length` is a sound truncation test. MDN and `www.rfc-editor.org` are
+  still refused by this network. §9.5.
+
+  **ML — nothing this cycle, deliberately.** `ml/selftest.py` is green at 77 and was not
+  touched. The read screen was sized to take most of the cycle and did.
+
+  **Verification of the new tests.** All 25 cases in `tests/funnel-aggregate.test.ts`
+  were checked by breaking the line each exists to protect, 17 mutations in total, every
+  one of which failed at least one test. Two are worth recording rather than glossing.
+  Deleting the head count's own `if (table.error)` check failed **nothing** on the first
+  pass, because the mock's single error switch failed the per-source reads too and the
+  later check caught it; the mock gained a `headError` that fails the head count alone,
+  and the guard is now genuinely held (it is a real case — a count over the whole table
+  can be refused while a filtered read is served). And the first attempt at removing the
+  `try`/`catch` produced a syntax error rather than a behavioural change, so it was
+  redone properly; it then failed the test it exists for.
+
+  **`NEXT_PUBLIC_FUNNEL_FLUSH` is still unset**, in code and in every config in the
+  repository, and a test fails if any file this cycle touched sets it. §5's PIPA
+  question was not reopened, no consent kind was invented, no consent flow was added.
+  Building somewhere for the data to be read is not permission to start collecting it.
+  One limit stated plainly and added to BLOCKERS: the read is verified against the real
+  route handler with the Supabase client mocked at the query-builder level, which pins
+  the select list, the filter, the cap and the count semantics — it has never run against
+  a real Postgres, for the same reason §6 step 4 is still open.
 
 - 2026-09-17 (cycle 7) — Branch `autopilot/2026-09-17-0039`. **`POST /api/funnel`, the
   ingest endpoint** — the item cycle 6 sized and deliberately did not rush — plus the
@@ -1935,3 +2120,34 @@ up rather than rediscover them.
   `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere in the tree; a repo-wide grep finds
   only the flag's own definition, its test pin, and comments. The PIPA consent basis
   remains Sean's open decision and no consent kind or flow was invented.
+
+  **Supervisor review, 2026-09-17 07:22–07:45 UTC.** Every scoped property held. The two
+  sources are never added: `/ops` maps over `aggregate.sources` and the only whole-table
+  figure is `tableRows`, labelled as the table rather than as a funnel. `visitor_id` is
+  absent from `FUNNEL_AGGREGATE_COLUMNS` and from every response type, so no per-visitor
+  timeline is constructible from this read. Auth is `hasValidSyncToken`, checked before
+  any database work. All three unconfigured / empty / one-source-only states render a
+  sentence rather than a zero, and both source cards render even when one is empty — an
+  absent panel would let the present one read as the whole table.
+
+  Three guarantees broken on purpose, each failed: `visitor_id` appended to the select
+  columns ("expected 'kind, session_id, ts, visitor_id' not to contain 'visitor_id'"),
+  the token gate removed from the aggregate (4 cases, "expected { available: true, …(5) }
+  to be undefined"), and `not-configured` collapsed into an `available: true` with empty
+  sources ("expected { available: true, …(5) } to deeply equal { available: false, …(1) }").
+
+  Both external citations re-fetched rather than trusted. PostgREST's
+  `docs/references/api/pagination_count.rst` returns `http=200 bytes=4518` and carries
+  `Range: 0-24` and `Content-Range: 0-24/3573458` exactly as quoted, which is what makes
+  the truncation report honest — `count` is the number of rows that matched, not the
+  number returned. `@supabase/postgrest-js` is 2.108.2 in this tree, the version the
+  section names.
+
+  Also added in review, as its own backlog item: the promotion gate is fed two different
+  models' numbers in one call. I verified that independently of PR #69 rather than
+  relaying it — the mechanism is above.
+
+  Verification on the merged head: vitest 457 in 75 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `tsc --noEmit` 16 — unchanged from main — and `npm run smoke`
+  green. `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere; the branch adds a test that
+  fails if it ever is.
