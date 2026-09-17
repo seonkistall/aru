@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { POST as syncPost } from "@/app/api/sync/route";
 import {
-  buildFunnelFlushPayload,
+  buildFunnelFlushBody,
   flushFunnelEvents,
   FUNNEL_FLUSH_FLAG,
   FUNNEL_PROP_KEYS,
@@ -105,14 +105,14 @@ describe("what the flush is allowed to carry", () => {
       gyeol_consent_events_v1: JSON.stringify([{ id: "consent-1", kind: "learning_crop", granted: true, ts: 1 }]),
       gyeol_pilot_notes_v1: JSON.stringify([{ id: "note-1", participant: "P1", ts: 1 }]),
     });
-    const payload = buildFunnelFlushPayload([event()]);
-    expect(payload.cropSamples).toEqual([]);
-    expect(payload.labels).toEqual([]);
-    expect(payload.consentEvents).toEqual([]);
-    expect(payload.pilotNotes).toEqual([]);
-    expect(payload.funnelEvents).toHaveLength(1);
+    const body = buildFunnelFlushBody([event()]);
+    // Cycle 6 kept the GyeolSyncPayload shape here with the four arrays pinned empty.
+    // The body has no field for them at all now, so a swap to buildLocalSyncPayload()
+    // is a type error rather than a silently larger payload.
+    expect(Object.keys(body).sort()).toEqual(["clientGeneratedAt", "events", "schemaVersion"]);
+    expect(body.events).toHaveLength(1);
     // No field anywhere in the body may carry an image, whatever route it took in.
-    expect(JSON.stringify(payload)).not.toContain("data:image");
+    expect(JSON.stringify(body)).not.toContain("data:image");
   });
 
   // A stored event is JSON that sat in a browser ARU does not control. Spreading it
@@ -180,20 +180,19 @@ describe("what the flush is allowed to carry", () => {
 });
 
 describe("the flush cannot authenticate against /api/sync", () => {
-  // This is the cycle's finding, pinned so nobody switches the flag on believing the
-  // path works. POST /api/sync requires SUPABASE_SYNC_TOKEN, and a browser cannot
-  // hold that secret — putting it in client JS would publish it to every visitor.
-  // So the flush is built and stays off until an ingest endpoint exists that can
-  // accept an unauthenticated, rate-limited, funnel-only body.
+  // Cycle 6's finding, still true and still pinned — it is the whole reason
+  // /api/funnel exists. POST /api/sync requires SUPABASE_SYNC_TOKEN, and a browser
+  // cannot hold that secret: putting it in client JS publishes it to every visitor.
+  // The flush now posts to /api/funnel instead; tests/funnel-ingest.test.ts runs the
+  // same flush against that handler and gets a 202.
   it("is refused 401 when posted without the sync token", async () => {
     // >= 32 chars, or getSyncToken() rejects it and the 401 would be "no token is
     // configured" rather than "this request did not present the token".
     process.env.SUPABASE_SYNC_TOKEN = "test-sync-token-that-no-browser-can-ever-hold";
-    const payload = buildFunnelFlushPayload([event()]);
     const response = await syncPost(new Request("http://localhost/api/sync", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ payload }),
+      body: JSON.stringify(buildFunnelFlushBody([event()])),
     }));
     expect(response.status).toBe(401);
   });
@@ -215,6 +214,56 @@ describe("the flush cursor", () => {
     expect(result.attempted).toBe(1);
     expect(bodies[0]).toContain("evt-2");
     expect(bodies[0]).not.toContain("evt-1");
+  });
+
+  // Defect found hunting this path for what the ingest endpoint would inherit. The
+  // cursor was written from the REDACTED ids, and redactFunnelEvent truncates an id to
+  // FUNNEL_ID_MAX. An id longer than that was acknowledged under its prefix, which
+  // pendingFunnelEvents never matches, so the device re-POSTed the same event on every
+  // page-hide for the life of the browser profile — and now against a public endpoint
+  // with a rate limit, so the device eventually spends its whole budget on one event.
+  it("records the id as this device stores it, not as the wire truncates it", async () => {
+    const data = installStorage();
+    process.env[FUNNEL_FLUSH_FLAG] = "on";
+    const longId = `evt-${"x".repeat(120)}`;
+    const send = (async () => new Response("{}", { status: 202 })) as unknown as typeof fetch;
+
+    const first = await flushFunnelEvents({ events: [event({ id: longId })], fetchImpl: send });
+    expect(first.outcome).toBe("sent");
+    const [recorded] = JSON.parse(data.get("aru_funnel_flushed_v1") ?? "[]") as string[];
+    expect(recorded).toHaveLength(longId.length);
+    expect(recorded).toBe(longId);
+
+    let calls = 0;
+    const second = await flushFunnelEvents({
+      events: [event({ id: longId })],
+      fetchImpl: (async () => {
+        calls++;
+        return new Response("{}", { status: 202 });
+      }) as unknown as typeof fetch,
+    });
+    expect(second.outcome).toBe("empty");
+    expect(calls).toBe(0);
+  });
+
+  // The same defect's other half. An event the redactor drops outright never reached
+  // the cursor, so it was offered, dropped, and offered again on the next flush
+  // forever — and while it was the only thing pending, the flush returned "empty" and
+  // the device's real events behind it never moved either.
+  it("retires an event no server could ever accept", async () => {
+    const data = installStorage();
+    process.env[FUNNEL_FLUSH_FLAG] = "on";
+    let calls = 0;
+    const result = await flushFunnelEvents({
+      events: [event({ id: "retired-kind", kind: "email_entered" as never })],
+      fetchImpl: (async () => {
+        calls++;
+        return new Response("{}", { status: 202 });
+      }) as unknown as typeof fetch,
+    });
+    expect(result.outcome).toBe("empty");
+    expect(calls).toBe(0);
+    expect(JSON.parse(data.get("aru_funnel_flushed_v1") ?? "[]")).toEqual(["retired-kind"]);
   });
 
   // The reason the transport is fetch and not navigator.sendBeacon: a beacon reports

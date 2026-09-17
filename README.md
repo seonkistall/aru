@@ -28,7 +28,8 @@ recommendation flow can also be completed with the questionnaire alone.
   (`blemishDensity` was resolution-dependent; the blemish *count* still is)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
-  (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; read §4 before
+  (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest
+  endpoint and its attacker table; read §5 before
   setting it, because a browser cannot hold the sync token)
 
 ## Current release state
@@ -293,6 +294,7 @@ retention period and deletion path are decided.
 | `POST /api/analyze` | Optional vision cross-check of consented skin ROIs | 2,100,000 bytes, JSON/schema, 10/60s per IP, 15s provider timeout | 400/413/429/502/503; on-device reading kept |
 | `POST /api/reason` | Optional LLM phrasing of recommendation reasons | 32,768 bytes, JSON/schema, 10/60s per IP, 15s provider timeout, output claim filter | Verified template fallback |
 | `GET/POST /api/sync` | Pilot status check and authenticated batch sync | Sync token, origin allowlist, 5 MiB, 12/60s per IP after auth, consent/scope validation | Rejects unauthenticated, disallowed-origin and oversized bodies |
+| `GET/POST /api/funnel` | Public funnel-event ingest (the flush's endpoint; flush is off) | Unauthenticated by design: own 20/60s per-IP bucket run first, 32 KiB body cap, same-origin guard, 100 events max, server-side kind/prop re-validation, `metadata.source = public-funnel`, insert-only | Rejects other origins, oversized and malformed bodies; drops unknown kinds and undeclared prop keys |
 | `POST /api/reengage/subscribe` | Explicit email opt-in | Email/schema/body validation, 5/60s per IP, private DB | Feature disabled or safe error when unconfigured |
 | `POST /api/reengage/unsubscribe` | Signed unsubscribe | Token signature, expiry and state validation | Rejects tampered/expired tokens |
 | `GET /api/reengage/run` | 2-/4-week sends and retention cleanup | Cron secret, batch of 50, 45s max, withdrawal exclusion | Rejects failed auth; re-runnable within limits |

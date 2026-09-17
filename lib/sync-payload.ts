@@ -9,10 +9,26 @@ export type SyncLabel = LabeledSample & { id: string };
 export const SYNC_SCHEMA_VERSIONS = ["2026-06-29.sync.v1", "2026-07-04.sync.v2"] as const;
 export type SyncSchemaVersion = (typeof SYNC_SCHEMA_VERSIONS)[number];
 
+/**
+ * Who wrote a row. Every synced table carries one of these in `metadata.source`.
+ *
+ * It was the literal `"ops-local"` while `/ops` was the only writer in existence.
+ * `POST /api/funnel` is the second, and the two must stay distinguishable in
+ * `funnel_events`: one row is an operator deliberately uploading their own device's
+ * log behind a typed token, the other is an unauthenticated write from the open
+ * internet whose `visitor_id` nobody can vouch for. An analysis that pools them is
+ * counting two different things.
+ *
+ * The marker is chosen by the route, never read from the request body — see
+ * `app/api/funnel/route.ts` — so a caller cannot label its rows `ops-local`.
+ */
+export const SYNC_SOURCES = ["ops-local", "public-funnel"] as const;
+export type SyncSource = (typeof SYNC_SOURCES)[number];
+
 export type GyeolSyncPayload = {
   schemaVersion: SyncSchemaVersion;
   clientGeneratedAt: number;
-  source: "ops-local";
+  source: SyncSource;
   labels: SyncLabel[];
   cropSamples: CropSample[];
   pilotNotes: PilotNote[];

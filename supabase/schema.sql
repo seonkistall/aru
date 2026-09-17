@@ -82,13 +82,23 @@ create table if not exists funnel_events (
                                -- camera_interrupted |
                                -- scan_started | scan_completed | survey_viewed | survey_completed |
                                -- reco_viewed | care_viewed | checkin_opened | share_clicked | commerce_clicked
-  visitor_id text not null,
+  visitor_id text not null,   -- device-generated and, on a public-funnel row, unverifiable
   session_id text not null,
   props jsonb,
-  metadata jsonb,
+  metadata jsonb,              -- { source, receivedAt? }. source is SYNC_SOURCES in
+                               -- lib/sync-payload.ts: 'ops-local' is an operator
+                               -- uploading their own device's log through POST /api/sync
+                               -- behind SUPABASE_SYNC_TOKEN; 'public-funnel' is the
+                               -- unauthenticated browser ingest at POST /api/funnel,
+                               -- whose visitor_id/session_id/ts nobody can vouch for
+                               -- (receivedAt is ARU's own clock for exactly that reason).
+                               -- The marker is written by the route, never taken from the
+                               -- request body. Do NOT pool the two in an analysis.
   ts bigint not null
 );
 create index if not exists funnel_events_kind_ts_idx on funnel_events (kind, ts);
+-- Public ingest reads back by source when an operator needs one population, not both.
+create index if not exists funnel_events_source_ts_idx on funnel_events ((metadata->>'source'), ts);
 
 -- Opt-in ML crop metadata. The image bytes should live in a private Storage bucket.
 create table if not exists crop_samples (
