@@ -179,6 +179,29 @@ export type FunnelSummary = {
   // a session that leaves without being refused is in neither, and one that is
   // refused, retries and then captures is in both, so they can also sum above 1.
   cameraBlockRate: number;
+  // The recommendation's own number: sessions that viewed the reco AND opened a
+  // merchant link, over sessions that viewed the reco. Conditioned on reco_viewed the
+  // way captureStart is conditioned on scan_opened, so the numerator is an
+  // INTERSECTION and this cannot exceed 1. Distinct from
+  // failurePreventionConversion, which divides by completed scans: that one answers
+  // "does a scan lead anywhere", this one answers "do the reasons move anyone".
+  //
+  // What it does NOT mean, in the order the mistakes are likely:
+  // - Not a purchase. A commerce click is an outbound action, as the header says.
+  // - Not "clicks caused by the reasons". reco_viewed fires on /report mount, but
+  //   commerce_clicked ALSO fires from /care (placement "care", vs /report's
+  //   "report_product" / "report_summary"), and /care is reachable from the nav on
+  //   every page. A session that viewed /report and later clicked on /care lands in
+  //   the numerator with no reco click in it, so this INFLATES. It is not filtered by
+  //   placement because the server-side aggregate never selects props
+  //   (FUNNEL_AGGREGATE_COLUMNS) and FunnelCountable has no field for them — filtering
+  //   here would either widen that select list, undoing a deliberate privacy
+  //   narrowing, or make the two /ops panels print different numbers under one name.
+  // - Not ordered. The sets are unordered, like viralActivation's: a click recorded
+  //   before the reco view in the same session still counts.
+  // A session that clicked only from /care and never reached /report is in neither
+  // the numerator nor the denominator, which is correct — it saw no reco.
+  recoCommerceRate: number;
 };
 
 export const FUNNEL_ORDER: FunnelEventKind[] = [
@@ -227,6 +250,11 @@ export function summarizeFunnel(events: FunnelCountable[] = getFunnelEvents()): 
   const openedSet = reachedSets.scan_opened;
   const withinOpened = (kind: FunnelEventKind) => [...reachedSets[kind]].filter((id) => openedSet.has(id)).length;
   const ofOpened = (num: number) => (openedSet.size ? num / openedSet.size : 0);
+  // Same intersection rule again, one step further down: commerce_clicked fires on
+  // survey-only and /care-only paths that never saw a reco, and an unconditioned
+  // numerator would read >1 on a log where those outnumber the reco views.
+  const recoViewedSet = reachedSets.reco_viewed;
+  const clickedWithinReco = [...reachedSets.commerce_clicked].filter((id) => recoViewedSet.has(id)).length;
 
   return {
     events: events.length,
@@ -238,6 +266,7 @@ export function summarizeFunnel(events: FunnelCountable[] = getFunnelEvents()): 
     viralActivation: landedSet.size ? landedThenScanned / landedSet.size : 0,
     captureStart: ofOpened(withinOpened("scan_started")),
     cameraBlockRate: ofOpened(withinOpened("camera_blocked")),
+    recoCommerceRate: recoViewedSet.size ? clickedWithinReco / recoViewedSet.size : 0,
   };
 }
 

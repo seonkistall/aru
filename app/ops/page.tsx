@@ -82,6 +82,7 @@ const emptyFunnel: FunnelSummary = {
   viralActivation: 0,
   captureStart: 0,
   cameraBlockRate: 0,
+  recoCommerceRate: 0,
 };
 
 const emptySnapshot: OpsSnapshot = {
@@ -310,6 +311,18 @@ export default function OpsPage() {
             />
             <Row label="Survey viewed" value={`${snapshot.funnel.steps.survey_viewed}`} />
             <Row label="Survey completion" value={`${Math.round(snapshot.funnel.surveyCompletion * 100)}%`} />
+            <Row label="Reco viewed" value={`${snapshot.funnel.steps.reco_viewed}`} />
+            {/* Divides by reco views, not by completed scans — the row above the
+                headline is the scan's number, this one is the recommendation's. Same
+                zero-denominator rule as the two camera rows. */}
+            <Row
+              label="Reco-to-commerce"
+              value={
+                snapshot.funnel.steps.reco_viewed
+                  ? `${Math.round(snapshot.funnel.recoCommerceRate * 100)}% of reco views`
+                  : "— (no reco views recorded)"
+              }
+            />
             <Row label="Share clicked" value={`${snapshot.funnel.steps.share_clicked}`} />
             <Row label="Share rate" value={`${Math.round(snapshot.funnel.shareRate * 100)}%`} />
             <Row label="Care viewed" value={`${snapshot.funnel.steps.care_viewed}`} />
@@ -577,6 +590,7 @@ function SourceCard({ source }: { source: FunnelSourceAggregate }) {
             <Row label="Reco viewed" value={`${steps.reco_viewed}`} />
             <Row label="Commerce clicked" value={`${steps.commerce_clicked}`} />
             <Row label="Scan-to-commerce" value={ratioOf(source.summary.failurePreventionConversion, steps.scan_completed, "of completed scans")} />
+            <Row label="Reco-to-commerce" value={ratioOf(source.summary.recoCommerceRate, steps.reco_viewed, "of reco views")} />
             <Row label="Share landed" value={`${steps.share_landed}`} />
             <Row label="Share activation" value={ratioOf(source.summary.viralActivation, steps.share_landed, "of share arrivals")} />
           </div>
