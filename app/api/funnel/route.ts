@@ -192,6 +192,14 @@ function ingestRow(event: FunnelEvent, receivedAt: number) {
  * boundary, not an authentication one: it keeps some other site's page from posting
  * on a visitor's behalf. The limiter above is what handles a caller who is not a
  * browser at all.
+ *
+ * `x-forwarded-host` is trusted here, and that is sound for exactly that threat
+ * model rather than by accident. A CSRF attacker is a page in a victim's browser:
+ * the browser sets `Origin` itself and cannot be made to send `x-forwarded-host`, so
+ * the pair cannot be matched up from a page. A caller who CAN set both is already
+ * curl, which was never constrained by this check. Behind the edge the header is set
+ * by the platform. (Supervisor probe, 2026-09-17: `origin: https://evil.example` with
+ * `x-forwarded-host: evil.example` is accepted, and is the curl case, not a new one.)
  */
 function originAllowed(request: Request) {
   const origin = request.headers.get("origin");

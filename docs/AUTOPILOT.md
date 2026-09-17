@@ -1888,3 +1888,50 @@ up rather than rediscover them.
 
   Verification on the merged head: vitest 403 in 71 files, `ml/selftest.py` 77, lint 2
   pre-existing warnings, `npm run smoke` green, `tsc --noEmit` 16.
+
+  **Supervisor review, 2026-09-17 01:22–01:45 UTC.** Reviewed as a security review, since
+  this is the first unauthenticated write surface the product has. Every check held.
+
+  The finding I had prepared before the branch landed was the one the route answers
+  directly. `/api/sync`'s `originAllowed` returns `true` when
+  `SUPABASE_SYNC_ALLOWED_ORIGINS` is unset — defensible behind a token, and it would
+  have been decorative here, where an unset env var is the default state of every
+  unconfigured deploy. The new guard fails **closed**: same-origin by default with no
+  configuration, `FUNNEL_INGEST_ALLOWED_ORIGINS` only widening.
+
+  Three guarantees broken on purpose, each failed: removing the `originAllowed` call
+  (4 cases), `ignoreDuplicates` dropped from the upsert options ("expected
+  { onConflict: 'id' } to deeply equal { onConflict: 'id', …(1) }"), and the source
+  constant set to `ops-local` ("expected 'ops-local' to be 'public-funnel'").
+
+  Four hostile probes of my own, beyond the branch's own table, all clean: a
+  `GyeolSyncPayload`-shaped body carrying `cropSamples`, `consentEvents` and `labels`
+  alongside valid events stores **only** the events and writes only `funnel_events`
+  (no `base64`, no `ai_analysis`, no `golden-p1` anywhere in the write log); a
+  200 KB body with no `content-length` header is still 413 on real bytes; a
+  prototype-polluting `__proto__` prop and a free-text `note` are both dropped while
+  the allowlisted `merchant` survives.
+
+  The Fetch Standard citation was re-fetched, not trusted: `whatwg/fetch` `fetch.bs`
+  returns `http=200 bytes=444022` and the append-`Origin` algorithm reads as quoted —
+  for a non-GET/HEAD request the header is appended unconditionally, with the value
+  possibly the literal `null` under `no-referrer` or an https→http downgrade, which is
+  why `new URL("null")` throwing into the catch is the right handling. `next.config.ts`
+  does ship `Referrer-Policy: strict-origin-when-cross-origin`, so ARU's own
+  same-origin https flush sends its real origin.
+
+  One line added in review: the route trusts `x-forwarded-host` and now says why that
+  is sound for its stated threat model rather than by accident. A CSRF attacker is a
+  page in a victim's browser, which sets `Origin` itself and cannot be made to send
+  `x-forwarded-host`; a caller who can set both is already curl, which this check never
+  constrained. Probed: `origin: https://evil.example` with `x-forwarded-host:
+  evil.example` is accepted, and is the curl case, not a new one.
+
+  Verification on the merged head: vitest 432 in 73 files, `ml/selftest.py` 77, lint 2
+  pre-existing warnings, `tsc --noEmit` 16 — unchanged from main —
+  and `npm run smoke` green including the two new rows,
+  `ok GET /api/funnel -> 200` and `ok POST /api/funnel -> 403`.
+
+  `NEXT_PUBLIC_FUNNEL_FLUSH` is set to `on` nowhere in the tree; a repo-wide grep finds
+  only the flag's own definition, its test pin, and comments. The PIPA consent basis
+  remains Sean's open decision and no consent kind or flow was invented.
