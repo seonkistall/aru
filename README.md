@@ -20,6 +20,7 @@ recommendation flow can also be completed with the questionnaire alone.
 - System architecture: [docs/architecture.md](docs/architecture.md)
 - Release procedure: [docs/production-release-checklist.md](docs/production-release-checklist.md)
 - Continuous improvement loop: [docs/AUTOPILOT.md](docs/AUTOPILOT.md) (cycle protocol, guardrails, backlog)
+  — closed history is split out into [docs/autopilot-changelog.md](docs/autopilot-changelog.md)
 - Tone / ITA, checked against outside references: [docs/tone-ita-verification.md](docs/tone-ita-verification.md)
   (what `toneIta` is worth, and what it is not — it is the only tone stratifier the
   fairness gate uses)
