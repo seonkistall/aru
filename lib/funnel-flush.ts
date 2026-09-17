@@ -1,6 +1,12 @@
 import { DEVICE_DATA_KEY } from "./device-data";
-import { FUNNEL_ORDER, getFunnelEvents, type FunnelEvent, type FunnelEventKind, type FunnelProps } from "./funnel";
-import type { GyeolSyncPayload } from "./sync-payload";
+import {
+  FUNNEL_INGEST_MAX_EVENTS,
+  FUNNEL_INGEST_SCHEMA,
+  FUNNEL_PROP_KEYS,
+  redactFunnelEvent,
+  type FunnelIngestSchemaVersion,
+} from "./funnel-contract";
+import { getFunnelEvents, type FunnelEvent } from "./funnel";
 
 /**
  * Send funnel events off the device, once somebody deliberately turns it on.
@@ -17,20 +23,33 @@ import type { GyeolSyncPayload } from "./sync-payload";
  * nothing in any browser until `NEXT_PUBLIC_FUNNEL_FLUSH=on` is set, in the same
  * style as `NEXT_PUBLIC_COMMERCE_AFFILIATE`.
  *
- * READ `docs/funnel-flush-design.md` BEFORE TURNING IT ON. A browser cannot hold
- * `SUPABASE_SYNC_TOKEN`, so an unauthenticated POST to `/api/sync` is refused 401
- * and this flush cannot succeed against that route today —
- * `tests/funnel-flush.test.ts` pins the 401 against the real handler so nobody
- * discovers it in production. The endpoint that can accept it does not exist yet.
+ * READ `docs/funnel-flush-design.md` BEFORE TURNING IT ON. Cycle 6 shipped this
+ * pointed at `/api/sync`, which a browser cannot authenticate to; cycle 7 built
+ * `POST /api/funnel` — unauthenticated, rate-limited, origin-guarded, funnel-only —
+ * and this now posts there instead. The transport working is **not** permission to
+ * switch the flag on: §5 of that doc leaves the PIPA consent basis open, and it is
+ * an owner decision, not a loop decision.
  */
 
 export const FUNNEL_FLUSH_FLAG = "NEXT_PUBLIC_FUNNEL_FLUSH";
 
-/** Default target. Deliberately the existing gated route — see the 401 note above. */
-export const FUNNEL_FLUSH_ENDPOINT = "/api/sync";
+/**
+ * The ingest endpoint, and the reason it is not `/api/sync`.
+ *
+ * `POST /api/sync` requires `SUPABASE_SYNC_TOKEN`, and anything a page can send a
+ * visitor can read: put that token in `NEXT_PUBLIC_*` and it is inlined into every
+ * client bundle; fetch it from an endpoint and that endpoint is the unauthenticated
+ * ingest you were trying to avoid, now handing out a service-role-adjacent secret.
+ * So the flush gets a route built for an untrusted caller instead of a token it
+ * cannot hold. `tests/funnel-flush.test.ts` still pins the 401 from `/api/sync`.
+ */
+export const FUNNEL_FLUSH_ENDPOINT = "/api/funnel";
 
-/** Upper bound on one request. The route's own limit is 5 MB; this stays far under it. */
-export const FUNNEL_FLUSH_MAX_EVENTS = 200;
+/** One definition, shared with the route, so the client cannot send a body the server refuses on count. */
+export const FUNNEL_FLUSH_MAX_EVENTS = FUNNEL_INGEST_MAX_EVENTS;
+
+/** Re-exported so existing importers keep one source of truth — see `lib/funnel-contract.ts`. */
+export { FUNNEL_PROP_KEYS, redactFunnelEvent };
 
 const CURSOR_KEY = DEVICE_DATA_KEY.funnelFlushed;
 
@@ -54,103 +73,30 @@ export function funnelFlushActive(): boolean {
 }
 
 /**
- * The prop keys each event kind is allowed to send off the device.
- *
- * `sanitizeProps` in `lib/funnel.ts` already coerces values to primitives and caps
- * strings at 40 characters, which is what keeps a blob or an object out. It does not
- * and cannot bound the *keys*: a future call site that records a survey completion
- * with a `{ note: freeText }` prop would pass that filter intact. On-device that was
- * a contained mistake. With a flush it is an egress of free text, so the boundary
- * gets its own allowlist and `tests/funnel-flush.test.ts` fails if any call site in
- * the tree uses a key that is not listed here.
- *
- * Every entry below is a key some call site actually passes today; the empty arrays
- * are the page-view kinds, which carry nothing but the fact of the view.
- */
-export const FUNNEL_PROP_KEYS: Record<FunnelEventKind, readonly string[]> = {
-  home_viewed: [],
-  share_landed: [],
-  scan_opened: [],
-  camera_blocked: ["reason"],
-  camera_interrupted: ["reason"],
-  scan_started: ["mode"],
-  scan_completed: ["retake", "source"],
-  survey_viewed: [],
-  survey_completed: ["concerns", "hasScan"],
-  reco_viewed: ["scanApplied", "picks"],
-  care_viewed: [],
-  checkin_opened: [],
-  share_clicked: ["surface", "mode"],
-  commerce_clicked: ["placement", "merchant"],
-};
-
-const MAX_STRING = 40;
-
-function redactProps(kind: FunnelEventKind, props: unknown): FunnelProps | undefined {
-  if (!props || typeof props !== "object" || Array.isArray(props)) return undefined;
-  const allowed = FUNNEL_PROP_KEYS[kind] ?? [];
-  const clean: FunnelProps = {};
-  for (const key of allowed) {
-    const value = (props as Record<string, unknown>)[key];
-    // Re-applied rather than trusted: these events were written to localStorage by
-    // whatever version of sanitizeProps shipped that day and may predate any rule.
-    if (typeof value === "number" && Number.isFinite(value)) clean[key] = value;
-    else if (typeof value === "boolean") clean[key] = value;
-    else if (typeof value === "string") clean[key] = value.slice(0, MAX_STRING);
-  }
-  return Object.keys(clean).length ? clean : undefined;
-}
-
-/**
- * Rebuild one event from an allowlist, field by field.
- *
- * Constructed, never spread. A stored event is JSON that was on disk in a browser
- * ARU does not control, so `{ ...event }` would forward any field a future version,
- * a bug or a hand-edited localStorage entry put on it. The five fields below are
- * everything `funnel_events` has a column for.
- *
- * Returns null for a kind that is not in `FUNNEL_ORDER`, so a retired or misspelled
- * kind is dropped here rather than rejected by the database later.
- */
-export function redactFunnelEvent(event: FunnelEvent): FunnelEvent | null {
-  if (!event || typeof event !== "object") return null;
-  if (!FUNNEL_ORDER.includes(event.kind)) return null;
-  if (typeof event.id !== "string" || !event.id) return null;
-  if (!Number.isFinite(event.ts)) return null;
-  return {
-    id: event.id.slice(0, 64),
-    kind: event.kind,
-    visitorId: String(event.visitorId ?? "").slice(0, 64),
-    sessionId: String(event.sessionId ?? "").slice(0, 64),
-    props: redactProps(event.kind, event.props),
-    ts: event.ts,
-  };
-}
-
-/**
  * The request body for a flush: funnel events and nothing else.
  *
- * Emphatically NOT `buildLocalSyncPayload()`. That helper is what `/ops` posts and it
- * reads `getCropSamples()` — consented face images as data URLs — plus labels, pilot
- * notes and the consent audit log. Those travel on an operator's deliberate action
- * behind a typed token; reusing that builder here would put face crops on a path that
- * fires automatically in a consumer browser. The four arrays are present and empty
- * because the route requires them to be arrays, and empty is the whole point.
+ * Emphatically NOT `buildLocalSyncPayload()`, and no longer even the same *shape*.
+ * That helper is what `/ops` posts and it reads `getCropSamples()` — consented face
+ * images as data URLs — plus labels, pilot notes and the consent audit log. Those
+ * travel on an operator's deliberate action behind a typed token. Cycle 6 kept the
+ * `GyeolSyncPayload` shape here with the four arrays pinned empty; this body has no
+ * field for them at all, so the mistake is now unrepresentable rather than merely
+ * tested for, and `/api/funnel` reads nothing but `events`.
  */
-export function buildFunnelFlushPayload(events: FunnelEvent[], now = Date.now()): GyeolSyncPayload {
-  const funnelEvents = events
-    .map(redactFunnelEvent)
-    .filter((event): event is FunnelEvent => event !== null)
-    .slice(0, FUNNEL_FLUSH_MAX_EVENTS);
+export type FunnelFlushBody = {
+  schemaVersion: FunnelIngestSchemaVersion;
+  clientGeneratedAt: number;
+  events: FunnelEvent[];
+};
+
+export function buildFunnelFlushBody(events: FunnelEvent[], now = Date.now()): FunnelFlushBody {
   return {
-    schemaVersion: "2026-07-04.sync.v2",
+    schemaVersion: FUNNEL_INGEST_SCHEMA,
     clientGeneratedAt: now,
-    source: "ops-local",
-    labels: [],
-    cropSamples: [],
-    pilotNotes: [],
-    consentEvents: [],
-    funnelEvents,
+    events: events
+      .map((event) => redactFunnelEvent(event, now))
+      .filter((event): event is FunnelEvent => event !== null)
+      .slice(0, FUNNEL_FLUSH_MAX_EVENTS),
   };
 }
 
@@ -177,13 +123,24 @@ export function pendingFunnelEvents(events: FunnelEvent[] = getFunnelEvents()): 
 }
 
 /**
- * Record that these ids are safely on a server.
+ * Record that these ids will never need sending again.
  *
- * Only ever called after a 2xx. This is why the transport is `fetch` with
- * `keepalive` and not `navigator.sendBeacon`: sendBeacon is the obvious tool for a
- * pagehide flush, but it returns only whether the request was queued, never what the
- * server said — so a beacon flush would advance this cursor over a 401 and destroy
- * exactly the events it was meant to deliver.
+ * Called with the ids as they are stored on this device, which is why the caller
+ * passes the events it *attempted* rather than the redacted ones it sent. Two ways
+ * that mattered, both of which left a device re-POSTing the same events on every
+ * page-hide for the life of the browser profile:
+ *
+ * - an id longer than `FUNNEL_ID_MAX` is truncated by `redactFunnelEvent`, so the
+ *   cursor would store a prefix that `pendingFunnelEvents` never matches;
+ * - an event the redactor drops outright (a retired kind, a 1970 timestamp) never
+ *   reached the cursor at all, and being undeliverable it would be re-offered,
+ *   re-dropped and re-offered again forever.
+ *
+ * Only ever called after a 2xx, or when the redactor left nothing to send. This is
+ * also why the transport is `fetch` with `keepalive` and not `navigator.sendBeacon`:
+ * sendBeacon reports only whether the request was queued, never what the server said,
+ * so a beacon flush would advance this cursor over a 401 and destroy exactly the
+ * events it was meant to deliver.
  */
 export function markFunnelEventsFlushed(ids: string[]): void {
   if (typeof window === "undefined") return;
@@ -195,16 +152,17 @@ export function markFunnelEventsFlushed(ids: string[]): void {
     const kept = [...sent].slice(-2000);
     localStorage.setItem(CURSOR_KEY, JSON.stringify(kept));
   } catch {
-    // A refused write means the next flush re-sends; the route upserts on id, so a
-    // duplicate is a no-op server-side. Losing the cursor is safe, losing events is not.
+    // A refused write means the next flush re-sends; the route ignores an id it has
+    // already stored, so a duplicate is a no-op server-side. Losing the cursor is
+    // safe, losing events is not.
   }
 }
 
 export type FunnelFlushOutcome =
   | "disabled" // the flag is off — no request was made
-  | "empty" // nothing pending
+  | "empty" // nothing pending, or nothing pending survived redaction
   | "sent"
-  | "rejected" // the server answered, and said no (401 today)
+  | "rejected" // the server answered, and said no
   | "failed"; // the request never got an answer
 
 export type FunnelFlushResult = {
@@ -229,8 +187,14 @@ export async function flushFunnelEvents(options: {
   const pending = pendingFunnelEvents(options.events).slice(0, FUNNEL_FLUSH_MAX_EVENTS);
   if (!pending.length) return { outcome: "empty", attempted: 0 };
 
-  const payload = buildFunnelFlushPayload(pending, options.now);
-  if (!payload.funnelEvents?.length) return { outcome: "empty", attempted: 0 };
+  const attemptedIds = pending.map((event) => event.id);
+  const body = buildFunnelFlushBody(pending, options.now);
+  if (!body.events.length) {
+    // Nothing survived redaction, so there is nothing a server could accept. Retire
+    // the ids rather than offering them again on every page-hide forever.
+    markFunnelEventsFlushed(attemptedIds);
+    return { outcome: "empty", attempted: 0 };
+  }
 
   const send = options.fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
   if (!send) return { outcome: "failed", attempted: pending.length };
@@ -239,11 +203,11 @@ export async function flushFunnelEvents(options: {
     const response = await send(options.endpoint ?? FUNNEL_FLUSH_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payload }),
+      body: JSON.stringify(body),
       keepalive: true,
     });
     if (!response.ok) return { outcome: "rejected", attempted: pending.length, status: response.status };
-    markFunnelEventsFlushed(payload.funnelEvents.map((event) => event.id));
+    markFunnelEventsFlushed(attemptedIds);
     return { outcome: "sent", attempted: pending.length, status: response.status };
   } catch {
     return { outcome: "failed", attempted: pending.length };

@@ -2,7 +2,7 @@ import { auditCommerceOverrides } from "@/lib/commerce";
 import { SKUS } from "@/lib/skus";
 import { getSupabaseAdmin, hasValidSyncToken, isSupabaseSyncConfigured } from "@/lib/supabase-admin";
 import { createRateLimiter, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
-import { latestConsentGranted, SYNC_SCHEMA_VERSIONS, type GyeolSyncPayload, type SyncResult } from "@/lib/sync-payload";
+import { latestConsentGranted, SYNC_SCHEMA_VERSIONS, type GyeolSyncPayload, type SyncResult, type SyncSource } from "@/lib/sync-payload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,16 @@ const MAX_SYNC_BYTES = 5 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 12;
 const syncLimit = createRateLimiter({ max: RATE_LIMIT_MAX, windowMs: RATE_LIMIT_WINDOW_MS, maxKeys: 10_000 });
+
+/**
+ * Who wrote these rows. An operator sitting on /ops, deliberately, behind a typed
+ * token — as distinct from `public-funnel`, the unauthenticated browser ingest at
+ * `app/api/funnel/route.ts`. Typed rather than repeated as a string literal so the
+ * two writers cannot quietly converge on one marker: pooling them in an analysis
+ * would count an operator's own device alongside the open internet. Never taken from
+ * `payload.source`, which is the caller's claim about itself.
+ */
+const SYNC_METADATA_SOURCE: SyncSource = "ops-local";
 
 type SyncRequest = {
   dryRun?: boolean;
@@ -146,7 +156,7 @@ export async function POST(request: Request) {
         consent_text: event.text,
         participant_id: event.participantId ?? null,
         session_id: event.sessionId ?? null,
-        metadata: { source: "ops-local" },
+        metadata: { source: SYNC_METADATA_SOURCE },
         ts: event.ts,
       })),
       { onConflict: "id" }
@@ -162,7 +172,7 @@ export async function POST(request: Request) {
         visitor_id: event.visitorId,
         session_id: event.sessionId,
         props: event.props ?? null,
-        metadata: { source: "ops-local" },
+        metadata: { source: SYNC_METADATA_SOURCE },
         ts: event.ts,
       })),
       { onConflict: "id" }
@@ -193,7 +203,7 @@ export async function POST(request: Request) {
         consent_ai: note.consentAi,
         consent_crop: note.consentCrop,
         notes: note.notes,
-        metadata: { source: "ops-local" },
+        metadata: { source: SYNC_METADATA_SOURCE },
         ts: note.ts,
       })),
       { onConflict: "id" }
