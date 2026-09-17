@@ -385,3 +385,150 @@ rather than re-offering it. Two new cases in `tests/funnel-flush.test.ts`.
 `NEXT_PUBLIC_FUNNEL_FLUSH` is unset, in code and in every config in this repository.
 The transport now works end to end against the real handler. §5 is why the flag is
 still off, it is unchanged, and it is not the loop's to resolve.
+
+## 9. The read side (cycle 8, 2026-09-17)
+
+Cycles 6 and 7 built the write path. Nothing read it. `/ops` builds its funnel panel
+from `readSnapshot()` → `summarizeFunnel()` over `lib/funnel.ts`, which is
+`localStorage` — the operator's own browser. So with the flag on and rows arriving,
+the only thing `/ops` would show is the operator's own session: the product would
+collect data and still show nobody anything.
+
+`lib/funnel-aggregate.ts` plus a token-gated field on `GET /api/funnel` is the read.
+
+### 9.1 Where it lives, and the auth it does not invent
+
+Same shape `/api/sync`'s GET already uses for `commerceOverrides`: `hasValidSyncToken(request)`,
+and the field is simply absent when the token is missing or wrong. No second secret,
+no query-string key, no cookie. `/ops` already collects that token and already sends
+it on a GET, so the screen needed one more fetch and no new input.
+
+It is on `/api/funnel` rather than `/api/sync` for two reasons. That route owns the
+table and owns the source vocabulary. And `/api/sync`'s GET is a pure env-status
+handler that `/ops` re-fetches on a debounce whenever the token field changes — a
+database query behind that is a query per edit of a password field.
+
+The token check runs **before** the query, so an unauthenticated caller costs this
+route exactly what it cost before: no database work, and no new surface to rate-limit.
+`tests/funnel-aggregate.test.ts` asserts the query never ran, not merely that the
+field is absent, and `scripts/smoke-test.mjs` now asserts from outside the process
+that an unauthenticated `GET /api/funnel` body does not contain `aggregate`.
+
+### 9.2 Split by source, because the schema says so
+
+`SYNC_SOURCES` is `["ops-local", "public-funnel"]` and `supabase/schema.sql` says on
+the `metadata` column itself not to pool them. One is an operator uploading their own
+device's log behind a typed token; the other is an unauthenticated write whose
+`visitor_id` nobody can vouch for. A screen that added them would count an operator's
+own test session alongside the open internet.
+
+So: one query per source, filtered on `metadata->>source` — the expression
+`funnel_events_source_ts_idx` is declared on — and the response is a **list**, never a
+total. There is no field anywhere in the payload that spans both sources except
+`tableRows`, which is the table's own row count and therefore not the sum of the
+panels either (see §9.4). `/ops` renders two cards side by side, each with the
+provenance of its marker written next to its numbers.
+
+### 9.3 Aggregate counts only
+
+The schema comment says to treat a `public-funnel` row as evidence about a population,
+not about a visitor. A per-visitor timeline view is the thing that quietly turns that
+into tracking, so the read is built so that one cannot be assembled from it:
+
+- the select list is `kind, session_id, ts` and nothing else. No `visitor_id`, no
+  `props`, never `*`. The test asserts that against every query the route issues;
+- the counters it calls (`summarizeFunnel`, `funnelDropoff`) now take `FunnelCountable`
+  — `Pick<FunnelEvent, "kind" | "sessionId">`. Neither has ever read `visitorId`;
+  naming that is what lets the route select without the column instead of selecting it
+  and promising not to look;
+- the response carries counts and ratios. No row, no id, no ordering. A test
+  serialises the whole aggregate and asserts no session id appears in it.
+
+### 9.4 The three states that are normal today, decided rather than defaulted
+
+Each of these is the state this repository is actually in, and each has a failure mode
+where a screen renders `NaN`, a blank, or a zero that reads as a measurement.
+
+| state | what the API returns | what `/ops` shows |
+|---|---|---|
+| Supabase unconfigured | `{ available: false, reason: "not-configured" }` | "Supabase is not configured — funnel_events cannot be read", and the sentence "This is not a count of zero." |
+| query errored | `{ available: false, reason: "query-failed" }` | a different sentence, naming the service role key and the schema |
+| table empty | `available: true`, `tableRows: 0`, both sources at `totalRows: 0` | both cards, each saying "No rows from this source", plus why nothing has been written yet |
+| one source empty | both sources present, one at `totalRows: 0` | **both** cards render. An absent card would let the card that is there be read as the whole table |
+
+Unconfigured and errored are separate branches because they need different actions
+from an operator, and rendering either as an empty panel would read as "nobody used
+the product" — a different and much worse claim than "this deploy has no database".
+
+`NaN` cannot reach the screen from the arithmetic: `summarizeFunnel` already guards
+every division and returns `0` for an empty denominator. But `0` is the wrong *string*:
+"0% of scan opens reached the shutter" is a measurement of total failure and "no scan
+opens recorded" is no measurement at all. The on-device panel already made that
+distinction for its two camera rows; `ratioOf` in `app/ops/page.tsx` makes it for
+every ratio in the new panel.
+
+Three more things the read reports rather than swallows:
+
+- **truncation.** The aggregate runs in Node over returned rows rather than as a SQL
+  `GROUP BY`, because `summarizeFunnel` counts distinct sessions per kind over set
+  intersections and reimplementing that in SQL would be a second definition of every
+  number `/ops` already shows — the two would drift and the panels would stop being
+  comparable, which is the point of putting them side by side. The cost is a
+  5,000-row cap per source, ordered newest first. When it bites, `truncated` is true,
+  the card says "showing the most recent N of M", and it says that session counts
+  undercount any session whose events straddle the cut.
+- **rows carrying neither marker.** A legacy row written before `metadata` existed is
+  in the table and in neither panel. One head count of the whole table makes
+  `unattributedRows` derivable, and it is stated on the screen. It is `null` — and the
+  screen says the figure is unavailable — when a source was truncated, because the
+  subtraction would then be a made-up number.
+- **kinds this build has no step for.** `supabase/schema.sql` deliberately has no
+  CHECK on `kind` so a new event kind syncs without a migration, which means an older
+  deploy reading a newer table sees kinds it has no step for. They count towards rows
+  and sessions and towards no step, so the card names them; otherwise the two numbers
+  look inconsistent for no visible reason.
+
+### 9.5 research — is `count: "exact"` the total, or the page?
+
+The truncation report above is only honest if `count` is the number of rows that
+MATCHED, not the number returned under `limit`. Checked against both ends rather than
+recalled.
+
+PostgREST's own documentation source (`PostgREST/postgrest-docs`,
+`docs/references/api/pagination_count.rst`, fetched 2026-09-17 through
+`raw.githubusercontent.com`, `http=200 bytes=4518`) — a request for 25 rows with an
+exact count:
+
+```
+curl "http://localhost:3000/bigtable" -I \
+  -H "Range-Unit: items" \
+  -H "Range: 0-24" \
+  -H "Prefer: count=exact"
+
+HTTP/1.1 206 Partial Content
+Range-Unit: items
+Content-Range: 0-24/3573458
+```
+
+25 rows returned, `3573458` after the slash. And the client half, read out of the
+copy this repository actually installs (`@supabase/postgrest-js` 2.108.2,
+`dist/index.cjs`):
+
+```js
+const countHeader = this.headers.get("Prefer")?.match(/count=(exact|planned|estimated)/);
+const contentRange = res.headers.get("content-range")?.split("/");
+if (countHeader && contentRange && contentRange.length > 1) count = parseInt(contentRange[1]);
+```
+
+`contentRange[1]` is the part after the slash — the total — not `data.length`. So
+`count > data.length` is a sound truncation test. (MDN and `www.rfc-editor.org` are
+both still refused by this network; `raw.githubusercontent.com` and the installed
+package are what was reachable.)
+
+### 9.6 Still off, and still not the loop's call
+
+`NEXT_PUBLIC_FUNNEL_FLUSH` is unset, in code and in every config in this repository,
+and a test in `tests/funnel-aggregate.test.ts` fails if any file this cycle touched
+sets it. §5 is unchanged: the PIPA consent basis is the owner's decision, no consent
+kind was invented, and no consent flow was added. Building somewhere for the data to
+be read is not permission to start collecting it.

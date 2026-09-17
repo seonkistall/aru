@@ -6,11 +6,12 @@ import { describeCommerceOverrideIssue, type CommerceOverrideIssue } from "@/lib
 import { CONSENT_VERSION, consentEventCount, exportConsentEvents, latestConsent } from "@/lib/consent";
 import { cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { exportFunnelEvents, funnelDropoff, summarizeFunnel, type FunnelStage, type FunnelSummary } from "@/lib/funnel";
+import type { FunnelAggregate, FunnelSourceAggregate } from "@/lib/funnel-aggregate";
 import { exportLabels, labelCount } from "@/lib/labels";
 import { getMlReadiness } from "@/lib/ml-readiness";
 import { exportPilotNotes, getPilotNotes, normalizeParticipantId, PILOT_PARTICIPANT_IDS, summarizePilotNotes } from "@/lib/pilot";
 import { buildSyncRequestBody, syncRequestByteSize } from "@/lib/sync-size";
-import { buildLocalSyncPayload, type SyncResult } from "@/lib/sync-payload";
+import { buildLocalSyncPayload, type SyncResult, type SyncSource } from "@/lib/sync-payload";
 
 type PilotSummary = ReturnType<typeof summarizePilotNotes>;
 
@@ -98,6 +99,11 @@ export default function OpsPage() {
   const [snapshot, setSnapshot] = useState<OpsSnapshot>(emptySnapshot);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncStatusLoading, setSyncStatusLoading] = useState(true);
+  // The server-side read of funnel_events. Separate from syncStatus because it comes
+  // from a different route (/api/funnel owns the table) and can be slow or unavailable
+  // while the env-status fields above are fine.
+  const [funnelAggregate, setFunnelAggregate] = useState<FunnelAggregate | null>(null);
+  const [funnelAggregateLoading, setFunnelAggregateLoading] = useState(true);
   const syncTokenRef = useRef("");
   const [syncToken, setSyncToken] = useState("");
   const [dryRun, setDryRun] = useState(true);
@@ -115,6 +121,11 @@ export default function OpsPage() {
       .then(setSyncStatus)
       .catch(() => setSyncStatus(null))
       .finally(() => setSyncStatusLoading(false));
+    setFunnelAggregateLoading(true);
+    void fetchFunnelAggregate(syncTokenRef.current)
+      .then(setFunnelAggregate)
+      .catch(() => setFunnelAggregate(null))
+      .finally(() => setFunnelAggregateLoading(false));
   }
 
   useEffect(() => {
@@ -133,6 +144,11 @@ export default function OpsPage() {
         .then(setSyncStatus)
         .catch(() => setSyncStatus(null))
         .finally(() => setSyncStatusLoading(false));
+      setFunnelAggregateLoading(true);
+      void fetchFunnelAggregate(syncToken.trim())
+        .then(setFunnelAggregate)
+        .catch(() => setFunnelAggregate(null))
+        .finally(() => setFunnelAggregateLoading(false));
     }, 600);
     return () => window.clearTimeout(timer);
   }, [syncToken]);
@@ -242,8 +258,11 @@ export default function OpsPage() {
         </section>
 
         <section style={sectionStyle}>
-          <p style={sectionLabel}>scan journey diagnostic</p>
-          <h2 style={sectionTitle}>Scan-to-commerce action</h2>
+          <p style={sectionLabel}>scan journey diagnostic · this device</p>
+          <h2 style={sectionTitle}>Scan-to-commerce action (on-device log)</h2>
+          {/* localStorage on the machine you are reading this on. Still the right
+              screen for an operator testing their own flow end to end — which is why
+              the server-side panel below sits NEXT TO it rather than replacing it. */}
           <p style={bodyText}>
             Of {snapshot.funnel.steps.scan_completed} completed scans, {snapshot.funnel.steps.commerce_clicked} reached an
             informed purchase intent.
@@ -298,7 +317,18 @@ export default function OpsPage() {
             <Row label="Share landed" value={`${snapshot.funnel.steps.share_landed}`} />
             <Row label="Share activation" value={`${Math.round(snapshot.funnel.viralActivation * 100)}%`} />
           </div>
-          <p style={mutedText}>Local device only until a Supabase sync flows these events to funnel_events.</p>
+          <p style={mutedText}>Local device only until a Supabase sync flows these events to funnel_events. The panel below reads that table.</p>
+        </section>
+
+        <section style={sectionStyle}>
+          <p style={sectionLabel}>funnel_events · server side</p>
+          <h2 style={sectionTitle}>What the table holds, per source</h2>
+          {/* Two populations, never one number. `ops-local` is an operator uploading
+              their own device's log behind a typed token; `public-funnel` is an
+              unauthenticated browser write whose visitor_id nobody can vouch for.
+              supabase/schema.sql says on the column itself not to pool them, so this
+              screen does not offer a total — there is no row here that adds them. */}
+          <ServerFunnelPanel aggregate={funnelAggregate} loading={funnelAggregateLoading} />
         </section>
 
         <section style={sectionStyle}>
@@ -432,6 +462,172 @@ function CommerceOverridePanel({ status, loading }: { status: SyncStatus["commer
       )}
     </>
   );
+}
+
+/**
+ * What each source marker means, in the words an operator needs before reading a number.
+ *
+ * Not decoration. The two panels look alike and the counts are computed by the same
+ * code, which is exactly why each needs its provenance stated next to it: a
+ * `public-funnel` session count is a count of claims made by unauthenticated browsers.
+ */
+const SOURCE_NOTES: Record<SyncSource, { title: string; note: string }> = {
+  "ops-local": {
+    title: "ops-local",
+    note: "An operator uploaded their own device's log through POST /api/sync behind the typed token. Few sessions, and every one of them is someone testing.",
+  },
+  "public-funnel": {
+    title: "public-funnel",
+    note: "Unauthenticated browser writes to POST /api/funnel. visitor_id, session_id and ts are device-generated and unverifiable — a population, not evidence about any one visitor.",
+  },
+};
+
+function ServerFunnelPanel({ aggregate, loading }: { aggregate: FunnelAggregate | null; loading: boolean }) {
+  if (loading) return <p style={bodyText}>Reading /api/funnel…</p>;
+  // Absent rather than failed, same as the commerce audit: the aggregate only comes
+  // back with a valid sync token.
+  if (!aggregate) return <p style={bodyText}>Enter the SUPABASE_SYNC_TOKEN below to read funnel_events.</p>;
+
+  if (!aggregate.available) {
+    const notConfigured = aggregate.reason === "not-configured";
+    return (
+      <>
+        <div style={{ ...statusPill, color: notConfigured ? "var(--ink-soft)" : "var(--plum)" }}>
+          {notConfigured ? "Supabase is not configured — funnel_events cannot be read" : "The funnel_events read failed"}
+        </div>
+        {/* The distinction the screen exists to make. An empty panel here would read
+            as "nobody used the product", which is a different and much worse claim
+            than "this deploy has no database". */}
+        <p style={bodyText}>
+          {notConfigured
+            ? "This is not a count of zero. No Supabase env is set on this deploy, so there is no table to read — and NEXT_PUBLIC_FUNNEL_FLUSH is unset, so no browser is writing to one either."
+            : "Supabase env is set but the query errored. Check the service role key and that supabase/schema.sql has been applied to this project."}
+        </p>
+      </>
+    );
+  }
+
+  const empty = aggregate.sources.every((source) => source.totalRows === 0);
+  return (
+    <>
+      <div style={{ ...statusPill, color: empty ? "var(--ink-soft)" : "var(--success)" }}>
+        {aggregate.tableRows} rows in funnel_events
+        {aggregate.unattributedRows !== null && aggregate.unattributedRows > 0
+          ? ` · ${aggregate.unattributedRows} carry no source marker and are in neither panel`
+          : ""}
+        {aggregate.unattributedRows === null ? " · unmarked rows not countable while a source is truncated" : ""}
+      </div>
+      {empty && (
+        <p style={bodyText}>
+          The table is reachable and empty. Nothing has been written yet: NEXT_PUBLIC_FUNNEL_FLUSH is unset, so no
+          browser posts to /api/funnel, and no operator has run a non-dry-run sync from this screen.
+        </p>
+      )}
+      <div style={{ ...twoColumnGrid, marginTop: 12 }}>
+        {aggregate.sources.map((source) => (
+          <SourceCard key={source.source} source={source} />
+        ))}
+      </div>
+      <p style={mutedText}>
+        Counted per source and never added together — see the comment on funnel_events.metadata in supabase/schema.sql.
+        Aggregate counts only: this read never selects visitor_id, so no per-visitor timeline can be built from it.
+        Read at {new Date(aggregate.readAt).toLocaleString()}; at most {aggregate.rowCap} rows per source.
+      </p>
+    </>
+  );
+}
+
+function SourceCard({ source }: { source: FunnelSourceAggregate }) {
+  const notes = SOURCE_NOTES[source.source];
+  const steps = source.summary.steps;
+  return (
+    <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 14, background: "var(--paper)" }}>
+      <p style={{ ...sectionLabel, marginBottom: 4 }}>{notes.title}</p>
+      <p style={{ ...mutedText, marginTop: 0 }}>{notes.note}</p>
+      {source.totalRows === 0 ? (
+        // Rendered rather than hidden. One source having rows and the other having
+        // none is the expected state today, and an absent panel would let the panel
+        // that IS there be read as the whole table.
+        <p style={{ ...bodyText, marginTop: 10 }}>No rows from this source.</p>
+      ) : (
+        <>
+          {source.truncated && (
+            <p style={{ ...bodyText, marginTop: 10, color: "var(--plum)" }}>
+              Showing the most recent {source.rows} of {source.totalRows} rows. Session counts undercount any session
+              whose events straddle that cut.
+            </p>
+          )}
+          <div style={{ marginTop: 8 }}>
+            <Row label="Rows read" value={`${source.rows}${source.truncated ? ` of ${source.totalRows}` : ""}`} />
+            <Row label="Sessions" value={`${source.summary.sessions}`} />
+            <Row label="Window" value={describeWindow(source.firstTs, source.lastTs)} />
+            <Row label="Home viewed" value={`${steps.home_viewed}`} />
+            <Row label="Scan opened" value={`${steps.scan_opened}`} />
+            <Row label="Reached the shutter" value={ratioOf(source.summary.captureStart, steps.scan_opened, "of scan opens")} />
+            <Row
+              label="Camera blocked"
+              value={
+                steps.scan_opened
+                  ? `${steps.camera_blocked} (${Math.round(source.summary.cameraBlockRate * 100)}% of scan opens)`
+                  : `${steps.camera_blocked} (no scan opens recorded)`
+              }
+            />
+            <Row label="Scan completed" value={`${steps.scan_completed}`} />
+            <Row label="Survey completion" value={ratioOf(source.summary.surveyCompletion, steps.survey_viewed, "of survey views")} />
+            <Row label="Reco viewed" value={`${steps.reco_viewed}`} />
+            <Row label="Commerce clicked" value={`${steps.commerce_clicked}`} />
+            <Row label="Scan-to-commerce" value={ratioOf(source.summary.failurePreventionConversion, steps.scan_completed, "of completed scans")} />
+            <Row label="Share landed" value={`${steps.share_landed}`} />
+            <Row label="Share activation" value={ratioOf(source.summary.viralActivation, steps.share_landed, "of share arrivals")} />
+          </div>
+          {source.unusableRows > 0 && (
+            <p style={mutedText}>{source.unusableRows} rows had no usable kind or session id and were not counted.</p>
+          )}
+          {source.unknownKinds.length > 0 && (
+            <p style={mutedText}>
+              Kinds this build has no step for, counted in rows and sessions only: {source.unknownKinds.join(", ")}.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A ratio with a zero denominator is not zero.
+ *
+ * `summarizeFunnel` returns 0 for every ratio whose denominator is empty, which is the
+ * right value for arithmetic and the wrong string for a screen: "0% of scan opens
+ * reached the shutter" is a measurement of total failure, and "no scan opens recorded"
+ * is no measurement at all. The existing on-device panel already makes this
+ * distinction for its two camera rows; every ratio in this panel makes it.
+ */
+function ratioOf(value: number, denominator: number, unit: string) {
+  if (!denominator) return `— (no ${unit.replace(/^of /, "")} recorded)`;
+  return `${Math.round(value * 100)}% ${unit}`;
+}
+
+function describeWindow(firstTs: number | null, lastTs: number | null) {
+  if (firstTs === null || lastTs === null) return "—";
+  const first = new Date(firstTs).toISOString().slice(0, 10);
+  const last = new Date(lastTs).toISOString().slice(0, 10);
+  return first === last ? first : `${first} → ${last}`;
+}
+
+/**
+ * The aggregate is only in the response when the token is valid — same shape as the
+ * commerce audit on /api/sync. `null` means "no aggregate came back", which is the
+ * no-token case; a failed fetch throws and the caller renders nothing.
+ */
+async function fetchFunnelAggregate(token?: string): Promise<FunnelAggregate | null> {
+  const resp = await fetch("/api/funnel", {
+    method: "GET",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!resp.ok) throw new Error("Funnel status unavailable.");
+  const body = (await resp.json()) as { aggregate?: FunnelAggregate };
+  return body.aggregate ?? null;
 }
 
 async function fetchSyncStatus(token?: string): Promise<SyncStatus> {

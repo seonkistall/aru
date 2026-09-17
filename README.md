@@ -248,7 +248,7 @@ background/resume behaviour.
 |---|---|---|---|---|
 | Current scan/survey state | Browser session/local | Restore the recommendation flow | User can delete everything | No transmission by default |
 | Recent results, usage starts, check-ins | `localStorage` | Return visits and routine tracking | Removed via the registered device-data deletion path | No transmission by default |
-| Anonymous funnel events | `localStorage` | Product funnel diagnostics | Max 1,000 entries, included in full deletion | No transmission by default |
+| Anonymous funnel events | `localStorage` | Product funnel diagnostics | Max 1,000 entries, included in full deletion | No transmission by default. When synced or flushed, readable on `/ops` as per-source aggregate counts only — the read never selects `visitor_id` |
 | Training skin crops | Local and private Storage | Consented pilot calibration | 180-day default; deleted/excluded on expiry or withdrawal | `learning_crop` consent + exact pilot scope |
 | Skin crops for AI analysis | Processing memory and the chosen provider | Optional cross-checking | Never stored permanently by ARU | `ai_analysis` consent |
 | Email, consent and send metadata | Private Supabase | 2- and 4-week reminders | Cleanup target 30 days after the 4-week send or unsubscribe | Explicit email opt-in |
@@ -294,7 +294,7 @@ retention period and deletion path are decided.
 | `POST /api/analyze` | Optional vision cross-check of consented skin ROIs | 2,100,000 bytes, JSON/schema, 10/60s per IP, 15s provider timeout | 400/413/429/502/503; on-device reading kept |
 | `POST /api/reason` | Optional LLM phrasing of recommendation reasons | 32,768 bytes, JSON/schema, 10/60s per IP, 15s provider timeout, output claim filter | Verified template fallback |
 | `GET/POST /api/sync` | Pilot status check and authenticated batch sync | Sync token, origin allowlist, 5 MiB, 12/60s per IP after auth, consent/scope validation | Rejects unauthenticated, disallowed-origin and oversized bodies |
-| `GET/POST /api/funnel` | Public funnel-event ingest (the flush's endpoint; flush is off) | Unauthenticated by design: own 20/60s per-IP bucket run first, 32 KiB body cap, same-origin guard, 100 events max, server-side kind/prop re-validation, `metadata.source = public-funnel`, insert-only | Rejects other origins, oversized and malformed bodies; drops unknown kinds and undeclared prop keys |
+| `GET/POST /api/funnel` | Public funnel-event ingest (the flush's endpoint; flush is off), and — behind the sync token on `GET` — the aggregate read of `funnel_events`, split by source | POST is unauthenticated by design: own 20/60s per-IP bucket run first, 32 KiB body cap, same-origin guard, 100 events max, server-side kind/prop re-validation, `metadata.source = public-funnel`, insert-only. The `GET` aggregate needs `SUPABASE_SYNC_TOKEN` and selects `kind, session_id, ts` only — never `visitor_id` | Rejects other origins, oversized and malformed bodies; drops unknown kinds and undeclared prop keys; omits the aggregate without a valid token |
 | `POST /api/reengage/subscribe` | Explicit email opt-in | Email/schema/body validation, 5/60s per IP, private DB | Feature disabled or safe error when unconfigured |
 | `POST /api/reengage/unsubscribe` | Signed unsubscribe | Token signature, expiry and state validation | Rejects tampered/expired tokens |
 | `GET /api/reengage/run` | 2-/4-week sends and retention cleanup | Cron secret, batch of 50, 45s max, withdrawal exclusion | Rejects failed auth; re-runnable within limits |

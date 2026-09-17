@@ -1,10 +1,21 @@
-import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { getSupabaseAdmin, hasValidSyncToken } from "@/lib/supabase-admin";
 import { createRateLimiter, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 import {
   FUNNEL_INGEST_MAX_EVENTS,
   FUNNEL_INGEST_SCHEMA_VERSIONS,
   redactFunnelEvent,
 } from "@/lib/funnel-contract";
+import {
+  aggregateFunnelSource,
+  aggregateSourceOrder,
+  FUNNEL_AGGREGATE_COLUMNS,
+  FUNNEL_AGGREGATE_ROW_CAP,
+  FUNNEL_AGGREGATE_SOURCE_COLUMN,
+  unattributedRowCount,
+  type FunnelAggregate,
+  type FunnelAggregateRawRow,
+  type FunnelSourceAggregate,
+} from "@/lib/funnel-aggregate";
 import type { FunnelEvent } from "@/lib/funnel";
 import type { SyncSource } from "@/lib/sync-payload";
 
@@ -71,13 +82,82 @@ const INGEST_SOURCE: SyncSource = "public-funnel";
 
 type IngestBody = { schemaVersion?: unknown; events?: unknown };
 
-export async function GET() {
+/**
+ * Ingest status, plus — behind the sync token only — the aggregate read of
+ * `funnel_events`.
+ *
+ * Same shape `/api/sync`'s GET uses for `commerceOverrides`: `hasValidSyncToken`, and
+ * the field is simply absent when the token is missing or wrong. No new auth mechanism
+ * and no new secret; `/ops` already collects this token and already sends it on a GET.
+ *
+ * It lives here rather than on `/api/sync` because this route owns the table and the
+ * source vocabulary, and because `/api/sync`'s GET is a pure env-status handler that
+ * `/ops` re-fetches whenever the token field changes — a database query behind that is
+ * a query per edit of a password field.
+ *
+ * The token check runs BEFORE the query, so an unauthenticated caller costs this route
+ * exactly what it cost before: no database work, no new surface to rate-limit.
+ */
+export async function GET(request: Request) {
   return Response.json({
     maxBytes: MAX_INGEST_BYTES,
     maxEvents: FUNNEL_INGEST_MAX_EVENTS,
     schemaVersions: FUNNEL_INGEST_SCHEMA_VERSIONS,
     rateLimit: { windowMs: RATE_LIMIT_WINDOW_MS, max: RATE_LIMIT_MAX },
+    ...(hasValidSyncToken(request) ? { aggregate: await readFunnelAggregate() } : {}),
   });
+}
+
+/**
+ * Counts per source, never a total and never a row.
+ *
+ * One query per source, filtered on `metadata->>source` so `funnel_events_source_ts_idx`
+ * carries it, plus one head count of the whole table so rows carrying neither marker
+ * can be reported instead of vanishing. `{ count: "exact" }` returns how many rows
+ * MATCHED regardless of `limit`, which is what lets truncation be stated rather than
+ * guessed at.
+ *
+ * Ordered by `ts` descending: when the cap bites, the window kept is the most recent
+ * one, which is the window an operator is asking about.
+ */
+async function readFunnelAggregate(): Promise<FunnelAggregate> {
+  const supabase = await getSupabaseAdmin();
+  // The normal state in this repository today, and the reason the screen has an
+  // explicit "not configured" line: an empty panel would read as "nobody used it".
+  if (!supabase) return { available: false, reason: "not-configured" };
+
+  try {
+    const table = await supabase.from("funnel_events").select("id", { count: "exact", head: true });
+    if (table.error) return { available: false, reason: "query-failed" };
+
+    const sources: FunnelSourceAggregate[] = [];
+    for (const source of aggregateSourceOrder()) {
+      const { data, error, count } = await supabase
+        .from("funnel_events")
+        // Only `kind, session_id, ts`. No `visitor_id`, no `props` — see
+        // FUNNEL_AGGREGATE_COLUMNS for why that is the load-bearing part.
+        .select(FUNNEL_AGGREGATE_COLUMNS, { count: "exact" })
+        .eq(FUNNEL_AGGREGATE_SOURCE_COLUMN, source)
+        .order("ts", { ascending: false })
+        .limit(FUNNEL_AGGREGATE_ROW_CAP);
+      if (error) return { available: false, reason: "query-failed" };
+      const rows = (data ?? []) as FunnelAggregateRawRow[];
+      sources.push(aggregateFunnelSource(source, rows, count ?? rows.length));
+    }
+
+    return {
+      available: true,
+      readAt: Date.now(),
+      rowCap: FUNNEL_AGGREGATE_ROW_CAP,
+      tableRows: table.count ?? 0,
+      unattributedRows: unattributedRowCount(table.count ?? 0, sources),
+      sources,
+    };
+  } catch {
+    // A client that throws rather than returning `{ error }` must not take the status
+    // handler down with it: the ingest fields above are what the flush itself reads.
+    return { available: false, reason: "query-failed" };
+  }
 }
 
 export async function POST(request: Request) {

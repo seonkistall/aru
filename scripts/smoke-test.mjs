@@ -42,7 +42,7 @@ const routeChecks = [
   // rejects first (local .env.local present). Both mean unauthenticated POSTs
   // are blocked, which is what this check asserts.
   { method: "POST", path: "/api/sync", status: [401, 403] },
-  { method: "GET", path: "/api/funnel", status: 200, bodyIncludes: '"maxEvents"' },
+  { method: "GET", path: "/api/funnel", status: 200, bodyIncludes: '"maxEvents"', bodyExcludes: '"aggregate"' },
   // The public ingest route, checked from outside the process: a POST with no Origin
   // header did not come from a page fetch, and the origin guard refuses it before the
   // body is read. 403 here is the guard working, not a misconfiguration.
@@ -137,10 +137,16 @@ async function checkRoute(baseUrl, check) {
     }
   }
 
-  if (check.bodyIncludes) {
+  if (check.bodyIncludes || check.bodyExcludes) {
     const body = await response.text();
-    if (!body.includes(check.bodyIncludes)) {
+    if (check.bodyIncludes && !body.includes(check.bodyIncludes)) {
       throw new Error(`${check.method} ${check.path} did not include ${check.bodyIncludes}`);
+    }
+    // Token-gated fields, checked from outside the process rather than only in a unit
+    // test: what matters is what the running server actually serves to a caller who
+    // presented no credential.
+    if (check.bodyExcludes && body.includes(check.bodyExcludes)) {
+      throw new Error(`${check.method} ${check.path} leaked ${check.bodyExcludes} without a token`);
     }
   }
 

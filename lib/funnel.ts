@@ -140,6 +140,18 @@ export function recordFunnelEvent(kind: FunnelEventKind, props?: FunnelProps): F
   }
 }
 
+/**
+ * The two fields every counter below actually reads.
+ *
+ * Both `summarizeFunnel` and `funnelDropoff` count SESSIONS per kind; neither has ever
+ * touched `visitorId`, `id` or `props`. Naming that lets the server-side aggregate in
+ * `lib/funnel-aggregate.ts` call them over rows it selected WITHOUT `visitor_id`,
+ * instead of inventing a placeholder visitor id for a field nothing reads. The
+ * narrowing is what makes "the aggregate never reads a visitor" checkable at the type
+ * level as well as in the SQL.
+ */
+export type FunnelCountable = Pick<FunnelEvent, "kind" | "sessionId">;
+
 export type FunnelSummary = {
   events: number;
   sessions: number;
@@ -186,7 +198,7 @@ export const FUNNEL_ORDER: FunnelEventKind[] = [
   "commerce_clicked",
 ];
 
-export function summarizeFunnel(events: FunnelEvent[] = getFunnelEvents()): FunnelSummary {
+export function summarizeFunnel(events: FunnelCountable[] = getFunnelEvents()): FunnelSummary {
   const sessions = new Set(events.map((event) => event.sessionId));
   const reached = (kind: FunnelEventKind) => new Set(events.filter((event) => event.kind === kind).map((event) => event.sessionId));
 
@@ -251,7 +263,7 @@ const STAGE_ORDER: { kind: FunnelEventKind; label: string }[] = [
 // stays monotonic (never >100%, never a negative drop) even though the raw
 // per-step counts are independent per-session sets where survey/reco/commerce
 // can fire with no scan — a survey-only session simply isn't in the scan funnel.
-export function funnelDropoff(events: FunnelEvent[] = getFunnelEvents()): FunnelStage[] {
+export function funnelDropoff(events: FunnelCountable[] = getFunnelEvents()): FunnelStage[] {
   const sessionsFor = (kind: FunnelEventKind) => new Set(events.filter((event) => event.kind === kind).map((event) => event.sessionId));
   const start = sessionsFor(STAGE_ORDER[0].kind).size;
   let running: Set<string> | null = null;
