@@ -9,9 +9,14 @@ import { confidenceLabelFor } from "@/app/scan/capture-analysis";
  *
  *   lib/skin.ts                   confidenceLabel()      낮음 below it
  *   lib/skin.ts                   overallFor()           재촬영 권장 below it
- *   lib/skin.ts                   retakeRecommended      true below it
+ *   lib/skin.ts                   retakeRecommendedFor() true below it
  *   app/scan/capture-analysis.ts  confidenceLabelFor()   낮음 below it
- *   app/scan/capture-analysis.ts  retakeRecommended      true below it
+ *
+ * FOUR since 2026-09-18, not five: the two inline `retakeRecommended` expressions
+ * (one in `readsFromRaw`, one in `mergeVisionAnalysis`) both became calls to the
+ * exported `retakeRecommendedFor`, so the literal exists once and the merge site
+ * carries none. This file now pins that too — a capture-analysis site that grew its
+ * own 0.58 back would be a fifth copy again.
  *
  * tests/confidence-label-contract.test.ts holds the two LABELS together, so moving
  * the number in both of them stayed green while a scan at 0.59 rendered 낮음 in the
@@ -19,10 +24,9 @@ import { confidenceLabelFor } from "@/app/scan/capture-analysis";
  * one screen disagreeing with itself, the same defect
  * tests/vision-merge-consistency.test.ts exists to prevent, one field over.
  *
- * Two of the five are not exported (they are inline expressions inside
- * readsFromRaw and mergeVisionAnalysis), so this file pins the exported three
- * behaviourally and all five as source literals. Deliberately separate from the
- * label contract test, whose scope the supervisor set.
+ * All four are exported now, so this file pins three of them behaviourally and all
+ * four as source literals. Deliberately separate from the label contract test, whose
+ * scope the supervisor set.
  */
 
 const root = resolve(import.meta.dirname, "..");
@@ -68,20 +72,25 @@ describe("the confidence floor agrees across all five of its sites", () => {
     }
   });
 
-  it("carries the same literal at all five sites", () => {
+  it("carries the same literal at all four sites", () => {
     const found = [
       ...thresholdLiterals("lib/skin.ts", [
         /if \(confidence >= ([0-9.]+)\) return "보통";/,
         /if \(confidence < ([0-9.]+)\) return \{ value: "재촬영 권장"/,
-        /retakeRecommended: confidence < ([0-9.]+) \|\| retakeReasons\.length >= 2/,
+        /return confidence < ([0-9.]+) \|\| signals\.some\(\(signal\) => !signal\.ok\);/,
       ]),
-      ...thresholdLiterals("app/scan/capture-analysis.ts", [
-        /if \(confidence >= ([0-9.]+)\) return "보통";/,
-        /next\.retakeRecommended = next\.confidence < ([0-9.]+) \|\| next\.retakeReasons\.length >= 2/,
-      ]),
+      ...thresholdLiterals("app/scan/capture-analysis.ts", [/if \(confidence >= ([0-9.]+)\) return "보통";/]),
     ];
-    expect(found.length).toBe(5);
+    expect(found.length).toBe(4);
     expect(found.every(Number.isFinite), `parsed: ${found.join(", ")}`).toBe(true);
-    expect(new Set(found).size, `the five sites carry: ${found.join(", ")}`).toBe(1);
+    expect(new Set(found).size, `the four sites carry: ${found.join(", ")}`).toBe(1);
+  });
+
+  it("keeps the vision merge delegating instead of growing a fifth copy", () => {
+    const source = readFileSync(resolve(root, "app/scan/capture-analysis.ts"), "utf8");
+    expect(source).toContain("next.retakeRecommended = retakeRecommendedFor(next.confidence, next.signals);");
+    // Any 0.58 in that file other than confidenceLabelFor's own would be a new copy.
+    // The digit guard keeps the 0.587 luminance coefficient out of the count.
+    expect(source.match(/0\.58(?![0-9])/g) ?? []).toHaveLength(1);
   });
 });

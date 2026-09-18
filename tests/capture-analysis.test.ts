@@ -40,6 +40,13 @@ describe("vision merge", () => {
       confidence: 0.7,
       retakeRecommended: false,
       retakeReasons: ["lighting", "movement"],
+      // The merge recomputes the decision from `signals`, not from how many entries
+      // `retakeReasons` holds — the burst wobble line lives in that array too.
+      signals: [
+        { label: "조명", ok: false, detail: "lighting" },
+        { label: "반사", ok: true, detail: "반사가 크지 않아요" },
+        { label: "피부 영역", ok: true, detail: "볼/T존 영역이 충분히 잡혔어요" },
+      ],
     } as SkinReads;
 
     const merged = mergeVisionAnalysis(base, { labels: { oil: 2 }, confidence: { oil: 0.9 } });
