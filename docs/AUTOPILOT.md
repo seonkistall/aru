@@ -350,6 +350,21 @@ partly done and stays here.
   formula is right is a measurement, not a rename: the cheek specular ratio is near
   zero on a matte cheek, which is why the app never used the Python form. Noted
   2026-09-18.
+- [AI] **No capture signal looks at a saturated CHEEK channel, and both cheek-derived
+  axes lose a level before one fires.** `buildSignals` has three: 조명 (cheekL 70..210),
+  반사 (T-zone pixels whose LUMINANCE exceeds 218, as a fraction under 0.1) and 피부
+  영역. `relRedness` and `cov` are computed from the CHEEK, and skin's R/L is about 1.2,
+  so the cheek's red channel reaches the 8-bit ceiling before any luminance reaches 218.
+  Measured (`tests/axis-exposure-scale.test.ts`, 2026-09-18): on a warm face at the pores
+  cut, 2.5% of the cheek patch is clipped at cheekL 177.9, 14.8% at 184.8 and 25.9% at
+  190.7 — and at 190.7 the published pores level has dropped a bucket while all three
+  signals say ok. Worse, clipping delays the one signal that could catch it: a clipped
+  pixel's computed luminance is lower than the scene's, so fewer pixels cross 218, and
+  the saturating face's 반사 fails 6 counts of cheekL LATER than the control's. The
+  cheapest honest version is a fourth signal on the cheek's clipped-channel fraction, but
+  adding one reopens the retake rule (`retakeRecommendedFor`, cycle 11) and moves what
+  `confidenceLabel` reports, so it is a deliberate decision and not a one-line add. Noted
+  2026-09-18.
 - [AI] **The 120-seed retake table did not reproduce and the sweep that replaces it is
   now committed.** `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`
   re-derives it from cycle 11's written description. 반사 and 피부 영역 came back within
@@ -657,6 +672,135 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-18 (cycle 13) — Branch `autopilot/2026-09-18-1239`. **The other two axes were
+  swept and they are clean. What is not clean is the 8-bit ceiling, and no capture signal
+  watches it.** Cycle 12 measured `shine` and found an absolute brightness term.
+  `relRedness` and `cov` were asserted exposure-invariant by this repository's own
+  thesis document and had never been measured. They are now.
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npx tsc --noEmit | grep -c
+  "error TS"` **13**, vitest **482 passed in 77 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The negative result, which is the main one.** Cycle 12's fixture could not be reused:
+  its frame is flat, so `texture` is 0 and `cov` is 0 at every exposure — a face needs
+  texture before pores can be measured at all. `tests/axis-exposure-scale.test.ts` builds
+  one: the scene is float, every variation on it is multiplicative (texture, per-channel
+  jitter, exposure gain), and the 8-bit write happens last, which is the only place an
+  exposure can leave a trace in an index built from ratios. Warm face at both cuts
+  (cheek 200/150/138, R/L 1.223, texture amplitude 0.19):
+
+  ```
+  cheekL  R=255   relRedness  등급          cov      등급          failed
+   71.2   0.0%    0.01355     붉은기 약간   0.08704  결 약간 보임   -
+  101.6   0.0%    0.01280     붉은기 약간   0.08698  결 약간 보임   -
+  142.3   0.0%    0.01334     붉은기 약간   0.08699  결 약간 보임   -
+  162.6   0.0%    0.01319     붉은기 약간   0.08698  결 약간 보임   -
+  177.9   2.5%    0.01313     붉은기 약간   0.08694  결 약간 보임   -
+  184.8  14.8%    0.01291     붉은기 약간   0.08568  결 약간 보임   -
+  190.7  25.9%    0.01219     붉은기 약간   0.08355  결 매끈        -
+  197.0  38.3%    0.01159     붉은기 낮음   0.07949  결 매끈        반사
+  209.5  55.6%    0.01058     붉은기 낮음   0.06883  결 매끈        반사
+  ```
+
+  Over cheekL 71.2 to 172.8 — a 2.4x exposure range at a fixed relative face structure,
+  and the whole span in which no channel saturates — `cov` spans **1.0092x** and
+  `relRedness` **1.0587x**. Neither carries an absolute term. The oil control on the same
+  harness spans **1.0116x** and keeps one level. So the answer
+  to the brief's question is: no drift, on both axes, and no fix to `lib/skin.ts`.
+  `ATTR_THRESHOLDS`, `fallbackVersion` and the manifest are all untouched, because
+  nothing was found that would justify moving them. Guardrail 8 untouched.
+
+  **The 190.7 row is the finding.** The published pores level drops a bucket while 조명,
+  반사 and 피부 영역 all say ok. Redness holds there but with 1.6% of margin left against
+  its 0.012 cut, so a slightly less red face loses its level inside the passing band too.
+
+  **It is the sensor range, not the normalisation, and the control is what says so.** A
+  second face with the SAME texture amplitude and the same `relRedness` at the reference
+  exposure, but R/L 1.101 instead of 1.223, swept over the identical exposures:
+
+  ```
+  cheekL  R=255   relRedness  cov      등급
+   71.1   0.0%    0.01396     0.08673  결 약간 보임
+  142.3   0.0%    0.01370     0.08725  결 약간 보임
+  177.8   0.0%    0.01370     0.08698  결 약간 보임
+  191.1   0.0%    0.01338     0.08699  결 약간 보임
+  203.2  12.3%    0.01354     0.08647  결 약간 보임
+  212.8  25.9%    0.01248     0.08354  결 매끈
+  ```
+
+  Same exposure, one face loses the level and the other does not. The difference is how
+  much room the red channel had. Saturation cuts the top off the luminance distribution,
+  so the variance falls and `cov` falls with it; red clips first, so `rIdx(cheeks)` falls
+  and `relRedness` follows. No renormalisation recovers a pixel already written as 255,
+  which is why this one does not end in a formula change the way cycle 12 did.
+
+  **What IS ARU's, filed rather than fixed.** Of the three signals only 반사 can see
+  saturation, and it watches the **T-zone's LUMINANCE** crossing 218 — while `relRedness`
+  and `cov` are computed from the **cheek**, whose red channel pins at 255 first because
+  skin's R/L is about 1.2. Measured above: 2.5% clipped at 177.9 and 14.8% at 184.8, all
+  signals ok. And clipping delays its own detector — a clipped pixel's computed luminance
+  is lower than the scene's, so fewer pixels cross 218 and the saturating face's 반사
+  fails **6 counts of cheekL later** than the control's (197.0 against 191.1). A fourth
+  signal is the fix and it reopens the retake rule and moves what `confidenceLabel`
+  reports, both of which the brief put out of scope. Backlog item, dated.
+
+  **The quantisation floor: real, measured, and three cuts below anything that matters.**
+  The brief asked whether a dark-end pores drift would be a normalisation or a sensor
+  problem. There is no dark-end drift to attribute: the face at the pores cut holds
+  within 1.02x from cheekL 66 to 170 and never changes level. The effect the question
+  anticipated does exist one axis down — 8-bit rounding adds a variance of 1/12 count²
+  regardless of exposure, so it inflates `cov` more when the absolute texture is smaller.
+  On a face whose `cheekTexture` is **0.9456** counts at cheekL 66 and 2.3588 at 170:
+
+  ```
+  cov dark mean   (cheekL 66/70/75)        0.013986
+  cov bright mean (cheekL 140/152/160/170) 0.013787
+  ratio                                    1.0144
+  ```
+
+  1.4%, in the direction theory predicts, on a reading already 6x below the 0.085 cut.
+  Neither fix applies because neither problem is present at ARU's cut points.
+
+  **`ml/skin_indices.py` has nothing to keep in step.** Checked, not assumed:
+  `relative_redness(target_astar, reference_astar)` is an a* difference — a different
+  formula with no brightness term — and there is no Python index for pores at all. Same
+  situation as cycle 12 found for `shine_ratio`, and left alone for the same reason.
+
+  **Verification of the new tests.** All 7 substantive cases in
+  `tests/axis-exposure-scale.test.ts` checked by breaking the line each protects in
+  `lib/skin.ts`, four breaks, every case covered by at least one. The 8th is the
+  env-gated print block. Changing `cov: cheeks.texture / (cheekL || 1)` to
+  `cheeks.texture / 140` failed 5, among them
+  `AssertionError: clipping-prone cov 0.04425 0.05026 0.06315 0.07606 0.08841 0.10104 0.10716: expected 2.4219529150904826 to be less than 1.02`
+  and
+  `AssertionError: clipping-prone published 결 매끈/결 매끈/결 매끈/결 매끈/결 약간 보임/결 약간 보임/결 약간 보임: expected 2 to be 1`.
+  Changing `relRedness: rIdx(cheeks) - rIdx(tzone)` to the absolute
+  `(cheeks.meanR - tzone.meanR) / 255` failed 3, among them
+  `AssertionError: clipping-prone relRedness 0.01292 0.01443 0.01711 0.02083 0.02523 0.02857 0.02995: expected 2.318300902953162 to be less than 1.08`.
+  Restoring cycle 12's removed term, `shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255)`,
+  failed the oil control alone:
+  `AssertionError: oil 0.02601 0.02955 0.03676 0.04414 0.05145 0.05886 0.06300: expected 2.42241788561679 to be less than 1.08`.
+  Flipping the sign to `rIdx(tzone) - rIdx(cheeks)` failed the ordering case,
+  `AssertionError: -0.011245679366465866 -0.013337001362681844 -0.017442733570711244 -0.026645026780333758: expected -0.013337001362681844 to be greater than -0.011245679366465866`.
+
+  **UI/UX and research skipped, deliberately**, on cycle 12's reasoning. Nothing a user
+  sees changed — the whole finding is that two numbers do not move — and a screen edit
+  bolted onto a branch whose claim is "these are invariant and this is where they stop
+  being" would only make the tables harder to read. The research track's question was
+  answered by running the code; a lookup added to fill the track is how the changelog
+  got long.
+
+  Verification on this branch: vitest **490 passed in 78 files** (from 482 in 77 — the
+  8 cases in `tests/axis-exposure-scale.test.ts`; the print block is a counted case and
+  prints nothing with `ARU_PRINT_AXIS_SWEEP` unset), `npx tsc --noEmit | grep -c "error TS"`
+  **13** unchanged, `npx eslint .` **2 warnings** both in `lib/care.ts` unchanged,
+  `python3 ml/selftest.py` **Ran 77 tests ... OK** unchanged, `npm run smoke` green.
+  Guardrail 8 untouched: `status` and `promotionGate` byte-identical.
+  `fallbackVersion`, `ATTR_THRESHOLDS`, `inputSchemaVersion`, `NEXT_PUBLIC_FUNNEL_FLUSH`,
+  the retake rule and the shine normalisation all untouched.
+
 - 2026-09-18 (cycle 12) — Branch `autopilot/2026-09-18-0639`. **The oil index carried an
   absolute brightness term while the whole thesis is within-image measurement.**
   `lib/skin.ts` computed
@@ -929,218 +1073,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   unchanged. Guardrail 8 untouched — no change to `status` or `promotionGate`.
   `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched,
   `distanceConfidence` and the 0.58 threshold untouched.
-
-- 2026-09-17 (cycle 10) — Branch `autopilot/2026-09-17-1839`. **The protocol file was
-  66% history, and every brief told a fresh session to read all of it.** Measured before
-  anything moved: 2,329 lines, of which 1,545 (66%) were changelog. The parts a worker
-  must act on — the protocol, the ten guardrails, the live backlog — had become the
-  minority of the file it is required to read first, and the tax grew every cycle.
-  Split by what a cycle has to DO with a line, not by date alone. `docs/AUTOPILOT.md`
-  keeps the cycle protocol, the guardrails, the revenue arithmetic and the
-  revenue-upstream ordering, the standing objective, the open backlog, BLOCKERS, "How
-  the schedule actually runs", "Supervisor findings not yet actioned", and the three
-  most recent cycles under a new "Recent cycles". `docs/autopilot-changelog.md` takes
-  the closed history: changelog entries 2026-09-14 through cycle 6, and the backlog
-  items ticked `[x]`. `[~]` did not move — partly done is live work — and neither did
-  any open `[AI]`/`[OWNER]` item.
-
-  ```
-  wc -l                          before   after split   after step 8 rotation
-  docs/AUTOPILOT.md               2329          1015                     975
-  docs/autopilot-changelog.md        0          1384                    1508
-  ```
-
-  Two stages because this cycle also ran the rule it wrote: the split moved the closed
-  history, then step 8 rotated cycle 7 out to keep "Recent cycles" at three. 975 is the
-  number a cycle 11 worker actually reads.
-
-  **No content lost, checked rather than asserted**, because an assertion is exactly
-  what this file's guardrail 2 forbids. Each moved block was located in the archive by
-  content alone — asserting it appears exactly once — and compared byte-for-byte against
-  its source range in `git show HEAD:docs/AUTOPILOT.md`: 58, 49, 40, 11 and 1,187 lines,
-  each matching on sha256. Then the stronger check, which does not depend on knowing
-  where anything went: every line of the original tested against a multiset of both new
-  files. Six lines matched neither, and they are the six this cycle deliberately
-  rewrote — protocol steps 1 and 7, and the three pointers into content that moved
-  (`see the changelog entry below`, `the read side is the item below`, and the README
-  line). Nothing else in 2,330 lines changed.
-
-  **Protocol step 8 is new and is the actual fix.** A split without a rotation rule just
-  resets the counter: cycle 11 appends, and by cycle 20 the file is back. Step 8 now
-  says "Recent cycles" holds three entries, the fourth-oldest moves to the archive with
-  its text unchanged, items ticked `[x]` that cycle move with it, and the move is proved
-  with `wc -l` on both files plus a byte-identity check. It also says the thing that
-  makes date a bad sole criterion: an entry whose finding is still open is not closed
-  history. This entry rotated cycle 7 out, so the rule has been exercised once rather
-  than only written down.
-
-  **Bug fix — `AGENTS.md` advertised a file that has never existed.** Its "Key Files to
-  Know" table mapped `lib/supabase.ts`, described as "Supabase client (public, no auth)
-  + RLS note". `git log --all -- lib/supabase.ts` is empty and the only `createClient`
-  call in the tree is `lib/supabase-admin.ts:14`, so there is no anon-key client and no
-  RLS surface. The document every agent is told to read first was describing a security
-  posture the app does not have — an agent trusting it would look for RLS as the
-  protection on a path where the service-role key is the only thing in play. Row
-  replaced with what is true.
-
-  **`tests/doc-links.test.ts`** resolves all 179 relative markdown links across
-  `README.md`, `AGENTS.md`, `CLAUDE.md`, root `AUTOPILOT.md` and `docs/**/*.md`, and
-  pins the archive as reachable from the file a cycle actually reads — orphaning 1,508
-  lines of history is the specific way this split could rot. It found the `AGENTS.md`
-  row on its first run, before it was fixed. No link in the tree carries a `#fragment`
-  (counted: zero), so it checks file existence and does not pretend to check anchors.
-  Verified by breaking its subject three ways: deleting `docs/autopilot-changelog.md`
-  (`"docs/AUTOPILOT.md -> autopilot-changelog.md (no docs/autopilot-changelog.md)"`,
-  7 links, both cases fail); repointing every archive link in `AUTOPILOT.md`
-  (`AssertionError: expected '# ARU Autopilot\n\nA scheduled sessio…' to contain
-  'autopilot-changelog.md'`); and restoring the `AGENTS.md` row
-  (`"AGENTS.md -> lib/supabase.ts (no lib/supabase.ts)"`).
-
-  **ML and UI/UX were skipped this cycle, deliberately.** The split was the pre-sized
-  main item and it is a whole-file change to the one document every future cycle starts
-  from; adding an unrelated model or screen change to the same branch would have made
-  the byte-identity proof harder to read for no gain. Research likewise: nothing this
-  cycle needed an external fact, and padding the track with a lookup nobody asked for is
-  how the changelog got to 1,545 lines. The backlog is unchanged apart from the `[x]`
-  items moving — no item was closed, reworded or reordered.
-
-  Verification on this branch: `npm run smoke` green (`Smoke test passed.`), vitest
-  **466 passed in 75 files** (from 464 in 74 — the two new cases),
-  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint` **2 warnings**
-  both in `lib/care.ts` unchanged, `python ml/selftest.py` **Ran 77 tests ... OK**
-  unchanged. Baselines were re-measured from scratch rather than trusted: `node_modules`
-  arrived empty in this container, so the first `tsc` run reported 2,451 errors, all of
-  them "Cannot find module 'next/server'" and "Cannot find name 'process'". That is a
-  missing `npm ci`, not a red build; after installing, the count was 13, matching the
-  brief. Guardrail 8 untouched — no change to `status` or `promotionGate`.
-**Supervisor review, 2026-09-17 19:22–19:45 UTC.** Checked by command rather than by
-reading the PR.
-
-*Nothing lost.* Sorting `docs/AUTOPILOT.md` + `docs/autopilot-changelog.md` together
-and `comm -23`-ing against a sorted snapshot of main's `AUTOPILOT.md` at `e6efe6b`
-prints **6** non-blank lines, and all six are protocol steps the split deliberately
-rewrote to point at the archive — each one's replacement is in the file at a named
-line (125, 164, 255, 341). That matches the worker's own "6 intentional rewrites"
-exactly; it was checked, not taken.
-
-*Guardrails moved, not softened.* `diff` of the `## Hard guardrails` section against
-the snapshot: **byte-identical**.
-
-*Counts, re-derived.* `wc -l`: 2,329 → **975** live + **1,508** archive. The live file
-a cycle must read is down 58%; the pair is 154 lines larger than the original, which is
-the pointers, the archive's own header and the new rotation rule.
-
-*The structural part is better than what I asked for.* I scoped an archive and a
-pointer; the worker also added **step 8, a rotation rule** — "Recent cycles" holds
-three entries and the fourth-oldest moves to the archive as part of landing a cycle.
-Without that the file regrows and this cycle is repaid in a month. Verified: 3 entries
-inline, 11 in the archive.
-
-*Link rot is now caught.* `tests/doc-links.test.ts` walks every markdown file and
-resolves every relative link. Broken on purpose: appending a markdown link to a
-`does-not-exist.md` fails it, and replacing every mention of the archive filename fails
-both its cases
-("expected [ …(7) ] to deeply equal []"). My first attempt at the orphan break passed —
-because the mutation was incomplete, leaving 12 other mentions, not because the test is
-weak; the complete mutation fails it.
-
-*One stale reference fixed in passing*, correctly: `AGENTS.md` listed `lib/supabase.ts`,
-which does not exist in the tree — only `lib/supabase-admin.ts` does.
-
-Verification on the merged head: vitest 466 in 75 files, `ml/selftest.py` 77, lint 2
-pre-existing warnings, `tsc --noEmit` 13 errors — unchanged from main — `npm run smoke`
-green.
-
-*Footnote, earned the hard way.* The first draft of this very note quoted that broken
-link in its literal markdown form, and the test caught **its own review note** —
-`docs/AUTOPILOT.md -> does-not-exist.md`. Left recorded rather than tidied away: the
-guard reads prose as well as pointers, which is worth knowing before someone writes an
-example link into a doc and spends ten minutes on a red suite.
-
-**Supervisor review, 2026-09-18 01:22–01:50 UTC.** The rule is right and it went
-further than I scoped, correctly.
-
-*The confidence table reproduces exactly.* Derived independently before the worker
-reported: 3/3 → 0.7804, 2/3 → 0.687067, 1/3 → 0.593733, 0/3 → 0.500400. So does the
-conclusion I had reached separately and the item had not — **the 0.58 floor is dead on
-capture quality**; even one of three signals passing clears it. The count rule was not
-the secondary mechanism the backlog implied, it was the only one.
-
-*The decision contradicted my pre-sizing and the backlog's, and the mechanism holds.*
-I expected a signal-specific rule sparing 조명 and 반사. `shine` is
-`tzone.specularRatio + max(0, (tzoneL - cheekL) / 255)` (`lib/skin.ts:786`) — verified —
-so a specular ratio adds *directly* to the oil index, in one direction, every capture.
-Reproduced independently: a T-zone glint on an otherwise clean synthetic face moves oil
-from level 0 to level **2**. 반사 is not noise. A rule sparing it would have left the
-larger share of the damage publishing silently.
-
-*The vision-API path had the same count rule*, and the branch fixed it. Two paths that
-could disagree about one capture now share `retakeRecommendedFor`.
-
-*Broken on purpose, two ways, each failing 5 cases*: reverting to `confidence < 0.58`
-alone, and re-keying the gate on `retakeReasons.length >= 2`. The wobble-alone case is
-pinned both ways — reason present, retake false.
-
-*Step 8's rotation, its first run, worked.* `comm -23` of both files sorted against a
-snapshot of main's pair prints **3** non-blank lines: the two backlog headers rewritten
-as `[x]` (both now in "Closed backlog items" at `autopilot-changelog.md:194` and `:220`)
-and the "Last updated" date. "Recent cycles" holds 3.
-
-*One gap, filed above rather than fixed here.* The 120-seed table's script is not
-committed, so the measurement that chose the rule is the only one in this repository
-that cannot be re-run. Every other decision-driving measurement here is re-runnable, and
-that is how three stale figures have been caught — including one of mine.
-
-Verification on the merged head: vitest 475 in 76 files, `ml/selftest.py` 77, lint 2
-pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
-
-**Supervisor review, 2026-09-18 07:22–07:50 UTC.** The defect was real and the fix is
-better than what I scoped.
-
-*I swept it myself before the worker reported, and again after.* Synthetic band frame,
-T-zone held at a fixed percentage above the cheek, cheek luminance swept:
-
-```
-                     before                       after
-pct=1.08  cheekL  50.4  shine 0.0164  oil 0   |  0.0456  oil 0
-          cheekL 142.7  shine 0.0462  oil 0   |  0.0453  oil 0
-          cheekL 167.6  shine 0.0513  oil 1   |  0.0429  oil 0
-pct=1.20  cheekL  50.4  shine 0.0388  oil 0   |  0.1077  oil 1
-          cheekL  66.8  shine 0.0513  oil 1   |  0.1075  oil 1
-          cheekL 167.6  shine 0.1308  oil 1   |  0.1093  oil 1
-```
-
-Before, the index ran 3.6× across the exposure range at a constant relative T-zone
-excess and the **published** oil level flipped on exposure alone — at cheekL 167.6 for
-an 8% excess, at 66.8 for a 20% one. After, the index holds within about 6% and the
-level is constant across the whole range in both cases. A 20%-excess face now reads
-level 1 at every exposure instead of 0 when dark and 1 when bright.
-
-*The `140/255` rescale is the part I would have got wrong.* I expected the cuts to move
-instead. They cannot: the cuts are compared against `specularRatio + gap` and
-`specularRatio` is not rescaled, so scaling the cuts by 255/140 would drop a level on
-every capture whose specular ratio lands in [0.05, 0.0911) or [0.16, 0.2914). The
-branch says so and pins it. Broken on purpose two ways, each failing a *different*
-guarantee: reverting to `/ 255` fails exposure invariance ("expected 2.3937556835404785
-to be less than 1.1"), and dropping the rescale fails the reference-exposure guarantee
-("0.4885354863026262 vs 0.4020067421828359"). Two properties, two pins.
-
-*The second item found that cycle 11's table was partly wrong, and said so.* The
-committed sweep (`ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`)
-reproduces the corrected table exactly, and it prints the failed-signal SET per row —
-which is how it caught that the blown-out fixtures also trip 반사, so cycle 11's "lone
-failure" framing was not strictly true for that row. Corrected in place with both
-constructions named, not quietly overwritten. The rule itself still stands: all three
-signals still cost a reading on at least a sixth of the seeds.
-
-*`ml/skin_indices.py` correctly untouched* — its `shine_ratio` is
-`tzone_specular / cheek_specular` and never carried the `/255` term, so there was
-nothing to keep in step.
-
-`fallbackVersion` → `roi-calibrated-2026-09-18` in both `lib/skin.ts` and the manifest;
-`status` and `promotionGate` untouched. Rotation lost nothing: `comm -23` against a
-snapshot of main's pair prints 12 lines, all of them the backlog item I filed last cycle,
-now closed at `autopilot-changelog.md:135`. "Recent cycles" holds 3.
-
-Verification on the merged head: vitest 482 in 77 files, `ml/selftest.py` 77, lint 2
-pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.

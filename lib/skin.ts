@@ -826,6 +826,15 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     // (x2.34) and flipped the published level between cheekL 140 and 160 — on
     // captures where all three signals passed, so nothing asked for a retake.
     shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / (cheekL || 1)) * (SHINE_REFERENCE_CHEEK_L / 255),
+    // Both measured exposure-invariant across cheekL 71.2..172.8 at a fixed relative
+    // face structure — cov within 1.0092x, relRedness within 1.0587x — so neither carries the
+    // absolute term `shine` did. Above that they collapse, and it is the 8-bit ceiling
+    // rather than the normalisation: skin's R/L is about 1.2, so the CHEEK's red
+    // channel pins at 255 before any T-zone luminance crosses the 218 the 반사 signal
+    // watches. At cheekL 190.7, 25.9% of the cheek patch is clipped, the pores level
+    // drops a bucket, and all three signals still say ok. A control face with the same
+    // texture and the same relRedness but R/L 1.10 holds flat over the identical sweep.
+    // tests/axis-exposure-scale.test.ts, docs/label-free-axes.md.
     relRedness: rIdx(cheeks) - rIdx(tzone),
     cov: cheeks.texture / (cheekL || 1),
     tzoneL,
