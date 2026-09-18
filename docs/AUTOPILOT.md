@@ -338,6 +338,18 @@ partly done and stays here.
   before anyone would notice it was wrong. PR #69 fixes it as part of a larger branch
   and is waiting on an owner decision; if that branch is not wanted whole, this split is
   a handful of lines and is a cycle item on its own. Noted 2026-09-17.
+- [AI] **Commit the retake sweep, or stop citing its table.** Cycle 11's decision rests
+  on a 120-seed-per-condition disagreement table, and the script that produced it was
+  not committed — so the one measurement that chose the rule is the only measurement in
+  this repository nobody can re-run. That breaks a convention every previous cycle kept:
+  `ml/tools/verify_tone_ita.py` (cycle 3), `ml/tools/verify_subgroup_sample_unit.py`
+  (cycle 4), and cycle 5's resolution sweep, which lives inside
+  `tests/blemish-density-scale.test.ts` behind `ARU_PRINT_SCALE_SWEEP=1` — all of them
+  re-runnable by the next reader, which is how three stale figures have been caught.
+  Commit it the way cycle 5 did, as an env-gated block in `tests/retake-signal-rule.test.ts`,
+  or mark the table in `docs/autopilot-changelog.md` as unreproduced. Noted by the
+  supervisor 2026-09-18; the rule itself is verified by mechanism and by unit tests, so
+  this is about the evidence, not the decision.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -988,3 +1000,40 @@ link in its literal markdown form, and the test caught **its own review note** �
 `docs/AUTOPILOT.md -> does-not-exist.md`. Left recorded rather than tidied away: the
 guard reads prose as well as pointers, which is worth knowing before someone writes an
 example link into a doc and spends ten minutes on a red suite.
+
+**Supervisor review, 2026-09-18 01:22–01:50 UTC.** The rule is right and it went
+further than I scoped, correctly.
+
+*The confidence table reproduces exactly.* Derived independently before the worker
+reported: 3/3 → 0.7804, 2/3 → 0.687067, 1/3 → 0.593733, 0/3 → 0.500400. So does the
+conclusion I had reached separately and the item had not — **the 0.58 floor is dead on
+capture quality**; even one of three signals passing clears it. The count rule was not
+the secondary mechanism the backlog implied, it was the only one.
+
+*The decision contradicted my pre-sizing and the backlog's, and the mechanism holds.*
+I expected a signal-specific rule sparing 조명 and 반사. `shine` is
+`tzone.specularRatio + max(0, (tzoneL - cheekL) / 255)` (`lib/skin.ts:786`) — verified —
+so a specular ratio adds *directly* to the oil index, in one direction, every capture.
+Reproduced independently: a T-zone glint on an otherwise clean synthetic face moves oil
+from level 0 to level **2**. 반사 is not noise. A rule sparing it would have left the
+larger share of the damage publishing silently.
+
+*The vision-API path had the same count rule*, and the branch fixed it. Two paths that
+could disagree about one capture now share `retakeRecommendedFor`.
+
+*Broken on purpose, two ways, each failing 5 cases*: reverting to `confidence < 0.58`
+alone, and re-keying the gate on `retakeReasons.length >= 2`. The wobble-alone case is
+pinned both ways — reason present, retake false.
+
+*Step 8's rotation, its first run, worked.* `comm -23` of both files sorted against a
+snapshot of main's pair prints **3** non-blank lines: the two backlog headers rewritten
+as `[x]` (both now in "Closed backlog items" at `autopilot-changelog.md:194` and `:220`)
+and the "Last updated" date. "Recent cycles" holds 3.
+
+*One gap, filed above rather than fixed here.* The 120-seed table's script is not
+committed, so the measurement that chose the rule is the only one in this repository
+that cannot be re-run. Every other decision-driving measurement here is re-runnable, and
+that is how three stale figures have been caught — including one of mine.
+
+Verification on the merged head: vitest 475 in 76 files, `ml/selftest.py` 77, lint 2
+pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
