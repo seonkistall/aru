@@ -132,6 +132,21 @@ Ticked `[x]` and moved here; the section each was under is kept.
   measurement. Truncation at the 5,000-row cap, rows carrying no source marker, and
   kinds this build has no step for are all reported rather than swallowed. 25 tests in
   `tests/funnel-aggregate.test.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` untouched.
+- [x] [AI] ~~**Commit the retake sweep, or stop citing its table.**~~ — done 2026-09-18.
+  Cycle 11's 120-seed-per-condition disagreement table rested on a script that was not
+  committed, the only decision-driving measurement here that could not be re-run. The
+  sweep is now an env-gated block in `tests/retake-signal-rule.test.ts`
+  (`ARU_PRINT_RETAKE_SWEEP=1`), the shape `tests/blemish-density-scale.test.ts` set,
+  with the fixture construction written into the test because it had to be re-derived
+  from prose. **It did not reproduce.** 반사 and 피부 영역 came back within a handful of
+  seeds (피부 영역 pores lands on 49/120 exactly); 조명 is out in both directions — dark
+  oil 21/120 against 71/120, dark pores 120/120 against 4/120 — because the noise
+  amplitude that puts `cov` on its cut point clips against zero at cheekL 60, and
+  because cycle 11's dark band was 51.4-69.1 against this run's 59.6-60.5. The table in
+  `lib/skin.ts`'s `retakeRecommendedFor` doc comment is corrected and labelled as a
+  re-derivation, with the old numbers named in the same comment. The rule is untouched
+  and still supported: every condition costs a published reading on at least a sixth of
+  the seeds. Full account in the cycle 12 entry.
 - [x] [AI] ~~Four more drop-offs are uninstrumented~~ — done 2026-09-15. `home_viewed`,
   `scan_opened`, `camera_blocked`, `care_viewed` and `checkin_opened` now fire, with
   `captureStart` and `cameraBlockRate` in the summary and in `/ops`. Still on-device:
@@ -1683,3 +1698,107 @@ Cycles 7 onward are in [`docs/AUTOPILOT.md`](AUTOPILOT.md) under "Recent cycles"
   route handler with the Supabase client mocked at the query-builder level, which pins
   the select list, the filter, the cap and the count semantics — it has never run against
   a real Postgres, for the same reason §6 step 4 is still open.
+
+- 2026-09-17 (cycle 9) — Branch `autopilot/2026-09-17-1239`. **The recommendation gets a
+  conversion number of its own.** Cycles 6-8 built the funnel write path, the public
+  ingest endpoint and the read side; none of them added a ratio that says anything about
+  the recommendation. The nearest one does not: `failurePreventionConversion` counts
+  `commerce_clicked` sessions within completed-scan sessions, over completed scans, so a
+  session that completed a scan and never reached `/report` is in the denominator and a
+  survey-only session that saw a reco and clicked through is in neither. It is a
+  scan-to-purchase-intent number, other docs cite it, and it is untouched.
+
+  **Baselines on arrival, counted rather than recalled, with `npm ci` run first because
+  `node_modules` was absent.** The cycle brief said `tsc --noEmit` is **16**. It is
+  **13** — the same 13 cycles 4, 7 and 8 counted, all pre-existing and all in test files
+  (`tests/android-config.test.ts` ×1, `tests/e2e/ios-safari-camera.spec.ts` ×3,
+  `tests/product-use.test.ts` ×3, `tests/skin-roi-quality.test.ts` ×6). The brief's
+  vitest count was right and its file count was not: **457 tests in 73 files**, not 75.
+  The other two matched: `ml/selftest.py` 77, lint `0 errors, 2 warnings` (the two
+  unused parameters in `lib/care.ts`, untouched here). After this diff: **74 files /
+  464 tests**, tsc still **13**, selftest still **77**, lint still 2 warnings. Final
+  `npm run smoke`, verbatim, with the documented
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+  override and nothing else:
+
+  ```
+   Test Files  74 passed (74)
+        Tests  464 passed (464)
+    44 passed (3.0m)
+  Ran 77 tests in 0.014s
+  OK
+  ok GET /api/sync -> 200
+  ok POST /api/sync -> 401
+  ok GET /api/funnel -> 200
+  ok POST /api/funnel -> 403
+
+  Smoke test passed.
+  ```
+
+  **The ratio.** `recoCommerceRate` on `FunnelSummary`: sessions that recorded both
+  `reco_viewed` and `commerce_clicked`, over sessions that recorded `reco_viewed`.
+  Conditioned on `reco_viewed` the way `captureStart` is conditioned on `scan_opened`,
+  and for the same reason — `commerce_clicked` fires on survey-only and `/care`-only
+  paths that never saw a reco, so an unconditioned numerator would read above 1 on a log
+  where those outnumber the reco views. The numerator is an intersection, so it cannot
+  exceed 1 by construction; a zero denominator returns 0 and both screens print "—" and
+  name the missing denominator, which is the rule the camera rows already followed.
+
+  **Both `/ops` panels, checked rather than assumed.** They share `summarizeFunnel`,
+  which is why cycle 8 did the aggregate in Node — but each panel names the fields it
+  prints, so a new ratio reaches neither screen on its own. Both now carry a
+  "Reco-to-commerce" row against "of reco views", and a test reads `app/ops/page.tsx`
+  and fails if either call site goes missing.
+
+  **What makes it lie, written down rather than only the happy path.**
+  `commerce_clicked` fires from `/care` as well as `/report` — its `placement` prop is
+  `care` there against `report_product` / `report_summary` on `/report` — and `/care` is
+  reachable from the nav on every page and from `/privacy`, not only from `/report`. So
+  a session that viewed the reco and later clicked on `/care` lands in the numerator
+  with no recommendation click in it: the ratio INFLATES, in exactly that shape. A
+  session that clicked only from `/care` and never reached `/report` is in neither half,
+  which is correct — it saw no reco. The sets are unordered, like `viralActivation`'s,
+  so a click recorded before the reco view in the same session still counts.
+
+  **Why the numerator is not filtered by `placement`, which is a decision and not an
+  oversight.** The server-side aggregate never selects `props`
+  (`FUNNEL_AGGREGATE_COLUMNS` is `"kind, session_id, ts"`) and `FunnelCountable` is
+  `Pick<FunnelEvent, "kind" | "sessionId">`. Filtering on placement would either widen
+  that select list — undoing cycle 8's deliberate privacy narrowing, for a ratio — or
+  compute the numerator one way on the on-device panel and another on the aggregate,
+  printing two different numbers under one label and destroying the comparability that
+  is the whole point of the panels sitting side by side. It is enforced, not promised:
+  attempting the filter is
+  `lib/funnel.ts(257,104): error TS2339: Property 'props' does not exist on type
+  'FunnelCountable'`.
+
+  **`failurePreventionConversion` is untouched**, by name and by value. One test pins a
+  log on which the two deliberately disagree (0.5 against 1) so a later change cannot
+  quietly collapse one into the other.
+
+  **ML — nothing this cycle, deliberately.** `ml/selftest.py` is green at 77 and was not
+  touched. `ml/train_visible_attributes.py`'s metrics/checkpoint split was left alone:
+  it is PR #69's, on a branch that has already taken eight merges from main, and a ninth
+  parallel implementation is the failure mode that branch has hit four times.
+
+  **Verification of the new tests.** All 7 cases in `tests/funnel-reco-conversion.test.ts`
+  were checked by breaking the line each exists to protect, 5 mutations, every one of
+  which failed at least one case. Replacing the intersection with the raw
+  `commerce_clicked` set size (`clickedWithinReco` → `reachedSets.commerce_clicked.size`)
+  failed the bound: `expected 3 to be 1`. Deleting the zero guard
+  (`recoViewedSet.size ? … : 0` → the bare division) failed `expected NaN to be +0`.
+  Swapping the denominator for completed scans (the ratio this must not be) failed 6 of
+  the 7, including the props-free aggregate case at `expected +0 to be 0.25`. Deleting
+  the on-device `<Row label="Reco-to-commerce">` failed
+  `expected '"use client";…' to contain 'snapshot.funnel.recoCommerceRate'`, and
+  deleting the per-source row failed the same test on `'source.summary.recoCommerceRate'`
+  — the two are separate assertions precisely because one panel rendering it is not both.
+
+  **What is still owner-blocked, said plainly.** This ratio reads zero everywhere a human
+  can see it until `NEXT_PUBLIC_FUNNEL_FLUSH` is on, and that is the PIPA question in
+  BLOCKERS, not a loop decision. The flag is untouched, in code and in every config in
+  the repository; `status` and `promotionGate` in the manifest are untouched; no consent
+  kind was invented and §5 was not reopened. No new owner-blocked item was found this
+  cycle — the affiliate signups, the real product URLs, the AI-Hub application, the
+  golden-set photos and physical-device QA are all exactly where the last cycle left
+  them, and none of them moved because none of them can be moved from here.

@@ -338,18 +338,27 @@ partly done and stays here.
   before anyone would notice it was wrong. PR #69 fixes it as part of a larger branch
   and is waiting on an owner decision; if that branch is not wanted whole, this split is
   a handful of lines and is a cycle item on its own. Noted 2026-09-17.
-- [AI] **Commit the retake sweep, or stop citing its table.** Cycle 11's decision rests
-  on a 120-seed-per-condition disagreement table, and the script that produced it was
-  not committed — so the one measurement that chose the rule is the only measurement in
-  this repository nobody can re-run. That breaks a convention every previous cycle kept:
-  `ml/tools/verify_tone_ita.py` (cycle 3), `ml/tools/verify_subgroup_sample_unit.py`
-  (cycle 4), and cycle 5's resolution sweep, which lives inside
-  `tests/blemish-density-scale.test.ts` behind `ARU_PRINT_SCALE_SWEEP=1` — all of them
-  re-runnable by the next reader, which is how three stale figures have been caught.
-  Commit it the way cycle 5 did, as an env-gated block in `tests/retake-signal-rule.test.ts`,
-  or mark the table in `docs/autopilot-changelog.md` as unreproduced. Noted by the
-  supervisor 2026-09-18; the rule itself is verified by mechanism and by unit tests, so
-  this is about the evidence, not the decision.
+- [AI] **`shine_ratio` in `ml/skin_indices.py` and `shine` in `lib/skin.ts` are two
+  different formulas under one name.** The Python index is
+  `tzone_specular / cheek_specular`; the TypeScript one is
+  `tzone.specularRatio + Weber contrast of the T-zone against the cheek`. `FEATURE_KEY`
+  maps `shine_ratio` to the app's `shine` field, and `ml/selftest.py`'s
+  `test_shine_and_roughness_are_ratios_so_exposure_cancels` asserts an exposure
+  invariance for the Python one that was false of the TypeScript one until cycle 12 —
+  so the cross-language contract held by nobody checking the values, the same way
+  `tests/skin-index-contract.test.ts` pins names but not formulas. Deciding which
+  formula is right is a measurement, not a rename: the cheek specular ratio is near
+  zero on a matte cheek, which is why the app never used the Python form. Noted
+  2026-09-18.
+- [AI] **The 120-seed retake table did not reproduce and the sweep that replaces it is
+  now committed.** `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`
+  re-derives it from cycle 11's written description. 반사 and 피부 영역 came back within
+  a handful of seeds; 조명 did not, in both directions (dark oil 21/120 against 71/120,
+  dark pores 120/120 against 4/120), because the fixture construction is a
+  re-derivation and not the original script. The rule is unaffected — every condition
+  still costs a published reading on a sixth of the seeds or more — but if anyone
+  wants the ORIGINAL numbers back, the construction that produced them is gone and
+  only a new measurement can settle it. Noted 2026-09-18.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -648,6 +657,157 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-18 (cycle 12) — Branch `autopilot/2026-09-18-0639`. **The oil index carried an
+  absolute brightness term while the whole thesis is within-image measurement.**
+  `lib/skin.ts` computed
+  `shine = tzone.specularRatio + max(0, (tzoneL - cheekL) / 255)`. The first term is a
+  ratio. The second divided a luminance difference by the constant 255 — not by the
+  capture — while `cov` divides by `cheekL` and `relRedness` is a difference of two
+  ratios. One of the three published features was scale-dependent, and it is the one
+  cycle 11 measured taking the most damage from a bad exposure.
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npx tsc --noEmit | grep -c
+  "error TS"` **13**, vitest **475 passed in 76 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The effect is real and it flips published levels inside the passing band.** One
+  synthetic face whose T-zone is a fixed 8% brighter than its cheeks, read at seven
+  exposures, all three capture signals passing at every row so nothing asks for a
+  retake:
+
+  ```
+  cheekL  tzoneL  before   level        after    level
+    79.9    86.4  0.0254   유분 적음    0.0446   유분 적음
+   120.0   129.7  0.0384   유분 적음    0.0448   유분 적음
+   140.2   151.1  0.0427   유분 적음    0.0427   유분 적음
+   159.6   172.4  0.0501   유분 약간    0.0440   유분 적음
+   200.1   215.3  0.0595   유분 약간    0.0417   유분 적음
+  ```
+
+  The old index runs **x2.34** across cheekL 80 to 200 at fixed relative contrast and
+  changes the published level between 140 and 160. At a T-zone 15% brighter the
+  boundary moves to between cheekL 80 and 100; at 30%, to between 120 and 140. So the
+  answer to the question the brief posed is yes: the same face read the same way at two
+  legal exposures published two different oil levels. After the change the same sweep
+  spans **0.935 to 0.956**, and what is left of that is 8-bit channel rounding.
+
+  **The fix, derived rather than assumed.** The second term becomes Weber contrast
+  against the cheek — `max(0, (tzoneL - cheekL) / cheekL)` — times `140 / 255`.
+  `SHINE_REFERENCE_CHEEK_L = 140` is the midpoint of the band the 조명 signal passes
+  (`buildSignals`: cheekL 70..210), which is this repository's only written definition
+  of a correctly-exposed capture. The constant is **not** what makes the index
+  invariant: the ratio is, for any value of it. All it decides is which exposure keeps
+  today's number, and 140 was chosen so `ATTR_THRESHOLDS.oil` does not have to move.
+
+  **Why moving the cuts instead is not the same change, measured.** The cuts are
+  compared against `specularRatio + gap` and only the gap is rescaled. Cuts scaled by
+  255/140 (0.05 → 0.0911, 0.16 → 0.2914) drop a level on every capture whose specular
+  ratio lands in [0.05, 0.0911) or [0.16, 0.2914) — at the reference exposure, the one
+  exposure the change is supposed to leave alone. Pinned with a measured case: a face
+  with 5 of its 81 T-zone pixels above the specular cut reads `tzoneSpecular = 0.0617`,
+  which is 유분 약간 today and 유분 적음 under the scaled cuts.
+
+  **Which captures change bucket.** At cheekL 140 nothing does: the two formulas agree
+  to within 5e-4 across specular ratios 0 to 0.60 and contrasts 1.00 to 1.20, checked
+  case by case. Brightly-exposed faces read LOWER (cheekL 160-200 at an 8% T-zone gap:
+  유분 약간 → 유분 적음) and darkly-exposed faces read HIGHER (cheekL 70-80 at a 15%
+  gap: 유분 적음 → 유분 약간; at a 30% gap, cheekL 70-120 goes 유분 약간 → 유분 많음).
+  Those are the captures the fix is for.
+
+  **`fallbackVersion` → `roi-calibrated-2026-09-18`** in `lib/skin.ts` AND
+  `public/models/visible-attributes/manifest.json`, the rule `docs/label-free-axes.md`
+  states and cycles 3, 4 and 5 followed. Guardrail 8 untouched: `status` and
+  `promotionGate` are byte-identical. `inputSchemaVersion` untouched.
+
+  **`ml/skin_indices.py` does not carry this term, and checking that found something
+  worse.** Its `shine_ratio(tzone_specular, cheek_specular)` is
+  `tzone_specular / cheek_specular` — a different formula entirely, with no luminance
+  term to mirror, so "change one, change both" had nothing to move. But `FEATURE_KEY`
+  maps `shine_ratio` to the app's `shine`, and `ml/selftest.py`'s
+  `test_shine_and_roughness_are_ratios_so_exposure_cancels` asserts exposure invariance
+  for the index under that name — a property that was true of the Python and false of
+  the TypeScript. It is true of both now, and the two formulas still differ. Filed as a
+  backlog item rather than resolved here: which one is right is a measurement, since a
+  matte cheek's specular ratio is near zero and that is presumably why the app never
+  used the Python form.
+
+  **Second item: cycle 11's sweep is committed, and it does not reproduce.** Behind
+  `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`, the shape
+  cycle 5 set. The construction is written into the test because it had to be
+  re-derived from prose: three fixture families bisected so a clean capture sits on one
+  attribute's lower cut point, 120 seeds, the same noise field used for the clean and
+  the degraded capture at each seed. What came back:
+
+  ```
+  condition                          attr      cheekL range   signals   this run   cycle 11
+  조명 dark                          oil        59.6-60.5     조명       21/120      71/120
+  조명 dark                          redness    59.6-60.5     조명       29/120       0/120
+  조명 dark                          pores      55.4-65.8     조명      120/120       4/120
+  조명 blown out                     oil       214.7-215.3    조명,반사  120/120     120/120
+  조명 blown out                     redness   214.7-215.3    조명       91/120     120/120
+  조명 blown out                     pores     210.2-218.8    조명,반사   61/120       0/120
+  반사                               oil       139.6-140.5    반사       120/120     120/120
+  반사                               redness   139.6-140.5    반사       120/120     116/120
+  반사                               pores     135.4-145.8    반사         0/120       0/120
+  피부 영역                          oil       139.3-140.4    피부 영역   37/120      42/120
+  피부 영역                          redness   139.3-140.4    피부 영역   33/120      22/120
+  피부 영역                          pores     131.9-145.7    피부 영역   49/120      49/120
+  ```
+
+  **반사 and 피부 영역 came back; 조명 did not.** 피부 영역's pores column lands on 49
+  exactly and its other two within 11; 반사 reproduces on two columns of three. 조명 is
+  out in both directions — dark oil 21 against 71, dark pores 120 against 4 — and the
+  reason is the part that could not be recovered from prose: the noise amplitude that
+  puts `cov` on its cut point at cheekL 140 is 52 counts, and at cheekL 60 that clips
+  against zero, which is a fixture artifact and not a property of the 조명 signal.
+  Cycle 11's dark band was 51.4-69.1 and this one is 59.6-60.5, so they are not the
+  same condition either. The table is **corrected, not quietly republished**: the new
+  numbers replace the old ones in `lib/skin.ts`'s `retakeRecommendedFor` doc comment,
+  which says in the same breath that they are a re-derivation and what the old ones
+  were. **The rule is untouched and still supported** — every condition costs a
+  published reading on at least a sixth of the seeds, 반사 is still the worst, and
+  "any one failed signal recommends a retake" is what that says.
+
+  One thing the committed sweep deliberately does not claim: its `oil pre-fix` column
+  re-buckets the same captures on the old index, and the counts come out close (17 vs
+  21 dark, 120 vs 120 blown out) for a reason that has nothing to do with invariance —
+  the fixtures are tuned at cheekL 140, the one exposure where the two formulas agree
+  by construction. The normalisation is measured in
+  `tests/shine-exposure-scale.test.ts`, not there, and the comment says so.
+
+  **Verification of the new tests.** All 6 cases in `tests/shine-exposure-scale.test.ts`
+  checked by deleting or mutating the line each protects, four mutations, every case
+  covered by at least one. Restoring
+  `shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255)` failed 2:
+  `AssertionError: contrast 1.08 published 유분 적음 / 유분 적음 / 유분 약간 / 유분 약간: expected 2 to be 1`
+  and `AssertionError: expected 2.3937556835404785 to be less than 1.1`. Changing
+  `const SHINE_REFERENCE_CHEEK_L = 140;` to 100 failed 1:
+  `AssertionError: contrast 1 glint 24: 0.3716842139458374 vs 0.4020067421828359: expected 0.03032252823699849 to be less than 0.001`.
+  Deleting the whole gap term (leaving `shine: tzone.specularRatio,`) failed 3:
+  `expected NaN to be greater than 0.9`, the same reference-exposure case at
+  `expected 0.1057104458865396 to be less than 0.001`, and
+  `AssertionError: 0 0 0 0: expected 0 to be greater than 0`. Changing
+  `oil: [0.05, 0.16]` to the scaled `[0.0911, 0.2914]` failed the remaining case,
+  `expected +0 to be 1` — which is the measured form of the argument against moving the
+  cuts.
+
+  **UI/UX and research skipped, deliberately.** Nothing a user sees changed except the
+  oil level itself on mis-exposed captures, which is the point of the change; adding an
+  unrelated screen edit to a branch whose whole claim is "these numbers move and those
+  do not" would have made the before/after table harder to read. Research likewise —
+  this cycle's question was answered by running the code, and a lookup added to fill
+  the track is how the changelog got long.
+
+  Verification on this branch: vitest **482 passed in 77 files** (from 475 in 76 — the
+  6 cases in `tests/shine-exposure-scale.test.ts` plus the sweep case added to
+  `tests/retake-signal-rule.test.ts`; both env-gated blocks are counted cases and print
+  nothing with the variable unset), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged,
+  `npx eslint .` **2 warnings** both in `lib/care.ts` unchanged, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK** unchanged, `npm run smoke` green. Guardrail 8 untouched.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched, the retake rule
+  itself untouched.
+
 - 2026-09-18 (cycle 11) — Branch `autopilot/2026-09-18-0039`. **A retake was decided by
   counting entries in an array whose entries mean different things.**
   `retakeRecommended` was `confidence < 0.58 || retakeReasons.length >= 2`, over an
@@ -853,110 +1013,6 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   them "Cannot find module 'next/server'" and "Cannot find name 'process'". That is a
   missing `npm ci`, not a red build; after installing, the count was 13, matching the
   brief. Guardrail 8 untouched — no change to `status` or `promotionGate`.
-- 2026-09-17 (cycle 9) — Branch `autopilot/2026-09-17-1239`. **The recommendation gets a
-  conversion number of its own.** Cycles 6-8 built the funnel write path, the public
-  ingest endpoint and the read side; none of them added a ratio that says anything about
-  the recommendation. The nearest one does not: `failurePreventionConversion` counts
-  `commerce_clicked` sessions within completed-scan sessions, over completed scans, so a
-  session that completed a scan and never reached `/report` is in the denominator and a
-  survey-only session that saw a reco and clicked through is in neither. It is a
-  scan-to-purchase-intent number, other docs cite it, and it is untouched.
-
-  **Baselines on arrival, counted rather than recalled, with `npm ci` run first because
-  `node_modules` was absent.** The cycle brief said `tsc --noEmit` is **16**. It is
-  **13** — the same 13 cycles 4, 7 and 8 counted, all pre-existing and all in test files
-  (`tests/android-config.test.ts` ×1, `tests/e2e/ios-safari-camera.spec.ts` ×3,
-  `tests/product-use.test.ts` ×3, `tests/skin-roi-quality.test.ts` ×6). The brief's
-  vitest count was right and its file count was not: **457 tests in 73 files**, not 75.
-  The other two matched: `ml/selftest.py` 77, lint `0 errors, 2 warnings` (the two
-  unused parameters in `lib/care.ts`, untouched here). After this diff: **74 files /
-  464 tests**, tsc still **13**, selftest still **77**, lint still 2 warnings. Final
-  `npm run smoke`, verbatim, with the documented
-  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
-  override and nothing else:
-
-  ```
-   Test Files  74 passed (74)
-        Tests  464 passed (464)
-    44 passed (3.0m)
-  Ran 77 tests in 0.014s
-  OK
-  ok GET /api/sync -> 200
-  ok POST /api/sync -> 401
-  ok GET /api/funnel -> 200
-  ok POST /api/funnel -> 403
-
-  Smoke test passed.
-  ```
-
-  **The ratio.** `recoCommerceRate` on `FunnelSummary`: sessions that recorded both
-  `reco_viewed` and `commerce_clicked`, over sessions that recorded `reco_viewed`.
-  Conditioned on `reco_viewed` the way `captureStart` is conditioned on `scan_opened`,
-  and for the same reason — `commerce_clicked` fires on survey-only and `/care`-only
-  paths that never saw a reco, so an unconditioned numerator would read above 1 on a log
-  where those outnumber the reco views. The numerator is an intersection, so it cannot
-  exceed 1 by construction; a zero denominator returns 0 and both screens print "—" and
-  name the missing denominator, which is the rule the camera rows already followed.
-
-  **Both `/ops` panels, checked rather than assumed.** They share `summarizeFunnel`,
-  which is why cycle 8 did the aggregate in Node — but each panel names the fields it
-  prints, so a new ratio reaches neither screen on its own. Both now carry a
-  "Reco-to-commerce" row against "of reco views", and a test reads `app/ops/page.tsx`
-  and fails if either call site goes missing.
-
-  **What makes it lie, written down rather than only the happy path.**
-  `commerce_clicked` fires from `/care` as well as `/report` — its `placement` prop is
-  `care` there against `report_product` / `report_summary` on `/report` — and `/care` is
-  reachable from the nav on every page and from `/privacy`, not only from `/report`. So
-  a session that viewed the reco and later clicked on `/care` lands in the numerator
-  with no recommendation click in it: the ratio INFLATES, in exactly that shape. A
-  session that clicked only from `/care` and never reached `/report` is in neither half,
-  which is correct — it saw no reco. The sets are unordered, like `viralActivation`'s,
-  so a click recorded before the reco view in the same session still counts.
-
-  **Why the numerator is not filtered by `placement`, which is a decision and not an
-  oversight.** The server-side aggregate never selects `props`
-  (`FUNNEL_AGGREGATE_COLUMNS` is `"kind, session_id, ts"`) and `FunnelCountable` is
-  `Pick<FunnelEvent, "kind" | "sessionId">`. Filtering on placement would either widen
-  that select list — undoing cycle 8's deliberate privacy narrowing, for a ratio — or
-  compute the numerator one way on the on-device panel and another on the aggregate,
-  printing two different numbers under one label and destroying the comparability that
-  is the whole point of the panels sitting side by side. It is enforced, not promised:
-  attempting the filter is
-  `lib/funnel.ts(257,104): error TS2339: Property 'props' does not exist on type
-  'FunnelCountable'`.
-
-  **`failurePreventionConversion` is untouched**, by name and by value. One test pins a
-  log on which the two deliberately disagree (0.5 against 1) so a later change cannot
-  quietly collapse one into the other.
-
-  **ML — nothing this cycle, deliberately.** `ml/selftest.py` is green at 77 and was not
-  touched. `ml/train_visible_attributes.py`'s metrics/checkpoint split was left alone:
-  it is PR #69's, on a branch that has already taken eight merges from main, and a ninth
-  parallel implementation is the failure mode that branch has hit four times.
-
-  **Verification of the new tests.** All 7 cases in `tests/funnel-reco-conversion.test.ts`
-  were checked by breaking the line each exists to protect, 5 mutations, every one of
-  which failed at least one case. Replacing the intersection with the raw
-  `commerce_clicked` set size (`clickedWithinReco` → `reachedSets.commerce_clicked.size`)
-  failed the bound: `expected 3 to be 1`. Deleting the zero guard
-  (`recoViewedSet.size ? … : 0` → the bare division) failed `expected NaN to be +0`.
-  Swapping the denominator for completed scans (the ratio this must not be) failed 6 of
-  the 7, including the props-free aggregate case at `expected +0 to be 0.25`. Deleting
-  the on-device `<Row label="Reco-to-commerce">` failed
-  `expected '"use client";…' to contain 'snapshot.funnel.recoCommerceRate'`, and
-  deleting the per-source row failed the same test on `'source.summary.recoCommerceRate'`
-  — the two are separate assertions precisely because one panel rendering it is not both.
-
-  **What is still owner-blocked, said plainly.** This ratio reads zero everywhere a human
-  can see it until `NEXT_PUBLIC_FUNNEL_FLUSH` is on, and that is the PIPA question in
-  BLOCKERS, not a loop decision. The flag is untouched, in code and in every config in
-  the repository; `status` and `promotionGate` in the manifest are untouched; no consent
-  kind was invented and §5 was not reopened. No new owner-blocked item was found this
-  cycle — the affiliate signups, the real product URLs, the AI-Hub application, the
-  golden-set photos and physical-device QA are all exactly where the last cycle left
-  them, and none of them moved because none of them can be moved from here.
-
 **Supervisor review, 2026-09-17 19:22–19:45 UTC.** Checked by command rather than by
 reading the PR.
 
@@ -1036,4 +1092,55 @@ that cannot be re-run. Every other decision-driving measurement here is re-runna
 that is how three stale figures have been caught — including one of mine.
 
 Verification on the merged head: vitest 475 in 76 files, `ml/selftest.py` 77, lint 2
+pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
+
+**Supervisor review, 2026-09-18 07:22–07:50 UTC.** The defect was real and the fix is
+better than what I scoped.
+
+*I swept it myself before the worker reported, and again after.* Synthetic band frame,
+T-zone held at a fixed percentage above the cheek, cheek luminance swept:
+
+```
+                     before                       after
+pct=1.08  cheekL  50.4  shine 0.0164  oil 0   |  0.0456  oil 0
+          cheekL 142.7  shine 0.0462  oil 0   |  0.0453  oil 0
+          cheekL 167.6  shine 0.0513  oil 1   |  0.0429  oil 0
+pct=1.20  cheekL  50.4  shine 0.0388  oil 0   |  0.1077  oil 1
+          cheekL  66.8  shine 0.0513  oil 1   |  0.1075  oil 1
+          cheekL 167.6  shine 0.1308  oil 1   |  0.1093  oil 1
+```
+
+Before, the index ran 3.6× across the exposure range at a constant relative T-zone
+excess and the **published** oil level flipped on exposure alone — at cheekL 167.6 for
+an 8% excess, at 66.8 for a 20% one. After, the index holds within about 6% and the
+level is constant across the whole range in both cases. A 20%-excess face now reads
+level 1 at every exposure instead of 0 when dark and 1 when bright.
+
+*The `140/255` rescale is the part I would have got wrong.* I expected the cuts to move
+instead. They cannot: the cuts are compared against `specularRatio + gap` and
+`specularRatio` is not rescaled, so scaling the cuts by 255/140 would drop a level on
+every capture whose specular ratio lands in [0.05, 0.0911) or [0.16, 0.2914). The
+branch says so and pins it. Broken on purpose two ways, each failing a *different*
+guarantee: reverting to `/ 255` fails exposure invariance ("expected 2.3937556835404785
+to be less than 1.1"), and dropping the rescale fails the reference-exposure guarantee
+("0.4885354863026262 vs 0.4020067421828359"). Two properties, two pins.
+
+*The second item found that cycle 11's table was partly wrong, and said so.* The
+committed sweep (`ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`)
+reproduces the corrected table exactly, and it prints the failed-signal SET per row —
+which is how it caught that the blown-out fixtures also trip 반사, so cycle 11's "lone
+failure" framing was not strictly true for that row. Corrected in place with both
+constructions named, not quietly overwritten. The rule itself still stands: all three
+signals still cost a reading on at least a sixth of the seeds.
+
+*`ml/skin_indices.py` correctly untouched* — its `shine_ratio` is
+`tzone_specular / cheek_specular` and never carried the `/255` term, so there was
+nothing to keep in step.
+
+`fallbackVersion` → `roi-calibrated-2026-09-18` in both `lib/skin.ts` and the manifest;
+`status` and `promotionGate` untouched. Rotation lost nothing: `comm -23` against a
+snapshot of main's pair prints 12 lines, all of them the backlog item I filed last cycle,
+now closed at `autopilot-changelog.md:135`. "Recent cycles" holds 3.
+
+Verification on the merged head: vitest 482 in 77 files, `ml/selftest.py` 77, lint 2
 pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
