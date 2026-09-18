@@ -156,10 +156,15 @@ export const VISIBLE_MODEL_CONTRACT = {
   // skin, not per megapixel of it. Every value collected before this string is on a
   // scale that depends on the capture resolution and must not be pooled with one
   // after it. Measurements in docs/capture-resolution-invariance.md.
-  // Note the four "Bumped" lines describe fallbackVersion below, not
+  // Bumped 09-18: `shine`'s brightness-gap term divides by the capture's own cheek
+  // luminance instead of by the constant 255, so the oil index no longer grows with
+  // exposure. Values collected before this string carry a factor of roughly
+  // cheekL/140 on that term and must not be pooled with ones after it.
+  // Measurements in docs/label-free-axes.md.
+  // Note the five "Bumped" lines describe fallbackVersion below, not
   // inputSchemaVersion above: the crop contract the model consumes is unchanged, the
   // derived feature values are not. Keep the manifest's copy in step.
-  fallbackVersion: "roi-calibrated-2026-09-16c",
+  fallbackVersion: "roi-calibrated-2026-09-18",
   targetModel: "mobilenetv3-small-visible-attributes",
 };
 
@@ -394,13 +399,25 @@ function buildSignals(raw: SkinRawFeatures) {
  * raw value tuned onto its own cut point, a lone failure disagreed with a clean
  * capture of the same face on a PUBLISHED level at these rates —
  *
- *   조명 alone (cheekL 51-69, underexposed)  oil 71/120   redness 0/120   pores  4/120
- *   조명 alone (cheekL 214-226, blown out)   oil 120/120  redness 120/120 pores  0/120
- *   반사 alone (tzoneSpecular 0.296)         oil 120/120  redness 116/120 pores  0/120
- *   피부 영역 alone (686 cheek samples)       oil 42/120   redness 22/120  pores 49/120
+ * Cycle 11 wrote this table from a script it did not commit, so cycle 12 re-derived
+ * it from the description and committed the sweep behind ARU_PRINT_RETAKE_SWEEP in
+ * tests/retake-signal-rule.test.ts. The numbers below are that re-run, which is NOT
+ * cycle 11's: 반사 and 피부 영역 came back within a handful of seeds, and 조명 did
+ * not (dark oil was recorded as 71/120 and pores as 4/120). The rule this function
+ * implements is unchanged and so is the ordering the rule rests on — see the cycle 12
+ * entry in docs/AUTOPILOT.md for the two constructions and why they differ.
  *
- * so every one of the three costs at least one reading more than a third of the
- * time, and none of them reaches the 0.58 confidence floor on its own: the lowest
+ *   조명 (cheekL 59.6-60.5, underexposed)   oil  21/120  redness  29/120  pores 120/120
+ *   조명 (cheekL 214.7-215.3, blown out)    oil 120/120  redness  91/120  pores  61/120
+ *   반사 (tzoneSpecular 0.296)              oil 120/120  redness 120/120  pores   0/120
+ *   피부 영역 (686 cheek samples)            oil  37/120  redness  33/120  pores  49/120
+ *
+ * (On the blown-out row the oil and pores fixtures also trip 반사, because their own
+ * T-zone patch crosses the specular cut at that exposure; the sweep prints the failed
+ * set per row rather than asserting each condition is lone.)
+ *
+ * so every one of the three costs at least one reading on at least a sixth of the
+ * seeds, and none of them reaches the 0.58 confidence floor on its own: the lowest
  * confidence with 2 of 3 signals passing is 0.687067 (0.695 * 0.72 + (2/3) * 0.28,
  * 0.695 being the floor of `distanceConfidence` over every input). Under the old
  * rule all of that published silently.
@@ -479,6 +496,23 @@ export const ATTR_THRESHOLDS: Record<SkinAttr, [number, number]> = {
   redness: [0.012, 0.03],
   pores: [0.085, 0.14],
 };
+
+/**
+ * Cheek luminance at which `shine`'s brightness-gap term equals the `/ 255` term it
+ * replaced, so these oil cuts keep meaning what they meant on a correctly-exposed
+ * capture. 140 is the midpoint of the band the 조명 signal calls acceptable
+ * (`buildSignals`: cheekL 70..210), which is this repository's only written
+ * definition of a correctly-exposed capture.
+ *
+ * The constant does NOT create the exposure invariance — `(tzoneL - cheekL) / cheekL`
+ * is a ratio and cancels a gain for any value of this. All it decides is WHICH
+ * exposure keeps today's number, and 140 was chosen so that the cuts did not have to
+ * move. Moving them instead would not have been equivalent: the cuts are compared
+ * against `specularRatio + gap`, and `specularRatio` is not rescaled, so cuts scaled
+ * by 255/140 drop a level on every capture whose specular ratio lands in
+ * [0.05, 0.0911) or [0.16, 0.2914) — see tests/shine-exposure-scale.test.ts.
+ */
+const SHINE_REFERENCE_CHEEK_L = 140;
 
 const ATTR_RAW_KEY: Record<SkinAttr, "shine" | "relRedness" | "cov"> = {
   oil: "shine",
@@ -787,7 +821,15 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
   const blemishes = detectBlemishes(data, w, h, landmarks, gains);
 
   return {
-    shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255),
+    // Both terms are within-image, which is the contract docs/label-free-axes.md
+    // states and the second term used to break: it divided the T-zone/cheek
+    // brightness gap by the constant 255 instead of by the capture, so the oil index
+    // grew with how bright the photo was. Weber contrast against the cheek fixes
+    // that the same way `cov` below divides by `cheekL`. Measured: at a fixed
+    // tzoneL/cheekL of 1.08 the old term ran 0.0254 -> 0.0595 across cheekL 80..200
+    // (x2.34) and flipped the published level between cheekL 140 and 160 — on
+    // captures where all three signals passed, so nothing asked for a retake.
+    shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / (cheekL || 1)) * (SHINE_REFERENCE_CHEEK_L / 255),
     relRedness: rIdx(cheeks) - rIdx(tzone),
     cov: cheeks.texture / (cheekL || 1),
     tzoneL,
