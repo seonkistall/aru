@@ -494,9 +494,9 @@ git diff --check
 `npm run smoke` currently bundles:
 
 - ESLint and the TypeScript/Next.js production build
-- Vitest: 59 files, 297 tests
-- Playwright Chromium mobile E2E: 42 tests
-- Playwright WebKit 26.5 iPhone-profile camera-lifecycle E2E: 5 tests
+- Vitest: 78 files, 491 tests
+- Playwright Chromium mobile E2E: 44 tests in 12 files
+- `ml/selftest.py`: 77 tests, standard library only (no torch install needed)
 - Home and core callouts across locales
 - 9 core routes × 5 locales × 4 viewports (320/360/393/768px) — a
   180-combination text-fit matrix
@@ -507,11 +507,17 @@ git diff --check
 - MediaPipe model/WASM same-origin assets
 - Public production routes and internal-route 404s
 - API JSON/body/auth/origin boundaries
-- ML Python script compilation
+- ML Python script compilation (`py_compile`)
+
+**Not bundled:** the Playwright WebKit 26.5 iPhone-profile camera-lifecycle E2E
+(5 tests in 1 file) runs on its own, via `npm run test:ios-safari`.
+`scripts/smoke-test.mjs` calls `lint`, `test`, `test:mobile-ui`, `build`,
+`py_compile`, `ml/selftest.py` and the HTTP route checks — and not that config.
 
 Test counts grow with features; the latest run evidence in
 [STATUS](docs/STATUS.md) and `docs/qa/` takes precedence over the numbers
-here.
+here. The counts above were last re-derived by running each suite on
+2026-09-18 (cycle 13).
 
 ### Extra verification by change type
 
