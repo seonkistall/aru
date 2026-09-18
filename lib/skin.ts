@@ -382,6 +382,39 @@ function buildSignals(raw: SkinRawFeatures) {
 }
 
 /**
+ * Whether the capture should be retaken. Keyed on WHICH signals failed, never on
+ * how many entries `retakeReasons` happens to hold — the array also carries the
+ * burst frame-wobble line, which is not a capture signal and must not move this
+ * gate. Shared with the vision-API merge in app/scan/capture-analysis.ts so the
+ * two paths cannot drift.
+ *
+ * ANY ONE failed signal recommends a retake. That is stricter than the
+ * `retakeReasons.length >= 2` count it replaces, and it is what the measurement
+ * supports: on 120 seeded synthetic captures per condition, with each attribute's
+ * raw value tuned onto its own cut point, a lone failure disagreed with a clean
+ * capture of the same face on a PUBLISHED level at these rates —
+ *
+ *   조명 alone (cheekL 51-69, underexposed)  oil 71/120   redness 0/120   pores  4/120
+ *   조명 alone (cheekL 214-226, blown out)   oil 120/120  redness 120/120 pores  0/120
+ *   반사 alone (tzoneSpecular 0.296)         oil 120/120  redness 116/120 pores  0/120
+ *   피부 영역 alone (686 cheek samples)       oil 42/120   redness 22/120  pores 49/120
+ *
+ * so every one of the three costs at least one reading more than a third of the
+ * time, and none of them reaches the 0.58 confidence floor on its own: the lowest
+ * confidence with 2 of 3 signals passing is 0.687067 (0.695 * 0.72 + (2/3) * 0.28,
+ * 0.695 being the floor of `distanceConfidence` over every input). Under the old
+ * rule all of that published silently.
+ *
+ * It errs towards asking for a retake, deliberately: a retake prompt on a capture
+ * that would have read correctly costs one tap, and a wrong level costs the reading
+ * AND the recommendation built on it — `shouldApplyScan` in lib/recommend.ts drops
+ * a retake-recommended scan, so a bad reading that stays under the gate does not.
+ */
+export function retakeRecommendedFor(confidence: number, signals: ConfidenceSignal[]): boolean {
+  return confidence < 0.58 || signals.some((signal) => !signal.ok);
+}
+
+/**
  * Exported only so tests/confidence-label-contract.test.ts can hold it against the
  * byte-for-byte copy in app/scan/capture-analysis.ts. The two call sites have
  * different shapes and merging them would be wider than the problem; what is worth
@@ -782,7 +815,11 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
   const attrConfidence = (merged.buckets.oil.confidence ?? 0.6) * 0.34 + (merged.buckets.redness.confidence ?? 0.6) * 0.33 + (merged.buckets.pores.confidence ?? 0.6) * 0.33;
   const meanAgreement = burst ? (burst.agreement.oil + burst.agreement.redness + burst.agreement.pores) / 3 : 1;
   const confidence = clamp01((attrConfidence * 0.72 + signalScore * 0.28) * (burst ? 0.9 + 0.1 * meanAgreement : 1));
-  const retakeReasons = signals.filter((signal) => !signal.ok).map((signal) => signal.detail);
+  const failedSignals = signals.filter((signal) => !signal.ok);
+  const retakeReasons = failedSignals.map((signal) => signal.detail);
+  // Frame wobble is a FOURTH entry in the same array, and it is not a capture
+  // signal: `retakeRecommendedFor` reads `signals`, never this array's length, so
+  // pushing it here cannot move the gate. See that function for why.
   if (burst && meanAgreement < 0.67) retakeReasons.push("촬영 프레임 사이에 신호가 조금 흔들렸어요");
 
   // Extra visible reads (observational only — no quantities, no claims).
@@ -820,7 +857,7 @@ function readsFromRaw(raw: SkinRawFeatures, ml?: MlVisiblePrediction | null, bur
     narrative: narrativeFor(merged.buckets.oil, merged.buckets.redness, merged.buckets.pores),
     confidence,
     confidenceLabel: confidenceLabel(confidence),
-    retakeRecommended: confidence < 0.58 || retakeReasons.length >= 2,
+    retakeRecommended: retakeRecommendedFor(confidence, signals),
     retakeReasons,
     signals,
     source: merged.usedMl ? "ml-model" : "roi-calibrated",
