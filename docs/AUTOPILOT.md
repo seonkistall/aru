@@ -1093,3 +1093,54 @@ that is how three stale figures have been caught — including one of mine.
 
 Verification on the merged head: vitest 475 in 76 files, `ml/selftest.py` 77, lint 2
 pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
+
+**Supervisor review, 2026-09-18 07:22–07:50 UTC.** The defect was real and the fix is
+better than what I scoped.
+
+*I swept it myself before the worker reported, and again after.* Synthetic band frame,
+T-zone held at a fixed percentage above the cheek, cheek luminance swept:
+
+```
+                     before                       after
+pct=1.08  cheekL  50.4  shine 0.0164  oil 0   |  0.0456  oil 0
+          cheekL 142.7  shine 0.0462  oil 0   |  0.0453  oil 0
+          cheekL 167.6  shine 0.0513  oil 1   |  0.0429  oil 0
+pct=1.20  cheekL  50.4  shine 0.0388  oil 0   |  0.1077  oil 1
+          cheekL  66.8  shine 0.0513  oil 1   |  0.1075  oil 1
+          cheekL 167.6  shine 0.1308  oil 1   |  0.1093  oil 1
+```
+
+Before, the index ran 3.6× across the exposure range at a constant relative T-zone
+excess and the **published** oil level flipped on exposure alone — at cheekL 167.6 for
+an 8% excess, at 66.8 for a 20% one. After, the index holds within about 6% and the
+level is constant across the whole range in both cases. A 20%-excess face now reads
+level 1 at every exposure instead of 0 when dark and 1 when bright.
+
+*The `140/255` rescale is the part I would have got wrong.* I expected the cuts to move
+instead. They cannot: the cuts are compared against `specularRatio + gap` and
+`specularRatio` is not rescaled, so scaling the cuts by 255/140 would drop a level on
+every capture whose specular ratio lands in [0.05, 0.0911) or [0.16, 0.2914). The
+branch says so and pins it. Broken on purpose two ways, each failing a *different*
+guarantee: reverting to `/ 255` fails exposure invariance ("expected 2.3937556835404785
+to be less than 1.1"), and dropping the rescale fails the reference-exposure guarantee
+("0.4885354863026262 vs 0.4020067421828359"). Two properties, two pins.
+
+*The second item found that cycle 11's table was partly wrong, and said so.* The
+committed sweep (`ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`)
+reproduces the corrected table exactly, and it prints the failed-signal SET per row —
+which is how it caught that the blown-out fixtures also trip 반사, so cycle 11's "lone
+failure" framing was not strictly true for that row. Corrected in place with both
+constructions named, not quietly overwritten. The rule itself still stands: all three
+signals still cost a reading on at least a sixth of the seeds.
+
+*`ml/skin_indices.py` correctly untouched* — its `shine_ratio` is
+`tzone_specular / cheek_specular` and never carried the `/255` term, so there was
+nothing to keep in step.
+
+`fallbackVersion` → `roi-calibrated-2026-09-18` in both `lib/skin.ts` and the manifest;
+`status` and `promotionGate` untouched. Rotation lost nothing: `comm -23` against a
+snapshot of main's pair prints 12 lines, all of them the backlog item I filed last cycle,
+now closed at `autopilot-changelog.md:135`. "Recent cycles" holds 3.
+
+Verification on the merged head: vitest 482 in 77 files, `ml/selftest.py` 77, lint 2
+pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
