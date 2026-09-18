@@ -422,6 +422,16 @@ export function distanceConfidence(value: number, lo: number, hi: number) {
  * clipping at all — a relRedness of 0.01276 quantising down to 0.01197 across the
  * 0.012 cut, which is the dark-end 8-bit scatter cycle 13 measured and not something
  * a clipping signal can see.
+ *
+ * What it costs a user whose reading was fine, measured by the supervisor on the same
+ * family: this signal refuses a capture some exposure BEFORE either a published level
+ * moves or an older signal would have caught it anyway. That band is small and only
+ * mildly tone-dependent — mean 5.6 counts of cheekL at R/L 1.223 and 7.3 at 1.30, a
+ * factor of 1.30, with no face refused more than 11 counts early. Texture is not a
+ * driver at all: the whole 0.10..0.42 amplitude range fits inside 10 counts at a fixed
+ * R/L. Both were pre-registered as likely to be large and neither is. The band is
+ * pinned rather than merely noted, because it is the number that would have to grow
+ * before the signal became tone-unfair.
  */
 const CHEEK_CLIP_LIMIT = 0.15;
 

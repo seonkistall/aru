@@ -804,6 +804,43 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   both in `lib/care.ts` unchanged, `python3 ml/selftest.py` **Ran 77 tests ... OK**
   unchanged, `npm run smoke` green.
 
+
+  **Supervisor, same day — the cut reproduces, and the one thing it does not measure is
+  now measured.** Every number in the `CHEEK_CLIP_LIMIT` comment re-ran from the
+  committed sweep (`ARU_PRINT_CLIP_SWEEP=1`): the 14.81% bucket is the last inside both
+  tolerances, 16.05% is the first outside, the first published flip is at 20.99%, and
+  the cost table (0.00% refused at cheekL <= 140, 1.31% / 24.65% / 65.17% above it,
+  379 of 380 silent flips caught) is exact. Four source lines were broken to check the
+  new cases carry weight: computing `clippedRatio` over the TRIMMED set fails 3 of 9,
+  deleting the ceiling counter fails 5, moving the cut to 0.30 fails 5, and reverting
+  `confidenceLabel` to 0.78 in `lib/skin.ts` alone fails the duplication guard with
+  `165 of 2014 values disagree`. The 0.8614 derivation checks out arithmetically:
+  `distanceConfidence` is `0.92 - distance * 0.45`, a quarter-span reading gives 0.8075,
+  and `0.8075 * 0.72 + 0.28 = 0.8614`.
+
+  What the cycle did not measure is what the signal costs a user whose reading was fine.
+  The supervisor pre-registered TWO hypotheses, both predicting a large effect: rough
+  skin reaches any clipped fraction sooner, so the cost should land on high-texture
+  faces; warm skin clips its red channel sooner, so it should land on warm ones.
+  **Neither is large.** On this file's own face family, the exposure band refused before
+  anything is actually wrong runs a mean of 5.6 counts of cheekL at R/L 1.223 and 7.3 at
+  1.30 — a factor of 1.30 — and texture from 0.10 to 0.42 at fixed R/L fits inside 10
+  counts. No face is refused more than 11 counts early, all of them far above the 140 a
+  correct capture sits at. Pinned as a case rather than a note, because it is the number
+  that must grow before the signal becomes tone-unfair; breaking it by moving the cut to
+  0.08 fails it.
+
+  One correction the supervisor owes in public: an earlier scratch fixture put that
+  tone factor near 2.5, and it does not reproduce. It built the T-zone as a flat scale
+  of the cheek rather than through the per-channel `TZ_RATIO` the derivation uses, which
+  moves where 반사 fires and so moves the far edge of the window. The 1.30 measured on
+  the construction the cut was derived over is the repository's number; the 2.5 is not.
+
+  Baselines after landing: vitest **508 in 79 files**, `tsc` 13, eslint 2 warnings,
+  `ml/selftest.py` 77, `npm run smoke` passed. Rotation verified by `comm -23` against a
+  snapshot of main's pair taken before review: the only two lines that moved are the two
+  backlog items this cycle closed, both present in the changelog with `[x]` and their
+  bodies intact.
 - 2026-09-18 (cycle 13) — Branch `autopilot/2026-09-18-1239`. **The other two axes were
   swept and they are clean. What is not clean is the 8-bit ceiling, and no capture signal
   watches it.** Cycle 12 measured `shine` and found an absolute brightness term.

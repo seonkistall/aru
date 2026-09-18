@@ -293,6 +293,80 @@ describe("노출 여유: the cheek's 8-bit ceiling", () => {
     }
   });
 
+  it("keeps its false-retake band small, and roughly even across tone and texture", { timeout: 600000 }, () => {
+    // Supervisor addition, 2026-09-18. The cut is sound, but a signal that refuses a
+    // capture before anything about the reading is wrong spends a user's tap, and this
+    // repository's whole thesis is that a measurement must not behave differently by
+    // skin tone. So: how much exposure does 노출 여유 reject BEFORE either a published
+    // level moves or an older signal would have caught it anyway?
+    //
+    // Two hypotheses were pre-registered and BOTH predicted a large effect. Rough skin
+    // reaches any clipped fraction sooner, so the cost should land on high-texture
+    // faces; a warm cheek clips its red channel sooner, so the cost should land on warm
+    // ones. Measured on this file's own face family, neither effect is large: running
+    // texture from 0.10 to 0.42 at fixed R/L moves the width by under 10 counts of
+    // cheekL, and R/L 1.223 -> 1.30 moves the mean from 5.6 to 7.3, a factor of 1.30.
+    //
+    // (An earlier supervisor scratch fixture put that factor near 2.5. It built its
+    // T-zone as a flat scale of the cheek rather than through this file's per-channel
+    // TZ_RATIO, which moves where 반사 fires and so moves the window's far edge. The
+    // number above is the one measured on the construction the cut was derived over;
+    // the scratch one is not reproducible here and is not the repository's claim.)
+    const width = (face: Face) => {
+      const reference = capture(face, 140);
+      const refPores = levelOf("pores", reference.raw.cov);
+      const refRed = levelOf("redness", reference.raw.relRedness);
+      let fires = NaN;
+      let spoiled = NaN;
+      for (let target = 70; target <= 214; target += 1) {
+        const reads = capture(face, target);
+        if (Number.isNaN(fires) && !signalOf(reads, CLIP_SIGNAL).ok) fires = reads.raw.cheekL;
+        if (target < 140 || !Number.isNaN(spoiled)) continue;
+        const moved =
+          levelOf("pores", reads.raw.cov) !== refPores || levelOf("redness", reads.raw.relRedness) !== refRed;
+        const older = ["조명", "반사", "피부 영역"].some((label) => !signalOf(reads, label).ok);
+        if (moved || older) spoiled = reads.raw.cheekL;
+      }
+      if (Number.isNaN(fires)) return 0;
+      return Math.max(0, (Number.isNaN(spoiled) ? 214 : spoiled) - fires);
+    };
+
+    // Amplitudes deliberately run past the AMPS the cut was derived over, up to a cheek
+    // rough enough to publish the top pores level, so the hypothesis gets its best shot.
+    const AMPS_WIDE = [0.1, 0.19, 0.26, 0.35, 0.42];
+    const byRL = new Map<number, number[]>();
+    const byAmp = new Map<number, number[]>();
+    for (const rl of [1.223, 1.3]) {
+      for (const amp of AMPS_WIDE) {
+        const w = width(faceAtRL(rl, amp, 1.0));
+        if (!byRL.has(rl)) byRL.set(rl, []);
+        if (!byAmp.has(amp)) byAmp.set(amp, []);
+        byRL.get(rl)!.push(w);
+        byAmp.get(amp)!.push(w);
+      }
+    }
+    const span = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    if (process.env.ARU_PRINT_CLIP_SWEEP) {
+      for (const [rl, ws] of byRL) {
+        process.stdout.write(`SWEEP false-retake width, R/L ${rl}: ${ws.map((w) => w.toFixed(1)).join(" ")} (amps ${AMPS_WIDE.join(" ")}) mean ${mean(ws).toFixed(1)}\n`);
+      }
+    }
+    // Texture is not the driver: at a fixed R/L the whole 0.10..0.42 range fits in under
+    // 10 counts of cheekL.
+    for (const [rl, ws] of byRL) expect(span(ws), `R/L ${rl}: ${ws.join(" ")}`).toBeLessThan(10);
+    // Warmth is a driver, but a mild one. Pinned as a BAND, not a point: this is the
+    // number that would have to grow before the signal became tone-unfair, and the
+    // assertion exists so a later change to the cut cannot grow it unnoticed.
+    const warm = mean(byRL.get(1.3)!);
+    const lessWarm = mean(byRL.get(1.223)!);
+    expect(warm, `warm mean ${warm}`).toBeGreaterThan(lessWarm);
+    expect(warm / lessWarm, `${lessWarm.toFixed(2)} -> ${warm.toFixed(2)}`).toBeLessThan(1.6);
+    // The band is bounded: no face is refused more than 11 counts of cheekL early, and
+    // every one of those exposures is well above the 140 a correct capture sits at.
+    for (const ws of byRL.values()) for (const w of ws) expect(w).toBeLessThan(11);
+  });
+
   // The sweep the cut was chosen from, committed so the table in lib/skin.ts is
   // re-runnable rather than resting on a script nobody kept:
   //   ARU_PRINT_CLIP_SWEEP=1 npx vitest run tests/cheek-clipping-signal.test.ts
