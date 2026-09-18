@@ -829,12 +829,16 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     // Both measured exposure-invariant across cheekL 71.2..172.8 at a fixed relative
     // face structure — cov within 1.0092x, relRedness within 1.0587x — so neither carries the
     // absolute term `shine` did. Above that they collapse, and it is the 8-bit ceiling
-    // rather than the normalisation: skin's R/L is about 1.2, so the CHEEK's red
-    // channel pins at 255 before any T-zone luminance crosses the 218 the 반사 signal
-    // watches. At cheekL 190.7, 25.9% of the cheek patch is clipped, the pores level
-    // drops a bucket, and all three signals still say ok. A control face with the same
-    // texture and the same relRedness but R/L 1.10 holds flat over the identical sweep.
-    // tests/axis-exposure-scale.test.ts, docs/label-free-axes.md.
+    // rather than the normalisation: the CHEEK's red channel can pin at 255 before any
+    // T-zone luminance crosses the 218 the 반사 signal watches, so the capture is
+    // published. At cheekL 190.7 on an R/L 1.223 face, 25.9% of the cheek patch is
+    // clipped, the pores level drops a bucket, and all three signals still say ok; a
+    // control face with the same texture and the same relRedness but R/L 1.10 holds
+    // flat over the identical sweep. Swept on R/L itself, that silent window opens
+    // between 1.17 (holds) and 1.20 (flips). Where real captures sit in that band is
+    // NOT known here: the 1.2 this repository's fixtures use comes from its own
+    // [196, 152, 140] skin constant (R/L 1.1967), which is a fixture and not a
+    // measurement. tests/axis-exposure-scale.test.ts, docs/label-free-axes.md.
     relRedness: rIdx(cheeks) - rIdx(tzone),
     cov: cheeks.texture / (cheekL || 1),
     tzoneL,

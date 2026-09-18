@@ -255,6 +255,53 @@ describe("relRedness and cov do not scale with capture brightness", () => {
     expect(new Set([...dark, ...bright].map((t) => capture(FINE, t).pores.value)).size).toBe(1);
   });
 
+  it("opens that silent window only above R/L 1.17, which is where skin is claimed to sit", () => {
+    // Supervisor addition, 2026-09-18. CLIPPING and HEADROOM are two points; the number
+    // the finding actually rests on is WHERE between them the window opens, because the
+    // only reason this matters off the fixture is the claim that skin sits near it.
+    // Faces are built at a fixed cheek luminance and a fixed green/blue shape, so R/L is
+    // the only thing that moves. "Silent" = every capture signal ok.
+    const L = lumOf(CLIPPING.cheek);
+    const faceAtRL = (rl: number): Face => {
+      const r = rl * L;
+      const bOverG = CLIPPING.cheek[2] / CLIPPING.cheek[1];
+      const g = (L - 0.299 * r) / (0.587 + 0.114 * bOverG);
+      const cheek = [r, g, g * bOverG];
+      return { ...CLIPPING, cheek, tzone: cheek.map((v) => v * (lumOf(CLIPPING.tzone) / L)) };
+    };
+    // The worst pores reading reachable at an exposure no signal rejects.
+    const worstSilentCov = (face: Face) => {
+      let worst = Infinity;
+      for (let target = 160; target <= 210; target += 2) {
+        const reads = capture(face, target);
+        if (reads.signals.some((s) => !s.ok)) continue;
+        worst = Math.min(worst, reads.raw.cov);
+      }
+      return worst;
+    };
+    const rows = [1.10, 1.14, 1.17, 1.20, 1.223].map((rl) => {
+      const face = faceAtRL(rl);
+      const reference = capture(face, 160).raw.cov;
+      const worst = worstSilentCov(face);
+      return { rl, reference, worst, flips: levelOf("pores", worst) !== levelOf("pores", reference) };
+    });
+    if (process.env.ARU_PRINT_AXIS_SWEEP) {
+      for (const row of rows) {
+        process.stdout.write(
+          `SWEEP R/L ${row.rl.toFixed(3)} cov@160 ${row.reference.toFixed(5)} worst-silent ${row.worst.toFixed(5)} level ${levelOf("pores", row.reference)}->${levelOf("pores", row.worst)} ${row.flips ? "FLIPS" : "holds"}\n`
+        );
+      }
+    }
+    // Every face reads the same at the reference exposure: R/L alone is what differs.
+    for (const row of rows) expect(levelOf("pores", row.reference), `R/L ${row.rl}`).toBe(1);
+    // Measured: holds through 1.17, flips at 1.20 and above. The repository's own
+    // long-standing skin fixture [196, 152, 140] is R/L 1.1967 — a fixture, not a
+    // measurement of anyone's skin, and it lands inside that 1.17..1.20 band. Which
+    // side of it real captures fall on is unknown until the golden set exists.
+    expect(rows.filter((r) => !r.flips).map((r) => r.rl)).toEqual([1.10, 1.14, 1.17]);
+    expect(rows.filter((r) => r.flips).map((r) => r.rl)).toEqual([1.20, 1.223]);
+  });
+
   it("still orders faces on both axes at one exposure", () => {
     // Invariance is only worth having if the indices still separate faces.
     const reds = [[196, 154, 141], [195, 154, 142], [193, 156, 142], [188, 158, 144]].map(

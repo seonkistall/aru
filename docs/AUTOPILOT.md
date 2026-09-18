@@ -353,8 +353,8 @@ partly done and stays here.
 - [AI] **No capture signal looks at a saturated CHEEK channel, and both cheek-derived
   axes lose a level before one fires.** `buildSignals` has three: 조명 (cheekL 70..210),
   반사 (T-zone pixels whose LUMINANCE exceeds 218, as a fraction under 0.1) and 피부
-  영역. `relRedness` and `cov` are computed from the CHEEK, and skin's R/L is about 1.2,
-  so the cheek's red channel reaches the 8-bit ceiling before any luminance reaches 218.
+  영역. `relRedness` and `cov` are computed from the CHEEK, whose red channel can reach
+  the 8-bit ceiling before any luminance reaches 218.
   Measured (`tests/axis-exposure-scale.test.ts`, 2026-09-18): on a warm face at the pores
   cut, 2.5% of the cheek patch is clipped at cheekL 177.9, 14.8% at 184.8 and 25.9% at
   190.7 — and at 190.7 the published pores level has dropped a bucket while all three
@@ -363,8 +363,14 @@ partly done and stays here.
   the saturating face's 반사 fails 6 counts of cheekL LATER than the control's. The
   cheapest honest version is a fourth signal on the cheek's clipped-channel fraction, but
   adding one reopens the retake rule (`retakeRecommendedFor`, cycle 11) and moves what
-  `confidenceLabel` reports, so it is a deliberate decision and not a one-line add. Noted
-  2026-09-18.
+  `confidenceLabel` reports, so it is a deliberate decision and not a one-line add.
+  **How much this matters off the fixture is one unknown number.** Swept on R/L alone at
+  a fixed cheek luminance (same test, supervisor case), the silent window opens between
+  **R/L 1.17 (holds) and 1.20 (flips)**. This repository's own skin constant
+  `[196, 152, 140]` is R/L **1.1967** — inside that band, and a fixture rather than a
+  measurement of anyone's skin. Which side real captures fall on is settled by the
+  golden-set photos already blocked on the owner, not by another sweep. Noted
+  2026-09-18, R/L band added by the supervisor the same day.
 - [AI] **The 120-seed retake table did not reproduce and the sweep that replaces it is
   now committed.** `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`
   re-derives it from cycle 11's written description. 반사 and 피부 영역 came back within
@@ -738,13 +744,47 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   **What IS ARU's, filed rather than fixed.** Of the three signals only 반사 can see
   saturation, and it watches the **T-zone's LUMINANCE** crossing 218 — while `relRedness`
-  and `cov` are computed from the **cheek**, whose red channel pins at 255 first because
-  skin's R/L is about 1.2. Measured above: 2.5% clipped at 177.9 and 14.8% at 184.8, all
+  and `cov` are computed from the **cheek**, whose red channel pins at 255 first on a
+  warm enough face. Measured above: 2.5% clipped at 177.9 and 14.8% at 184.8, all
   signals ok. And clipping delays its own detector — a clipped pixel's computed luminance
   is lower than the scene's, so fewer pixels cross 218 and the saturating face's 반사
   fails **6 counts of cheekL later** than the control's (197.0 against 191.1). A fourth
   signal is the fix and it reopens the retake rule and moves what `confidenceLabel`
   reports, both of which the brief put out of scope. Backlog item, dated.
+
+  **Supervisor, same day — the one number this rested on had no source, and now the band
+  does.** The worker's text put the whole off-fixture case on "skin's R/L is about 1.2",
+  which traces only to this repository's own `[196, 152, 140]` fixture constant
+  (R/L 1.1967) and to nothing measured on skin. Sweeping R/L itself at a fixed cheek
+  luminance, with the two published faces as the endpoints, locates the window instead
+  of asserting it:
+
+  ```
+  R/L    cov@160   worst-silent cov   pores level   verdict
+  1.100  0.08696   0.08687            1 -> 1        holds
+  1.140  0.08691   0.08678            1 -> 1        holds
+  1.170  0.08715   0.08628            1 -> 1        holds
+  1.200  0.08698   0.08428            1 -> 0        FLIPS
+  1.223  0.08701   0.08157            1 -> 0        FLIPS
+  ```
+
+  The silent window opens between **1.17 and 1.20**, and the repository's own fixture
+  sits at 1.1967 — inside it. The claim about skin is removed from `lib/skin.ts` and both
+  docs; what replaces it is the measured band plus a named unknown, and what settles the
+  unknown is the golden-set photos already blocked on the owner. Pinned as a ninth case
+  in the same file; breaking it by moving the specular cut to 185 fails it
+  (`× opens that silent window only above R/L 1.17`).
+
+  **Adversarial review, all of it re-derived rather than accepted.** The invariance was
+  re-measured on an independent fixture — a sinusoid texture instead of the worker's hash
+  noise — and came back the same: `cov` 1.0148x and no trend over cheekL 70..170, with
+  the headroom control flat at 188 (0.06886 -> 0.06860). The clipping attribution
+  reproduced on that fixture too. Every new case was broken at the source line it
+  protects, never at the test: reverting `cov` to `texture / 140` fails 5 of 9, making
+  `relRedness` an absolute red difference fails 3 (2.318x spread), moving the specular
+  cut from 218 to 190 fails 3. Step 8 rotation verified by sorting both docs and
+  `comm -23` against main's pair: **0 lines lost**, 2482 -> 2599. Suite 490 in 78 files,
+  `tsc` 13, eslint 2 warnings, `npm run smoke` passed.
 
   **The quantisation floor: real, measured, and three cuts below anything that matters.**
   The brief asked whether a dark-end pores drift would be a normalisation or a sensor
