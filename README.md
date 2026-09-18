@@ -209,8 +209,14 @@ visible".
    excluding the top and bottom 10% by luminance.
 9. Shine, region-relative redness, texture variation, brightness and specular
    signals are converted into buckets.
-10. Attribute confidence and environment signals combine into an overall
-    confidence and a retake recommendation.
+10. Four environment signals are checked — lighting, T-zone glare, skin-region
+    size, and exposure headroom (the share of the cheek patch with any channel at
+    the 8-bit ceiling, which is what the redness and texture readings are computed
+    from). Any one failing recommends a retake.
+11. Attribute confidence and environment signals combine into an overall
+    confidence. The user-facing confidence label reports how far the three
+    readings sit from their cut points; capture quality is shown separately, as a
+    per-signal checklist.
 
 Camera orchestration is split so no single page owns every responsibility:
 
@@ -494,7 +500,7 @@ git diff --check
 `npm run smoke` currently bundles:
 
 - ESLint and the TypeScript/Next.js production build
-- Vitest: 78 files, 491 tests
+- Vitest: 79 files, 508 tests
 - Playwright Chromium mobile E2E: 44 tests in 12 files
 - `ml/selftest.py`: 77 tests, standard library only (no torch install needed)
 - Home and core callouts across locales

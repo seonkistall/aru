@@ -20,11 +20,17 @@ import { analyzeSkin, ATTR_THRESHOLDS } from "@/lib/skin";
  *  1. Both ARE exposure-invariant, over the whole band in which no channel saturates.
  *     That is the regression guard these cases exist to hold.
  *  2. Both collapse at the TOP of the band, and the published pores level flips there
- *     while all three capture signals still say ok. The cause is the 8-bit ceiling,
- *     not the normalisation: the control face, same texture and same relRedness but
- *     less saturated, holds flat over the identical exposure sweep. No renormalisation
- *     recovers a pixel already written as 255, so unlike cycle 12's finding this one
- *     is not a fix to lib/skin.ts.
+ *     while all three capture signals cycle 13 had still say ok. The cause is the
+ *     8-bit ceiling, not the normalisation: the control face, same texture and same
+ *     relRedness but less saturated, holds flat over the identical exposure sweep. No
+ *     renormalisation recovers a pixel already written as 255, so unlike cycle 12's
+ *     finding this one was never a fix to an index formula.
+ *     **Cycle 14 closed it with a fourth signal instead**, 노출 여유, on the cheek's
+ *     clipped-channel fraction — see lib/skin.ts `CHEEK_CLIP_LIMIT` for how its cut was
+ *     derived and tests/cheek-clipping-signal.test.ts for the sweep. The cases below
+ *     therefore evaluate the three old signals AND the shipped four separately: the
+ *     collapse is still measured (it is physics and has not moved), what changed is
+ *     that a capture suffering it is now refused rather than published.
  *  3. The dark end is clean. 8-bit quantisation adds scatter that grows as the
  *     absolute texture shrinks, but no trend, and nothing near a cut.
  *
@@ -155,6 +161,16 @@ const FINE: Face = { cheek: [200, 150, 138], tzone: [195, 154, 142], amp: 0.03, 
 
 const UNSATURATED_TARGETS = [70, 80, 100, 120, 140, 160, 170];
 
+/**
+ * The three signals `buildSignals` had when cycle 13 measured the silent window.
+ * Cycle 14 added a fourth, 노출 여유, which closes it — so the cases below that
+ * located the window have to keep asking the OLD question ("would these three have
+ * caught it?") to stay the measurement they were, and ask the new one separately.
+ */
+const PRE_CYCLE_14 = ["조명", "반사", "피부 영역"];
+const silentUnder = (labels: string[], reads: ReturnType<typeof capture>) =>
+  labels.every((label) => reads.signals.find((s) => s.label === label)?.ok !== false);
+
 describe("relRedness and cov do not scale with capture brightness", () => {
   it("holds both indices flat across the band where no channel saturates", () => {
     for (const [name, face] of [["clipping-prone", CLIPPING], ["headroom", HEADROOM]] as Array<[string, Face]>) {
@@ -194,16 +210,21 @@ describe("relRedness and cov do not scale with capture brightness", () => {
     expect(new Set(levels).size, `oil published ${levels.join("/")}`).toBe(1);
   });
 
-  it("loses the pores level to the 8-bit ceiling while every capture signal still says ok", () => {
-    // This is the finding, and it is NOT a normalisation defect. At cheekL 190.7 the
+  it("still loses the pores level to the 8-bit ceiling, and 노출 여유 is now the signal that says so", () => {
+    // Cycle 13's finding, kept as it was measured, with cycle 14's fix pinned on top.
+    // The physics is unchanged and is NOT a normalisation defect: at cheekL 190.7 the
     // red channel of 25.9% of the cheek patch is pinned at 255; clipping removes the top
-    // of the luminance distribution, the variance falls, and `cov` falls with it. The
-    // three signals are 조명 (cheekL <= 210), 반사 (T-zone luminance > 218) and 피부
-    // 영역, and none of them looks at a saturated CHEEK channel, so the capture is
-    // published.
+    // of the luminance distribution, the variance falls, and `cov` falls with it.
+    // What changed is that the capture is no longer published in silence. The three
+    // signals cycle 13 measured — 조명 (cheekL <= 210), 반사 (T-zone luminance > 218)
+    // and 피부 영역 — still all pass, because none of them looks at a saturated CHEEK
+    // channel. 노출 여유 does.
     const reads = capture(CLIPPING, 188);
-    expect(reads.signals.filter((s) => !s.ok).map((s) => s.label)).toEqual([]);
     expect(clippedRedFraction(CLIPPING, 188)).toBeGreaterThan(0.2);
+    expect(reads.raw.cheekClipped).toBeGreaterThan(0.2);
+    expect(PRE_CYCLE_14.filter((label) => !reads.signals.find((s) => s.label === label)?.ok)).toEqual([]);
+    expect(reads.signals.filter((s) => !s.ok).map((s) => s.label)).toEqual(["노출 여유"]);
+    expect(reads.retakeRecommended, "a failed signal must force a retake").toBe(true);
     const reference = capture(CLIPPING, 140);
     expect(levelOf("pores", reference.raw.cov)).toBe(1);
     expect(levelOf("pores", reads.raw.cov)).toBe(0);
@@ -269,37 +290,59 @@ describe("relRedness and cov do not scale with capture brightness", () => {
       const cheek = [r, g, g * bOverG];
       return { ...CLIPPING, cheek, tzone: cheek.map((v) => v * (lumOf(CLIPPING.tzone) / L)) };
     };
-    // The worst pores reading reachable at an exposure no signal rejects.
-    const worstSilentCov = (face: Face) => {
+    // The worst pores reading reachable at an exposure no signal rejects. Evaluated
+    // under BOTH signal sets: `PRE_CYCLE_14` is what cycle 13 measured with, and is
+    // what keeps this case the measurement it was; the full set is what ships.
+    const worstSilentCov = (face: Face, labels: string[]) => {
       let worst = Infinity;
       for (let target = 160; target <= 210; target += 2) {
         const reads = capture(face, target);
-        if (reads.signals.some((s) => !s.ok)) continue;
+        if (!silentUnder(labels, reads)) continue;
         worst = Math.min(worst, reads.raw.cov);
       }
       return worst;
     };
+    const ALL = ["조명", "반사", "피부 영역", "노출 여유"];
     const rows = [1.10, 1.14, 1.17, 1.20, 1.223].map((rl) => {
       const face = faceAtRL(rl);
       const reference = capture(face, 160).raw.cov;
-      const worst = worstSilentCov(face);
-      return { rl, reference, worst, flips: levelOf("pores", worst) !== levelOf("pores", reference) };
+      const worst = worstSilentCov(face, PRE_CYCLE_14);
+      const worstNow = worstSilentCov(face, ALL);
+      return {
+        rl,
+        reference,
+        worst,
+        worstNow,
+        flips: levelOf("pores", worst) !== levelOf("pores", reference),
+        flipsNow: levelOf("pores", worstNow) !== levelOf("pores", reference),
+      };
     });
     if (process.env.ARU_PRINT_AXIS_SWEEP) {
       for (const row of rows) {
         process.stdout.write(
-          `SWEEP R/L ${row.rl.toFixed(3)} cov@160 ${row.reference.toFixed(5)} worst-silent ${row.worst.toFixed(5)} level ${levelOf("pores", row.reference)}->${levelOf("pores", row.worst)} ${row.flips ? "FLIPS" : "holds"}\n`
+          `SWEEP R/L ${row.rl.toFixed(3)} cov@160 ${row.reference.toFixed(5)} worst-silent(3) ${row.worst.toFixed(5)} ${row.flips ? "FLIPS" : "holds"} | worst-silent(4) ${row.worstNow.toFixed(5)} ${row.flipsNow ? "FLIPS" : "holds"}\n`
         );
       }
     }
     // Every face reads the same at the reference exposure: R/L alone is what differs.
     for (const row of rows) expect(levelOf("pores", row.reference), `R/L ${row.rl}`).toBe(1);
-    // Measured: holds through 1.17, flips at 1.20 and above. The repository's own
-    // long-standing skin fixture [196, 152, 140] is R/L 1.1967 — a fixture, not a
-    // measurement of anyone's skin, and it lands inside that 1.17..1.20 band. Which
-    // side of it real captures fall on is unknown until the golden set exists.
+    // Measured under the three signals cycle 13 had: holds through 1.17, flips at 1.20
+    // and above. The repository's own long-standing skin fixture [196, 152, 140] is
+    // R/L 1.1967 — a fixture, not a measurement of anyone's skin, and it lands inside
+    // that 1.17..1.20 band. Which side of it real captures fall on is still unknown
+    // until the golden set exists; what cycle 14 changed is that it no longer decides
+    // whether a level moves in silence.
     expect(rows.filter((r) => !r.flips).map((r) => r.rl)).toEqual([1.10, 1.14, 1.17]);
     expect(rows.filter((r) => r.flips).map((r) => r.rl)).toEqual([1.20, 1.223]);
+    // And with 노출 여유 in the set, the window is closed at every R/L in the sweep:
+    // no exposure that all four signals accept moves the published pores level.
+    expect(rows.filter((r) => r.flipsNow).map((r) => r.rl)).toEqual([]);
+    // Closed by REFUSING those captures, not by reading them differently — the worst
+    // reading the old set accepted is strictly below the worst the new set accepts on
+    // exactly the faces that used to flip.
+    for (const row of rows.filter((r) => r.flips)) {
+      expect(row.worst, `R/L ${row.rl}`).toBeLessThan(row.worstNow);
+    }
   });
 
   it("still orders faces on both axes at one exposure", () => {

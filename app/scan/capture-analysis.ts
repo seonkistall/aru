@@ -239,9 +239,14 @@ export function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): S
  * A byte-for-byte copy of `confidenceLabel` in lib/skin.ts, kept because the two call
  * sites differ in shape. Exported so tests/confidence-label-contract.test.ts fails the
  * moment one of the two thresholds moves and the other does not.
+ *
+ * The 0.8614 gate and WHY the label is keyed on reading margin are documented once, on
+ * the lib/skin.ts copy. Note that `next.confidence` above is capped at 0.86 — 0.0014
+ * below this gate — so the vision term alone cannot reach 높음; that is pinned in the
+ * contract test so the cap and the gate cannot drift apart unnoticed.
  */
 export function confidenceLabelFor(confidence: number): SkinReads["confidenceLabel"] {
-  if (confidence >= 0.78) return "높음";
+  if (confidence >= 0.8614) return "높음";
   if (confidence >= 0.58) return "보통";
   return "낮음";
 }
