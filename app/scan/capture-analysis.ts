@@ -3,6 +3,7 @@ import {
   headlineFor,
   narrativeFor,
   overallFor,
+  retakeRecommendedFor,
   SKIN_LABELS,
   VISIBLE_MODEL_CONTRACT,
   type AnalysisSource,
@@ -216,7 +217,10 @@ export function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): S
     const visionConfidence = confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length;
     next.confidence = Math.max(base.confidence, Math.min(0.86, visionConfidence * 0.9));
     next.confidenceLabel = confidenceLabelFor(next.confidence);
-    next.retakeRecommended = next.confidence < 0.58 || next.retakeReasons.length >= 2;
+    // Same rule as the ROI path, from the same function: any one failed capture
+    // signal recommends a retake. Counting `retakeReasons` here also counted the
+    // burst wobble line, which is not a signal.
+    next.retakeRecommended = retakeRecommendedFor(next.confidence, next.signals);
   }
 
   // headline, narrative and the 전반 row are all derived from the three buckets this
