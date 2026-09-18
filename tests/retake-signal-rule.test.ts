@@ -6,7 +6,8 @@ type LM = { x: number; y: number; z?: number };
 
 // Region index lists copied from lib/skin.ts. TZONE and CHEEKS are disjoint, which
 // is what lets a frame fail exactly one signal: the two regions can be painted and
-// sampled independently.
+// sampled independently. Four signals since cycle 14 — 노출 여유 joined 조명, 반사
+// and 피부 영역 — and each still gets a fixture that trips it alone.
 const TZONE = [9, 8, 107, 336, 151, 10, 67, 297, 1, 4, 5, 195, 197];
 const CHEEKS = [50, 101, 118, 117, 116, 205, 36, 280, 330, 347, 346, 345, 425, 266];
 const CHIN = [18, 200, 199, 175, 152, 83, 313];
@@ -58,10 +59,14 @@ const CHEEK_OK: [number, number] = [0.5, 0.7];
 const CHEEK_CLIPPED: [number, number] = [0.985, 0.985];
 
 const SKIN: [number, number, number] = [196, 152, 140];
+// Red pinned at the 8-bit ceiling, green and blue left alone, so the cheek's luminance
+// is 0.299*255 + 0.587*150 + 0.114*138 = 180.0 — inside the 조명 band, and the only
+// signal this trips is 노출 여유.
+const BLOWN_RED: [number, number, number] = [255, 150, 138];
 const DARK: [number, number, number] = [63, 49, 45];
 
 describe("retakeRecommended is keyed on which signals failed", () => {
-  it("does not recommend a retake when all three signals pass", () => {
+  it("does not recommend a retake when all four signals pass", () => {
     const reads = analyzeSkin(bandFrame(SKIN, SKIN), landmarks(CHEEK_OK))!;
     expect(reads.signals.filter((s) => !s.ok)).toHaveLength(0);
     expect(reads.retakeReasons).toEqual([]);
@@ -83,6 +88,20 @@ describe("retakeRecommended is keyed on which signals failed", () => {
     const reads = analyzeSkin(frame, landmarks(CHEEK_OK))!;
     expect(reads.signals.filter((s) => !s.ok).map((s) => s.label)).toEqual(["반사"]);
     expect(reads.raw.tzoneSpecular).toBeGreaterThanOrEqual(0.1);
+    expect(reads.confidence).toBeGreaterThanOrEqual(0.58);
+    expect(reads.retakeReasons).toHaveLength(1);
+    expect(reads.retakeRecommended).toBe(true);
+  });
+
+  it("recommends a retake when 노출 여유 alone fails", () => {
+    // Cycle 14's fourth signal. The cheek's red channel is at 255 on every pixel of the
+    // patch while its luminance stays at 180, which is exactly the case cycle 13 found
+    // the other three cannot see: 조명 reads the cheek's MEAN and 반사 the T-zone's.
+    const reads = analyzeSkin(bandFrame(SKIN, BLOWN_RED), landmarks(CHEEK_OK))!;
+    expect(reads.signals.filter((s) => !s.ok).map((s) => s.label)).toEqual(["노출 여유"]);
+    expect(reads.raw.cheekClipped).toBe(1);
+    expect(reads.raw.cheekL).toBeGreaterThan(70);
+    expect(reads.raw.cheekL).toBeLessThan(210);
     expect(reads.confidence).toBeGreaterThanOrEqual(0.58);
     expect(reads.retakeReasons).toHaveLength(1);
     expect(reads.retakeRecommended).toBe(true);

@@ -21,6 +21,13 @@ export type SkinRawFeatures = {
   cheekL: number;
   cheekTexture: number;
   tzoneSpecular: number;
+  /**
+   * Share of the sampled CHEEK patch with at least one channel pinned at 255.
+   * A capture-health number, not a graded index: `relRedness` and `cov` are both
+   * computed from this patch, and a clipped pixel destroys the information they
+   * read. Watched by the 노출 여유 signal in `buildSignals`.
+   */
+  cheekClipped: number;
   cheekSamples: number;
   tzoneSamples: number;
   /** Dominant cheek tone as CIELAB L* — recorded for calibration and tone-subgroup evaluation, never shown to users. */
@@ -103,6 +110,13 @@ type RegionStats = {
   meanB: number;
   meanL: number;
   specularRatio: number;
+  /**
+   * Share of the UNTRIMMED patch with at least one channel at the 8-bit ceiling.
+   * Untrimmed for the same reason `specularRatio` is: the trim drops the brightest
+   * decile, which is exactly where clipping lives, so a trimmed count would hide
+   * the thing it exists to report.
+   */
+  clippedRatio: number;
   texture: number;
   /** Mean |L - mean(4-neighbour L)| over non-specular pixels: local detail, with
    *  the region's slow shading gradient removed. `texture` keeps that gradient. */
@@ -186,6 +200,7 @@ function lumAt(data: Uint8ClampedArray, w: number, x: number, y: number) {
 function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: LM[], indices: number[], radius = 4): RegionStats | null {
   const collected: SkinPixel[] = [];
   let specular = 0;
+  let clipped = 0;
   let hfSum = 0;
   let hfCount = 0;
 
@@ -205,6 +220,7 @@ function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: 
         const b = data[o + 2];
         const L = lum(r, g, b);
         collected.push({ r, g, b, L });
+        if (r >= 255 || g >= 255 || b >= 255) clipped += 1;
         if (L > 218) specular += 1;
         // A glint is not texture, and an edge pixel has no four neighbours.
         else if (x > 0 && y > 0 && x + 1 < w && y + 1 < h) {
@@ -245,6 +261,7 @@ function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: 
     meanB: sumB / kept.length,
     meanL,
     specularRatio: specular / collected.length,
+    clippedRatio: clipped / collected.length,
     texture: Math.sqrt(variance),
     highFreq: hfCount ? hfSum / hfCount : 0,
     n: collected.length,
@@ -364,6 +381,50 @@ export function distanceConfidence(value: number, lo: number, hi: number) {
   return clamp01(0.92 - distance * 0.45);
 }
 
+/**
+ * Share of the sampled cheek patch that may sit at the 8-bit ceiling before the
+ * capture is refused. Derived, not chosen: cycle 13 found that `relRedness` and
+ * `cov` are both computed from the cheek patch and that clipping there destroys
+ * them while all three previous signals still said ok.
+ *
+ * `tests/cheek-clipping-signal.test.ts` sweeps a family of faces (R/L 1.10..1.30,
+ * texture amplitude 0.10..0.26, three T-zone scales) across the whole 조명 band and
+ * buckets every capture the previous three signals passed by its clipped fraction.
+ * Against the invariance the unclipped band actually delivers — cov within 1.02x and
+ * relRedness within 1.08x, the tolerances tests/axis-exposure-scale.test.ts measured:
+ *
+ *   clipped   n     max|dCov|  max|dRed|  published level flips
+ *   11.11%    20      1.89%      4.92%     0
+ *   12.35%    21      1.23%      3.43%     0
+ *   13.58%     5      1.40%      3.48%     0
+ *   14.81%    52      1.91%      6.19%     0     <- last bucket inside both tolerances
+ *   16.05%    35      2.16%      5.72%     0     <- cov leaves its 2% band
+ *   19.75%    13      2.71%      6.84%     0
+ *   20.99%    20      2.45%      9.48%     1     <- first published level flip
+ *   22.22%    82      3.59%     14.29%    30
+ *
+ * So 0.15 is the one cut that sits above every bucket whose indices are still inside
+ * the invariance the band delivers and below every bucket in which a published level
+ * has ever moved. It is not a round number picked for looks: it lands between the last
+ * clean bucket (14.81%) and the first drifting one (16.05%).
+ *
+ * What it costs, measured on the same family over cheekL 70..212 — of the 10,273
+ * captures the previous three signals passed, 645 (6.28%) now ask for a retake, and
+ * they are not spread evenly:
+ *
+ *   cheekL <= 140      0/5964   0.00%
+ *   cheekL 140..170   33/2520   1.31%
+ *   cheekL 170..190  337/1367  24.65%
+ *   cheekL 190..212  275/422   65.17%
+ *
+ * A correctly-exposed capture does not trip it. It catches 379 of the 380 silent
+ * published-level flips in that sweep; the one it misses is at cheekL 74.9 with NO
+ * clipping at all — a relRedness of 0.01276 quantising down to 0.01197 across the
+ * 0.012 cut, which is the dark-end 8-bit scatter cycle 13 measured and not something
+ * a clipping signal can see.
+ */
+const CHEEK_CLIP_LIMIT = 0.15;
+
 // Kept as raw Korean data: lib/report-trust.ts matches on these strings and
 // consumers translate at render (t(signal.label) / t(signal.detail)).
 function buildSignals(raw: SkinRawFeatures) {
@@ -377,6 +438,16 @@ function buildSignals(raw: SkinRawFeatures) {
       label: "반사",
       ok: raw.tzoneSpecular < 0.1,
       detail: raw.tzoneSpecular >= 0.1 ? "이마/T존 반사가 강해요" : "반사가 크지 않아요",
+    },
+    {
+      // The cheek's own 8-bit ceiling. 조명 watches the cheek's MEAN and 반사 the
+      // T-zone's LUMINANCE, so a warm face can pin its red channel at 255 while both
+      // still pass — and clipping delays 반사 into the bargain, because a clipped
+      // pixel's computed luminance is lower than the scene's. relRedness and cov are
+      // both read off this patch, so this is the signal that guards them.
+      label: "노출 여유",
+      ok: raw.cheekClipped < CHEEK_CLIP_LIMIT,
+      detail: raw.cheekClipped >= CHEEK_CLIP_LIMIT ? "볼이 너무 밝아 색이 날아갔어요" : "볼 색에 여유가 남아 있어요",
     },
     {
       label: "피부 영역",
@@ -417,10 +488,15 @@ function buildSignals(raw: SkinRawFeatures) {
  * set per row rather than asserting each condition is lone.)
  *
  * so every one of the three costs at least one reading on at least a sixth of the
- * seeds, and none of them reaches the 0.58 confidence floor on its own: the lowest
- * confidence with 2 of 3 signals passing is 0.687067 (0.695 * 0.72 + (2/3) * 0.28,
- * 0.695 being the floor of `distanceConfidence` over every input). Under the old
+ * seeds, and none of them reaches the 0.58 confidence floor on its own. Under the old
  * rule all of that published silently.
+ *
+ * Cycle 14 added a FOURTH signal, 노출 여유, so `signalScore` is now n/4 rather than
+ * n/3 and the arithmetic above moves with it: the lowest confidence with 3 of 4
+ * signals passing is 0.710400 (0.695 * 0.72 + 0.75 * 0.28, 0.695 being the floor of
+ * `distanceConfidence` over every input), where the old 2-of-3 figure was 0.687067.
+ * Both are comfortably above 0.58, so the conclusion is unchanged and it is the
+ * `signals.some` clause below, not the confidence floor, that catches a lone failure.
  *
  * It errs towards asking for a retake, deliberately: a retake prompt on a capture
  * that would have read correctly costs one tap, and a wrong level costs the reading
@@ -436,9 +512,59 @@ export function retakeRecommendedFor(confidence: number, signals: ConfidenceSign
  * byte-for-byte copy in app/scan/capture-analysis.ts. The two call sites have
  * different shapes and merging them would be wider than the problem; what is worth
  * preventing is one threshold moving without the other.
+ *
+ * WHAT THIS LABEL REPORTS, settled at cycle 14 after eight cycles on the backlog.
+ *
+ * `confidence` is `(attrConfidence * 0.72 + signalScore * 0.28) * burstMultiplier`.
+ * On the only path where the reading is actually used — `shouldApplyScan` in
+ * lib/recommend.ts requires `!retakeRecommended`, and `retakeRecommendedFor` fails on
+ * ANY failed signal since cycle 11 — `signalScore` is exactly 1 by construction. So
+ * the signal term is a constant 0.28 there and carries no information; adding the
+ * fourth signal widens what must pass and leaves that constant a constant. Two terms
+ * are left: `attrConfidence`, the reading's distance from its cut points, and the
+ * burst multiplier, frame-to-frame stability.
+ *
+ * The old 0.78 gate sat BELOW the reachable floor of 0.7804 (attrConfidence is bounded
+ * to [0.695, 0.92] by `distanceConfidence`), so at full frame agreement 100% of the
+ * reachable range read 높음 and reading margin could not move the label at all. Frame
+ * wobble was the only input that ever did — which is what the user was never told:
+ *
+ *   meanAgreement   range             share reading 높음 at 0.78   at 0.8614
+ *   1.0000          0.7804 .. 0.9424          100.0%                 50.0%
+ *   0.8889          0.7717 .. 0.9319           94.8%                 44.0%
+ *   0.6667          0.7544 .. 0.9110           83.6%                 31.7%
+ *   0.3333          0.7284 .. 0.8796           65.9%                 12.0%
+ *
+ * The decision: the label reports READING MARGIN. Capture quality is already shown in
+ * full — the 측정 환경 checklist in app/scan/result-card.tsx renders every signal with
+ * a tick or a bang, and a failed one routes to the retake copy — and frame wobble
+ * already has its own line in `retakeReasons`. Margin is the only one of the three the
+ * user is told nowhere else, and it was the one the gate had collapsed.
+ *
+ * 0.8614 is derived, not chosen. `distanceConfidence` maps a reading sitting exactly on
+ * a cut point to 0.695 and one a half-span away to 0.92; the midpoint of that axis,
+ * 0.8075, is what it returns for a reading a QUARTER-span from its nearest cut. Composed
+ * with the rest of the formula at full agreement, `0.8075 * 0.72 + 0.28 = 0.8614`. So
+ * 높음 now means "every reading at least about a quarter-span clear of its cut", and the
+ * axis splits 50/50 instead of 100/0.
+ *
+ * Frame wobble is not removed, it is demoted: one attribute disagreeing on one of three
+ * frames multiplies by 0.988889, which decides the label only for readings inside a
+ * 0.00968-wide band — 5.97% of the 0.162-wide reachable range, against a gate that used
+ * to be the only thing wobble could not overrule.
+ *
+ * The 0.58 gate does NOT move. It is the same number `shouldApplyScan` and `overallFor`
+ * compare against, so moving it here alone would desynchronise three call sites.
+ *
+ * One collision this exposes, pinned in tests/confidence-label-contract.test.ts rather
+ * than left to be rediscovered: `mergeVisionAnalysis` caps its own confidence at 0.86,
+ * which is now 0.0014 BELOW this gate, so a vision-model confidence can no longer reach
+ * 높음 on its own strength — only through the `Math.max(base.confidence, ...)` that
+ * carries the ROI reading's margin. That is arguably what the cap was for, but the two
+ * constants were chosen independently and must not be moved independently.
  */
 export function confidenceLabel(confidence: number): SkinReads["confidenceLabel"] {
-  if (confidence >= 0.78) return "높음";
+  if (confidence >= 0.8614) return "높음";
   if (confidence >= 0.58) return "보통";
   return "낮음";
 }
@@ -845,6 +971,7 @@ function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatu
     cheekL,
     cheekTexture: cheeks.texture,
     tzoneSpecular: tzone.specularRatio,
+    cheekClipped: cheeks.clippedRatio,
     cheekSamples: cheeks.n,
     tzoneSamples: tzone.n,
     toneLstar: tone.lstar,

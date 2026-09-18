@@ -254,43 +254,6 @@ partly done and stays here.
   URLs. What the cycle *could* fix without a network is the override path those URLs
   will arrive through — see the 2026-09-15 (cycle 2) entry in
   [`docs/autopilot-changelog.md`](autopilot-changelog.md); it was silently discarding them.
-- [AI] `confidenceLabel` no longer distinguishes reading ambiguity. After the
-  2026-09-15 fix, a frame whose three capture signals all pass lands in
-  [0.7804, 0.9424], and the 높음 gate is 0.78 — so it reads 높음 even when all three
-  readings sit exactly on their cut points. The label is now a restatement of capture
-  quality, and it clears the gate by 0.0004, so any later nudge of the 0.695 floor or
-  the 0.78 threshold flips every well-captured scan at once. Decide whether the
-  attribute term should get more travel in `readsFromRaw`, or whether the label should
-  be dropped to two levels. Note `confidenceLabel` is duplicated byte-for-byte in
-  `app/scan/capture-analysis.ts`.
-
-  **2026-09-16, supervisor: the numbers above are right and the conclusion is not.**
-  Reproduced exactly — `distanceConfidence` is bounded to [0.695, 0.92] for every
-  input, the three attribute weights sum to 1, so all-signals-pass gives
-  [0.7804, 0.9424] and clears 0.78 by 0.0004. But that is the NON-burst path, and the
-  non-burst path is `/eval` only. `app/scan/use-capture-analysis.ts:216` calls
-  `analyzeSkinBurst`, which passes `burst`, and `lib/skin.ts:743` then multiplies by
-  `0.9 + 0.1 * meanAgreement`. With three frames, per-attribute agreement is a third,
-  two thirds or one, so the reachable floors on the path real users take are:
-
-  ```
-  agreement 1.00/1.00/1.00  mean 1.0000  ->  0.7804 .. 0.9424   높음 at the floor
-  agreement 1.00/1.00/0.67  mean 0.8889  ->  0.7717 .. 0.9319   보통 at the floor
-  agreement 0.67/0.67/0.67  mean 0.6667  ->  0.7544 .. 0.9110   보통 at the floor
-  agreement 0.33/0.33/0.33  mean 0.3333  ->  0.7284 .. 0.8796   보통 at the floor
-  ```
-
-  (node, against the real weights in `readsFromRaw`.) One attribute disagreeing on one
-  of three frames drops the floor to 0.7717 and flips 높음 to 보통. So in production the
-  label reports **burst frame stability**, not capture quality and not reading
-  ambiguity — a third thing, and one the user is never told about. Both remedies the
-  item proposes would be chosen against the `/eval` picture. Decide what axis the label
-  should report first. Note also that `meanAgreement < 0.67` already pushes its own
-  retake reason, so the multiplier and the reason count read one signal twice.
-  **2026-09-18, cycle 11: the reason count half of that is gone.** `retakeRecommended`
-  no longer counts `retakeReasons`; it reads `signals`, so wobble now reaches the
-  decision only through the `0.9 + 0.1 * meanAgreement` multiplier. The double-count is
-  closed and the question this item owns — which axis the label reports — is untouched.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
@@ -350,27 +313,19 @@ partly done and stays here.
   formula is right is a measurement, not a rename: the cheek specular ratio is near
   zero on a matte cheek, which is why the app never used the Python form. Noted
   2026-09-18.
-- [AI] **No capture signal looks at a saturated CHEEK channel, and both cheek-derived
-  axes lose a level before one fires.** `buildSignals` has three: 조명 (cheekL 70..210),
-  반사 (T-zone pixels whose LUMINANCE exceeds 218, as a fraction under 0.1) and 피부
-  영역. `relRedness` and `cov` are computed from the CHEEK, whose red channel can reach
-  the 8-bit ceiling before any luminance reaches 218.
-  Measured (`tests/axis-exposure-scale.test.ts`, 2026-09-18): on a warm face at the pores
-  cut, 2.5% of the cheek patch is clipped at cheekL 177.9, 14.8% at 184.8 and 25.9% at
-  190.7 — and at 190.7 the published pores level has dropped a bucket while all three
-  signals say ok. Worse, clipping delays the one signal that could catch it: a clipped
-  pixel's computed luminance is lower than the scene's, so fewer pixels cross 218, and
-  the saturating face's 반사 fails 6 counts of cheekL LATER than the control's. The
-  cheapest honest version is a fourth signal on the cheek's clipped-channel fraction, but
-  adding one reopens the retake rule (`retakeRecommendedFor`, cycle 11) and moves what
-  `confidenceLabel` reports, so it is a deliberate decision and not a one-line add.
-  **How much this matters off the fixture is one unknown number.** Swept on R/L alone at
-  a fixed cheek luminance (same test, supervisor case), the silent window opens between
-  **R/L 1.17 (holds) and 1.20 (flips)**. This repository's own skin constant
-  `[196, 152, 140]` is R/L **1.1967** — inside that band, and a fixture rather than a
-  measurement of anyone's skin. Which side real captures fall on is settled by the
-  golden-set photos already blocked on the owner, not by another sweep. Noted
-  2026-09-18, R/L band added by the supervisor the same day.
+- [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
+  apart and were chosen independently.** `mergeVisionAnalysis`
+  (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
+  Math.min(0.86, visionConfidence * 0.9))`, so a vision model reporting 0.9556 or more
+  saturates at exactly 0.86 — which since cycle 14 is just under the 높음 gate. The
+  consequence is defensible (the cap exists precisely so an over-confident LLM cannot
+  claim certainty, and the `Math.max` still lets a well-separated ROI reading carry
+  높음) but it is an accident rather than a decision, and a nudge to either constant
+  moves a whole path's label at once. `tests/confidence-label-contract.test.ts` now
+  pins the cap's value and that it sits below the gate, so neither can move alone
+  unnoticed; what nobody has decided is where the cap SHOULD be relative to the gate,
+  and that needs the vision path's confidences measured against real readings rather
+  than reasoned about. Noted 2026-09-18.
 - [AI] **The 120-seed retake table did not reproduce and the sweep that replaces it is
   now committed.** `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`
   re-derives it from cycle 11's written description. 반사 and 피부 영역 came back within
@@ -677,6 +632,177 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-18 (cycle 14) — Branch `autopilot/2026-09-18-1839`. **The silent window
+  cycle 13 measured is closed, with a fourth capture signal whose cut was derived from a
+  sweep — and `confidenceLabel`, eight cycles on the backlog, is decided.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **491 passed in 78 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The fourth signal.** `RegionStats` gains `clippedRatio` — the share of the UNTRIMMED
+  patch with at least one channel at 255, untrimmed for the same reason `specularRatio`
+  is, since the trim drops the brightest decile and that is exactly where clipping lives.
+  `SkinRawFeatures.cheekClipped` carries the cheek's, and `buildSignals` gains **노출
+  여유**, failing at `CHEEK_CLIP_LIMIT = 0.15`. It counts all three channels, not red:
+  skin is usually warm so red pins first, but the signal is about sensor headroom rather
+  than about skin, and a cool cast puts a different channel at the ceiling.
+
+  **The cut is derived, and the sweep that derived it is committed.** 84 faces — R/L
+  1.10..1.30 at fixed cheek luminance, texture amplitude 0.10..0.26, three T-zone scales
+  — swept across the whole 조명 band, every capture the previous three signals passed
+  bucketed by its clipped fraction. The pass/fail criterion is not taste: it is the
+  invariance this repository already measured, cov within 1.02x and relRedness within
+  1.08x (`tests/axis-exposure-scale.test.ts`). Below that, clipping is indistinguishable
+  from the 8-bit rounding the indices already carry.
+
+  ```
+  clipped   n     max|dCov|  max|dRed|  published level flips
+  11.11%    20      1.89%      4.92%     0
+  12.35%    21      1.23%      3.43%     0
+  13.58%     5      1.40%      3.48%     0
+  14.81%    52      1.91%      6.19%     0   <- last bucket inside both tolerances
+  16.05%    35      2.16%      5.72%     0   <- cov leaves its 2% band
+  19.75%    13      2.71%      6.84%     0
+  20.99%    20      2.45%      9.48%     1   <- first published level flip
+  22.22%    82      3.59%     14.29%    30
+  ```
+
+  0.15 is the only cut that passes every capture still inside the measured invariance and
+  refuses every capture in which a published level has ever moved. `ARU_PRINT_CLIP_SWEEP=1
+  npx vitest run tests/cheek-clipping-signal.test.ts` reprints the table above verbatim.
+
+  **What it costs, which is the brief's second question, measured on the same sweep.** Of
+  the 10,273 captures the previous three signals passed, 645 (6.28%) now ask for a
+  retake — and not evenly:
+
+  ```
+  cheekL <= 140      0/5964   0.00%
+  cheekL 140..170   33/2520   1.31%
+  cheekL 170..190  337/1367  24.65%
+  cheekL 190..212  275/422   65.17%
+  ```
+
+  **A correctly-exposed capture does not trip it**, which is the answer the brief asked
+  for: if it fired on one, the threshold would be wrong rather than the rule. It catches
+  379 of the 380 silent published-level flips. The one miss is at cheekL 74.9 with NO
+  clipping — relRedness 0.01276 quantising to 0.01197 across the 0.012 cut — which is
+  cycle 13's dark-end 8-bit scatter and not something a clipping signal can see. Said
+  rather than hidden.
+
+  Cycle 13's two cases that pinned the defect are rewritten rather than deleted: they now
+  evaluate the three old signals AND the shipped four separately, so the R/L window is
+  still located at 1.17..1.20 (the measurement is unchanged and the golden set still owns
+  the unknown) while a new assertion holds that no exposure all four signals accept moves
+  a published level at any R/L in the sweep. Closed by refusing those captures, not by
+  reading them differently, and a case asserts exactly that.
+
+  **`confidenceLabel`: the axis is decided, and it is READING MARGIN.** The argument the
+  item was missing is one the retake rule supplies. `shouldApplyScan` requires
+  `!retakeRecommended`, and since cycle 11 `retakeRecommendedFor` fails on ANY failed
+  signal — so on the only path where a reading is used, `signalScore` is exactly 1 by
+  construction and its 0.28 is a constant carrying no information. The fourth signal
+  widens what must pass and leaves that constant a constant. Two terms are left, and the
+  0.78 gate sat BELOW the reachable floor of 0.7804:
+
+  ```
+  meanAgreement   range             share reading 높음 at 0.78   at 0.8614
+  1.0000          0.7804 .. 0.9424          100.0%                 50.0%
+  0.8889          0.7717 .. 0.9319           94.8%                 44.0%
+  0.6667          0.7544 .. 0.9110           83.6%                 31.7%
+  0.3333          0.7284 .. 0.8796           65.9%                 12.0%
+  ```
+
+  At full frame agreement the label was constant. Frame wobble was the only thing that
+  could ever move it — the backlog's finding, now stated as a share of the range rather
+  than as two floors.
+
+  So the label reports reading margin, because that is the only one of the three axes the
+  user is told nowhere else: capture quality is already rendered signal-by-signal in the
+  측정 환경 checklist (four rows now) and routes a failure to the retake copy, and frame
+  wobble already has its own `retakeReasons` line. The gate moves 0.78 -> **0.8614**, in
+  BOTH copies. It is derived, not chosen: `distanceConfidence` maps a reading on a cut
+  point to 0.695 and one a half-span away to 0.92, its midpoint 0.8075 is what it returns
+  a quarter-span from the nearest cut, and `0.8075 * 0.72 + 0.28 = 0.8614`. Wobble is
+  demoted rather than removed — one attribute disagreeing on one of three frames now
+  decides the label only inside a 0.00968-wide band, 5.97% of the 0.162-wide range. The
+  0.58 gate does NOT move; three other call sites compare against it.
+
+  **One collision this exposes, pinned rather than left to be rediscovered.**
+  `mergeVisionAnalysis` caps its confidence at `Math.min(0.86, ...)`, which is now 0.0014
+  BELOW the gate — so a vision-model confidence cannot reach 높음 on its own strength,
+  only through the `Math.max(base.confidence, ...)` that carries the ROI reading's
+  margin. Arguably what the cap was for, but the two constants were chosen independently
+  and are close enough that moving either alone moves a whole path's label. A case asserts
+  the cap value and that it sits below the gate, so they cannot drift apart unnoticed.
+
+  **Every new case broken at the SOURCE line it protects.** 11 breaks, each reverted from
+  a file copy (an earlier attempt reverted with `git checkout`, which silently discarded
+  the uncommitted work and voided its own results — redone from backups):
+
+  ```
+  CHEEK_CLIP_LIMIT 0.15 -> 0.35   6 fail; AssertionError: expected [] to deeply equal [ '노출 여유' ]
+                                  AssertionError: expected [ 1.2, 1.223 ] to deeply equal []
+  CHEEK_CLIP_LIMIT 0.15 -> 0.02   1 fail; AssertionError: the highest clipped fraction still
+                                  accepted: 0.00%: expected 0 to be greater than or equal to
+                                  0.14814814814814814
+  clippedRatio over the trimmed    2 fail; AssertionError: cheekL 180: expected 0.15418502202643172
+    set instead of collected       to be close to 0.12345679012345678
+  count red channel only           1 fail; AssertionError: cheekL 188: expected +0 to be close to
+                                   0.012345679012345678
+  signal `ok: true`                6 fail; same two messages as the 0.35 break
+  gate 0.8614 -> 0.78 both copies  2 fail; AssertionError: expected 0.78 to be close to 0.8614
+  gate drifts in one copy only     3 fail; AssertionError: 125 of 2014 values disagree
+  vision cap 0.86 -> 0.95          1 fail; AssertionError: expected 0.95 to be 0.86
+  weights 0.72/0.28 -> 0.70/0.30   1 fail; AssertionError: expected '/**\n * Visible-signal skin
+                                   analysis....' to contain 'const confidence = clamp01((attrConfi...'
+  retakeRecommendedFor stops       1 fail; AssertionError: expected false to be true
+    reading signals
+  en translation deleted           1 fail; AssertionError: "볼이 너무 밝아 색이 날아갔어요" missing
+                                   from the en dictionary
+  ```
+
+  The red-channel break is the one worth recording: it passed all 9 cases on the first
+  attempt, because every face in the family is warm and red always clips first. That is a
+  real uncovered branch, so a green-dominant fixture was added and the break then failed.
+  Exactly what guardrail "break it on purpose" exists to catch.
+
+  **What did NOT move, checked rather than assumed.** `ATTR_THRESHOLDS`,
+  `fallbackVersion` and `inputSchemaVersion` are untouched: no published index or its
+  cut points changed, and `cheekClipped` is a capture-health number, not a calibratable
+  feature — it is absent from `FEATURE_KEY`, `NEW_FEATURE_KEYS`, `LabeledSample.features`
+  and the `/eval` export, so no feature generation moved. Guardrail 8 untouched —
+  `status` and `promotionGate` byte-identical. `NEXT_PUBLIC_FUNNEL_FLUSH` untouched.
+  The 노출 여유 label and both of its details are translated in en/ja/zh/ar, with a case
+  holding it (the three older signals' strings are translated because somebody remembered;
+  nothing checked, and that gap is noted below).
+
+  **Second item, and it came out of the main one.** Writing the translations for 노출
+  여유 showed that nothing checks a capture signal's strings at all:
+  `tests/i18n-coverage.test.ts` covers the report trust card's runtime-composed strings
+  and passes `signals: []`, so the six strings the three original signals carry are in
+  en/ja/zh/ar because somebody remembered. An untranslated one shows raw Korean in the
+  측정 환경 checklist to every non-Korean user. The rule now lives in that file rather
+  than in the file for one signal: six fixtures drive `analyzeSkin` to every state of all
+  four signals, assert all four labels were seen in BOTH states and that the set is
+  exactly the 13 distinct strings those states produce, then `expectCovered` each.
+  Driven through `analyzeSkin` rather than listed by hand, so a signal added without a
+  fixture fails the count instead of escaping coverage.
+  `tests/retake-signal-rule.test.ts` also gains the lone-failure fixture the new signal
+  was missing: a cheek with red pinned at 255 and luminance 180, inside the 조명 band,
+  so 노출 여유 is the only signal it trips — the exact case cycle 13 showed the other
+  three cannot see.
+
+  **Not attempted, deliberately.** No third item and no unrelated UI change. This branch
+  opens the retake rule and moves a user-visible confidence label, which is enough for
+  one diff to be reviewable and revertible on its own.
+
+  Verification on this branch: vitest **508 passed in 79 files** (from 491 in 78),
+  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .` **2 warnings**
+  both in `lib/care.ts` unchanged, `python3 ml/selftest.py` **Ran 77 tests ... OK**
+  unchanged, `npm run smoke` green.
 
 - 2026-09-18 (cycle 13) — Branch `autopilot/2026-09-18-1239`. **The other two axes were
   swept and they are clean. What is not clean is the 8-bit ceiling, and no capture signal
@@ -991,125 +1117,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **Ran 77 tests ... OK** unchanged, `npm run smoke` green. Guardrail 8 untouched.
   `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched, the retake rule
   itself untouched.
-
-- 2026-09-18 (cycle 11) — Branch `autopilot/2026-09-18-0039`. **A retake was decided by
-  counting entries in an array whose entries mean different things.**
-  `retakeRecommended` was `confidence < 0.58 || retakeReasons.length >= 2`, over an
-  array holding up to three capture-signal details plus, on the burst path, a fourth
-  line about frame wobble. So one failed signal never forced a retake, one failed signal
-  plus wobble did, and nothing anywhere said which signals were worth a retake.
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief: `tsc --noEmit` **13** errors
-  (`grep -c "error TS"`; the raw line count is 16), vitest **466 in 75 files**,
-  `ml/selftest.py` **77**, lint **2 warnings** both in `lib/care.ts`.
-
-  **The 0.6871 was re-derived, not trusted, and it holds: 0.687067.** Not from the
-  backlog's arithmetic but by sweeping `distanceConfidence` over every attribute's
-  plausible range (20,001 points per attribute across 8× its band), finding its floor
-  at **0.695000**, and putting that through the real
-  `attrConfidence * 0.72 + signalScore * 0.28`:
-
-  ```
-  distanceConfidence floor over swept range = 0.695000
-    3/3 signals pass -> min confidence = 0.780400 (gate is < 0.58)
-    2/3 signals pass -> min confidence = 0.687067 (gate is < 0.58)
-    1/3 signals pass -> min confidence = 0.593733 (gate is < 0.58)
-    0/3 signals pass -> min confidence = 0.500400 (gate is < 0.58)
-  ```
-
-  Note the third line: **even 1 of 3 signals passing clears the 0.58 floor.** The
-  confidence term cannot force a retake on capture quality at all, whatever fails.
-
-  **Then the per-signal measurement, which contradicted the item's own expectation.**
-  120 seeded synthetic captures per condition through `analyzeSkin`, three fixture
-  families each tuned so one attribute's raw value sits on its own cut point (where
-  noise costs a level), comparing published levels against a clean capture of the same
-  face at the same seed:
-
-  ```
-  조명 alone, dark      (cheekL 51.4-69.1)   oil  71/120  redness   0/120  pores  4/120
-  조명 alone, blown out (cheekL 214.5-225.7) oil 120/120  redness 120/120  pores  0/120
-  반사 alone            (tzoneSpecular 0.2963) oil 120/120  redness 116/120  pores  0/120
-  피부 영역 alone        (686 cheek samples)   oil  42/120  redness  22/120  pores 49/120
-  ```
-
-  The backlog expected 피부 영역 to be the one that mattered. It does — `cov`'s
-  dispersion rises from sd 0.0080 to 0.0107 on 686 cheek samples against 1,134, and the
-  pores level flips 41% of the time at the cut point — but it is the *mildest* of the
-  three. 반사 is not noise at all: `shine` is `tzoneSpecular + max(0, (tzoneL - cheekL) / 255)`,
-  so a specular ratio of 0.2963 adds itself to the oil index directly and moves the
-  reading from 0.0515 to 0.4324, every capture, in one direction. So the
-  signal-specific rule the item proposed would have left the larger two thirds of the
-  damage publishing silently. **Rule chosen: any one failed signal recommends a retake.**
-
-  One thing the sweep found that is worth not overclaiming: the oil damage from
-  underexposure is already at 71/120 at **cheekL 112.5**, well inside the passing band,
-  and 조명 does not fail until 69.1. The signal is a late indicator of a problem that
-  starts earlier, so this rule catches the tail of it, not the whole of it. That is a
-  separate item (the index is an absolute luminance difference over 255, not a
-  brightness-normalised one) and was not opened this cycle.
-
-  **`retakeRecommendedFor(confidence, signals)`**, exported from `lib/skin.ts` and
-  called from both `readsFromRaw` and `mergeVisionAnalysis`. Keyed on `signals`, so the
-  wobble line cannot reach it structurally rather than by convention. That also
-  collapsed the 0.58 floor from five source sites to four:
-  `tests/confidence-threshold-agreement.test.ts` went red on this change with
-  `"no site matching /retakeRecommended: confidence < ([0-9.]+) \|\| retakeReasons\.length >= 2/ — the code moved, so this test is blind"`,
-  which is exactly what it was written to do. It now pins four literals plus a fifth
-  case asserting the merge still delegates instead of regrowing its own copy.
-
-  **What happens to wobble alone: nothing changes.** `meanAgreement < 0.67` still adds
-  its reason line and still does not recommend a retake. Median fusion across the burst
-  is what the burst exists for, the confidence already carries the
-  `0.9 + 0.1 * meanAgreement` discount for it, and which axis that number should report
-  is the open `confidenceLabel` item, not this one. What did change is that wobble no
-  longer pushes a one-signal capture over a count — it never should have, because the
-  capture was already ungradable without it.
-
-  **Which way the rule errs, said plainly: towards asking for a retake.** It fires on
-  strictly more captures than before — exactly the lone-failure set — and never on
-  fewer. The cost is a user re-taking a photo that might have read correctly; the cost
-  avoided is a wrong level, which also costs the recommendation, because
-  `shouldApplyScan` in `lib/recommend.ts` drops a retake-recommended scan and so a bad
-  reading that stays under the gate flows into the products shown. At 41-100% level
-  disagreement per lone failure, a retake is the cheaper error. **How much more often it
-  fires cannot be measured from here**: it needs the share of real captures that fail
-  exactly one signal, which is the funnel flush, which is the PIPA blocker. Not
-  estimated, not guessed.
-
-  **Verification of the new tests.** All 8 cases in `tests/retake-signal-rule.test.ts`
-  checked by deleting the line each protects, three mutations. Deleting
-  `|| signals.some((signal) => !signal.ok)` from `retakeRecommendedFor` failed 5 cases,
-  all `AssertionError: expected false to be true`. Deleting
-  `if (burst && meanAgreement < 0.67) retakeReasons.push("촬영 프레임 사이에 신호가 조금 흔들렸어요");`
-  from `readsFromRaw` failed 2:
-  `expected [] to deeply equal [ '촬영 프레임 사이에 신호가 조금 흔들렸어요' ]` and
-  `expected [ '얼굴 영역이 작게 잡혔어요' ] to have a length of 2 but got 1`. Restoring
-  `next.retakeRecommended = next.confidence < 0.58 || next.retakeReasons.length >= 2;`
-  in `mergeVisionAnalysis` failed 2, one in each file:
-  `expected 'import { t } from "@/lib/i18n/core";…' to contain 'next.retakeRecommended = retakeRecomm…'`
-  and `expected false to be true`.
-
-  **One existing fixture had to change and it is worth saying why.**
-  `tests/capture-analysis.test.ts`'s vision-merge case built a hand-written partial
-  `SkinReads` with two `retakeReasons` and no `signals` at all — a shape
-  `readsFromRaw` never produces. It now carries a real three-signal array with 조명
-  failing, which is what "two retake reasons" was standing in for.
-
-  **ML and research skipped, deliberately.** `ml/selftest.py` is green at 77 and
-  nothing in this cycle touches the Python side: the rule lives entirely in the
-  TypeScript capture path, and `ml/train_visible_attributes.py`'s metrics/checkpoint
-  split is PR #69's. Research likewise — the measurement this cycle needed came from
-  running the code, not from an external source, and inventing a lookup to fill the
-  track is how the changelog got long. UI/UX is not skipped but is not separate either:
-  the retake prompt on `/scan` and the confidence card on `/report` are what this rule
-  changes.
-
-  Verification on this branch: vitest **475 passed in 76 files** (from 466 in 75 — the
-  8 new cases plus 1 added to `tests/confidence-threshold-agreement.test.ts`),
-  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint` **2 warnings**
-  both in `lib/care.ts` unchanged, `python3 ml/selftest.py` **Ran 77 tests ... OK**
-  unchanged. Guardrail 8 untouched — no change to `status` or `promotionGate`.
-  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched,
-  `distanceConfidence` and the 0.58 threshold untouched.
