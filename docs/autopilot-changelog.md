@@ -29,6 +29,23 @@ Ticked `[x]` and moved here; the section each was under is kept.
 
 ### Now
 
+- [x] [AI] ~~`funnelDropoff` anchors its cumulative chart on `scan_started`, so the camera
+  loss `scan_opened` measures does not appear in the drop-off bars~~ — done 2026-09-19.
+  The item was parked on "revisit once logs in hand all contain it", because the chart is
+  an intersection from stage 0 and anchoring on `scan_opened` alone would report a chart
+  of zeros for every session recorded before that kind existed. It did not need the wait:
+  the anchor is `scan_opened` UNION `scan_started`. `scan_opened` fires on /scan entry
+  and `scan_started` at the shutter, so in any log recorded since it existed the second
+  implies the first and the union IS the `scan_opened` set — a 촬영 화면 stage now leads
+  the chart and the camera loss appears as the drop into 스캔 시작. A legacy session
+  enters at its own 스캔 시작 and reads a 0% camera drop: "not measured here", which is
+  true, rather than "nothing happened", which is not. The cost is stated as a case rather
+  than left to be discovered — a log MIXING the two generations understates the drop,
+  50% becoming 33% on the pinned three-session fixture, because the older sessions join
+  the anchor without ever being able to contribute a loss. It is a no-op once every log
+  carries `scan_opened`. `tests/funnel.test.ts`; the case that replaced the deferral pin
+  is the one that fails, `expected +0 to be 1`, if the union is dropped.
+
 - [x] [AI] **Nothing checks that a capture signal's strings are translated.** Signal labels
   and details are raw Korean data translated at render via `t()`
   (`buildSignals`, `app/scan/result-card.tsx`), and `tests/i18n-coverage.test.ts` does
@@ -2253,6 +2270,157 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   unchanged. Guardrail 8 untouched — no change to `status` or `promotionGate`.
   `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched,
   `distanceConfidence` and the 0.58 threshold untouched.
+
+- 2026-09-18 (cycle 12) — Branch `autopilot/2026-09-18-0639`. **The oil index carried an
+  absolute brightness term while the whole thesis is within-image measurement.**
+  `lib/skin.ts` computed
+  `shine = tzone.specularRatio + max(0, (tzoneL - cheekL) / 255)`. The first term is a
+  ratio. The second divided a luminance difference by the constant 255 — not by the
+  capture — while `cov` divides by `cheekL` and `relRedness` is a difference of two
+  ratios. One of the three published features was scale-dependent, and it is the one
+  cycle 11 measured taking the most damage from a bad exposure.
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npx tsc --noEmit | grep -c
+  "error TS"` **13**, vitest **475 passed in 76 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The effect is real and it flips published levels inside the passing band.** One
+  synthetic face whose T-zone is a fixed 8% brighter than its cheeks, read at seven
+  exposures, all three capture signals passing at every row so nothing asks for a
+  retake:
+
+  ```
+  cheekL  tzoneL  before   level        after    level
+    79.9    86.4  0.0254   유분 적음    0.0446   유분 적음
+   120.0   129.7  0.0384   유분 적음    0.0448   유분 적음
+   140.2   151.1  0.0427   유분 적음    0.0427   유분 적음
+   159.6   172.4  0.0501   유분 약간    0.0440   유분 적음
+   200.1   215.3  0.0595   유분 약간    0.0417   유분 적음
+  ```
+
+  The old index runs **x2.34** across cheekL 80 to 200 at fixed relative contrast and
+  changes the published level between 140 and 160. At a T-zone 15% brighter the
+  boundary moves to between cheekL 80 and 100; at 30%, to between 120 and 140. So the
+  answer to the question the brief posed is yes: the same face read the same way at two
+  legal exposures published two different oil levels. After the change the same sweep
+  spans **0.935 to 0.956**, and what is left of that is 8-bit channel rounding.
+
+  **The fix, derived rather than assumed.** The second term becomes Weber contrast
+  against the cheek — `max(0, (tzoneL - cheekL) / cheekL)` — times `140 / 255`.
+  `SHINE_REFERENCE_CHEEK_L = 140` is the midpoint of the band the 조명 signal passes
+  (`buildSignals`: cheekL 70..210), which is this repository's only written definition
+  of a correctly-exposed capture. The constant is **not** what makes the index
+  invariant: the ratio is, for any value of it. All it decides is which exposure keeps
+  today's number, and 140 was chosen so `ATTR_THRESHOLDS.oil` does not have to move.
+
+  **Why moving the cuts instead is not the same change, measured.** The cuts are
+  compared against `specularRatio + gap` and only the gap is rescaled. Cuts scaled by
+  255/140 (0.05 → 0.0911, 0.16 → 0.2914) drop a level on every capture whose specular
+  ratio lands in [0.05, 0.0911) or [0.16, 0.2914) — at the reference exposure, the one
+  exposure the change is supposed to leave alone. Pinned with a measured case: a face
+  with 5 of its 81 T-zone pixels above the specular cut reads `tzoneSpecular = 0.0617`,
+  which is 유분 약간 today and 유분 적음 under the scaled cuts.
+
+  **Which captures change bucket.** At cheekL 140 nothing does: the two formulas agree
+  to within 5e-4 across specular ratios 0 to 0.60 and contrasts 1.00 to 1.20, checked
+  case by case. Brightly-exposed faces read LOWER (cheekL 160-200 at an 8% T-zone gap:
+  유분 약간 → 유분 적음) and darkly-exposed faces read HIGHER (cheekL 70-80 at a 15%
+  gap: 유분 적음 → 유분 약간; at a 30% gap, cheekL 70-120 goes 유분 약간 → 유분 많음).
+  Those are the captures the fix is for.
+
+  **`fallbackVersion` → `roi-calibrated-2026-09-18`** in `lib/skin.ts` AND
+  `public/models/visible-attributes/manifest.json`, the rule `docs/label-free-axes.md`
+  states and cycles 3, 4 and 5 followed. Guardrail 8 untouched: `status` and
+  `promotionGate` are byte-identical. `inputSchemaVersion` untouched.
+
+  **`ml/skin_indices.py` does not carry this term, and checking that found something
+  worse.** Its `shine_ratio(tzone_specular, cheek_specular)` is
+  `tzone_specular / cheek_specular` — a different formula entirely, with no luminance
+  term to mirror, so "change one, change both" had nothing to move. But `FEATURE_KEY`
+  maps `shine_ratio` to the app's `shine`, and `ml/selftest.py`'s
+  `test_shine_and_roughness_are_ratios_so_exposure_cancels` asserts exposure invariance
+  for the index under that name — a property that was true of the Python and false of
+  the TypeScript. It is true of both now, and the two formulas still differ. Filed as a
+  backlog item rather than resolved here: which one is right is a measurement, since a
+  matte cheek's specular ratio is near zero and that is presumably why the app never
+  used the Python form.
+
+  **Second item: cycle 11's sweep is committed, and it does not reproduce.** Behind
+  `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`, the shape
+  cycle 5 set. The construction is written into the test because it had to be
+  re-derived from prose: three fixture families bisected so a clean capture sits on one
+  attribute's lower cut point, 120 seeds, the same noise field used for the clean and
+  the degraded capture at each seed. What came back:
+
+  ```
+  condition                          attr      cheekL range   signals   this run   cycle 11
+  조명 dark                          oil        59.6-60.5     조명       21/120      71/120
+  조명 dark                          redness    59.6-60.5     조명       29/120       0/120
+  조명 dark                          pores      55.4-65.8     조명      120/120       4/120
+  조명 blown out                     oil       214.7-215.3    조명,반사  120/120     120/120
+  조명 blown out                     redness   214.7-215.3    조명       91/120     120/120
+  조명 blown out                     pores     210.2-218.8    조명,반사   61/120       0/120
+  반사                               oil       139.6-140.5    반사       120/120     120/120
+  반사                               redness   139.6-140.5    반사       120/120     116/120
+  반사                               pores     135.4-145.8    반사         0/120       0/120
+  피부 영역                          oil       139.3-140.4    피부 영역   37/120      42/120
+  피부 영역                          redness   139.3-140.4    피부 영역   33/120      22/120
+  피부 영역                          pores     131.9-145.7    피부 영역   49/120      49/120
+  ```
+
+  **반사 and 피부 영역 came back; 조명 did not.** 피부 영역's pores column lands on 49
+  exactly and its other two within 11; 반사 reproduces on two columns of three. 조명 is
+  out in both directions — dark oil 21 against 71, dark pores 120 against 4 — and the
+  reason is the part that could not be recovered from prose: the noise amplitude that
+  puts `cov` on its cut point at cheekL 140 is 52 counts, and at cheekL 60 that clips
+  against zero, which is a fixture artifact and not a property of the 조명 signal.
+  Cycle 11's dark band was 51.4-69.1 and this one is 59.6-60.5, so they are not the
+  same condition either. The table is **corrected, not quietly republished**: the new
+  numbers replace the old ones in `lib/skin.ts`'s `retakeRecommendedFor` doc comment,
+  which says in the same breath that they are a re-derivation and what the old ones
+  were. **The rule is untouched and still supported** — every condition costs a
+  published reading on at least a sixth of the seeds, 반사 is still the worst, and
+  "any one failed signal recommends a retake" is what that says.
+
+  One thing the committed sweep deliberately does not claim: its `oil pre-fix` column
+  re-buckets the same captures on the old index, and the counts come out close (17 vs
+  21 dark, 120 vs 120 blown out) for a reason that has nothing to do with invariance —
+  the fixtures are tuned at cheekL 140, the one exposure where the two formulas agree
+  by construction. The normalisation is measured in
+  `tests/shine-exposure-scale.test.ts`, not there, and the comment says so.
+
+  **Verification of the new tests.** All 6 cases in `tests/shine-exposure-scale.test.ts`
+  checked by deleting or mutating the line each protects, four mutations, every case
+  covered by at least one. Restoring
+  `shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255)` failed 2:
+  `AssertionError: contrast 1.08 published 유분 적음 / 유분 적음 / 유분 약간 / 유분 약간: expected 2 to be 1`
+  and `AssertionError: expected 2.3937556835404785 to be less than 1.1`. Changing
+  `const SHINE_REFERENCE_CHEEK_L = 140;` to 100 failed 1:
+  `AssertionError: contrast 1 glint 24: 0.3716842139458374 vs 0.4020067421828359: expected 0.03032252823699849 to be less than 0.001`.
+  Deleting the whole gap term (leaving `shine: tzone.specularRatio,`) failed 3:
+  `expected NaN to be greater than 0.9`, the same reference-exposure case at
+  `expected 0.1057104458865396 to be less than 0.001`, and
+  `AssertionError: 0 0 0 0: expected 0 to be greater than 0`. Changing
+  `oil: [0.05, 0.16]` to the scaled `[0.0911, 0.2914]` failed the remaining case,
+  `expected +0 to be 1` — which is the measured form of the argument against moving the
+  cuts.
+
+  **UI/UX and research skipped, deliberately.** Nothing a user sees changed except the
+  oil level itself on mis-exposed captures, which is the point of the change; adding an
+  unrelated screen edit to a branch whose whole claim is "these numbers move and those
+  do not" would have made the before/after table harder to read. Research likewise —
+  this cycle's question was answered by running the code, and a lookup added to fill
+  the track is how the changelog got long.
+
+  Verification on this branch: vitest **482 passed in 77 files** (from 475 in 76 — the
+  6 cases in `tests/shine-exposure-scale.test.ts` plus the sweep case added to
+  `tests/retake-signal-rule.test.ts`; both env-gated blocks are counted cases and print
+  nothing with the variable unset), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged,
+  `npx eslint .` **2 warnings** both in `lib/care.ts` unchanged, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK** unchanged, `npm run smoke` green. Guardrail 8 untouched.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched, the retake rule
+  itself untouched.
 
 - 2026-09-15 (2) — ML track: the qwk/pearson gate, **superseded before it merged.**
   This branch built `promotionGate.subgroup.minQwk` / `minPearson` and an

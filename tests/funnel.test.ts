@@ -83,17 +83,22 @@ describe("funnelDropoff", () => {
     ];
     const stages = funnelDropoff(events);
     expect(stages.map((s) => s.kind)).toEqual([
-      "scan_started", "scan_completed", "survey_completed", "reco_viewed", "commerce_clicked",
+      "scan_opened", "scan_started", "scan_completed", "survey_completed", "reco_viewed", "commerce_clicked",
     ]);
+    // No scan_opened row anywhere in this fixture, which is the shape of every log
+    // recorded before that kind existed. The union anchor puts those four sessions in
+    // at stage 0 rather than intersecting the chart against an empty set.
     expect(stages[0].count).toBe(4);
     expect(stages[0].ofStart).toBe(1);
     expect(stages[0].dropFromPrev).toBe(0);
-    expect(stages[1].count).toBe(3);
-    expect(stages[1].ofStart).toBeCloseTo(0.75, 6);
-    expect(stages[1].dropFromPrev).toBeCloseTo(0.25, 6);
-    expect(stages[4].count).toBe(1);
-    expect(stages[4].ofStart).toBeCloseTo(0.25, 6);
-    expect(stages[4].dropFromPrev).toBeCloseTo(0.5, 6); // 1 of 2 reco viewers
+    expect(stages[1].count).toBe(4);
+    expect(stages[1].dropFromPrev).toBe(0); // not measured for these sessions, not lost
+    expect(stages[2].count).toBe(3);
+    expect(stages[2].ofStart).toBeCloseTo(0.75, 6);
+    expect(stages[2].dropFromPrev).toBeCloseTo(0.25, 6);
+    expect(stages[5].count).toBe(1);
+    expect(stages[5].ofStart).toBeCloseTo(0.25, 6);
+    expect(stages[5].dropFromPrev).toBeCloseTo(0.5, 6); // 1 of 2 reco viewers
   });
 
   it("stays at zero (no NaN) with no events", () => {
@@ -165,11 +170,11 @@ describe("share loop instrumentation", () => {
   });
 
   it("keeps share_landed out of the linear scan funnel", () => {
-    // STAGE_ORDER is a cumulative intersection anchored on scan_started; a
-    // side-branch arrival event in it would break monotonicity.
+    // STAGE_ORDER is a cumulative intersection anchored on scan_opened UNION
+    // scan_started; a side-branch arrival event in it would break monotonicity.
     const stages = funnelDropoff([ev("s1", "share_landed"), ev("s1", "scan_started")]);
     expect(stages.map((stage) => stage.kind)).not.toContain("share_landed");
-    expect(stages[0].kind).toBe("scan_started");
+    expect(stages[0].kind).toBe("scan_opened");
     expect(stages[0].ofStart).toBe(1);
   });
 });
@@ -222,12 +227,53 @@ describe("the camera step, which the funnel used to start after", () => {
     expect(summarizeFunnel(events).captureStart).toBe(1);
   });
 
-  it("leaves the existing drop-off chart anchored where it was", () => {
-    // Making scan_opened the first stage would zero every stage of a log that
-    // predates it, because the chart is a cumulative intersection from stage 0.
-    const stages = funnelDropoff([ev("s1", "scan_opened"), ev("s1", "scan_started")]);
-    expect(stages[0].kind).toBe("scan_started");
+  it("shows the camera loss in the drop-off chart", () => {
+    // The whole point of the anchor move: two sessions open /scan, one reaches the
+    // shutter. The chart used to start AT the shutter, so the other one was not in it
+    // at all and the loss read as nothing having happened.
+    const stages = funnelDropoff([
+      ev("s1", "scan_opened"), ev("s1", "scan_started"),
+      ev("s2", "scan_opened"), ev("s2", "camera_blocked"),
+    ]);
+    expect(stages[0].kind).toBe("scan_opened");
+    expect(stages[0].count).toBe(2);
+    expect(stages[1].kind).toBe("scan_started");
+    expect(stages[1].count).toBe(1);
+    expect(stages[1].dropFromPrev).toBeCloseTo(0.5, 6);
+  });
+
+  it("does not zero a log recorded before scan_opened existed", () => {
+    // Anchoring on scan_opened ALONE would intersect every later stage against the
+    // empty set here and report a chart of zeros for a session that scanned, surveyed
+    // and clicked. This is the reason the item sat on the backlog; the union is what
+    // settles it without waiting for the old logs to age out.
+    const stages = funnelDropoff([
+      ev("s1", "scan_started"), ev("s1", "scan_completed"), ev("s1", "survey_completed"),
+      ev("s1", "reco_viewed"), ev("s1", "commerce_clicked"),
+    ]);
+    expect(stages[0].count).toBe(1);
     expect(stages[0].ofStart).toBe(1);
-    expect(stages.map((stage) => stage.kind)).not.toContain("scan_opened");
+    expect(stages[1].count).toBe(1);
+    expect(stages[1].dropFromPrev).toBe(0);
+    expect(stages[2].count).toBe(1);
+    expect(stages[5].count).toBe(1);
+  });
+
+  it("understates the camera drop on a log that mixes the two generations", () => {
+    // Stated as a case because it is not visible in the chart. s2 is a legacy session:
+    // it joins the anchor through scan_started, so it can never contribute a camera
+    // loss, and the 50% drop the modern pair alone would show comes out as 33%.
+    const modernOnly = funnelDropoff([
+      ev("s1", "scan_opened"), ev("s1", "scan_started"),
+      ev("s3", "scan_opened"), ev("s3", "camera_blocked"),
+    ]);
+    const mixed = funnelDropoff([
+      ev("s1", "scan_opened"), ev("s1", "scan_started"),
+      ev("s2", "scan_started"),
+      ev("s3", "scan_opened"), ev("s3", "camera_blocked"),
+    ]);
+    expect(modernOnly[1].dropFromPrev).toBeCloseTo(0.5, 6);
+    expect(mixed[1].dropFromPrev).toBeCloseTo(1 / 3, 6);
+    expect(mixed[1].dropFromPrev).toBeLessThan(modernOnly[1].dropFromPrev);
   });
 });
