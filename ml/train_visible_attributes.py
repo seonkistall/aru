@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import aru_axes  # noqa: E402
 import licensing  # noqa: E402
+import heuristic_baseline  # noqa: E402
 import model_contract  # noqa: E402
 import ordinal_metrics  # noqa: E402
 import subgroups  # noqa: E402
@@ -696,6 +697,15 @@ def main() -> None:
         default=model_contract.min_pearson(),
         help="per-axis true/predicted correlation floor (default from the model manifest)",
     )
+    parser.add_argument(
+        "--min-qwk-gain",
+        type=float,
+        default=model_contract.min_qwk_gain_over_heuristic(),
+        help=(
+            "how far the model's qwk must exceed the shipped ROI heuristic's, per axis "
+            "(default from the model manifest; 0.0 means strictly greater)"
+        ),
+    )
     parser.add_argument("--min-samples", type=int, default=30)
     parser.add_argument("--export-onnx", action="store_true")
     parser.add_argument("--out-dir", type=Path, default=Path("ml/artifacts"))
@@ -837,10 +847,27 @@ def main() -> None:
         model, val_rows, val_tf, device, axes, aux_heads, args.batch_size
     )
     calibration = fit_tone_calibration(tone_stats, axes, args.min_cell)
-    final_val_metrics = metrics_from_confusion(last_val_confusion)
+    # Score the checkpoint that is actually being promoted, not whatever the last epoch
+    # happened to produce. `model` carries the best checkpoint's weights by this point
+    # (reloaded above), but last_val_confusion is the FINAL epoch's — so every number
+    # the gate judges would belong to weights nobody was going to ship. One extra
+    # validation pass is cheap next to being wrong about which model was judged.
+    _, promoted_val_confusion, _ = run_epoch(
+        model, val_loader, None, device, axes, aux_heads, args.loss, args.aux_weight
+    )
+    final_val_metrics = metrics_from_confusion(promoted_val_confusion)
+    # The rule the model wants to replace, scored on the SAME validation rows through
+    # the SAME confusion-matrix code. A baseline on a different split, or from a second
+    # implementation, would not be a baseline.
+    baseline_metrics = heuristic_baseline.score(
+        val_rows, axes, {axis: aru_axes.levels_for(axis) for axis in axes}
+    )
     gate = promotion_check(
         final_val_metrics, subgroup_metrics, axes, args.min_cell, args.max_subgroup_gap,
         args.min_qwk, args.min_pearson,
+        baseline=baseline_metrics,
+        min_qwk_gain=args.min_qwk_gain,
+        baseline_axes=heuristic_baseline.covered_axes(),
     )
 
     calibration_path = out_dir / "tone_calibration.json"
@@ -892,8 +919,13 @@ def main() -> None:
         "split": split_info,
         "best_epoch": best_epoch,
         "best_mean_val_accuracy": best,
-        "final_val_confusion": last_val_confusion,
+        # Both describe the PROMOTED checkpoint; the last epoch's is kept beside them
+        # because that is what `history` reports, and the two are different things.
+        "final_val_confusion": promoted_val_confusion,
+        "final_val_scored": "best_checkpoint",
+        "last_epoch_val_confusion": last_val_confusion,
         "final_val_metrics": final_val_metrics,
+        "heuristic_baseline": {"spec": heuristic_baseline.describe(), "metrics": baseline_metrics},
         "history": history,
         "artifacts": artifacts,
     }

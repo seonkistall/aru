@@ -38,6 +38,33 @@
       "결 뚜렷"
     ]
   },
+  "fallbackHeuristic": {
+    "version": "roi-calibrated-2026-09-18",
+    "note": "The ROI heuristic the app ships today, and the thing a trained model has to beat before it may replace it. These are ATTR_THRESHOLDS and ATTR_RAW_KEY in lib/skin.ts, mirrored here so the Python side can score the SAME rule on the SAME validation split without re-deriving it. tests/skin-index-contract.test.ts fails if the two drift. Only the three axes with a scalar ROI feature are listed; the rest have no heuristic to beat, so the gate asks nothing of them.",
+    "axes": {
+      "oil": {
+        "feature": "shine",
+        "thresholds": [
+          0.05,
+          0.16
+        ]
+      },
+      "redness": {
+        "feature": "relRedness",
+        "thresholds": [
+          0.012,
+          0.03
+        ]
+      },
+      "pores": {
+        "feature": "cov",
+        "thresholds": [
+          0.085,
+          0.14
+        ]
+      }
+    }
+  },
   "promotionGate": {
     "minTrainingCrops": 300,
     "minPilotParticipants": 30,
@@ -57,8 +84,9 @@
       ],
       "minSamplesPerBand": 20,
       "maxAccuracyGap": 0.1,
+      "minQwkGainOverHeuristic": 0.0,
       "calibrationFile": "tone_calibration.json",
-      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently."
+      "note": "A model is promotable only when the worst evaluated subgroup stays within maxAccuracyGap of the mean. A subgroup with too few samples counts as unevaluated, which blocks promotion rather than passing silently. The per-axis qwk/pearson floors are a separate rule and live in promotionGate.ordinal. minQwkGainOverHeuristic is a third, independent rule: the model must BEAT the shipped ROI heuristic in fallbackHeuristic, per axis, on qwk, scored on the same validation rows by the same code (ml/heuristic_baseline.py -> ml/ordinal_metrics.py). The other rules ask whether a model is good; this asks whether it should replace what already ships, which is what the gate is for. 0.0 means strictly greater: a model that merely ties the rule it would replace does not pass. It is 0.0 and not a positive margin because a margin should exceed validation noise and nothing here estimates that noise yet. An axis the heuristic covers but whose ROI feature is missing blocks, and so does a comparison whose two sides were scored on different row counts: you cannot claim to beat a baseline you never scored, or one measured on a different subset."
     }
   },
   "axes": {

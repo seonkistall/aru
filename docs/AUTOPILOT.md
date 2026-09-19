@@ -413,6 +413,11 @@ partly done and stays here.
   still costs a published reading on a sixth of the seeds or more — but if anyone
   wants the ORIGINAL numbers back, the construction that produced them is gone and
   only a new measurement can settle it. Noted 2026-09-18.
+- [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
+  model that beats the heuristic by 0.001 on one validation split passes, and that
+  gain may be noise. Estimate the band: bootstrap the validation rows, report a CI on
+  the qwk difference, and require the gain to clear it. That is the honest version of
+  a margin, and the reason no positive number was invented for it.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report

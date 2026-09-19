@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeSkin } from "@/lib/skin";
+import { analyzeSkin, levelFor } from "@/lib/skin";
 
 const root = resolve(import.meta.dirname, "..");
 const readMl = (file: string) => readFileSync(resolve(root, "ml", file), "utf8");
@@ -243,5 +243,172 @@ describe("index registry contract", () => {
     const labelsTs = readFileSync(resolve(root, "lib/labels.ts"), "utf8");
     expect(maps.observation.length).toBeGreaterThan(0);
     for (const pair of maps.observation) expect(labelsTs, `${pair.label} is not recorded in SampleMeta`).toContain(`${pair.label}?: boolean`);
+  });
+});
+
+describe("shipped heuristic contract", () => {
+  // The promotion gate makes a trained model beat the ROI heuristic before it may
+  // replace it, and the Python side scores that heuristic from the manifest. If the
+  // manifest and lib/skin.ts drift, the gate measures a rule the app does not ship —
+  // and a model could be promoted for beating a heuristic nobody uses.
+  const manifest = JSON.parse(
+    readFileSync(resolve(root, "public/models/visible-attributes/manifest.json"), "utf8")
+  );
+
+  it("publishes the same thresholds lib/skin.ts buckets with", () => {
+    const declared = manifest.fallbackHeuristic.axes as Record<
+      string,
+      { feature: string; thresholds: [number, number] }
+    >;
+
+    const block = skinTs.slice(
+      skinTs.indexOf("const ATTR_THRESHOLDS"),
+      skinTs.indexOf("const ATTR_RAW_KEY")
+    );
+    expect(block).toBeTruthy();
+
+    for (const [axis, spec] of Object.entries(declared)) {
+      const match = block.match(new RegExp(`${axis}:\\s*\\[([\\d.eE+-]+),\\s*([\\d.eE+-]+)\\]`));
+      expect(match, `${axis} missing from ATTR_THRESHOLDS in lib/skin.ts`).toBeTruthy();
+      expect([Number(match![1]), Number(match![2])], axis).toEqual(spec.thresholds);
+    }
+  });
+
+  it("names the heuristic version the manifest actually ships", () => {
+    // The baseline report records which rule it scored. Cycle 3 bumped fallbackVersion
+    // and this block did not follow, so metrics.json would have named a heuristic that
+    // no longer matched the one being scored.
+    expect(manifest.fallbackHeuristic.version).toBe(manifest.fallbackVersion);
+  });
+
+  it("covers exactly the axes lib/skin.ts buckets, in both directions", () => {
+    // Every other check here loops over the MANIFEST's axes, so an axis added to
+    // ATTR_RAW_KEY but never declared in the manifest was invisible to all of them —
+    // and it would silently fall out of covered_axes(), so the gate would never ask a
+    // model to beat the shipped rule for it.
+    const rawKeyBlock = skinTs.slice(
+      skinTs.indexOf("const ATTR_RAW_KEY"),
+      skinTs.indexOf("export function levelFor")
+    );
+    expect(rawKeyBlock).toBeTruthy();
+    const inSkinTs = [...rawKeyBlock.matchAll(/^\s{2}(\w+):\s*"\w+"/gm)].map((m) => m[1]).sort();
+    const inManifest = Object.keys(manifest.fallbackHeuristic.axes).sort();
+    expect(inSkinTs.length).toBeGreaterThan(0);
+    expect(inManifest).toEqual(inSkinTs);
+  });
+
+  it("publishes the same raw feature key lib/skin.ts reads each axis from", () => {
+    const declared = manifest.fallbackHeuristic.axes as Record<string, { feature: string }>;
+    const block = skinTs.slice(
+      skinTs.indexOf("const ATTR_RAW_KEY"),
+      skinTs.indexOf("export function levelFor")
+    );
+    expect(block).toBeTruthy();
+
+    for (const [axis, spec] of Object.entries(declared)) {
+      const match = block.match(new RegExp(`${axis}:\\s*"([A-Za-z]+)"`));
+      expect(match, `${axis} missing from ATTR_RAW_KEY in lib/skin.ts`).toBeTruthy();
+      expect(match![1], axis).toBe(spec.feature);
+    }
+  });
+
+  it("reproduces the levels analyzeSkin actually reports, edge convention included", () => {
+    // The Python baseline scorer applies exactly this rule to the same recorded
+    // features. If the convention here and there disagree — e.g. on whether a value
+    // sitting ON a cut point rounds up — the gate would measure a fake gap between
+    // the model and the heuristic it is supposed to be replacing.
+    const declared = manifest.fallbackHeuristic.axes as Record<
+      string,
+      { feature: string; thresholds: number[] }
+    >;
+    const predict = (value: number, thresholds: number[]) => {
+      let level = 0;
+      for (const cut of thresholds) {
+        if (value < cut) return level;
+        level += 1;
+      }
+      return level;
+    };
+
+    const landmarks = faceLandmarks();
+    for (const frame of [syntheticFace(), syntheticFace(1.12), syntheticFace(1, [1.12, 1, 0.92])]) {
+      const reads = analyzeSkin(frame, landmarks);
+      expect(reads).not.toBeNull();
+      for (const [axis, spec] of Object.entries(declared)) {
+        const value = (reads!.raw as unknown as Record<string, number>)[spec.feature];
+        expect(typeof value, `${axis} raw.${spec.feature}`).toBe("number");
+        const bucket = reads![axis as "oil" | "redness" | "pores"];
+        expect(predict(value, spec.thresholds), `${axis} @ ${value}`).toBe(bucket.level);
+      }
+    }
+  });
+
+  it("puts a value sitting exactly on a cut point in the higher level", () => {
+    // This asserts against the REAL exported bucketing rule, not a local copy of it.
+    // The first version of this test defined its own `predict` and compared it with
+    // itself, so flipping `<` to `<=` in lib/skin.ts left the whole suite green while
+    // the Python baseline and the shipped app silently disagreed on every value
+    // sitting on a cut.
+    for (const [axis, spec] of Object.entries(
+      manifest.fallbackHeuristic.axes as Record<string, { thresholds: [number, number] }>
+    )) {
+      const attr = axis as "oil" | "redness" | "pores";
+      const [lo, hi] = spec.thresholds;
+      expect(levelFor(attr, lo * 0.5), `${axis} below lo`).toBe(0);
+      expect(levelFor(attr, lo - Math.abs(lo) * 1e-9), `${axis} just under lo`).toBe(0);
+      expect(levelFor(attr, lo), `${axis} exactly on lo must round UP`).toBe(1);
+      expect(levelFor(attr, (lo + hi) / 2), `${axis} mid band`).toBe(1);
+      expect(levelFor(attr, hi - Math.abs(hi) * 1e-9), `${axis} just under hi`).toBe(1);
+      expect(levelFor(attr, hi), `${axis} exactly on hi must round UP`).toBe(2);
+      expect(levelFor(attr, hi * 10), `${axis} far above hi`).toBe(2);
+    }
+  });
+
+  it("agrees with the manifest rule across a sweep, cut points included", () => {
+    // Same rule ml/heuristic_baseline.predict_level applies, checked against the
+    // shipped function rather than against another copy of itself.
+    const predict = (value: number, thresholds: number[]) => {
+      let level = 0;
+      for (const cut of thresholds) {
+        if (value < cut) return level;
+        level += 1;
+      }
+      return level;
+    };
+    for (const [axis, spec] of Object.entries(
+      manifest.fallbackHeuristic.axes as Record<string, { thresholds: [number, number] }>
+    )) {
+      const attr = axis as "oil" | "redness" | "pores";
+      const [lo, hi] = spec.thresholds;
+      const span = hi - lo;
+      const probes = [lo - span, lo, hi, hi + span, (lo + hi) / 2, 0, -span, hi * 5];
+      for (let i = 0; i <= 40; i += 1) probes.push(lo - span + (span * 3 * i) / 40);
+      for (const value of probes) {
+        expect(predict(value, spec.thresholds), `${axis} @ ${value}`).toBe(levelFor(attr, value));
+      }
+    }
+  });
+
+  it("keeps bucket() and levelFor() on one comparison rule", () => {
+    // Two copies of the cut rule live in lib/skin.ts. levelFor is the one the tests
+    // above pin; if bucket() drifted from it, the displayed level and the gate's
+    // baseline would diverge with every test still green.
+    const expr = /value < lo \? 0 : value < hi \? 1 : 2/g;
+    expect(skinTs.match(expr)?.length, "bucket() and levelFor() must share the rule").toBe(2);
+  });
+
+  it("declares a heuristic axis only where the Python calibrator has a feature for it", () => {
+    // ml/calibrate.py's FEATURE map is what turns a labelled export back into these
+    // thresholds. An axis in the manifest with no entry there could never be recalibrated.
+    const calibrate = readMl("calibrate.py");
+    const featureBlock = calibrate.slice(
+      calibrate.indexOf("FEATURE = {"),
+      calibrate.indexOf("OBSERVATION_FEATURE")
+    );
+    for (const [axis, spec] of Object.entries(
+      manifest.fallbackHeuristic.axes as Record<string, { feature: string }>
+    )) {
+      expect(featureBlock, axis).toContain(`"${axis}": "${spec.feature}"`);
+    }
   });
 });

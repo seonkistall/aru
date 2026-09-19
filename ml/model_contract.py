@@ -20,9 +20,27 @@ MANIFEST_PATH = REPO_ROOT / "public" / "models" / "visible-attributes" / "manife
 
 #: Used only when the manifest is missing or unreadable, e.g. running the trainer
 #: from a checkout without the web app. Kept deliberately strict.
+#: The shipped ROI rule, mirrored for the same reason as FALLBACK_GATE: running the
+#: trainer from a checkout without the web app must not silently DELETE a gate rule.
+#: An empty heuristic block means "cannot score", never "nothing to beat" — and the
+#: difference decides whether a model is promoted without ever being compared to what
+#: it would replace. Kept in step with lib/skin.ts by tests/skin-index-contract.test.ts.
+FALLBACK_HEURISTIC = {
+    # Only used when the manifest is unreadable; the live value is its fallbackVersion,
+    # and tests/skin-index-contract.test.ts asserts the two agree there.
+    "version": "roi-calibrated-2026-09-18",
+    "axes": {
+        "oil": {"feature": "shine", "thresholds": [0.05, 0.16]},
+        "redness": {"feature": "relRedness", "thresholds": [0.012, 0.03]},
+        "pores": {"feature": "cov", "thresholds": [0.085, 0.14]},
+    },
+}
+
 FALLBACK_GATE = {
     "minSamplesPerBand": 20,
     "maxAccuracyGap": 0.10,
+    "minQwk": 0.40,
+    "minPearson": 0.40,
     "dimensions": ["tone", "age", "tone_x_age"],
 }
 
@@ -80,6 +98,35 @@ def min_samples_per_band() -> int:
 
 def max_accuracy_gap() -> float:
     return float(promotion_gate()["maxAccuracyGap"])
+
+
+def min_qwk_gain_over_heuristic() -> float:
+    """How far a model must beat the shipped heuristic's qwk before it may replace it.
+
+    0.0 means strictly greater: a model that merely ties the rule it would replace has
+    not earned the swap. A positive margin should exceed validation noise, and nothing
+    in the pipeline estimates that noise yet, so inventing one would be a fake number.
+    """
+    return float(promotion_gate().get("minQwkGainOverHeuristic", 0.0))
+
+
+def fallback_heuristic() -> dict:
+    """The ROI rule the app ships, as the manifest publishes it.
+
+    Thresholds live in lib/skin.ts; the manifest mirrors them so the Python side can
+    score the same rule, and tests/skin-index-contract.test.ts fails on drift.
+
+    Falls back to FALLBACK_HEURISTIC rather than to {} when the manifest is missing or
+    declares no block. Returning {} here made the gate fail OPEN: covered_axes() went
+    empty, the beats-the-heuristic rule skipped every axis, and a model was promotable
+    having never been compared to the rule it would replace — in exactly the scenario
+    FALLBACK_GATE's comment already anticipates, a checkout without the web app. Every
+    other floor survived that; this one evaporated.
+    """
+    declared = load_manifest().get("fallbackHeuristic")
+    if isinstance(declared, dict) and declared.get("axes"):
+        return declared
+    return FALLBACK_HEURISTIC
 
 
 def declared_dimensions() -> list[str]:

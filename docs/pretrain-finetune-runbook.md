@@ -46,6 +46,7 @@ $ python ml/train_visible_attributes.py --data .../crops \
 init-from ...: loaded 242 tensors, skipped 4 shape-mismatched, 4 left at init
 epoch=01 ...
 promotion gate: BLOCKED
+  - [oil] no labelled validation samples, so ordinal quality is unverified ...
   - [tone] no cell reached n>=20. Tone is measured on every scan, so ...
   - [age] no cell reached n>=20. Age is only collected in consented pilot ...
   - [tone_x_age] no cell reached n>=20. The joint cell needs both ...
@@ -56,6 +57,9 @@ promotion gate: BLOCKED
 > 2026-09-15부터 **평가 불가 차원은 예외 없이 차단**한다. 이전에는 `tone`과 `age`만
 > 이름으로 걸려 있어서, 매니페스트가 선언한 `tone_x_age`는 평가되지 않아도 아무
 > 블로커를 남기지 않고 통과했다.
+> 같은 날 축별 `qwk`/`pearson` floor가 추가됐다. ordinal 블로커가 **앞에** 붙으므로
+> 실제 출력의 첫 줄은 대개 차원이 아니라 축이다 — 지금처럼 동의된 crop이 0이면 모든
+> 축이 `n == 0`이라 위 첫 줄이 먼저 나온다.
 
 라이선스는 통과하고 **승급 게이트에서 막힌다.** 그게 정확히 맞는 상태다 — 합성
 데이터에는 서브그룹이 없으니까. 실데이터가 쌓이면 이 세 줄이 해제 조건이다.
@@ -169,13 +173,53 @@ python ml/train_visible_attributes.py \
 
 ## 5단계: 승급 판정
 
-`metrics.json`에서 세 가지를 본다.
+`metrics.json`에서 네 가지를 본다.
 
-1. **`promotion_gate.promotable`** — 톤/나이/교차 셀 최악 그룹이 평균 대비
-   `maxAccuracyGap` 안에 드는지. 표본 부족 셀은 통과가 아니라 **차단**이다.
-2. **축별 `qwk`와 `pearson`** — 정확도와 `within_one_grade`만 보면 안 된다.
-   치우친 등급 분포에서 다수 등급만 찍는 모델이 90%를 받는다. QWK는 그 모델에 0을 준다.
-3. **`lineage`** — 출시하려는 가중치가 거쳐온 모든 출처. 여기 비상업이 하나라도
+1. **`promotion_gate.promotable`** — 세 규칙을 **모두** 통과해야 true다.
+   (a) 톤/나이/교차 셀 최악 그룹이 평균 대비 `maxAccuracyGap` 안에 드는지. 표본
+   부족 셀은 통과가 아니라 **차단**이다. (b) 축별 `qwk`/`pearson`이 `minQwk` /
+   `minPearson` 이상인지. (c) 축별 모델 `qwk`가 현행 휴리스틱을
+   `minQwkGainOverHeuristic`만큼 넘는지 (아래 3번).
+2. **축별 `qwk`와 `pearson`** — **2026-09-15부터 게이트가 자동으로 막는다.**
+   수동 판단 항목이 아니다. 치우친 등급 분포에서 다수 등급만 찍는 모델이 정확도
+   0.80과 `within_one_grade` 0.95를 받고 QWK는 0이 된다. 그런 모델은 모든 셀에서
+   똑같이 틀리므로 서브그룹 격차도 거의 없어서, (a)만으로는 **아무것도 학습하지
+   못한 모델이 가장 쉽게 통과**했다. 그래서 (b)가 있다.
+
+   판정하는 사람이 알아야 할 것: **현재 floor는 0.4이고 잠정값이다.** ARU 데이터로
+   측정한 값이 아니라 degeneracy 방어선이고, 품질 기준이 아니다. **0.4를 넘겼다는
+   사실만으로 승급을 정당화하지 말 것** — 실제로 결정을 지는 규칙은 아래 3번,
+   "현행 휴리스틱을 이겼는가"다.
+
+   게이트는 fail-closed다. 축이 `overall`에 없거나, 검증 표본이 0이거나,
+   `accuracy`/`qwk`/`pearson`이 없거나 NaN/inf면 통과가 아니라 차단이다.
+3. **`heuristic_baseline` — 현행 휴리스틱을 이겼는지.** `lib/skin.ts`의 임계값 규칙을
+   **같은 검증 행**에 **같은 confusion 코드**로 채점한 결과다. 축별로 모델 `qwk`가
+   휴리스틱 `qwk`를 `minQwkGainOverHeuristic`(현재 0.0, 즉 **엄격히 초과**)만큼
+   넘어야 한다. 비기면 통과가 아니다.
+
+   이게 승급 판정의 핵심 질문이다. 나머지 규칙은 "모델이 절대적으로 괜찮은가"를
+   묻지만, 게이트가 존재하는 이유는 "**지금 출시 중인 규칙을 대체해야 하는가**"다.
+   서브그룹 격차도 통과하고 qwk floor도 통과하면서 TypeScript 파일의 숫자 3쌍보다
+   나쁠 수 있고, 그걸 승급시키면 리포트의 모든 수치가 멀쩡해 보이는 채로 제품이
+   나빠진다.
+
+   `scoredRows`를 반드시 같이 볼 것. 휴리스틱이 **채점되지 않았으면 차단**이다 —
+   "휴리스틱을 재본 적이 없다"와 "모델이 이겼다"가 같게 보이면 안 된다. 외부
+   데이터 pretrain은 ARU의 ROI feature가 없으므로 여기서 막히는 게 정상이다.
+
+   **두 qwk는 같은 행에서 나와야 한다.** 모델은 라벨이 있는 모든 검증 행에서
+   채점되지만, 휴리스틱은 라벨과 ROI feature를 **둘 다** 가진 행에서만 채점된다.
+   한 행이라도 라벨만 있고 feature가 없으면 두 숫자는 서로 다른 행 집합을 설명하는
+   것이고, 그 차이는 모델 덕분이라고 말할 수 없다. 그래서 `scoredRows != n`이면
+   차단한다. `skippedNoFeature`가 몇 개인지 알려주고, 고칠 곳은 게이트가 아니라
+   export다.
+   > **아직 실제 데이터로 돌려본 적 없음.** 동의된 crop이 0이라 이 게이트가
+   > `heuristic_baseline` 블록이 들어 있는 `metrics.json`을 만들어낸 적이 없다.
+   > 전부 selftest와 구성으로만 검증됐다. 첫 실제 학습 때 `scoredRows`와
+   > `skippedNoFeature`를 가장 먼저 볼 것 — export가 ROI feature를 제대로 싣고
+   > 있는지가 거기서 드러난다.
+4. **`lineage`** — 출시하려는 가중치가 거쳐온 모든 출처. 여기 비상업이 하나라도
    있으면 그 모델은 출시 불가다.
 
 기준값은 `public/models/visible-attributes/manifest.json`이 단일 소스이고
