@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeSkin, labAStar, relativeSpread, rgbToLab, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
+import { analyzeSkin, labAStar, relativeSpread, rgbToLab, roughnessRatio, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
 
 /**
  * Every within-image index has two implementations in two languages. From 2026-09-14,
@@ -17,8 +17,9 @@ import { analyzeSkin, labAStar, relativeSpread, rgbToLab, shineIndex, SAMPLING_L
  * table — inputs with one expected output each — that both languages assert against.
  * Neither side can move without failing its own language's test.
  *
- * Two of the seven registry indices are covered, to different depths, and that is said
- * here rather than implied:
+ * Four of the seven registry indices are covered, to different depths and — since
+ * cycle 18 — under two different KINDS of comparison, and that is said here rather
+ * than implied:
  *
  * - `shine_ratio` / `shine`: formula AND path. Of its 22 rows, 16 are `face` rows —
  *   real readings of real frames through `analyzeSkin`, carrying the recipe that
@@ -32,13 +33,25 @@ import { analyzeSkin, labAStar, relativeSpread, rgbToLab, shineIndex, SAMPLING_L
  *   product needs one, not because a test would like one. So these rows pin that the
  *   two implementations agree on the same inputs and do not pin what reaches them;
  *   `tests/skin-index-contract.test.ts` pins the value the path produces.
+ * - `blemish_count` / `blemishDensity`: formula only, added cycle 17. Its two inputs —
+ *   `validCells * stride^2` and the face-box width — are not exported fields either.
+ *   Checked and it AGREES exactly, so it is pinned rather than fixed; two of its rows
+ *   are the pair one face gave at two capture resolutions, so the invariance the third
+ *   argument exists for is checked and not asserted.
+ * - `roughness_ratio` / `roughnessRatio`: formula only, added cycle 18, and the only
+ *   group whose two columns are NOT expected to match. Every other group pins an
+ *   agreement; this one pins a DISAGREEMENT at the value it takes, because the two
+ *   implementations put their guard in different places and deciding which is right
+ *   needs faces. Each row carries both columns and each language asserts its own.
  *
- * The other five are name-pinned and value-unchecked. docs/shine-formula-decision.md.
+ * The other three are name-pinned and value-unchecked, and two of those three are
+ * already known to be wrong. docs/shine-formula-decision.md.
  *
- * `primitives` is a second section with a different comparison, and the difference is
- * the point. The `indices` rows above are compared EXACTLY, because every covered
- * expression is +, -, *, / and sqrt on IEEE doubles, all correctly rounded, so a
- * matching implementation matches bit for bit. `rgb_to_lab` is not: it runs
+ * `primitives` is a second section with a third comparison, and the difference is the
+ * point. The `indices` rows above are compared EXACTLY — each against its own
+ * language's column, for `roughness_ratio` — because every covered expression is +, -,
+ * *, / and sqrt on IEEE doubles, all correctly rounded, so a matching implementation
+ * matches bit for bit. `rgb_to_lab` is not: it runs
  * `pow(., 2.4)` three times and a cube root up to three times, and neither language's
  * library rounds those correctly. Measured over 268,877 inputs, V8 and CPython 3.11
  * agree exactly on 63-80% of them and differ by up to 1.47 units of
@@ -67,6 +80,13 @@ type Row = FaceRow | EdgeRow;
 type SpreadRow = { note: string; lstars: number[]; value: number };
 type LabRow = { note: string; rgb: [number, number, number]; l: number; a: number; b: number };
 type DensityRow = { note: string; count: number; sampledAreaPx: number; faceWidthPx: number; value: number };
+type RoughnessRow = {
+  note: string;
+  cheekHf: number | null;
+  foreheadHf: number | null;
+  app: number;
+  python: number | null;
+};
 
 /** blemish_density's inputs are the two quantities detectBlemishes actually produces:
  *  `validCells * stride * stride` and the face-box width in pixels. The first three
@@ -84,6 +104,49 @@ const DENSITY_INPUTS: Array<[string, number, number, number]> = [
   ["a sliver of sampled skin on a full-size face", 2, 120, 400],
   ["dense face, count linear in the numerator", 24, 42032, 144],
 ];
+
+/**
+ * Inputs for the roughness_ratio rows, which are a different KIND of row and the table
+ * says so: this group is `comparison: "divergent"`, and every other group is
+ * `"exact"`.
+ *
+ * The two implementations of the dryness axis do not agree, measured 2026-09-19:
+ * `ml/skin_indices.py:roughness_ratio` is `region_highfreq / max(reference_highfreq,
+ * 1e-6)` and `lib/skin.ts:roughnessRatio` is
+ * `foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0`. An epsilon clamp against a guard that
+ * publishes nothing: on a forehead with no texture the Python side returns a number in
+ * the hundreds of thousands where the app returns 0. It is the mechanism that
+ * disqualified the rejected `shine_ratio` (24,691 against 0.0674,
+ * docs/shine-formula-decision.md), one axis over.
+ *
+ * WHICH side should move is not decided here, and the rows are built so that it cannot
+ * be decided here by accident: each row carries BOTH values, each language asserts its
+ * own column, and a change to either implementation fails that language's test without
+ * anyone having chosen a winner. The decision needs the measurement the backlog item
+ * names — which guard produces a usable dryness reading on a smooth forehead — and that
+ * needs faces.
+ *
+ * The rows either side of 1e-6 are the ones that carry the finding; the first three are
+ * there so the table is not only its own edge cases, and the last two are the app's
+ * missing-region branch, which Python has no concept of and so has no column for.
+ */
+const ROUGHNESS_INPUTS: Array<[string, number | null, number | null]> = [
+  ["ordinary face: a smoother cheek than forehead", 0.32, 0.4],
+  ["a rougher cheek than forehead", 0.8 * 0.4, 0.2 * 0.4],
+  ["a cheek with no texture at all", 0, 0.4],
+  ["reference an order above the guard: the two agree", 0.32, 1e-5],
+  ["reference one ulp above the guard: the two still agree", 0.32, 1.0000001e-6],
+  ["reference exactly at 1e-6: Python clamps to it, the app's > excludes it", 0.32, 1e-6],
+  ["reference just under the guard", 0.32, 1e-7],
+  ["a perfectly smooth forehead: reference exactly 0", 0.32, 0],
+  ["no forehead patch: a branch Python has no concept of", 0.32, null],
+  ["no cheek patch: the same branch, the other side", null, 0.4],
+];
+
+/** The Python side's expression, spelled in TypeScript so the generator can produce the
+ *  column ml/selftest.py asserts `roughness_ratio` against. It is NOT what the app
+ *  computes and is never called by anything but the generator. */
+const pythonRoughness = (region: number, reference: number) => region / Math.max(reference, 1e-6);
 
 /** Inputs for the rgb_to_lab rows. Four families, and the reason for each:
  *  - `cube`: corners and interior of the sRGB cube, so the table is not only skin.
@@ -219,6 +282,12 @@ const rows: Row[] = parity.indices.shine_ratio.rows;
 const spreadRows: SpreadRow[] = parity.indices.tone_evenness.rows;
 const labGroup = parity.primitives.rgb_to_lab;
 const densityRows: DensityRow[] = parity.indices.blemish_count.rows;
+/** Optional-chained for one reason only: the regenerator below lives in this file, so
+ *  the module has to load once against a table that does not yet carry this group. The
+ *  case that reads it asserts the row count, so a missing group is still a loud
+ *  failure rather than a silent zero-row pass. */
+const roughnessGroup = parity.indices.roughness_ratio;
+const roughnessRows: RoughnessRow[] = roughnessGroup?.rows ?? [];
 const labRows: LabRow[] = labGroup.rows;
 /** The tolerance is built from two committed numbers rather than typed as a float, so
  *  it cannot drift and cannot be widened by editing a digit. k is the only judgement
@@ -314,6 +383,49 @@ describe("cross-language index parity table", () => {
     expect(large!.value).not.toBe(small!.value);
   });
 
+  it("recomputes every roughness_ratio row through the shipped guard, and records the other side's", () => {
+    // The app's column, asserted exactly: the expression is one comparison and one
+    // division on doubles. ml/selftest.py asserts the `python` column of these same
+    // rows against `roughness_ratio`, so each language holds its own side and neither
+    // can move without going red — which is the whole point of committing a table for
+    // a pair that DISAGREES rather than waiting for someone to decide which is right.
+    expect(roughnessRows.length, "ml/index-parity.json has no roughness_ratio group").toBe(ROUGHNESS_INPUTS.length);
+    expect(roughnessGroup.comparison).toBe("divergent");
+    expect(roughnessGroup.featureKey).toBe("roughnessRatio");
+    for (const row of roughnessRows) {
+      const computed = roughnessRatio(row.cheekHf, row.foreheadHf);
+      expect(computed, `${row.note}: roughnessRatio(${row.cheekHf}, ${row.foreheadHf})`).toBe(row.app);
+    }
+    // The extraction that made this assertable has to keep pointing at the shipped
+    // field, or the rows would pin a function nothing calls.
+    const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
+    expect(source).toContain("roughnessRatio: roughnessRatio(cheekHf, foreheadHf),");
+    expect(source).toContain(
+      "return cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0;"
+    );
+
+    // A table where the two columns happened to agree everywhere would pin the
+    // arithmetic and hide the finding. These are the rows that carry it.
+    const divergent = roughnessRows.filter((row) => row.python !== null && row.python !== row.app);
+    expect(divergent.length, "no row exercises the guard the two sides put in different places").toBeGreaterThanOrEqual(3);
+    const smooth = roughnessRows.find((row) => row.note.startsWith("a perfectly smooth forehead"));
+    expect(smooth).toBeTruthy();
+    expect(smooth!.app, "the app publishes nothing on a textureless forehead").toBe(0);
+    expect(smooth!.python, "Python's epsilon turns the same frame into a large ratio").toBeGreaterThan(100_000);
+    // And rows where they agree, so the divergence is located at the guard rather than
+    // being everywhere.
+    const agreeing = roughnessRows.filter((row) => row.python !== null && row.python === row.app);
+    expect(agreeing.length).toBeGreaterThanOrEqual(4);
+    // The app's missing-region branch has no Python counterpart, and the table records
+    // that as an absent column rather than as a zero that looks like a value.
+    const missing = roughnessRows.filter((row) => row.cheekHf === null || row.foreheadHf === null);
+    expect(missing.length).toBe(2);
+    for (const row of missing) {
+      expect(row.python, `${row.note}: Python has no branch for a missing region`).toBeNull();
+      expect(row.app, `${row.note}: the app returns the could-not-measure sentinel`).toBe(0);
+    }
+  });
+
   it("recomputes every rgb_to_lab row through the shipped function, exactly", () => {
     // Exact on THIS side of the language boundary. The tolerance in the table is for
     // ml/ita.py, whose libm rounds pow and cbrt differently; within TypeScript the
@@ -389,6 +501,13 @@ describe("cross-language index parity table", () => {
       const areaFace = faceWidthPx > 0 ? sampledAreaPx / (faceWidthPx * faceWidthPx) : 0;
       return { note, count, sampledAreaPx, faceWidthPx, value: count / Math.max(areaFace, 1e-6) };
     });
+    const roughnesses: RoughnessRow[] = ROUGHNESS_INPUTS.map(([note, cheekHf, foreheadHf]) => ({
+      note,
+      cheekHf,
+      foreheadHf,
+      app: roughnessRatio(cheekHf, foreheadHf),
+      python: cheekHf === null || foreheadHf === null ? null : pythonRoughness(cheekHf, foreheadHf),
+    }));
     const body = {
       generatedBy: "ARU_PRINT_INDEX_PARITY=1 npx vitest run tests/index-parity.test.ts",
       assertedBy: ["tests/index-parity.test.ts", "ml/selftest.py"],
@@ -410,6 +529,28 @@ describe("cross-language index parity table", () => {
           formula: "blemishDensity = count / max(sampledAreaPx / faceWidthPx^2, 1e-6)",
           covers: "formula only; validCells * stride^2 and the face-box width are not exported fields",
           rows: densities,
+        },
+        // The one group whose two columns are NOT expected to match. Everything else
+        // in this file pins an agreement; this pins a disagreement, at the value it
+        // takes, so that the pair cannot drift further while the decision that settles
+        // it is waiting on faces.
+        roughness_ratio: {
+          featureKey: "roughnessRatio",
+          pythonFunction: "ml/skin_indices.py :: roughness_ratio",
+          comparison: "divergent",
+          appFormula: "roughnessRatio = foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0, and 0 if either region is missing",
+          pythonFormula: "roughness_ratio = region_highfreq / max(reference_highfreq, 1e-6)",
+          covers:
+            "both sides' guard behaviour; the high-frequency inputs are not an exported field, and the " +
+            "app divides each region's high-frequency energy by that region's own mean L* before this " +
+            "function sees it, which the Python docstring does not say",
+          divergence:
+            "An epsilon clamp against a guard that publishes nothing. Below 1e-6 of reference texture " +
+            "Python returns region/1e-6 — hundreds of thousands — where the app returns its " +
+            "could-not-measure 0; at exactly 1e-6 they still differ, because Python clamps to the " +
+            "epsilon and the app's > excludes it; above it they agree exactly. Which side moves is a " +
+            "measurement on real faces, not a choice to be made from this table.",
+          rows: roughnesses,
         },
         tone_evenness: {
           featureKey: "toneSpread",
@@ -455,6 +596,7 @@ describe("cross-language index parity table", () => {
       body.indices.shine_ratio.rows.length +
       body.indices.tone_evenness.rows.length +
       body.indices.blemish_count.rows.length +
+      body.indices.roughness_ratio.rows.length +
       body.primitives.rgb_to_lab.rows.length;
     process.stdout.write(`PARITY wrote ${total} rows to ml/index-parity.json\n`);
   });

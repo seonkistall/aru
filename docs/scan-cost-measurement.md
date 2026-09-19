@@ -191,6 +191,19 @@ about which side owns the fast path, not a quiet third copy. Filed, not taken.
 > table's number lives, and taking it needs a measurement of how far `a*` can move
 > before `blemishCount` does. `docs/rgb-to-lab-parity.md`.
 
+> **Answered 2026-09-19, cycle 18, and the answer is no.** The measurement the
+> paragraph above asks for is `docs/blemish-perturbation-tolerance.md`
+> (`ARU_PRINT_BLEMISH_TOLERANCE=1 npx vitest run
+> tests/blemish-perturbation-tolerance.test.ts`). Below **1.046e-5** a* units no
+> per-cell error can change `blemishCount` on the worst of twelve frames measured, and
+> a 256-entry table is nowhere near that: read at its nearest entry it is off by
+> **0.470** and moves the count from **6 to 7** at 400x480, and read with linear
+> interpolation it is off by **5.0e-4**, 48 times the radius, passing on this fixture
+> by luck rather than by property. The curve stays. The smallest table measured that
+> clears every frame is **4096 entries interpolated (1.9e-6)**, and whether that is
+> faster than `Math.pow(., 2.4)` is now the only open question — a speed question, not
+> a correctness one.
+
 **No timing assertion runs by default.** A duration threshold fails on a loaded CI box
 while nothing in the product is broken. The default cases count pixels, pin source
 lines and pin values; every timing lives behind `ARU_PRINT_SCAN_COST`.

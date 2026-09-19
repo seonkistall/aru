@@ -331,6 +331,20 @@ Ticked `[x]` and moved here; the section each was under is kept.
   and the `blemishCount` / `blemishDensity` pins stayed green without being edited.
   `docs/rgb-to-lab-parity.md`.
 
+- [x] [AI] ~~**The remaining win in a scan is the sRGB transfer curve, and taking it
+  needs a measurement nobody has done.**~~ — measured 2026-09-19 (cycle 18), and the
+  answer is **no, the curve stays**. The missing number is now four committed tables in
+  `docs/blemish-perturbation-tolerance.md`
+  (`ARU_PRINT_BLEMISH_TOLERANCE=1 npx vitest run tests/blemish-perturbation-tolerance.test.ts`).
+  Below **1.046e-5** a* units, no per-cell error can change `blemishCount` on the worst
+  of twelve frames measured — that is a certified radius, derived from the run's own
+  margins rather than from trying error fields, and the smallest of a family spanning
+  1.0e-5 to 3.0e-3. A 256-entry table is nowhere near it: read at its nearest entry it
+  is off by **0.470 a\*** and **moves the count from 6 to 7** at 400x480, and read with
+  linear interpolation it is off by **5.0e-4**, 48 times the radius, leaving the count
+  alone on this fixture by luck rather than by property. What survives is a narrower and
+  purely-speed question, filed as its own item below.
+
 ### Next
 
 - [x] [AI] ~~The promotion gate still reads only `accuracy` and the unused
@@ -2840,3 +2854,187 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   snapshot of main's pair taken before review: the only two lines that moved are the two
   backlog items this cycle closed, both present in the changelog with `[x]` and their
   bodies intact.
+- 2026-09-19 (cycle 15) — Branch `autopilot/2026-09-19-0039`. **A scan costs 6.6-11.6ms
+  a frame on this box, `detectBlemishes` is 79-87% of it, and cycle 14's per-pixel branch
+  is 58µs of it. The brief's premise about where that branch runs was wrong, and the
+  measurement is what showed it.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **509 passed in 79 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The correction first, because it changes what the question means.** The brief put
+  cycle 14's clipped-channel branch "in a loop that runs per region, per frame, on a
+  650ms MediaPipe cadence". It does not. `sampleRegion` is reached only from
+  `extractRawFeatures`, and the only non-test callers of that are `analyzeSkin` (`/eval`)
+  and `analyzeSkinBurst` (**once per scan**, over **at most three** burst frames —
+  `for (let i = 1; i < 3; i += 1)`). The 650ms tick runs `evaluateCapturedQuality` ->
+  `evaluateSkinRoiQuality` in `app/scan/skin-roi-quality.ts`, which takes only the
+  `SAMPLING_LANDMARKS` constant from `lib/skin.ts`. So the branch runs 6 regions x 3
+  frames per scan, not per preview tick, and the budget it is measured against is the
+  scan's, not the tick's. Pinned as a case so the next cycle does not re-derive it wrong.
+
+  **The second structural fact, counted rather than timed: `sampleRegion` does not scale
+  with frame size.** It reads a 9x9 patch around each landmark in six lists — 56 patches,
+  81 pixels, **4,536 pixels per frame**, identical at 400x480 and at 1440x1920. Only
+  `detectBlemishes` reads pixels in proportion to the face, and even it walks a grid of a
+  fixed ~90 cells across the face width. Four runs of the committed benchmark, medians of
+  7 repeats each, ranges spanning all four runs:
+
+  ```
+  frame        analyzeSkin   burst(3f)   6xsampleRegion  frameGains  detectBlemishes
+  400x480      6.60-6.86ms   19.7-20.4   1000-1025us     22us        5.21-5.34ms
+  720x960      8.03-8.35ms   24.3-24.7   1007-1015us     20us        6.81-6.86ms
+  1080x1440    9.53-10.02ms  28.7-29.0   1003-1020us     20us        8.12-8.27ms
+  1440x1920   11.39-11.63ms  34.4-35.3    978-995us      20us        9.92-10.17ms
+  ```
+
+  The face box grows **14.4x** down that table; `sampleRegion` moves **4.8%** and
+  `detectBlemishes` **1.9x**. Over the three rows sharing an 18,291-cell grid,
+  `detectBlemishes` fits **5.8ms fixed + 6.9ns per face-box pixel** — so at 720x960 the
+  whole pixel pass is about 1.0ms of 6.8 and the rest is per-cell work at ~315ns a cell.
+
+  **Cycle 14's branch, isolated against a build of `lib/skin.ts` with exactly that line
+  removed** — the shipped function, not a copy, and the sweep throws rather than
+  measuring nothing if the line is reworded. Sixteen measurements, four runs x four frame
+  sizes, **all positive**: **44.1-72.5µs a frame, median 58.4µs**, i.e. 9.7-16.0ns a
+  pixel and **~175µs a scan, 0.7% of `analyzeSkinBurst` at 720x960**, constant in frame
+  size. Read as an **upper bound**: deleting the line also deletes the `clipped`
+  accumulator and shrinks the body, which moves V8's inlining, and 12.9ns for three
+  integer comparisons is well above what the comparisons alone can cost. Stated rather
+  than hidden, and so is this — an EARLIER arrangement of the same benchmark could not
+  resolve it at all (deltas ±15µs, sign changing between frame sizes). A difference this
+  small is sensitive to how the benchmark is laid out; the number to trust is the one the
+  committed file reproduces, which is why it is committed.
+
+  **What the measurement found instead, and the one change taken.** The non-skin
+  exclusion test ran all ~42 `NON_SKIN` points against each of ~18,000 grid cells.
+  `cy` depends only on the row, so a point further than `excludeR` in y alone can never
+  be within `excludeR`, and the predicate is a plain OR over the points: dropping those
+  once per row is **exactly the same test**. Measured by rebuilding `lib/skin.ts` with
+  the loop it replaced, after asserting both builds return the same count AND the same
+  area:
+
+  ```
+  frame        row-filtered      point-by-point    saved/frame   saved/scan (3f)
+  400x480      5.18-5.43ms       7.47-8.43ms       2.19-3.00ms   6.6-9.0ms
+  720x960      6.61-6.83ms       8.93-9.75ms       2.33-2.92ms   7.0-8.8ms
+  1080x1440    7.99-8.22ms       9.84-10.64ms      1.86-2.41ms   5.6-7.2ms
+  1440x1920    9.99-10.21ms     11.01-11.83ms      0.99-1.62ms   3.0-4.9ms
+  ```
+
+  **No published value moves**, which is the condition on a performance change here.
+  `fallbackVersion`, `ATTR_THRESHOLDS`, `inputSchemaVersion` and the manifest are all
+  untouched; guardrail 8's `status` and `promotionGate` are byte-identical. Two guards,
+  both default cases: `blemishCount`/`blemishDensity` pinned to the values the
+  PRE-change build produced (measured on that build, not assumed) on a fixture whose
+  discs sit inside the nostril group's exclusion band in y, and the two predicates
+  re-derived over the real grid at five radii and asserted to mark the same cells.
+  Reverting the row filter leaves the count pin GREEN — that is the proof — and fails
+  only the source pin.
+
+  **The bigger hot spot is filed, not taken.** `rgbToLab`, once per valid cell, is
+  **3.91-6.20ms — 61-75% of `detectBlemishes` and 53-59% of a whole scan**. The obvious
+  win is unavailable: its inputs are `Math.min(255, channel * gain)`, floats not
+  integers, so a 256-entry transfer-curve table is an approximation and an approximation
+  moves `blemishCount`. The other win — `detectBlemishes` reads only `lab.a`, so `fz`
+  and the `z` dot product are dead — needs a second entry point beside a function
+  `ml/ita.py` already mirrors, and a near-duplicate of a function with a cross-language
+  twin is exactly how `shine_ratio` and `shine` became two formulas under one name.
+  Backlog item, not a quiet third copy.
+
+  **The fixture had to be rebuilt before any of this was a measurement.** Every existing
+  skin fixture in the repository collapses all thirteen T-zone landmarks onto ONE point,
+  so `sampleRegion` reads the same 81 pixels thirteen times out of L1; and with the
+  landmarks stacked, `skinRoiRegionsFromLandmarks` produces a degenerate ROI, so the
+  first run of section D timed an early return and printed **0.000ms**. Both are fixed —
+  56 patches at 56 places, non-skin groups where they belong — and the sweep now throws
+  if the ROI bails out rather than publishing a zero. For the record, the 650ms tick's
+  real cost: **0.88ms (0.14% of the budget) at 400x480 rising to 12.8ms (1.97%) at
+  1440x1920**, scaling with pixels the way `detectBlemishes` does not.
+
+  **Nothing that runs by default asserts a duration.** A timing threshold fails on a
+  loaded box while nothing in the product is broken. The seven default cases count
+  pixels, pin source lines and pin values, and run in 1.6s; every timing is behind
+  `ARU_PRINT_SCAN_COST`, the shape `ARU_PRINT_SCALE_SWEEP` / `ARU_PRINT_SHINE_SWEEP` /
+  `ARU_PRINT_CLIP_SWEEP` already set.
+
+  **Second item: `funnelDropoff`'s anchor, which did not need the wait it was parked
+  on.** The chart is an intersection from stage 0, so anchoring on `scan_opened` alone
+  zeroes every log recorded before that kind existed — which is why the item said
+  "revisit once logs in hand all contain it". The anchor is now `scan_opened` UNION
+  `scan_started`: since `scan_opened` fires on /scan entry and `scan_started` at the
+  shutter, the second implies the first in any modern log and the union IS the
+  `scan_opened` set, so the camera loss appears as the drop into 스캔 시작; a legacy
+  session enters at its own 스캔 시작 and reads a 0% camera drop, which is "not measured
+  here" rather than "nothing happened". The cost is pinned as a case rather than left to
+  be found: a log MIXING the generations understates the drop, 50% becoming 33% on the
+  three-session fixture. Three existing cases pinned the deferral and were rewritten to
+  pin the new property — a decision changed deliberately, not a guard weakened.
+
+  **Every new case broken at the SOURCE line it protects**, eight breaks, each reverted
+  from a file copy:
+
+  ```
+  sampleRegion radius 4 -> 5        1 fail; AssertionError: expected [ 1573, 1694, 968, 847,
+                                    847, 847 ] to deeply equal [ 1053, 1134, 648, 567, 567, 567 ]
+  clipped-channel line deleted      1 fail; expected '/**\n * Visible-signal skin analysis.…'
+                                    to contain '        if (r >= 255 || g >= 255 || b…'
+  burst 3 frames -> 4               1 fail; expected '"use client";\n\nimport { useCallback…'
+                                    to contain 'for (let i = 1; i < 3; i += 1)'
+  row filter bound x0.25            2 fail; AssertionError: 400x480 blemishDensity: expected
+                                    3.8926712054465358 to be 4.122487064212401
+  row filter fully reverted         1 fail (the SOURCE pin only); the blemishCount pin stays
+                                    green, which is the equivalence proof
+  funnel anchor loses the union     5 fail; AssertionError: expected +0 to be 1 — the exact
+                                    harm the backlog item was parked on
+  scan_opened stage removed         5 fail; expected [ 'scan_started', …(4) ] to deeply equal
+                                    [ 'scan_opened', 'scan_started', …(4) ]
+  stage 0 reads scan_opened         5 fail; AssertionError: expected 0.5 to be close to
+    instead of the anchor           0.3333333333333333
+  ```
+
+  Two of the seven new benchmark cases are NOT source guards and are not claimed as
+  such: the grid-mask equivalence case re-derives both predicates in the test, so it
+  checks the reasoning rather than the shipped line (the `blemishCount` pin is what
+  guards that), and the read-twice case is a harness sanity check.
+
+  **Not attempted, deliberately.** No third item. This branch changes the hottest
+  function in the app and adds a benchmark and a doc; a fourth unrelated edit would make
+  the perf claim harder to review and harder to revert. `NEXT_PUBLIC_FUNNEL_FLUSH`
+  untouched. No consent kind or flow invented. `status` and `promotionGate` byte-identical.
+
+
+  **Supervisor, same day — reviewed, and two of the reviewer's own expectations were
+  the things that did not survive.** The equivalence proof was checked the way it has
+  to be: `lib/skin.ts` was replaced with main's pre-change version (exports added, no
+  logic touched, `tsc` still 13) and the branch's pinned `blemishCount` /
+  `blemishDensity` values passed against it at all four frame sizes — so those pins are
+  genuinely the before-values, and the optimised build matching them is proof the row
+  filter is behaviour-preserving end to end. Breaking the bound (`excludeRSq / 4`) fails
+  the pin with `400x480 blemishDensity: expected 3.8926712054465358 to be
+  4.122487064212401`; removing the filter entirely while keeping it correct leaves the
+  pin green and fails only the source pin, which is exactly the right shape. Suite
+  timing over four consecutive runs on the branch: 11.02 / 10.27 / 9.89 / 9.97 s against
+  main's 12.59 / 12.66 / 15.58 s — faster than main and not flaky, and no timing
+  assertion runs by default.
+
+  The saving reproduces on an independent fixture built to be UNFAVOURABLE to it
+  (landmarks around an ellipse, so the non-skin points do not cluster in y): 1.95 ms and
+  1.94 ms saved at 400x480 and 720x960, 35% and 29% off `detectBlemishes`. Below the
+  table's range, as an adversarial geometry should be, and recorded in
+  `docs/scan-cost-measurement.md` as the floor.
+
+  **Two supervisor expectations were wrong and both are worth recording.** First, a
+  pre-registered claim that `analyzeSkin` is flat in frame size at ~1.5 ms — measured on
+  a fixture whose landmarks all sat on three points, so `faceW` was 0 and
+  `detectBlemishes` returned early at its `faceW < 20` guard without running at all. The
+  cheap phases are flat; the expensive one is not, and the reviewer's fixture had
+  excluded it. Second, a pre-registered prediction that cycle 14's clipped-channel
+  branch would be below the noise floor and that any specific number for it should be
+  rejected. The cycle measured it properly — isolating `sampleRegion` rather than the
+  whole call, sixteen measurements all positive, median 58.4 µs a frame — and then
+  called it an upper bound because the ablation also changes V8's inlining. That is a
+  better design than the reviewer's and a better piece of self-criticism than the
+  reviewer asked for.

@@ -37,6 +37,10 @@ recommendation flow can also be completed with the questionnaire alone.
   1.47 units of `channelScale * 2^-52`, which is where the parity table's first
   tolerance comes from; the sRGB transfer curve, not the rest of Lab, is 37-61% of
   `detectBlemishes`)
+- How far `a*` can move before `blemishCount` does, and what that rules out:
+  [docs/blemish-perturbation-tolerance.md](docs/blemish-perturbation-tolerance.md)
+  (below 1.046e-5 a\* units nothing can change the count; a 256-entry lookup table for
+  the transfer curve is off by 0.470 and moves it from 6 to 7, so the curve stays)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
   (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest
