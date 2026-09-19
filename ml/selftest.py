@@ -390,7 +390,7 @@ class SkinIndices(unittest.TestCase):
         """
         table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
         indices = table["indices"]
-        self.assertEqual(set(indices), {"shine_ratio", "tone_evenness"})
+        self.assertEqual(set(indices), {"shine_ratio", "tone_evenness", "blemish_count"})
         # Whatever is pinned has to be a real index declaring the real app field.
         for index_id, group in indices.items():
             self.assertIn(index_id, skin_indices.INDEX_BY_ID)
@@ -412,6 +412,26 @@ class SkinIndices(unittest.TestCase):
         self.assertGreater(max(shines), 0.7)
         self.assertGreaterEqual(len({row["kind"] for row in shine_rows}), 2)
 
+        # blemish_count / blemish_density. Checked 2026-09-19 (cycle 17) and it AGREES,
+        # so it is pinned rather than fixed — a negative result recorded as one, the way
+        # tone_evenness was. Two things the rows pin beyond the arithmetic: the two
+        # (area, face width) pairs are what lib/skin.ts actually reported for ONE face at
+        # two capture resolutions, so the invariance the third argument exists for is
+        # checked and not asserted; and the degenerate row exercises both languages'
+        # guards, which sit in different places (Python clamps faceWidthPx ** 2 at 1e-6
+        # and then the relative area again; the app returns areaFace 0 outright).
+        density_rows = indices["blemish_count"]["rows"]
+        self.assertGreaterEqual(len(density_rows), 8)
+        self.assertEqual(indices["blemish_count"]["pythonFunction"], "ml/skin_indices.py :: blemish_density")
+        for row in density_rows:
+            computed = skin_indices.blemish_density(row["count"], row["sampledAreaPx"], row["faceWidthPx"])
+            self.assertEqual(
+                computed,
+                row["value"],
+                f'{row["note"]}: blemish_density({row["count"]}, {row["sampledAreaPx"]}, {row["faceWidthPx"]})',
+            )
+        self.assertGreaterEqual(len({row["value"] for row in density_rows}), 4)
+
         # tone_evenness has claimed in its own docstring since 2026-09-14 to be "the
         # same formula as relativeSpread in lib/skin.ts". The shine_ratio docstring
         # made the same kind of claim and was false. This one is true, and this is
@@ -422,6 +442,66 @@ class SkinIndices(unittest.TestCase):
             computed = skin_indices.tone_evenness(list(row["lstars"]))
             self.assertEqual(computed, row["value"], f'{row["note"]}: tone_evenness({row["lstars"]})')
         self.assertGreaterEqual(len([row for row in spread_rows if row["value"] > 0]), 4)
+
+    def test_rgb_to_lab_matches_the_typescript_implementation_within_a_measured_tolerance(self):
+        """The same contract as the indices above, with the one difference that matters.
+
+        Those rows are compared EXACTLY, because +, -, *, / and sqrt on IEEE doubles are
+        correctly rounded and a matching implementation matches bit for bit. rgb_to_lab
+        is not in that class: it calls pow(., 2.4) three times and a cube root up to
+        three times, and neither language's library rounds those correctly. Measured
+        over 268,877 inputs (docs/rgb-to-lab-parity.md), V8 and CPython 3.11 agree
+        exactly on 63-80% of them; where they differ, V8's Math.cbrt and this file's
+        t ** (1/3) are within 1 ulp of each other and 500 * (f(x) - f(y)) amplifies
+        that into a* by the 500.
+
+        So the tolerance is `toleranceK * channelScale * 2 ** -52` per channel, with
+        channelScale the literal multiplier in that channel's own expression. The
+        measured worst case over the whole sweep was 1.472 of those units; k is 4.
+
+        Two things this does NOT let through, which is why a tolerance here is still a
+        contract and not a shrug. In a* it is 4.4e-13 against a BLEMISH.minResidual of
+        1.6 — twelve orders of magnitude of headroom — and about 1e-14 relative on a
+        skin a* of ~20. The defect this file exists to catch, one name over two
+        formulas, moves a value by whole units: `shine_ratio` read 24,691 where the app
+        read 0.0674, and `relative_redness` is an a* difference where the app returns a
+        difference of chromaticities. Nothing of that kind fits inside 4.4e-13.
+
+        The fast path is declared here rather than inferred: lib/skin.ts:labAStar
+        computes a* alone, for the ~18,000 grid cells detectBlemishes reads per frame,
+        and does not compute L* or b* at all. This file has no counterpart to it,
+        because nothing in the Python pipeline wants a* without the rest.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        group = table["primitives"]["rgb_to_lab"]
+        self.assertEqual(group["python"], "ml/ita.py :: rgb_to_lab")
+        self.assertEqual(group["comparison"], "tolerance")
+        self.assertEqual(group["toleranceK"], 4)
+        self.assertEqual(group["channelScale"], {"l": 116, "a": 500, "b": 200})
+        # The fast path is a PARTIAL duplicate and the table has to say so out loud.
+        self.assertEqual(group["fastPath"]["computes"], ["a"])
+        self.assertEqual(group["fastPath"]["doesNotCompute"], ["l", "b"])
+        self.assertIsNone(group["fastPath"]["python"])
+
+        rows = group["rows"]
+        self.assertGreaterEqual(len(rows), 20)
+        eps = 2.0**-52
+        for row in rows:
+            r, g, b = row["rgb"]
+            computed = ita.rgb_to_lab(r, g, b)
+            for value, channel in zip(computed, ("l", "a", "b")):
+                tolerance = group["toleranceK"] * group["channelScale"][channel] * eps
+                self.assertLessEqual(
+                    abs(value - row[channel]),
+                    tolerance,
+                    f'{row["note"]}: {channel}* of rgb_to_lab({r}, {g}, {b})',
+                )
+        # A tolerance wide enough to pass anything would pass this loop too, so pin what
+        # it is worth in the units the product reads a* in. BLEMISH.minResidual is 1.6.
+        self.assertLess(group["toleranceK"] * group["channelScale"]["a"] * eps, 1e-9)
+        # And the rows have to span the axis, or they pin one colour.
+        self.assertEqual(min(row["l"] for row in rows), 0.0)
+        self.assertEqual(max(row["l"] for row in rows), 100.0)
 
     def test_blemish_density_does_not_move_with_capture_resolution(self):
         """The defect the third argument exists for.

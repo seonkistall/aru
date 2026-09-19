@@ -321,33 +321,76 @@ partly done and stays here.
   difference is the more stable within-image quantity), and `shine` is the worked
   example of what picking a side without measuring costs. The mechanism to pin the
   answer already exists — add a group to `ml/index-parity.json`. Noted 2026-09-19.
-- [AI] **Five of the seven indices in `ml/skin_indices.py` have their names pinned and
-  their values unchecked**, and the registry is declaration-only: verified 2026-09-19
-  that **no pipeline script calls any of the seven functions** (`run_pipeline.py`,
-  `calibrate.py` and `prepare_crop_dataset.py` all read the columns the app exported;
-  the only caller is `ml/selftest.py`). So each entry is a claim about what an index IS,
-  and the only thing that can catch a false claim is a value contract.
-  `ml/index-parity.json` now covers `shine_ratio` (formula and path) and `tone_evenness`
-  (formula only — its region-L\* inputs are not an exported field). `relative_redness` is
-  the item above. `roughness_ratio`, `blemish_density` and `melanin_index` remain, and
-  each is a group in the existing file rather than new machinery. Noted 2026-09-19.
-- [AI] **`rgbToLab` is 53-59% of a scan and the fast path is still not taken.** Cycle 15
-  measured it at 3.91-6.20ms, 61-75% of `detectBlemishes`, and filed it as a backlog item
-  in its cycle entry without adding one here — so it would have rotated out of the file
-  and been lost. Filed properly now. `detectBlemishes` reads only `lab.a`, so `fz` and
-  the `z` dot product are dead work; the obvious table-based win is unavailable because
-  the inputs are floats, and an approximation moves `blemishCount`.
-  **Cycle 16 changes what this decision looks like but does not settle it.** Cycle 15
-  declined partly because a second near-duplicate of a function with a cross-language
-  twin (`ml/ita.py`) "is exactly how `shine_ratio` and `shine` became two formulas under
-  one name" — and what actually made that possible was that nothing compared their
-  VALUES, which `ml/index-parity.json` now shows costs one JSON group and a test
-  case. Two things it does not remove, both in `docs/shine-formula-decision.md`: a fast
-  path returning only `a` is a PARTIAL duplicate, so the table has to say which outputs
-  it does not compute; and `rgbToLab` involves `pow` and a matrix, where exact
-  cross-language equality is **not** guaranteed the way it is for four arithmetic
-  operations — a tolerance would have to be chosen and justified, which is a measurement
-  of its own. Smaller than it was, still not a one-liner. Noted 2026-09-19.
+- [AI] **Three of the seven indices in `ml/skin_indices.py` still have their names
+  pinned and their values unchecked, and checking the other two turned up a defect in
+  each.** The registry is declaration-only: verified 2026-09-19 that **no pipeline
+  script calls any of the seven functions** (`run_pipeline.py`, `calibrate.py` and
+  `prepare_crop_dataset.py` all read the columns the app exported; the only callers are
+  `ml/selftest.py` and the parity test). So each entry is a claim about what an index
+  IS, and only a value contract can catch a false claim. `ml/index-parity.json` now
+  covers `shine_ratio` (formula and path), `tone_evenness` (formula only) and, since
+  cycle 17, `blemish_count`/`blemish_density` — **checked and it agrees exactly** on the
+  quantities `detectBlemishes` actually produces, so it is pinned rather than fixed,
+  including the two (area, face width) pairs one face gave at two capture resolutions so
+  the invariance the third argument exists for is checked and not asserted.
+  `relative_redness` is the item above. **`roughness_ratio` and `melanin_index` are each
+  wrong, and neither is a one-liner** — see the two items below. `ita` is the only one
+  left that is both unpinned and not yet known to be wrong; `docs/tone-ita-verification.md`
+  checks the angle against two outside references, which is more than a parity row would
+  give. Noted 2026-09-19.
+- [AI] **`roughness_ratio` and `roughnessRatio` disagree at the guard, and it is the
+  `shine_ratio` epsilon defect again.** Measured 2026-09-19 (cycle 17). Python is
+  `region_highfreq / max(reference_highfreq, 1e-6)`; the app
+  (`lib/skin.ts:1083`) is `foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0`. On a
+  perfectly smooth forehead — reference high-frequency exactly 0 —
+
+  ```
+  python: 500000.0      app: 0
+  ```
+
+  and at a reference of 1e-7, just under the app's guard, the same pair. Above 1e-5 they
+  agree. This is the mechanism cycle 16 measured on the oil axis, where
+  `max(cheek_specular, 1e-6)` made the Python form read **24,691** against the app's
+  **0.0674**: an epsilon clamp turns "no signal in the denominator" into an enormous
+  ratio where the app publishes nothing. Two further differences in the same pair, both
+  real: the app returns 0 when either region is missing (`n < 40`, or `meanL <= 1`),
+  which Python has no concept of; and the app's inputs are each region's high-frequency
+  energy **divided by that region's own mean L\***, which the Python docstring does not
+  say. Not fixed here because the app's guard and the app's normalisation are what ships
+  and the Python side is what should move — but "which side moves" is the decision
+  cycle 16's whole entry exists to say should not be taken without measuring, and the
+  measurement for this one is which guard produces a usable dryness reading on a smooth
+  forehead, which needs faces. A parity group with the guard branches in it is the
+  cheap half and can land first. Noted 2026-09-19.
+- [AI] **`FEATURE_KEY` declares `melanin_index` to be `toneLstar`, and it is not — it is
+  a nonlinear transform of it.** `FEATURE_KEY`'s own documented contract is "index id ->
+  the feature key `lib/skin.ts` writes into every exported sample". `melanin_index` is
+  `100 * log10(100 / max(lstar, 1.0))`; `toneLstar` carries L\* itself, so at
+  L\* = 70 the index is **15.49** and the declared column holds **70**. Verified
+  2026-09-19 that no TypeScript counterpart exists anywhere — the only match for
+  "melanin" in `lib/` and `app/` is a prose comment in `lib/tone-bands.ts`. So this is
+  the reverse of `cov`, which cycle 13 correctly left alone: `cov` has no Python index
+  and therefore no declaration that can be wrong, while this has a declaration and no
+  app-side value to declare. The fix is a decision, not an edit: either the app computes
+  and exports a melanin index (a new field, which needs a reason beyond a test wanting
+  one) or the registry records that this index is derived offline from `toneLstar`
+  rather than carried by it, which means `FEATURE_KEY` needs a second kind of entry.
+  Noted 2026-09-19.
+- [AI] **The remaining win in a scan is the sRGB transfer curve, and taking it needs a
+  measurement nobody has done.** Cycle 17 took the `a*`-only fast path and found it
+  buys far less than the item it was filed under promised: `labAStar` still calls
+  `Math.pow(., 2.4)` three times, and ablating that line takes 37-61% out of
+  `detectBlemishes` (`C5` in `tests/scan-cost-benchmark.test.ts`), against the fast
+  path's own 1.4-7.8%. So the curve is where the time is. It is not free: the
+  inputs are `Math.min(255, channel * gain)`, floats, so a 256-entry table is an
+  approximation; and `detectBlemishes` picks local maxima in `a*` and suppresses
+  neighbours, so an error far below any threshold can still flip which cells survive.
+  **The missing number is how far `a*` can move before `blemishCount` changes** — not
+  "is the error small" but "is it smaller than the gap between the cells that survive
+  and the cells that do not", which is a property of the fixture and of
+  `BLEMISH.minResidual` and is measurable with the machinery already committed. Until
+  that exists, any approximation of the curve is a guess about a published value.
+  Noted 2026-09-19.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -662,6 +705,207 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-19 (cycle 17) — Branch `autopilot/2026-09-19-1239`. **The `rgbToLab` fast
+  path is taken, and the number it was filed under is wrong. `a*`-only buys 1.4-7.8% of
+  `detectBlemishes`, not 53-59%; the sRGB transfer curve, which no `a*`-only path can
+  touch, is 37-61%. Exact cross-language equality is measured and does not hold, so the
+  parity table gains its first tolerance — 1.472 units observed over 268,877 inputs,
+  4 committed.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **535 passed in 82 files**, `python3 ml/selftest.py`
+  **Ran 78 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **Step 1, before anything changed: how far apart are the two languages?** Cycle 16
+  left this open in exactly these words — "`rgbToLab` involves `pow` and a matrix, where
+  exact cross-language equality is **not** guaranteed the way it is for four arithmetic
+  operations". It is not, and it does not hold. Over **268,877 inputs** — a 5-step grid
+  over the whole sRGB cube plus 120,000 floats of the shape `detectBlemishes` feeds —
+  V8 and CPython 3.11 agree **bit for bit on 63-80%** of them, and where they differ the
+  worst case anywhere is **1.4720** units of `channelScale * 2^-52`, with the median
+  exactly **0** in every channel and every family. The measurement is two committed
+  commands, not a paragraph: `ARU_LAB_PARITY_DUMP=... npx vitest run
+  tests/lab-parity-sweep.test.ts` then `python3 ml/lab_parity_sweep.py`.
+
+  The unit is where the number comes from rather than a convenience. `a* = 500 * (f(x)
+  - f(y))` subtracts two quantities of order 1 and multiplies by 500, so a last-place
+  error in either `f()` arrives in `a*` scaled by 500 and by nothing else — which is why
+  the worst case lands just above one such unit instead of anywhere else.
+
+  **And the decomposition says which transcendental, which turned into a finding about
+  `ml/ita.py` nobody was looking for:**
+
+  ```
+  pow   V8 vs c ** 2.4 (as shipped)    exact 3820/4256 ( 89.8%)  worst 1 ulp
+  cbrt  V8 vs t ** (1/3) (as shipped)  exact 4027/5000 ( 80.5%)  worst 2 ulp
+  cbrt  V8 vs math.cbrt                exact 2289/5000 ( 45.8%)  worst 3 ulp
+  ```
+
+  `math.cbrt` is the better cube root — CPython 3.11 added it precisely because
+  `t ** (1/3)` is not one — and swapping `ml/ita.py` to it would make the two languages
+  agree **less** often, 45.8% against 80.5%. "More correct" and "agrees with the app"
+  are different goals here. `ml/ita.py` keeps `t ** (1 / 3)`, now for a measured reason
+  rather than by inheritance.
+
+  **So the tolerance is `toleranceK * channelScale * 2^-52`, k = 4**, built from two
+  committed integers rather than typed as a float so it cannot be widened by editing a
+  digit. 4 is the smallest integer above what the mechanism bounds (about 3 units: one
+  last place from each of the two `f()` calls, plus the `pow` errors attenuated through
+  a cube root), and 1.472 observed sits inside that. What it still cannot hide: in `a*`
+  it is **4.44e-13** against a `BLEMISH.minResidual` of **1.6**, twelve orders of
+  magnitude, while the defect this file exists to catch moves values by whole units —
+  `shine_ratio` read 24,691 where the app read 0.0674. **11 of the table's 20 rows
+  actually disagree**, and three of them are the sweep's own worst inputs, so the
+  tolerance is exercised rather than declared.
+
+  **Step 2: taken, and the framing corrected.** `labAStar` computes `a*` and skips `z`,
+  the third `f()` and the object. It is **not a second formula**: `rgbToLab` calls it,
+  so `a*` has one implementation in `lib/skin.ts` and the two cannot drift by
+  construction. The partial duplication cycle 16 warned about is declared out loud in
+  `ml/index-parity.json` — `computes: ["a"]`, `doesNotCompute: ["l", "b"]`,
+  `fastPath.python: null`, because nothing in the Python pipeline wants `a*` alone.
+
+  **The measurement that makes this cycle worth more than the change.** Over eight runs
+  x four frame sizes, paired and order-alternating:
+
+  | | saved, ms/frame | % of detectBlemishes | positive |
+  |---|---|---|---|
+  | 400x480 | +0.048 .. +0.274 | +1.4 .. +7.6% | 8/8 |
+  | 720x960 | +0.082 .. +0.317 | +2.1 .. +7.8% | 8/8 |
+  | 1080x1440 | +0.115 .. +0.319 | +2.5 .. +6.3% | 8/8 |
+  | 1440x1920 | −0.075 .. +0.174 | −1.3 .. +3.3% | 6/8 |
+
+  **Not resolvable at 1440x1920 and not claimed there.** The grid is the same 18,291
+  cells at the three larger sizes, so `labAStar` runs the same number of times and the
+  growing pixel pass dilutes it into the noise. Per scan, three burst frames: roughly
+  0.15 to 0.95 ms off a scan costing 6.6 to 11.6 ms.
+
+  **Against that, the part no `a*`-only path can reach — 32 of 32 positive, never inside
+  its own spread:**
+
+  | | removed, ms/frame | % of detectBlemishes |
+  |---|---|---|
+  | 400x480 | +1.645 .. +2.054 | 59.4 .. 61.0% |
+  | 720x960 | +1.917 .. +2.312 | 51.6 .. 55.5% |
+  | 1080x1440 | +1.828 .. +2.303 | 41.7 .. 47.1% |
+  | 1440x1920 | +1.843 .. +2.376 | 37.3 .. 41.4% |
+
+  Cycle 15's "53-59% of a scan" was a true statement about `rgbToLab` whole, and the
+  backlog item that carried it read as though a fast path could capture it. It cannot:
+  that ablation replaced the call with `{ l: L, a: r - g, b: g - b }`, removing the
+  three `Math.pow(., 2.4)` calls, and an `a*`-only path keeps all three.
+  `docs/scan-cost-measurement.md` §5 now carries the correction where the old number is.
+
+  **One benchmark hazard found by tripping over it, and closed.** Measured the obvious
+  way — the statically imported `detectBlemishes` against one freshly loaded ablated
+  module — the "saving" changed sign between frame sizes AND between runs: −23.3% at
+  1440x1920 in one run, +6.1% at 720x960 in the next. The shipped build had already been
+  driven through V8's tiers by four earlier sections of the same sweep while the ablated
+  one was fresh. `C4` now builds an UNCHANGED copy too and times two freshly loaded
+  modules, alternating which runs first within each repeat, and reports the median of
+  the PAIRED differences rather than the difference of two medians. The first
+  arrangement was measuring the benchmark's own history.
+
+  **No published value moved, and it is checkable rather than asserted.** `labAStar`
+  computes `a*` with the identical sequence of doubles, so the result is not close to
+  the old one, it **is** it. The proof is that the pins did not have to move: applying
+  the change gave **one** failure in 535 — `tests/scan-cost-benchmark.test.ts:232`,
+  `expect(source).toContain(LAB_CALL)`, the source text of an ablation needle the change
+  necessarily reworded. `blemishCount` and `blemishDensity` at four frame sizes stayed
+  green **untouched**, and so did every absolute-value pin in
+  `tests/skin-index-contract.test.ts`, `tests/shine-exposure-scale.test.ts` and
+  `tests/axis-exposure-scale.test.ts`. `fallbackVersion`, `ATTR_THRESHOLDS`,
+  `inputSchemaVersion` and the manifest are untouched; guardrail 8's `status` and
+  `promotionGate` are byte-identical. `NEXT_PUBLIC_FUNNEL_FLUSH` untouched. No consent
+  kind or flow invented.
+
+  **Eight new cases — seven in vitest, one in `ml/selftest.py` — and ten breaks**, each
+  altering the SOURCE line the case protects and reverted from a file copy. Seven here,
+  two more with the second item below, and one recorded after them because it did not
+  fire the first time:
+
+  ```
+  labAStar 500 -> 500.0000001         3 fail; expected 0.0052604999593560105 to be
+                                      0.00526049995830391 (a* row, fast-path row, and
+                                      the source pin on the 500)
+  rgbToLab stops delegating a* and     2 fail; expected 0.0035069753741012732 to be
+    recomputes it with 0.95048         0.00526049995830391
+  ml/ita.py white point 0.95048        1 fail; 0.001753524584202637 not less than or
+                                       equal to 4.440892098500626e-13 : cube: white
+  ml/ita.py f() knee 0.008856 -> 0.008 1 fail; 0.01596509300618365 not less than or
+                                       equal to 1.0302869668521453e-13 : knee: f()
+                                       linear segment, y below 0.008856
+  srgbLinear reworded onto two lines   1 fail (default) + Error: skin-no-srgb-pow: the
+                                       line moved; the ablation measures nothing
+  call site reverted to rgbToLab       1 fail; expected source to contain
+                                       'astar[gy * gw + gx] = labAStar('
+  toleranceK 4 -> 40                   ts: expected 40 to be 4; py: 40 != 4
+  ```
+
+  The fourth is the one worth recording: the `knee: f() linear segment` row was added
+  because a branch could move in one language only, and that is exactly the break it
+  caught — a tolerance of 1e-13 against a disagreement of 1.6e-02.
+
+  **Second item: the "five unpinned indices" item, and checking two of them properly
+  cost one pin and found two defects.** `blemish_count` / `blemish_density` **agrees
+  exactly** on the quantities `detectBlemishes` produces, so it is pinned rather than
+  fixed — a negative result recorded as one, the way `tone_evenness` was. Its 8 rows
+  include the two (area, face width) pairs one synthetic face gave at 400x480 and
+  1440x1728, so the resolution invariance the third argument exists for is checked and
+  not asserted, and a degenerate row that exercises both languages' guards, which sit in
+  different places. It is keyed by the REGISTRY id `blemish_count` while the function is
+  `blemish_density` and the column is `blemishDensity` — three names for one index, now
+  visible in the table rather than discovered from a `KeyError`.
+
+  The other two are wrong, and both are filed with their numbers rather than patched:
+
+  - **`roughness_ratio` is the `shine_ratio` epsilon defect again.** Python is
+    `region_hf / max(reference_hf, 1e-6)`, the app is
+    `foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0`. On a perfectly smooth forehead the
+    two read **500000.0** and **0**. Exactly the mechanism that made the rejected
+    `shine_ratio` read 24,691 against 0.0674. Two more differences in the same pair: the
+    app returns 0 when a region is missing, and the app's inputs are each region's
+    high-frequency energy divided by that region's own mean L\*, which the Python
+    docstring does not say.
+  - **`FEATURE_KEY` declares `melanin_index` to be `toneLstar` and it is not.** The
+    contract is "the feature key `lib/skin.ts` writes into every exported sample";
+    `melanin_index` is `100 * log10(100 / L*)`, so at L\* = 70 the index is **15.49**
+    and the declared column holds **70**. No TypeScript counterpart exists anywhere —
+    the only "melanin" in `lib/` and `app/` is a prose comment. The reverse of `cov`,
+    which cycle 13 correctly left alone: `cov` has no declaration that can be wrong,
+    this has a declaration and no value to declare.
+
+  Two more breaks for the pin, on top of the seven above:
+
+  ```
+  app areaFace drops the face-width   1 fail; expected source to contain
+    normalisation                     'return { count, areaFace: (validCells...'
+  python blemish_density reverts to   2 fail; 142.7483821850019 != 2.960030452988199 :
+    the raw-pixel denominator         one face at 400x480, and the pre-existing
+                                      resolution-invariance case with it
+  ```
+
+  **The tenth break did not fire, and that is worth having.** "agrees with the fast path
+  on every input in the sweep, bit for bit" is the case that carries the whole
+  no-reading-moved argument, and the obvious way to break it — make `rgbToLab` compute
+  `a*` inline instead of calling `labAStar` — leaves all 268,877 inputs **passing**,
+  because the inline expression is the identical sequence of doubles and therefore the
+  identical double. The case pins that the two AGREE; it does not pin that one calls the
+  other. Perturbing the inline copy's white point to 0.95048 fires it
+  (`Error: labAStar disagrees with rgbToLab at 0, 0, 5`), which is the real shape of
+  what it guards. What pins the delegation itself is the source-text assertion in
+  "states a tolerance that is derived, small, and cannot be widened by a digit", and
+  that is now the reason it is there rather than a nicety.
+
+  **Verification before the push**, all four re-run on the final tree: vitest
+  **542 passed in 83 files** (535 + 7 new, across three files), `python3 ml/selftest.py`
+  **Ran 79 tests ... OK** (78 + 1), `npx tsc --noEmit | grep -c "error TS"` **13**
+  unchanged, `npx eslint .` **2 warnings** both in `lib/care.ts` unchanged,
+  `npm run smoke` green — `Smoke test passed.`,
+  with its own vitest 542, `ml/selftest.py` 79, and 44 mobile E2E specs passed in 2.8m
+  behind the `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override the protocol records.
 
 - 2026-09-19 (cycle 16) — Branch `autopilot/2026-09-19-0639`. **The two `shine`
   formulas are one formula. The app's won, on five independent grounds, and the thing
@@ -1067,211 +1311,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   called it an upper bound because the ablation also changes V8's inlining. That is a
   better design than the reviewer's and a better piece of self-criticism than the
   reviewer asked for.
-- 2026-09-18 (cycle 14) — Branch `autopilot/2026-09-18-1839`. **The silent window
-  cycle 13 measured is closed, with a fourth capture signal whose cut was derived from a
-  sweep — and `confidenceLabel`, eight cycles on the backlog, is decided.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
-  grep -c "error TS"` **13**, vitest **491 passed in 78 files**, `python3 ml/selftest.py`
-  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
-
-  **The fourth signal.** `RegionStats` gains `clippedRatio` — the share of the UNTRIMMED
-  patch with at least one channel at 255, untrimmed for the same reason `specularRatio`
-  is, since the trim drops the brightest decile and that is exactly where clipping lives.
-  `SkinRawFeatures.cheekClipped` carries the cheek's, and `buildSignals` gains **노출
-  여유**, failing at `CHEEK_CLIP_LIMIT = 0.15`. It counts all three channels, not red:
-  skin is usually warm so red pins first, but the signal is about sensor headroom rather
-  than about skin, and a cool cast puts a different channel at the ceiling.
-
-  **The cut is derived, and the sweep that derived it is committed.** 84 faces — R/L
-  1.10..1.30 at fixed cheek luminance, texture amplitude 0.10..0.26, three T-zone scales
-  — swept across the whole 조명 band, every capture the previous three signals passed
-  bucketed by its clipped fraction. The pass/fail criterion is not taste: it is the
-  invariance this repository already measured, cov within 1.02x and relRedness within
-  1.08x (`tests/axis-exposure-scale.test.ts`). Below that, clipping is indistinguishable
-  from the 8-bit rounding the indices already carry.
-
-  ```
-  clipped   n     max|dCov|  max|dRed|  published level flips
-  11.11%    20      1.89%      4.92%     0
-  12.35%    21      1.23%      3.43%     0
-  13.58%     5      1.40%      3.48%     0
-  14.81%    52      1.91%      6.19%     0   <- last bucket inside both tolerances
-  16.05%    35      2.16%      5.72%     0   <- cov leaves its 2% band
-  19.75%    13      2.71%      6.84%     0
-  20.99%    20      2.45%      9.48%     1   <- first published level flip
-  22.22%    82      3.59%     14.29%    30
-  ```
-
-  0.15 is the only cut that passes every capture still inside the measured invariance and
-  refuses every capture in which a published level has ever moved. `ARU_PRINT_CLIP_SWEEP=1
-  npx vitest run tests/cheek-clipping-signal.test.ts` reprints the table above verbatim.
-
-  **What it costs, which is the brief's second question, measured on the same sweep.** Of
-  the 10,273 captures the previous three signals passed, 645 (6.28%) now ask for a
-  retake — and not evenly:
-
-  ```
-  cheekL <= 140      0/5964   0.00%
-  cheekL 140..170   33/2520   1.31%
-  cheekL 170..190  337/1367  24.65%
-  cheekL 190..212  275/422   65.17%
-  ```
-
-  **A correctly-exposed capture does not trip it**, which is the answer the brief asked
-  for: if it fired on one, the threshold would be wrong rather than the rule. It catches
-  379 of the 380 silent published-level flips. The one miss is at cheekL 74.9 with NO
-  clipping — relRedness 0.01276 quantising to 0.01197 across the 0.012 cut — which is
-  cycle 13's dark-end 8-bit scatter and not something a clipping signal can see. Said
-  rather than hidden.
-
-  Cycle 13's two cases that pinned the defect are rewritten rather than deleted: they now
-  evaluate the three old signals AND the shipped four separately, so the R/L window is
-  still located at 1.17..1.20 (the measurement is unchanged and the golden set still owns
-  the unknown) while a new assertion holds that no exposure all four signals accept moves
-  a published level at any R/L in the sweep. Closed by refusing those captures, not by
-  reading them differently, and a case asserts exactly that.
-
-  **`confidenceLabel`: the axis is decided, and it is READING MARGIN.** The argument the
-  item was missing is one the retake rule supplies. `shouldApplyScan` requires
-  `!retakeRecommended`, and since cycle 11 `retakeRecommendedFor` fails on ANY failed
-  signal — so on the only path where a reading is used, `signalScore` is exactly 1 by
-  construction and its 0.28 is a constant carrying no information. The fourth signal
-  widens what must pass and leaves that constant a constant. Two terms are left, and the
-  0.78 gate sat BELOW the reachable floor of 0.7804:
-
-  ```
-  meanAgreement   range             share reading 높음 at 0.78   at 0.8614
-  1.0000          0.7804 .. 0.9424          100.0%                 50.0%
-  0.8889          0.7717 .. 0.9319           94.8%                 44.0%
-  0.6667          0.7544 .. 0.9110           83.6%                 31.7%
-  0.3333          0.7284 .. 0.8796           65.9%                 12.0%
-  ```
-
-  At full frame agreement the label was constant. Frame wobble was the only thing that
-  could ever move it — the backlog's finding, now stated as a share of the range rather
-  than as two floors.
-
-  So the label reports reading margin, because that is the only one of the three axes the
-  user is told nowhere else: capture quality is already rendered signal-by-signal in the
-  측정 환경 checklist (four rows now) and routes a failure to the retake copy, and frame
-  wobble already has its own `retakeReasons` line. The gate moves 0.78 -> **0.8614**, in
-  BOTH copies. It is derived, not chosen: `distanceConfidence` maps a reading on a cut
-  point to 0.695 and one a half-span away to 0.92, its midpoint 0.8075 is what it returns
-  a quarter-span from the nearest cut, and `0.8075 * 0.72 + 0.28 = 0.8614`. Wobble is
-  demoted rather than removed — one attribute disagreeing on one of three frames now
-  decides the label only inside a 0.00968-wide band, 5.97% of the 0.162-wide range. The
-  0.58 gate does NOT move; three other call sites compare against it.
-
-  **One collision this exposes, pinned rather than left to be rediscovered.**
-  `mergeVisionAnalysis` caps its confidence at `Math.min(0.86, ...)`, which is now 0.0014
-  BELOW the gate — so a vision-model confidence cannot reach 높음 on its own strength,
-  only through the `Math.max(base.confidence, ...)` that carries the ROI reading's
-  margin. Arguably what the cap was for, but the two constants were chosen independently
-  and are close enough that moving either alone moves a whole path's label. A case asserts
-  the cap value and that it sits below the gate, so they cannot drift apart unnoticed.
-
-  **Every new case broken at the SOURCE line it protects.** 11 breaks, each reverted from
-  a file copy (an earlier attempt reverted with `git checkout`, which silently discarded
-  the uncommitted work and voided its own results — redone from backups):
-
-  ```
-  CHEEK_CLIP_LIMIT 0.15 -> 0.35   6 fail; AssertionError: expected [] to deeply equal [ '노출 여유' ]
-                                  AssertionError: expected [ 1.2, 1.223 ] to deeply equal []
-  CHEEK_CLIP_LIMIT 0.15 -> 0.02   1 fail; AssertionError: the highest clipped fraction still
-                                  accepted: 0.00%: expected 0 to be greater than or equal to
-                                  0.14814814814814814
-  clippedRatio over the trimmed    2 fail; AssertionError: cheekL 180: expected 0.15418502202643172
-    set instead of collected       to be close to 0.12345679012345678
-  count red channel only           1 fail; AssertionError: cheekL 188: expected +0 to be close to
-                                   0.012345679012345678
-  signal `ok: true`                6 fail; same two messages as the 0.35 break
-  gate 0.8614 -> 0.78 both copies  2 fail; AssertionError: expected 0.78 to be close to 0.8614
-  gate drifts in one copy only     3 fail; AssertionError: 125 of 2014 values disagree
-  vision cap 0.86 -> 0.95          1 fail; AssertionError: expected 0.95 to be 0.86
-  weights 0.72/0.28 -> 0.70/0.30   1 fail; AssertionError: expected '/**\n * Visible-signal skin
-                                   analysis....' to contain 'const confidence = clamp01((attrConfi...'
-  retakeRecommendedFor stops       1 fail; AssertionError: expected false to be true
-    reading signals
-  en translation deleted           1 fail; AssertionError: "볼이 너무 밝아 색이 날아갔어요" missing
-                                   from the en dictionary
-  ```
-
-  The red-channel break is the one worth recording: it passed all 9 cases on the first
-  attempt, because every face in the family is warm and red always clips first. That is a
-  real uncovered branch, so a green-dominant fixture was added and the break then failed.
-  Exactly what guardrail "break it on purpose" exists to catch.
-
-  **What did NOT move, checked rather than assumed.** `ATTR_THRESHOLDS`,
-  `fallbackVersion` and `inputSchemaVersion` are untouched: no published index or its
-  cut points changed, and `cheekClipped` is a capture-health number, not a calibratable
-  feature — it is absent from `FEATURE_KEY`, `NEW_FEATURE_KEYS`, `LabeledSample.features`
-  and the `/eval` export, so no feature generation moved. Guardrail 8 untouched —
-  `status` and `promotionGate` byte-identical. `NEXT_PUBLIC_FUNNEL_FLUSH` untouched.
-  The 노출 여유 label and both of its details are translated in en/ja/zh/ar, with a case
-  holding it (the three older signals' strings are translated because somebody remembered;
-  nothing checked, and that gap is noted below).
-
-  **Second item, and it came out of the main one.** Writing the translations for 노출
-  여유 showed that nothing checks a capture signal's strings at all:
-  `tests/i18n-coverage.test.ts` covers the report trust card's runtime-composed strings
-  and passes `signals: []`, so the six strings the three original signals carry are in
-  en/ja/zh/ar because somebody remembered. An untranslated one shows raw Korean in the
-  측정 환경 checklist to every non-Korean user. The rule now lives in that file rather
-  than in the file for one signal: six fixtures drive `analyzeSkin` to every state of all
-  four signals, assert all four labels were seen in BOTH states and that the set is
-  exactly the 13 distinct strings those states produce, then `expectCovered` each.
-  Driven through `analyzeSkin` rather than listed by hand, so a signal added without a
-  fixture fails the count instead of escaping coverage.
-  `tests/retake-signal-rule.test.ts` also gains the lone-failure fixture the new signal
-  was missing: a cheek with red pinned at 255 and luminance 180, inside the 조명 band,
-  so 노출 여유 is the only signal it trips — the exact case cycle 13 showed the other
-  three cannot see.
-
-  **Not attempted, deliberately.** No third item and no unrelated UI change. This branch
-  opens the retake rule and moves a user-visible confidence label, which is enough for
-  one diff to be reviewable and revertible on its own.
-
-  Verification on this branch: vitest **508 passed in 79 files** (from 491 in 78),
-  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .` **2 warnings**
-  both in `lib/care.ts` unchanged, `python3 ml/selftest.py` **Ran 77 tests ... OK**
-  unchanged, `npm run smoke` green.
-
-
-  **Supervisor, same day — the cut reproduces, and the one thing it does not measure is
-  now measured.** Every number in the `CHEEK_CLIP_LIMIT` comment re-ran from the
-  committed sweep (`ARU_PRINT_CLIP_SWEEP=1`): the 14.81% bucket is the last inside both
-  tolerances, 16.05% is the first outside, the first published flip is at 20.99%, and
-  the cost table (0.00% refused at cheekL <= 140, 1.31% / 24.65% / 65.17% above it,
-  379 of 380 silent flips caught) is exact. Four source lines were broken to check the
-  new cases carry weight: computing `clippedRatio` over the TRIMMED set fails 3 of 9,
-  deleting the ceiling counter fails 5, moving the cut to 0.30 fails 5, and reverting
-  `confidenceLabel` to 0.78 in `lib/skin.ts` alone fails the duplication guard with
-  `165 of 2014 values disagree`. The 0.8614 derivation checks out arithmetically:
-  `distanceConfidence` is `0.92 - distance * 0.45`, a quarter-span reading gives 0.8075,
-  and `0.8075 * 0.72 + 0.28 = 0.8614`.
-
-  What the cycle did not measure is what the signal costs a user whose reading was fine.
-  The supervisor pre-registered TWO hypotheses, both predicting a large effect: rough
-  skin reaches any clipped fraction sooner, so the cost should land on high-texture
-  faces; warm skin clips its red channel sooner, so it should land on warm ones.
-  **Neither is large.** On this file's own face family, the exposure band refused before
-  anything is actually wrong runs a mean of 5.6 counts of cheekL at R/L 1.223 and 7.3 at
-  1.30 — a factor of 1.30 — and texture from 0.10 to 0.42 at fixed R/L fits inside 10
-  counts. No face is refused more than 11 counts early, all of them far above the 140 a
-  correct capture sits at. Pinned as a case rather than a note, because it is the number
-  that must grow before the signal becomes tone-unfair; breaking it by moving the cut to
-  0.08 fails it.
-
-  One correction the supervisor owes in public: an earlier scratch fixture put that
-  tone factor near 2.5, and it does not reproduce. It built the T-zone as a flat scale
-  of the cheek rather than through the per-channel `TZ_RATIO` the derivation uses, which
-  moves where 반사 fires and so moves the far edge of the window. The 1.30 measured on
-  the construction the cut was derived over is the repository's number; the 2.5 is not.
-
-  Baselines after landing: vitest **508 in 79 files**, `tsc` 13, eslint 2 warnings,
-  `ml/selftest.py` 77, `npm run smoke` passed. Rotation verified by `comm -23` against a
-  snapshot of main's pair taken before review: the only two lines that moved are the two
-  backlog items this cycle closed, both present in the changelog with `[x]` and their
-  bodies intact.

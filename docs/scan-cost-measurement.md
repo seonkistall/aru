@@ -177,6 +177,20 @@ that already has a cross-language twin is how `shine_ratio` and `shine` became t
 formulas under one name, which is an open backlog item. It needs a deliberate decision
 about which side owns the fast path, not a quiet third copy. Filed, not taken.
 
+> **Taken 2026-09-19, cycle 17, and the table above needs reading with care because of
+> it.** `lib/skin.ts` now has `labAStar`, an `a*`-only entry point that `rgbToLab`
+> itself calls, so there is one implementation of `a*` and not two; the cross-language
+> declaration and the tolerance it needs are `ml/index-parity.json`'s
+> `primitives.rgb_to_lab` group. **The 53-75% in the table above does not transfer to
+> that fast path.** This ablation replaces the whole call with `{ l: L, a: r - g,
+> b: g - b }`, which removes the three `Math.pow(., 2.4)` calls; an `a*`-only path
+> keeps all three and drops only `z`, one `f()` and the object. Measured directly
+> (`C4`, eight runs), the fast path saves **1.4-7.8% of `detectBlemishes`** at the
+> three smaller frame sizes and is not resolvable at 1440x1920. The transfer curve
+> itself, ablated on its own (`C5`), is **37-61%** — that is where the rest of this
+> table's number lives, and taking it needs a measurement of how far `a*` can move
+> before `blemishCount` does. `docs/rgb-to-lab-parity.md`.
+
 **No timing assertion runs by default.** A duration threshold fails on a loaded CI box
 while nothing in the product is broken. The default cases count pixels, pin source
 lines and pin values; every timing lives behind `ARU_PRINT_SCAN_COST`.
