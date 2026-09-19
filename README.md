@@ -31,6 +31,12 @@ recommendation flow can also be completed with the questionnaire alone.
   [docs/scan-cost-measurement.md](docs/scan-cost-measurement.md)
   (`detectBlemishes` is 79-87% of it; measured on the build container, which is not a
   phone, and the document says so at length)
+- `rgbToLab` across the language boundary, and what the `a*` fast path actually buys:
+  [docs/rgb-to-lab-parity.md](docs/rgb-to-lab-parity.md)
+  (the two languages agree bit for bit on 63-80% of 268,877 inputs and differ by at most
+  1.47 units of `channelScale * 2^-52`, which is where the parity table's first
+  tolerance comes from; the sRGB transfer curve, not the rest of Lab, is 37-61% of
+  `detectBlemishes`)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
   (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest

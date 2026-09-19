@@ -276,23 +276,51 @@ export function sampleRegion(data: Uint8ClampedArray, w: number, h: number, land
   };
 }
 
-function rgbToLab(r: number, g: number, b: number): { l: number; a: number; b: number } {
-  const linear = (channel: number) => {
-    const c = channel / 255;
-    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  const rl = linear(r);
-  const gl = linear(g);
-  const bl = linear(b);
-  // sRGB -> XYZ (D65), normalized to reference white.
+/** sRGB transfer curve, one channel, 0-255 in, linear 0-1 out. */
+function srgbLinear(channel: number): number {
+  const c = channel / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+/** CIELAB's f(t), with the CIE 1976 linear segment below the epsilon knee. */
+function labF(t: number): number {
+  return t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+}
+
+/**
+ * a* alone. The blemish detector runs this once per valid grid cell — about
+ * 18,000 times a frame — and reads nothing else, so b* is dead work there: it
+ * needs z, a third f(), and an object to carry three fields where one number
+ * would do.
+ *
+ * This is NOT a second formula for a*. `rgbToLab` below calls it, so a* has one
+ * implementation in this file and the two cannot drift; what the fast path skips
+ * is L* and b*, which it does not compute at all. The cross-language contract is
+ * `ml/index-parity.json` -> `rgb_to_lab`, which pins the shared inputs against
+ * `ml/ita.py` and states there which outputs this entry point does not produce.
+ * Tolerance and the measurement that set it: docs/rgb-to-lab-parity.md.
+ */
+export function labAStar(r: number, g: number, b: number): number {
+  const rl = srgbLinear(r);
+  const gl = srgbLinear(g);
+  const bl = srgbLinear(b);
+  // sRGB -> XYZ (D65), normalized to reference white. z is not needed for a*.
   const x = (rl * 0.4124 + gl * 0.3576 + bl * 0.1805) / 0.95047;
   const y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
+  return 500 * (labF(x) - labF(y));
+}
+
+export function rgbToLab(r: number, g: number, b: number): { l: number; a: number; b: number } {
+  const rl = srgbLinear(r);
+  const gl = srgbLinear(g);
+  const bl = srgbLinear(b);
+  // sRGB -> XYZ (D65), normalized to reference white.
+  const y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
   const z = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883;
-  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
-  const fx = f(x);
-  const fy = f(y);
-  const fz = f(z);
-  return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+  const fy = labF(y);
+  const fz = labF(z);
+  // a* delegates rather than repeating the expression: one formula, not two.
+  return { l: 116 * fy - 16, a: labAStar(r, g, b), b: 200 * (fy - fz) };
 }
 
 /**
@@ -901,8 +929,7 @@ export function detectBlemishes(
       const L = lum(r, g, b);
       // Hair, shadow and blown highlights are not gradable skin.
       if (L < 40 || L > 230 || r <= b) continue;
-      const lab = rgbToLab(Math.min(255, r * gains.r), Math.min(255, g * gains.g), Math.min(255, b * gains.b));
-      astar[gy * gw + gx] = lab.a;
+      astar[gy * gw + gx] = labAStar(Math.min(255, r * gains.r), Math.min(255, g * gains.g), Math.min(255, b * gains.b));
       valid[gy * gw + gx] = 1;
     }
   }
