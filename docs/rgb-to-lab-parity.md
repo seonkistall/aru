@@ -103,6 +103,29 @@ Why 4 and not the observed 1.472:
 - 4 is the smallest integer above the mechanism's bound, so it is headroom for a
   different libm rather than headroom for a different formula.
 
+**A second, independent sampling says 1.024, not 1.472 — which is the argument for
+preferring the mechanism bound** (supervisor, 2026-09-19). The same comparison run over
+a different grid — 8,956 inputs, the whole cube at stride 17 plus a float grid at five
+gains in [0.6, 1.6], which is the range `frameChannelGains` produces and therefore the
+float inputs `detectBlemishes` really feeds — gives:
+
+| | max | median | p99 | agree exactly |
+|---|---|---|---|---|
+| L* | 1.421e-14 | 0 | 1.421e-14 | 79.97% |
+| a* | **1.137e-13** | 0 | 5.684e-14 | 68.78% |
+| b* | 5.684e-14 | 0 | 2.842e-14 | 65.10% |
+
+Worst a* case there: rgb(102, 238, 221), TypeScript −41.03720723193105 against Python
+−41.037207231930935 — the 14th significant digit. In ULPs of the a* output scale
+(`500 * 2^-52` = 1.110e-13) that worst case is **1.024**, where the sweep above found
+1.472 on its own inputs.
+
+Two different grids, two different observed maxima, both well inside the mechanism's
+~3. That spread is the reason `toleranceK` is set from the mechanism and not from
+`max observed × a safety factor`: the observed maximum is a property of which inputs you
+happened to sample, and a tolerance derived from it would have been 44% tighter or
+looser depending on the grid. The mechanism's bound does not move.
+
 And what it still cannot hide. In `a*` the tolerance is **4.44e-13**, against a
 `BLEMISH.minResidual` of **1.6** — twelve orders of magnitude — and about 1e-14 relative
 on a skin `a*` of ~20. The defect this parity file exists to catch moves values by whole

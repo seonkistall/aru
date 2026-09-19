@@ -907,6 +907,48 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   with its own vitest 542, `ml/selftest.py` 79, and 44 mobile E2E specs passed in 2.8m
   behind the `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override the protocol records.
 
+
+  **Supervisor, same day — the headline is the correction, and the reviewer's own
+  prediction was the weaker version of it.** Before reading the branch the reviewer
+  micro-benchmarked an a*-only path at 200,000 calls over 11 repeats and got −7.5%
+  against the full function when the result is consumed immediately, inside a noise
+  floor of 8–13%, concluding the fast path was worth nothing and that cycle 15's
+  53–75% was the arithmetic. The direction was right and the number was not: measured
+  in situ rather than on a leaf, the cycle gets +1.4 .. +7.8% with the sign consistent
+  8 runs out of 8 at three frame sizes, and reports the fourth honestly as 6/8 with a
+  range that straddles zero. In situ beats a micro-benchmark and sign-consistency beats
+  a median, so the cycle's number stands and the reviewer's does not.
+
+  **Every reading is bit-identical to main, checked rather than accepted.** `analyzeSkin`
+  was run at four frame sizes on this branch and on main `f7c52df` with a fixture whose
+  blemish discs give counts of 6 and 7, so the maxima-and-suppression path `lab.a` feeds
+  is genuinely exercised: `blemishCount`, `blemishDensity` at full precision, `shine`,
+  `relRedness`, `cov`, `toneIta`, `toneLstar`, all three published levels and
+  `confidence` to twelve decimals agree on every row. `fallbackVersion` and the manifest
+  are untouched, which on this cycle is the requirement rather than an omission. The
+  `blemishCount` / `blemishDensity` pins in `tests/scan-cost-benchmark.test.ts` were not
+  edited — the only removed lines in that file are an ablation helper string.
+
+  **The parity contract bites from both sides**, on the same standard cycle 16 set:
+  perturbing `ml/ita.py`'s X matrix coefficient fails `ml/selftest.py`; perturbing
+  `labAStar`'s fails `tests/index-parity.test.ts` and `tests/lab-parity-sweep.test.ts`
+  with `cube: white: a*: expected 0.007013975346747969 to be 0.00526049995830391`. Note
+  the split the cycle chose is right: within TypeScript the committed rows are pinned
+  with exact equality, and the ULP tolerance applies only across languages.
+
+  **An independent sampling supports choosing the mechanism bound over the observed
+  max.** The reviewer re-ran the cross-language comparison on a different grid — 8,956
+  inputs, the cube at stride 17 plus a float grid at the five gains `frameChannelGains`
+  actually produces — and got max |Δa*| 1.137e-13, median 0, 68.78% exact, worst at
+  rgb(102, 238, 221). That is **1.024 ULPs** of the a* output scale where the cycle's own
+  sweep found 1.472 on its inputs. Two grids, two different maxima, both inside the
+  mechanism's ~3: which is precisely why `toleranceK` is set from the mechanism rather
+  than from max-observed times a safety factor. Recorded in `docs/rgb-to-lab-parity.md`.
+
+  Rotation: 27 differing lines against a pre-review snapshot of main's pair, all
+  accounted for — the closed `rgbToLab` item's body, rewritten as its outcome in the
+  changelog, and the "seven indices" item correctly renumbered from five to three
+  because this cycle covered two more.
 - 2026-09-19 (cycle 16) — Branch `autopilot/2026-09-19-0639`. **The two `shine`
   formulas are one formula. The app's won, on five independent grounds, and the thing
   that let them drift at all is closed with a value contract rather than another name
