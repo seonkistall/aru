@@ -1,0 +1,856 @@
+import { afterAll, describe, expect, it } from "vitest";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { detectBlemishes, frameChannelGains, labAStar } from "@/lib/skin";
+
+/**
+ * How far can a* move before `blemishCount` changes?
+ *
+ * Cycle 17 measured where a scan's time goes and found the answer is the sRGB transfer
+ * curve: ablating `Math.pow(., 2.4)` takes 37-61% out of `detectBlemishes`, against the
+ * 1.4-7.8% the a*-only fast path buys (`C5` in tests/scan-cost-benchmark.test.ts). The
+ * obvious way to take that is a lookup table, and the obvious objection is that a table
+ * is an approximation while `blemishCount` is a published value. The backlog item that
+ * came out of it said the missing number is not "is the error small" but "is the error
+ * smaller than the gap between the cells that survive and the cells that do not".
+ *
+ * That gap is measurable, and this file measures it. `detectBlemishes` computes an a*
+ * per grid cell, subtracts a local background, keeps cells clearing
+ * `BLEMISH.minResidual` that are local maxima in a 5x5 neighbourhood, and counts them.
+ * So the count changes only when some cell changes its classification, and the question
+ * becomes: what is the smallest per-cell error that flips one?
+ *
+ * Two numbers bracket the answer, and both are reported because they are different
+ * claims:
+ *
+ * - The CERTIFIED radius. Below it no per-cell error bounded by delta can change the
+ *   count, whatever its shape, because no cell's classification can flip. Derived from
+ *   the margins of the run itself: a cell's residual moves by at most 2*delta (its own
+ *   a* by delta, its local background by at most delta the other way), and a DIFFERENCE
+ *   of two residuals by at most 4*delta.
+ * - The ACHIEVED radius. The smallest delta at which a perturbation this file actually
+ *   applies does change the count. It is an upper bound on the worst case: a cleverer
+ *   assignment might manage it with less.
+ *
+ * The perturbation is injected into a rebuilt copy of lib/skin.ts, at the point where
+ * `labAStar`'s results are consumed and before anything reads them — the same
+ * source-rewriting machinery tests/scan-cost-benchmark.test.ts uses for its ablations.
+ * A harness that silently perturbs nothing would report an enormous tolerance and look
+ * like good news, so the cases come in that order: the unperturbed build reproduces the
+ * committed counts exactly, the constants every margin is measured against are read out
+ * of lib/skin.ts rather than copied into this file, and a perturbation large enough to
+ * move the count is shown to move it — before any tolerance is reported.
+ *
+ * And then the thing the tolerance is for: the same machinery builds lib/skin.ts with
+ * the transfer curve replaced by a lookup table, three of them, and reports the a*
+ * error each one produces on the inputs the detector actually feeds, against the
+ * tolerance measured here. Nothing in lib/ changes. This is the measurement the
+ * decision needs, not the decision.
+ *
+ * The full distribution, including perturbation shapes that are not asserted:
+ *   ARU_PRINT_BLEMISH_TOLERANCE=1 npx vitest run tests/blemish-perturbation-tolerance.test.ts
+ * and the write-up, with every table this prints and the verdict it supports:
+ * docs/blemish-perturbation-tolerance.md.
+ */
+
+type LM = { x: number; y: number; z?: number };
+type Perturb = (astar: Float64Array, valid: Uint8Array, gw: number, gh: number) => void;
+type Hooked = {
+  detectBlemishes: typeof detectBlemishes;
+  labAStar: typeof labAStar;
+  __perturbAStar: { fn: Perturb | null };
+};
+
+/** lib/skin.ts's BLEMISH constants, read out of the source rather than copied into it.
+ *  The replica below has to classify cells the way the detector does; a copy would go
+ *  on measuring margins against a floor the detector no longer uses, and every number
+ *  in this file would quietly become a measurement of something else. A case below
+ *  pins the three values, so moving one fails by name instead of re-measuring. */
+function blemishConstant(name: string): number {
+  const source = readFileSync("lib/skin.ts", "utf8");
+  const match = new RegExp(`\\n  ${name}: ([0-9.]+),`).exec(source);
+  if (!match) throw new Error(`lib/skin.ts no longer declares BLEMISH.${name}`);
+  return Number(match[1]);
+}
+const MIN_RESIDUAL = blemishConstant("minResidual");
+const BACKGROUND_RADIUS = blemishConstant("backgroundRadius");
+const SUPPRESSION_RADIUS = blemishConstant("suppressionRadius");
+
+/** The tests/scan-cost-benchmark.test.ts face and landmark spread — the only fixture in
+ *  this repository whose landmarks are laid out widely enough for `detectBlemishes` to
+ *  run over a realistic grid, and the one whose counts the committed pins are drawn
+ *  from. Duplicated rather than exported, as every other fixture in tests/ is. */
+function syntheticFace(w: number, h: number, noiseAmplitude = 9): ImageData {
+  const sx = w / 400;
+  const sy = h / 480;
+  const data = new Uint8ClampedArray(w * h * 4);
+  let seed = 20260914;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+  const blemishes = [
+    { x: 120, y: 260 }, { x: 150, y: 300 }, { x: 280, y: 265 },
+    { x: 300, y: 310 }, { x: 200, y: 380 },
+  ].map((spot) => ({ x: spot.x * sx, y: spot.y * sy }));
+  const radiusSq = 25 * sx * sy;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const row = y / sy;
+      const base = row < 200 ? 186 : row < 340 ? 170 : 158;
+      const noise = (rand() - 0.5) * noiseAmplitude;
+      let r = base + 22 + noise;
+      let g = base - 4 + noise;
+      let b = base - 18 + noise;
+      for (const spot of blemishes) {
+        const dx = x - spot.x;
+        const dy = y - spot.y;
+        if (dx * dx + dy * dy < radiusSq) {
+          r += 26;
+          g -= 6;
+          b -= 6;
+        }
+      }
+      const o = (y * w + x) * 4;
+      data[o] = Math.max(0, Math.min(255, r));
+      data[o + 1] = Math.max(0, Math.min(255, g));
+      data[o + 2] = Math.max(0, Math.min(255, b));
+      data[o + 3] = 255;
+    }
+  }
+  return { data, width: w, height: h } as unknown as ImageData;
+}
+
+const FOREHEAD = [9, 8, 107, 336, 151, 10, 67, 297];
+const LEFT_CHEEK = [50, 101, 118, 117, 116, 205, 36];
+const RIGHT_CHEEK = [280, 330, 347, 346, 345, 425, 266];
+const CHIN = [18, 200, 199, 175, 152, 83, 313];
+
+function faceLandmarks(): LM[] {
+  const at = (x: number, y: number) => ({ x, y, z: 0 });
+  const landmarks: LM[] = Array.from({ length: 468 }, (_, i) => {
+    const a = (i / 468) * Math.PI * 2;
+    return at(0.5 + 0.17 * Math.cos(a), 0.52 + 0.29 * Math.sin(a));
+  });
+  const spread = (indices: number[], x0: number, y0: number, x1: number, y1: number) => {
+    const last = Math.max(1, indices.length - 1);
+    indices.forEach((index, i) => {
+      landmarks[index] = at(x0 + ((x1 - x0) * i) / last, y0 + ((y1 - y0) * i) / last);
+    });
+  };
+  spread(FOREHEAD, 0.38, 0.18, 0.62, 0.26);
+  spread([1, 4, 5, 195, 197], 0.47, 0.40, 0.53, 0.50);
+  spread(LEFT_CHEEK, 0.26, 0.50, 0.38, 0.66);
+  spread(RIGHT_CHEEK, 0.62, 0.50, 0.74, 0.66);
+  spread(CHIN, 0.42, 0.78, 0.58, 0.84);
+  spread([33, 133, 159, 145, 153, 157, 173, 246], 0.34, 0.40, 0.44, 0.44);
+  spread([362, 263, 386, 374, 380, 385, 398, 466], 0.56, 0.40, 0.66, 0.44);
+  spread([70, 63, 105, 66, 107, 336, 296, 334, 293, 300], 0.32, 0.33, 0.68, 0.33);
+  spread([61, 291, 13, 14, 0, 17, 78, 308, 39, 269], 0.41, 0.70, 0.59, 0.72);
+  spread([94, 99, 328, 2], 0.46, 0.56, 0.54, 0.58);
+  return landmarks;
+}
+
+/** What the shipped build reads on this fixture. The same four rows
+ *  tests/scan-cost-benchmark.test.ts pins; repeated here so the harness is checked
+ *  against the published values rather than against itself. */
+const COMMITTED: Array<[number, number, number, number]> = [
+  [400, 480, 6, 4.122487064212401],
+  [720, 960, 5, 3.061918802449535],
+  [1080, 1440, 5, 3.060761789600968],
+  [1440, 1920, 5, 3.061224489795918],
+];
+
+/** The noise amplitude the committed fixture uses, and one either side of it. Noise is
+ *  what puts cells near the residual floor, so it is the knob that moves the margins;
+ *  a tolerance measured on one frame would be an anecdote. */
+const NOISE_LEVELS = [4, 9, 14];
+
+/**
+ * The measurement, committed. Per frame size: the certified radius, the delta that
+ * lifts one cell over the floor, the delta that drops one under it — all in a* units.
+ * Regenerate with ARU_PRINT_BLEMISH_TOLERANCE=1 and read the table it prints.
+ */
+const EXPECTED_TOLERANCE: Array<[number, number, number]> = [
+  [0.00017859239785300574, 1.254294358, 4.552084464],
+  [0.0004587555043507052, 1.236820701, 0.008175173507812501],
+  [0.0023317497022921074, 1.264275574, 0.009978133226562502],
+  [0.0002625290811928416, 1.271591904, 8.766481248000002],
+];
+
+/** Per candidate table and frame size: the worst |delta a*| the table produces on the
+ *  inputs the detector feeds, and the count that comes out of it. */
+const EXPECTED_LUT: Array<[string, number, number, number]> = [
+  ["256 nearest", 400, 0.4702879849315944, 7],
+  ["256 nearest", 720, 0.46191607187268113, 5],
+  ["256 nearest", 1080, 0.4658468284778339, 5],
+  ["256 nearest", 1440, 0.46100146910527107, 5],
+  ["256 linear", 400, 0.0004787962235575094, 6],
+  ["256 linear", 720, 0.0005036974101702008, 5],
+  ["256 linear", 1080, 0.0005090465133306132, 5],
+  ["256 linear", 1440, 0.0005156332888445192, 5],
+  ["1024 linear", 400, 3.0264247163902525e-05, 6],
+  ["1024 linear", 720, 2.943966231860884e-05, 5],
+  ["1024 linear", 1080, 3.0684908336464645e-05, 5],
+  ["1024 linear", 1440, 2.9084256003564235e-05, 5],
+  ["4096 linear", 400, 1.8490215469846305e-06, 6],
+  ["4096 linear", 720, 1.9172634591058113e-06, 5],
+  ["4096 linear", 1080, 1.86537607582693e-06, 5],
+  ["4096 linear", 1440, 1.9101021320189204e-06, 5],
+];
+
+/** Per noise amplitude and frame size: the count, and the certified radius. */
+const EXPECTED_FAMILY: Array<[number, number, number, number]> = [
+  [4, 400, 5, 1.0462367346697476e-05],
+  [4, 720, 5, 8.489633564234822e-05],
+  [4, 1080, 5, 0.000326820393055538],
+  [4, 1440, 5, 4.135129144478e-05],
+  [9, 400, 6, 0.00017859239785300574],
+  [9, 720, 5, 0.0004587555043507052],
+  [9, 1080, 5, 0.0023317497022921074],
+  [9, 1440, 5, 0.0002625290811928416],
+  [14, 400, 7, 0.00014820971506246394],
+  [14, 720, 5, 0.00203678723564904],
+  [14, 1080, 5, 0.003012814235247685],
+  [14, 1440, 5, 0.000942254275686949],
+];
+
+// ---------------------------------------------------------------------------
+// The rebuilt module: lib/skin.ts with one hook, and with the transfer curve
+// replaced by a lookup table.
+// ---------------------------------------------------------------------------
+
+const DIR = "tests/.blemish-perturb-tmp";
+/** The anchor the hook goes in front of: the first thing that reads `astar`. */
+const CONSUME_ANCHOR =
+  "  // Summed-area tables over valid cells only, so the local background is the\n";
+const HOOK_LINE = "  if (__perturbAStar.fn) __perturbAStar.fn(astar, valid, gw, gh);\n";
+const DECL_ANCHOR = "export function detectBlemishes(\n";
+const HOOK_DECL =
+  "export const __perturbAStar: { fn: null | ((astar: Float64Array, valid: Uint8Array, gw: number, gh: number) => void) } = { fn: null };\n\n";
+/** srgbLinear's own line, the one C5 in tests/scan-cost-benchmark.test.ts ablates. */
+const POW_LINE = "  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);\n";
+const SRGB_ANCHOR = "function srgbLinear(channel: number): number {\n";
+
+/** Candidate tables: [label, entries, interpolate]. */
+const LUTS: Array<[string, number, boolean]> = [
+  ["256 nearest", 256, false],
+  ["256 linear", 256, true],
+  ["1024 linear", 1024, true],
+  ["4096 linear", 4096, true],
+];
+
+function rewriteImports(source: string): string {
+  return source.replace('from "./i18n/core"', 'from "../../lib/i18n/core"');
+}
+
+function withHook(source: string): string {
+  if (!source.includes(CONSUME_ANCHOR)) {
+    throw new Error("perturbation hook: the astar consumer moved; the harness measures nothing");
+  }
+  if (!source.includes(DECL_ANCHOR)) {
+    throw new Error("perturbation hook: detectBlemishes moved; the harness measures nothing");
+  }
+  return source
+    .replace(DECL_ANCHOR, HOOK_DECL + DECL_ANCHOR)
+    .replace(CONSUME_ANCHOR, HOOK_LINE + CONSUME_ANCHOR);
+}
+
+function withLut(source: string, entries: number, interpolate: boolean): string {
+  if (!source.includes(POW_LINE) || !source.includes(SRGB_ANCHOR)) {
+    throw new Error("lut build: srgbLinear moved; the comparison measures nothing");
+  }
+  const last = entries - 1;
+  const table =
+    `const SRGB_LUT = (() => {\n` +
+    `  const table = new Float64Array(${entries});\n` +
+    `  for (let i = 0; i < ${entries}; i += 1) {\n` +
+    `    const c = i / ${last};\n` +
+    `    table[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);\n` +
+    `  }\n` +
+    `  return table;\n` +
+    `})();\n\n`;
+  const body = interpolate
+    ? `  const at = Math.min(${last}, Math.max(0, (channel / 255) * ${last}));\n` +
+      `  const lo = Math.floor(at);\n` +
+      `  const hi = lo >= ${last} ? ${last} : lo + 1;\n` +
+      `  const frac = at - lo;\n` +
+      `  return SRGB_LUT[lo] * (1 - frac) + SRGB_LUT[hi] * frac;\n`
+    : `  const at = Math.min(${last}, Math.max(0, (channel / 255) * ${last}));\n` +
+      `  return SRGB_LUT[Math.round(at)];\n`;
+  return source.replace(SRGB_ANCHOR, table + SRGB_ANCHOR).replace(POW_LINE, body);
+}
+
+const LOADED = new Map<string, Promise<Hooked>>();
+function load(name: string, build: (source: string) => string): Promise<Hooked> {
+  const existing = LOADED.get(name);
+  if (existing) return existing;
+  const source = readFileSync("lib/skin.ts", "utf8");
+  mkdirSync(DIR, { recursive: true });
+  writeFileSync(`${DIR}/${name}.ts`, rewriteImports(build(withHook(source))));
+  // The specifier is a variable behind @vite-ignore for the reason
+  // tests/scan-cost-benchmark.test.ts gives: a literal would make `npx tsc --noEmit`
+  // resolve a module that only exists while this file is running.
+  const path = `./.blemish-perturb-tmp/${name}.ts`;
+  const loaded = import(/* @vite-ignore */ path) as Promise<Hooked>;
+  LOADED.set(name, loaded);
+  return loaded;
+}
+
+// ---------------------------------------------------------------------------
+// The grid, and a replica of the classification the detector performs on it.
+// ---------------------------------------------------------------------------
+
+type Grid = { astar: Float64Array; valid: Uint8Array; gw: number; gh: number; count: number };
+
+/** One frame per size, built once. Rebuilding a 1440x1920 fixture inside the search
+ *  loop costs more than every detectBlemishes call the search makes. */
+const FIXTURES = new Map<string, { data: Uint8ClampedArray; lms: LM[]; gains: { r: number; g: number; b: number } }>();
+function fixture(w: number, h: number, noise = 9) {
+  const key = `${w}x${h}@${noise}`;
+  const cached = FIXTURES.get(key);
+  if (cached) return cached;
+  const { data } = syntheticFace(w, h, noise);
+  const lms = faceLandmarks();
+  const built = { data, lms, gains: frameChannelGains(data, w, h) };
+  FIXTURES.set(key, built);
+  return built;
+}
+
+/** Run the hooked build once, keeping the a* grid it computed. */
+function capture(mod: Hooked, w: number, h: number, noise = 9): Grid {
+  const { data, lms, gains } = fixture(w, h, noise);
+  let grid: Grid | null = null;
+  mod.__perturbAStar.fn = (astar, valid, gw, gh) => {
+    grid = { astar: Float64Array.from(astar), valid: Uint8Array.from(valid), gw, gh, count: 0 };
+  };
+  const read = mod.detectBlemishes(data, w, h, lms, gains);
+  mod.__perturbAStar.fn = null;
+  if (!grid) throw new Error(`${w}x${h}: the hook never ran; the harness measures nothing`);
+  return { ...(grid as Grid), count: read.count };
+}
+
+/** Run the hooked build with a perturbation applied to the a* grid. */
+function countWith(mod: Hooked, w: number, h: number, fn: Perturb): number {
+  const { data, lms, gains } = fixture(w, h);
+  mod.__perturbAStar.fn = fn;
+  const read = mod.detectBlemishes(data, w, h, lms, gains);
+  mod.__perturbAStar.fn = null;
+  return read.count;
+}
+
+/** lib/skin.ts's local background, cell by cell: the mean a* of the valid cells within
+ *  BACKGROUND_RADIUS, null below 8 of them. Replicated rather than imported because the
+ *  oracle below has to know each cell's margin before choosing where to push. */
+function residualsOf(grid: Grid): { residual: Float64Array; windowCount: Float64Array } {
+  const { astar, valid, gw, gh } = grid;
+  const sw = gw + 1;
+  const sumTable = new Float64Array(sw * (gh + 1));
+  const countTable = new Float64Array(sw * (gh + 1));
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      const s0 = (gy + 1) * sw + (gx + 1);
+      sumTable[s0] = (valid[i] ? astar[i] : 0) + sumTable[s0 - 1] + sumTable[s0 - sw] - sumTable[s0 - sw - 1];
+      countTable[s0] = (valid[i] ? 1 : 0) + countTable[s0 - 1] + countTable[s0 - sw] - countTable[s0 - sw - 1];
+    }
+  }
+  const residual = new Float64Array(gw * gh);
+  const windowCount = new Float64Array(gw * gh);
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!valid[i]) continue;
+      const lx = Math.max(0, gx - BACKGROUND_RADIUS);
+      const ly = Math.max(0, gy - BACKGROUND_RADIUS);
+      const hx = Math.min(gw - 1, gx + BACKGROUND_RADIUS);
+      const hy = Math.min(gh - 1, gy + BACKGROUND_RADIUS);
+      const a = (hy + 1) * sw + (hx + 1);
+      const b = ly * sw + (hx + 1);
+      const c = (hy + 1) * sw + lx;
+      const d = ly * sw + lx;
+      const n = countTable[a] - countTable[b] - countTable[c] + countTable[d];
+      windowCount[i] = n;
+      if (n < 8) continue;
+      residual[i] = astar[i] - (sumTable[a] - sumTable[b] - sumTable[c] + sumTable[d]) / n;
+    }
+  }
+  return { residual, windowCount };
+}
+
+/** lib/skin.ts's count, from a residual field: above the floor and a local maximum,
+ *  ties to the cell scanned first. */
+function countedOf(grid: Grid, residual: Float64Array): Uint8Array {
+  const { valid, gw, gh } = grid;
+  const counted = new Uint8Array(gw * gh);
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!valid[i]) continue;
+      if (residual[i] < MIN_RESIDUAL) continue;
+      let isPeak = true;
+      for (let dy = -SUPPRESSION_RADIUS; dy <= SUPPRESSION_RADIUS && isPeak; dy += 1) {
+        for (let dx = -SUPPRESSION_RADIUS; dx <= SUPPRESSION_RADIUS; dx += 1) {
+          const nx = gx + dx;
+          const ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || (dx === 0 && dy === 0)) continue;
+          const j = ny * gw + nx;
+          if (residual[j] > residual[i] || (residual[j] === residual[i] && j < i)) {
+            isPeak = false;
+            break;
+          }
+        }
+      }
+      if (isPeak) counted[i] = 1;
+    }
+  }
+  return counted;
+}
+
+/**
+ * The certified radius: the largest delta for which NO per-cell error bounded by delta
+ * can change the count, on this frame.
+ *
+ * Two amplification factors do the work, and both are bounds rather than estimates.
+ * A cell's residual is `a*[i] - mean(a* over its window)`, and cell i is in its own
+ * window, so an error field bounded by delta moves it by at most
+ * `delta * (1 + (n-1)/n) < 2*delta`. A DIFFERENCE of two residuals moves by at most
+ * twice that. So:
+ *
+ * - a counted cell stays counted while `delta < (residual - floor) / 2` and
+ *   `delta < (residual - best neighbour) / 4`;
+ * - an uncounted cell stays uncounted while EITHER of the two things blocking it
+ *   cannot be undone, which is why the two deficits combine with max, not min.
+ *
+ * The minimum over every valid cell is the radius. It is conservative on purpose: it
+ * answers "what is provably safe", which is the only form of the question an
+ * approximation to the transfer curve can be checked against.
+ */
+function certifiedRadius(grid: Grid, residual: Float64Array, counted: Uint8Array): number {
+  const { valid, gw, gh } = grid;
+  let radius = Infinity;
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!valid[i]) continue;
+      let best = -Infinity;
+      for (let dy = -SUPPRESSION_RADIUS; dy <= SUPPRESSION_RADIUS; dy += 1) {
+        for (let dx = -SUPPRESSION_RADIUS; dx <= SUPPRESSION_RADIUS; dx += 1) {
+          const nx = gx + dx;
+          const ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || (dx === 0 && dy === 0)) continue;
+          if (!valid[ny * gw + nx]) continue;
+          best = Math.max(best, residual[ny * gw + nx]);
+        }
+      }
+      const thresholdMargin = Math.abs(residual[i] - MIN_RESIDUAL) / 2;
+      const peakMargin = best === -Infinity ? Infinity : Math.abs(residual[i] - best) / 4;
+      // A counted cell loses its status if EITHER test flips: the smaller margin rules.
+      // An uncounted cell gains it only if BOTH of the things blocking it are undone,
+      // so its radius is the larger of the two deficits that apply to it.
+      const cell = counted[i]
+        ? Math.min(thresholdMargin, peakMargin)
+        : Math.max(residual[i] < MIN_RESIDUAL ? thresholdMargin : 0, residual[i] < best ? peakMargin : 0);
+      radius = Math.min(radius, cell);
+    }
+  }
+  return radius;
+}
+
+// ---------------------------------------------------------------------------
+// Perturbation shapes.
+// ---------------------------------------------------------------------------
+
+/** Every valid cell up by delta. The detector subtracts a local background, so this is
+ *  the shape that should change nothing at all — and the amount by which it eventually
+ *  does is floating point, not the detector. */
+const uniform = (delta: number): Perturb => (astar, valid) => {
+  for (let i = 0; i < astar.length; i += 1) if (valid[i]) astar[i] += delta;
+};
+
+/** Alternating sign by cell parity: the largest local contrast a bounded error can
+ *  produce without knowing anything about the frame. */
+const checkerboard = (delta: number): Perturb => (astar, valid, gw) => {
+  for (let i = 0; i < astar.length; i += 1) {
+    if (!valid[i]) continue;
+    const gx = i % gw;
+    const gy = (i - gx) / gw;
+    astar[i] += (gx + gy) % 2 === 0 ? delta : -delta;
+  }
+};
+
+/** Independent random sign at full magnitude, seeded so a run reproduces. */
+const randomSign = (delta: number, seed: number): Perturb => (astar, valid) => {
+  let state = seed >>> 0;
+  for (let i = 0; i < astar.length; i += 1) {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    if (!valid[i]) continue;
+    astar[i] += state / 4294967296 < 0.5 ? delta : -delta;
+  }
+};
+
+/** One cell, chosen because it is the closest to changing its own classification.
+ *  `sign` +1 lifts an uncounted cell over the floor, -1 drops a counted one under it.
+ *  Perturbing a single cell is the weakest adversary there is — it moves that cell's
+ *  residual by delta*(1 - 1/n), about 0.99*delta — which is why the delta it needs is
+ *  an upper bound on the worst case and never a claim about it. */
+function oracleTarget(grid: Grid, residual: Float64Array, counted: Uint8Array, sign: 1 | -1): number {
+  const { valid, gw, gh } = grid;
+  let target = -1;
+  let bestDeficit = Infinity;
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!valid[i]) continue;
+      if (sign === -1) {
+        if (!counted[i]) continue;
+        const deficit = residual[i] - MIN_RESIDUAL;
+        if (deficit < bestDeficit) {
+          bestDeficit = deficit;
+          target = i;
+        }
+        continue;
+      }
+      if (counted[i] || residual[i] >= MIN_RESIDUAL) continue;
+      // Only cells already winning their neighbourhood: lifting a cell that is not a
+      // local maximum would need the neighbours moved too, which is a different shape.
+      let isPeak = true;
+      for (let dy = -SUPPRESSION_RADIUS; dy <= SUPPRESSION_RADIUS && isPeak; dy += 1) {
+        for (let dx = -SUPPRESSION_RADIUS; dx <= SUPPRESSION_RADIUS; dx += 1) {
+          const nx = gx + dx;
+          const ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || (dx === 0 && dy === 0)) continue;
+          const j = ny * gw + nx;
+          if (residual[j] > residual[i] || (residual[j] === residual[i] && j < i)) {
+            isPeak = false;
+            break;
+          }
+        }
+      }
+      if (!isPeak) continue;
+      const deficit = MIN_RESIDUAL - residual[i];
+      if (deficit < bestDeficit) {
+        bestDeficit = deficit;
+        target = i;
+      }
+    }
+  }
+  if (target < 0) throw new Error(`oracle: no candidate cell for sign ${sign}`);
+  return target;
+}
+
+const oneCell = (index: number, delta: number, sign: 1 | -1): Perturb => (astar) => {
+  astar[index] += sign * delta;
+};
+
+/** The target cell and the suppression neighbourhood around it, together. Dropping one
+ *  cell does not remove a count — a neighbour it was suppressing takes its place, and
+ *  the case below pins exactly that — so removing one takes the block. */
+const block = (index: number, delta: number, sign: 1 | -1, radius: number): Perturb =>
+  (astar, valid, gw, gh) => {
+    const gx = index % gw;
+    const gy = (index - gx) / gw;
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        const nx = gx + dx;
+        const ny = gy + dy;
+        if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+        const j = ny * gw + nx;
+        if (valid[j]) astar[j] += sign * delta;
+      }
+    }
+  };
+
+/**
+ * The smallest delta at which `shape(delta)` changes the count, bisected inside a
+ * bracket that is checked at both ends first. Both checks matter: without the low one
+ * a shape that perturbs nothing would report the bracket's floor, and without the high
+ * one a shape that never bites would report its ceiling.
+ */
+function bisect(
+  runAt: (delta: number) => number,
+  baseline: number,
+  lo: number,
+  hi: number
+): { delta: number; countAt: number } {
+  if (runAt(lo) !== baseline) throw new Error(`bisect: the count already moved at ${lo}`);
+  const highCount = runAt(hi);
+  if (highCount === baseline) throw new Error(`bisect: the count never moved by ${hi}`);
+  let low = lo;
+  let high = hi;
+  for (let i = 0; i < 60 && (high - low) / high > 1e-9; i += 1) {
+    const mid = (low + high) / 2;
+    if (runAt(mid) === baseline) low = mid;
+    else high = mid;
+  }
+  return { delta: high, countAt: runAt(high) };
+}
+
+/** Escalate by doubling until the count moves, then bisect inside the last rung. Used
+ *  for the shapes whose threshold is not predictable from the margins. */
+function ladder(runAt: (delta: number) => number, baseline: number, start = 1e-9, cap = 64): number | null {
+  let previous = start;
+  for (let delta = start; delta <= cap; delta *= 2) {
+    if (runAt(delta) !== baseline) return bisect(runAt, baseline, previous, delta).delta;
+    previous = delta;
+  }
+  return null;
+}
+
+afterAll(() => {
+  rmSync(DIR, { recursive: true, force: true });
+});
+
+const sig = (v: number) => (v === 0 ? "0" : v.toExponential(3));
+
+describe("how far a* can move before blemishCount changes", () => {
+  it("rebuilds lib/skin.ts with the hook and reads exactly what the shipped build reads", async () => {
+    // The harness is only worth its output if the build it perturbs is the build that
+    // ships. With no perturbation installed it must reproduce the committed counts and
+    // densities, which are the same four rows tests/scan-cost-benchmark.test.ts pins.
+    const mod = await load("skin-perturbable", (source) => source);
+    for (const [w, h, count, density] of COMMITTED) {
+      const { data, lms, gains } = fixture(w, h);
+      const shipped = detectBlemishes(data, w, h, lms, gains);
+      const hooked = mod.detectBlemishes(data, w, h, lms, gains);
+      expect(hooked.count, `${w}x${h} hooked count`).toBe(shipped.count);
+      expect(hooked.areaFace, `${w}x${h} hooked areaFace`).toBe(shipped.areaFace);
+      expect(hooked.count, `${w}x${h} committed count`).toBe(count);
+      expect(shipped.count / Math.max(shipped.areaFace, 1e-6), `${w}x${h} density`).toBe(density);
+    }
+  });
+
+  it("measures against the floor and the windows the detector actually uses", () => {
+    // Every margin in this file is a distance to one of these three. Read from
+    // lib/skin.ts rather than copied, and pinned here so that moving one is a named
+    // failure rather than a silent re-measurement of a different detector.
+    expect(MIN_RESIDUAL, "BLEMISH.minResidual").toBe(1.6);
+    expect(BACKGROUND_RADIUS, "BLEMISH.backgroundRadius").toBe(5);
+    expect(SUPPRESSION_RADIUS, "BLEMISH.suppressionRadius").toBe(2);
+  });
+
+  it("actually perturbs: a large error moves the count at every frame size", async () => {
+    // The failure mode this file has to rule out first. A hook that is never called,
+    // or is called on a copy, reports an enormous tolerance and looks like good news.
+    // Four a* units of alternating error is well past anything a lookup table could
+    // produce — a 256-entry table read at its nearest entry is off by 0.47 at worst,
+    // measured below — and it moves the count at all four sizes.
+    const mod = await load("skin-perturbable", (source) => source);
+    const moved: number[] = [];
+    for (const [w, h, count] of COMMITTED) {
+      const perturbed = countWith(mod, w, h, checkerboard(4));
+      expect(perturbed, `${w}x${h}: a 4.0 a* checkerboard left the count alone`).not.toBe(count);
+      moved.push(perturbed);
+    }
+    // Pinned, so "it moved" cannot quietly become "it moved to whatever".
+    expect(moved).toEqual([415, 421, 414, 418]);
+  });
+
+  it("is insensitive to a uniform offset, which is the property the index is built on", async () => {
+    // detectBlemishes subtracts a local background precisely so a device shifting every
+    // a* in the frame by the same amount does not change the count. A uniform shape is
+    // therefore the control: it must not move the count at magnitudes that dwarf every
+    // threshold measured below.
+    const mod = await load("skin-perturbable", (source) => source);
+    for (const [w, h, count] of COMMITTED) {
+      for (const delta of [1e-6, 1e-3, 0.5, 2]) {
+        expect(countWith(mod, w, h, uniform(delta)), `${w}x${h} uniform ${delta}`).toBe(count);
+      }
+    }
+  });
+
+  it("measures the certified radius and the achieved one, at every frame size", async () => {
+    const mod = await load("skin-perturbable", (source) => source);
+    const rows: Array<{ w: number; h: number; certified: number; lift: number; drop: number }> = [];
+    for (const [w, h, count] of COMMITTED) {
+      const grid = capture(mod, w, h);
+      const { residual } = residualsOf(grid);
+      const counted = countedOf(grid, residual);
+      // The replica has to be the detector, or the oracle targets the wrong cell.
+      let replicated = 0;
+      for (let i = 0; i < counted.length; i += 1) replicated += counted[i];
+      expect(replicated, `${w}x${h}: the replica disagrees with detectBlemishes`).toBe(count);
+
+      const certified = certifiedRadius(grid, residual, counted);
+      const lifted = oracleTarget(grid, residual, counted, 1);
+      const dropped = oracleTarget(grid, residual, counted, -1);
+      // Removing a count is not the mirror image of adding one, and this is the case
+      // that says so. Dropping the most marginal counted cell by TWICE the margin that
+      // would take it under the floor leaves the count where it was: the cell it was
+      // suppressing becomes the local maximum and is counted in its place.
+      const dropMargin = residual[dropped] - MIN_RESIDUAL;
+      expect(
+        countWith(mod, w, h, oneCell(dropped, dropMargin * 2, -1)),
+        `${w}x${h}: dropping one cell removed a count`
+      ).toBe(count);
+      // Each direction is searched the same way: double from 1e-9 until the count
+      // moves, then halve inside that rung. The count is not monotone in delta, so
+      // what this finds is the smallest magnitude on that ladder at which the count
+      // differs — an upper bound on the worst case, never a claim to be it.
+      const lift = ladder((delta) => countWith(mod, w, h, oneCell(lifted, delta, 1)), count);
+      const drop = ladder(
+        (delta) => countWith(mod, w, h, block(dropped, delta, -1, SUPPRESSION_RADIUS)),
+        count
+      );
+      expect(lift, `${w}x${h}: lifting one cell never moved the count`).not.toBeNull();
+      expect(drop, `${w}x${h}: dropping the block never moved the count`).not.toBeNull();
+      // The bracket the certified radius promises: nothing moves below it.
+      expect(lift!, `${w}x${h}: lift below certified`).toBeGreaterThan(certified);
+      expect(drop!, `${w}x${h}: drop below certified`).toBeGreaterThan(certified);
+      rows.push({ w, h, certified, lift: lift!, drop: drop! });
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_TOLERANCE) {
+      process.stdout.write("\nper-cell a* perturbation tolerance, one synthetic face\n");
+      process.stdout.write("frame        certified   lift one  drop 5x5\n");
+      for (const row of rows) {
+        process.stdout.write(
+          `${`${row.w}x${row.h}`.padEnd(12)}${sig(row.certified).padStart(10)} ` +
+          `${sig(row.lift).padStart(10)} ${sig(row.drop).padStart(10)}\n`
+        );
+      }
+      process.stdout.write(
+        `PIN EXPECTED_TOLERANCE ${JSON.stringify(rows.map((row) => [row.certified, row.lift, row.drop]))}\n`
+      );
+    }
+
+    // The committed measurement. These are the numbers the lookup-table question is
+    // decided against, so they are pinned rather than printed and forgotten.
+    const expected = EXPECTED_TOLERANCE;
+    expect(rows.length).toBe(expected.length);
+    rows.forEach((row, i) => {
+      const [certified, lift, drop] = expected[i];
+      // The radius is closed-form arithmetic over the grid, so it is pinned exactly.
+      // The other two are the output of a 60-step bisection, which promises a relative
+      // 1e-9 and is pinned to a relative 1e-6 rather than to its last bit.
+      expect(row.certified, `${row.w}x${row.h} certified`).toBe(certified);
+      expect(row.lift / lift, `${row.w}x${row.h} lift`).toBeCloseTo(1, 6);
+      expect(row.drop / drop, `${row.w}x${row.h} drop`).toBeCloseTo(1, 6);
+    });
+  });
+
+  it("measures the certified radius across the fixture family, not one frame of it", async () => {
+    // One frame is an anecdote. The same face is rendered at three noise amplitudes
+    // either side of the committed 9 and read at all four frame sizes, and the radius
+    // is computed on each. The SMALLEST of the twelve is the number any approximation
+    // of the transfer curve has to beat; the spread is why one number would mislead.
+    const mod = await load("skin-perturbable", (source) => source);
+    const rows: Array<{ noise: number; w: number; h: number; count: number; certified: number }> = [];
+    for (const noise of NOISE_LEVELS) {
+      for (const [w, h] of COMMITTED) {
+        const grid = capture(mod, w, h, noise);
+        const { residual } = residualsOf(grid);
+        const counted = countedOf(grid, residual);
+        let replicated = 0;
+        for (let i = 0; i < counted.length; i += 1) replicated += counted[i];
+        expect(replicated, `noise ${noise} ${w}x${h}: the replica disagrees with detectBlemishes`).toBe(grid.count);
+        rows.push({ noise, w, h, count: grid.count, certified: certifiedRadius(grid, residual, counted) });
+      }
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_TOLERANCE) {
+      process.stdout.write("\ncertified radius over the fixture family (a* units)\n");
+      process.stdout.write("noise  frame        count  certified\n");
+      for (const row of rows) {
+        process.stdout.write(
+          `${String(row.noise).padStart(5)}  ${`${row.w}x${row.h}`.padEnd(12)}` +
+          `${String(row.count).padStart(5)}  ${sig(row.certified).padStart(9)}\n`
+        );
+      }
+      process.stdout.write(`smallest: ${sig(Math.min(...rows.map((row) => row.certified)))}\n`);
+      // The pin above, at full precision, so regenerating it is a copy rather than a
+      // retyping of a rounded table.
+      process.stdout.write(
+        `PIN EXPECTED_FAMILY ${JSON.stringify(rows.map((row) => [row.noise, row.w, row.count, row.certified]))}\n`
+      );
+    }
+
+    const expected = EXPECTED_FAMILY;
+    expect(rows.length).toBe(expected.length);
+    rows.forEach((row, i) => {
+      const [noise, w, count, certified] = expected[i];
+      expect(row.noise).toBe(noise);
+      expect(row.w).toBe(w);
+      expect(row.count, `noise ${row.noise} ${row.w}x${row.h} count`).toBe(count);
+      expect(row.certified, `noise ${row.noise} ${row.w}x${row.h} certified`).toBe(certified);
+    });
+  });
+
+  it("prints the shapes that are measured but not pinned", { timeout: 300_000 }, async () => {
+    if (!process.env.ARU_PRINT_BLEMISH_TOLERANCE) return;
+    const mod = await load("skin-perturbable", (source) => source);
+    process.stdout.write("\nsmallest delta at which each shape moves the count (null: never, to 64)\n");
+    process.stdout.write("frame        checkerboard  random(1)  random(2)    uniform\n");
+    for (const [w, h, count] of COMMITTED) {
+      const shapes: Array<number | null> = [
+        ladder((delta) => countWith(mod, w, h, checkerboard(delta)), count),
+        ladder((delta) => countWith(mod, w, h, randomSign(delta, 20260919)), count),
+        ladder((delta) => countWith(mod, w, h, randomSign(delta, 7717)), count),
+        ladder((delta) => countWith(mod, w, h, uniform(delta)), count),
+      ];
+      process.stdout.write(
+        `${`${w}x${h}`.padEnd(12)}${shapes.map((v) => (v === null ? "null" : sig(v)).padStart(11)).join(" ")}\n`
+      );
+    }
+  });
+
+  it("measures what a lookup table for the transfer curve would actually cost", async () => {
+    // The question the tolerance exists to answer. Each build replaces srgbLinear with
+    // a table over the 0-255 channel domain and nothing else, so the a* difference it
+    // produces IS the approximation error on the inputs detectBlemishes feeds —
+    // stride-window means times a gray-world gain, which are floats and not integers,
+    // which is the whole reason a table is an approximation here.
+    const shipped = await load("skin-perturbable", (source) => source);
+    const rows: Array<{ label: string; w: number; h: number; worst: number; count: number }> = [];
+    for (const [label, entries, interpolate] of LUTS) {
+      const name = `skin-lut-${entries}-${interpolate ? "linear" : "nearest"}`;
+      const mod = await load(name, (source) => withLut(source, entries, interpolate));
+      for (const [w, h, count] of COMMITTED) {
+        const exact = capture(shipped, w, h);
+        const approx = capture(mod, w, h);
+        expect(approx.valid, `${label} ${w}x${h}: a different set of cells`).toEqual(exact.valid);
+        let worst = 0;
+        for (let i = 0; i < exact.astar.length; i += 1) {
+          if (!exact.valid[i]) continue;
+          worst = Math.max(worst, Math.abs(exact.astar[i] - approx.astar[i]));
+        }
+        rows.push({ label, w, h, worst, count: approx.count });
+        expect(worst, `${label} ${w}x${h}: the table returned the exact curve`).toBeGreaterThan(0);
+        expect(exact.count, `${label} ${w}x${h}: the reference build is not the shipped one`).toBe(count);
+      }
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_TOLERANCE) {
+      process.stdout.write("\nlookup tables for srgbLinear: worst |delta a*| and the count it produces\n");
+      process.stdout.write("table          frame        worst |da*|   count\n");
+      for (const row of rows) {
+        process.stdout.write(
+          `${row.label.padEnd(14)}${`${row.w}x${row.h}`.padEnd(12)}${sig(row.worst).padStart(11)} ` +
+          `${String(row.count).padStart(7)}\n`
+        );
+      }
+      process.stdout.write(
+        `PIN EXPECTED_LUT ${JSON.stringify(rows.map((row) => [row.label, row.w, row.worst, row.count]))}\n`
+      );
+    }
+
+    // The verdict, as an assertion rather than as a sentence in a document: of the four
+    // candidates, exactly one moves a published count, and it is the 256-entry table
+    // read at its nearest entry — the one the backlog item named.
+    const committed = new Map(COMMITTED.map(([w, h, count]) => [`${w}x${h}`, count]));
+    const moved = rows.filter((row) => row.count !== committed.get(`${row.w}x${row.h}`));
+    expect(moved.map((row) => `${row.label} ${row.w}x${row.h} -> ${row.count}`)).toEqual([
+      "256 nearest 400x480 -> 7",
+    ]);
+
+    const expected = EXPECTED_LUT;
+    expect(rows.length).toBe(expected.length);
+    rows.forEach((row, i) => {
+      const [label, w, worst, count] = expected[i];
+      expect(row.label).toBe(label);
+      expect(row.w).toBe(w);
+      expect(row.worst, `${row.label} ${row.w}x${row.h} worst`).toBe(worst);
+      expect(row.count, `${row.label} ${row.w}x${row.h} count`).toBe(count);
+    });
+  });
+});
+

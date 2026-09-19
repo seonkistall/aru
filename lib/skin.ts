@@ -710,6 +710,33 @@ export function shineIndex(tzoneSpecular: number, tzoneL: number, cheekL: number
   return tzoneSpecular + Math.max(0, (tzoneL - cheekL) / (cheekL || 1)) * (SHINE_REFERENCE_CHEEK_L / 255);
 }
 
+/**
+ * The dryness axis's index: cheek high-frequency energy against the forehead's, each
+ * already divided by its own region's mean L* before it reaches here.
+ *
+ * 0 means "could not measure" — either patch outside the frame, or a forehead with no
+ * texture to divide by. A real ratio cannot be 0 (cheek pixels always carry some
+ * high-frequency energy), and the sentinel of 1 this replaced was indistinguishable
+ * from a genuinely even face.
+ *
+ * Extracted from `extractRawFeatures` on 2026-09-19 with the expression byte-for-byte
+ * unchanged, so no published value moved; `tests/skin-index-contract.test.ts` pins the
+ * number that proves it. It is extracted because the Python mirror DISAGREES with it
+ * and the disagreement needed somewhere to be written down:
+ * `ml/skin_indices.py:roughness_ratio` is `region_highfreq / max(reference_highfreq,
+ * 1e-6)`, an epsilon clamp where this returns 0, so on a forehead with no texture at
+ * all the two read 320000.0 and 0 on the row `ml/index-parity.json` commits — the same
+ * mechanism that made the rejected
+ * `shine_ratio` read 24,691 where the app read 0.0674 (docs/shine-formula-decision.md).
+ * `ml/index-parity.json` -> `roughness_ratio` holds both columns side by side so
+ * neither side can move by accident. WHICH side should move is not decided there and
+ * is not decided here: it is the question of which guard produces a usable dryness
+ * reading on a smooth forehead, and that needs faces.
+ */
+export function roughnessRatio(cheekHf: number | null, foreheadHf: number | null): number {
+  return cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0;
+}
+
 const ATTR_RAW_KEY: Record<SkinAttr, "shine" | "relRedness" | "cov"> = {
   oil: "shine",
   redness: "relRedness",
@@ -1081,10 +1108,7 @@ export function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinR
     toneLstar: tone.lstar,
     toneIta: tone.ita,
     toneSpread: relativeSpread(regionLstars),
-    // 0 means "could not measure" — the forehead patch fell outside the frame. A
-    // real ratio cannot be 0 (cheek pixels always carry some high-frequency energy),
-    // and the previous sentinel of 1 was indistinguishable from a genuine even face.
-    roughnessRatio: cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0,
+    roughnessRatio: roughnessRatio(cheekHf, foreheadHf),
     blemishCount: blemishes.count,
     blemishDensity: blemishes.count / Math.max(blemishes.areaFace, 1e-6),
   };

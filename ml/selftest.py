@@ -391,7 +391,7 @@ class SkinIndices(unittest.TestCase):
         """
         table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
         indices = table["indices"]
-        self.assertEqual(set(indices), {"shine_ratio", "tone_evenness", "blemish_count"})
+        self.assertEqual(set(indices), {"shine_ratio", "tone_evenness", "blemish_count", "roughness_ratio"})
         # Whatever is pinned has to be a real index declaring the real app field.
         for index_id, group in indices.items():
             self.assertIn(index_id, skin_indices.INDEX_BY_ID)
@@ -443,6 +443,65 @@ class SkinIndices(unittest.TestCase):
             computed = skin_indices.tone_evenness(list(row["lstars"]))
             self.assertEqual(computed, row["value"], f'{row["note"]}: tone_evenness({row["lstars"]})')
         self.assertGreaterEqual(len([row for row in spread_rows if row["value"] > 0]), 4)
+
+    def test_roughness_ratio_disagrees_with_the_app_and_the_table_records_where(self):
+        """The one parity group whose two columns are NOT expected to match.
+
+        Every other group in ml/index-parity.json pins an agreement. This one pins a
+        disagreement, at the value it takes. Measured 2026-09-19 (cycle 17), pinned
+        2026-09-19 (cycle 18): this function clamps the denominator at 1e-6 and
+        lib/skin.ts:roughnessRatio publishes its could-not-measure 0 below the same
+        1e-6, so on a forehead with no texture the two read 320000.0 and 0 — the
+        mechanism that disqualified the rejected shine_ratio, one axis over
+        (docs/shine-formula-decision.md).
+
+        Nothing here decides which side is right, and the table is built so that nobody
+        can decide it by accident: each language asserts its OWN column, so neither
+        implementation can move unnoticed while the decision waits on the real faces it
+        needs. Two further differences in the same pair are recorded in the group's
+        `covers` string rather than asserted, because neither is expressible as a row:
+        the app returns 0 when a region is missing, and the app's inputs are each
+        region's high-frequency energy divided by that region's own mean L*.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        indices = table["indices"]
+        self.assertEqual(skin_indices.FEATURE_KEY["roughness_ratio"], indices["roughness_ratio"]["featureKey"])
+        roughness = indices["roughness_ratio"]
+        self.assertEqual(roughness["comparison"], "divergent")
+        self.assertEqual(roughness["pythonFunction"], "ml/skin_indices.py :: roughness_ratio")
+        roughness_rows = roughness["rows"]
+        self.assertGreaterEqual(len(roughness_rows), 8)
+        divergent = 0
+        for row in roughness_rows:
+            if row["python"] is None:
+                # The app's missing-region branch. Python has no concept of it, which is
+                # why the column is absent rather than zero, and why this function is
+                # not called with those inputs at all.
+                self.assertTrue(row["cheekHf"] is None or row["foreheadHf"] is None, row["note"])
+                self.assertEqual(row["app"], 0.0, row["note"])
+                continue
+            computed = skin_indices.roughness_ratio(row["cheekHf"], row["foreheadHf"])
+            self.assertEqual(
+                computed,
+                row["python"],
+                f'{row["note"]}: roughness_ratio({row["cheekHf"]}, {row["foreheadHf"]})',
+            )
+            if computed != row["app"]:
+                divergent += 1
+        # A table whose columns agreed everywhere would pin the arithmetic and lose the
+        # finding, and one that disagreed everywhere would say the guard is not where
+        # the difference is. Both halves are required.
+        self.assertGreaterEqual(divergent, 3)
+        self.assertGreaterEqual(
+            len([row for row in roughness_rows if row["python"] is not None and row["python"] == row["app"]]),
+            4,
+        )
+        # The value that makes the divergence worth a table: an epsilon clamp turns a
+        # frame the app declines to grade into a reading in the hundreds of thousands.
+        smooth = [row for row in roughness_rows if row["foreheadHf"] == 0][0]
+        self.assertEqual(smooth["app"], 0.0)
+        self.assertGreater(smooth["python"], 100000.0)
+
 
     def test_rgb_to_lab_matches_the_typescript_implementation_within_a_measured_tolerance(self):
         """The same contract as the indices above, with the one difference that matters.
