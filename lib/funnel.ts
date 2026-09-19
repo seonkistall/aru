@@ -280,6 +280,7 @@ export type FunnelStage = {
 
 // The linear conversion path (share is a side branch, excluded here).
 const STAGE_ORDER: { kind: FunnelEventKind; label: string }[] = [
+  { kind: "scan_opened", label: "촬영 화면" },
   { kind: "scan_started", label: "스캔 시작" },
   { kind: "scan_completed", label: "스캔 완료" },
   { kind: "survey_completed", label: "설문 완료" },
@@ -288,17 +289,35 @@ const STAGE_ORDER: { kind: FunnelEventKind; label: string }[] = [
 ];
 
 // A true cumulative funnel: a session counts at stage i only if it reached that
-// stage AND every earlier stage (intersection anchored on scan_started). This
-// stays monotonic (never >100%, never a negative drop) even though the raw
-// per-step counts are independent per-session sets where survey/reco/commerce
-// can fire with no scan — a survey-only session simply isn't in the scan funnel.
+// stage AND every earlier stage. This stays monotonic (never >100%, never a negative
+// drop) even though the raw per-step counts are independent per-session sets where
+// survey/reco/commerce can fire with no scan — a survey-only session simply isn't in
+// the scan funnel.
+//
+// The anchor is `scan_opened` UNION `scan_started`, not `scan_opened` alone, and the
+// union is the whole point. `scan_opened` fires on /scan entry and `scan_started` at
+// the shutter, so in any log recorded since `scan_opened` existed the second implies
+// the first and the union IS the `scan_opened` set — the camera loss the funnel used
+// to hide (permission refused, camera busy, no camera, or backing out) now appears as
+// the drop into 스캔 시작. In a log recorded BEFORE it existed there are no
+// `scan_opened` rows at all, and anchoring on that kind alone would intersect every
+// later stage against the empty set and zero the whole chart. Such a session enters at
+// its own 스캔 시작 instead, and the camera bar reads a 0% drop for it — "not measured
+// here", which is true, rather than "nothing happened", which is not.
+//
+// The cost of that, stated because it is not visible in the chart: a log MIXING the two
+// generations understates the camera drop, since the older sessions contribute to the
+// anchor without ever being able to contribute a loss. Once every log in hand carries
+// `scan_opened` the union is a no-op and the understatement is gone. Pinned in
+// tests/funnel.test.ts.
 export function funnelDropoff(events: FunnelCountable[] = getFunnelEvents()): FunnelStage[] {
   const sessionsFor = (kind: FunnelEventKind) => new Set(events.filter((event) => event.kind === kind).map((event) => event.sessionId));
-  const start = sessionsFor(STAGE_ORDER[0].kind).size;
+  const anchor = new Set([...sessionsFor("scan_opened"), ...sessionsFor("scan_started")]);
+  const start = anchor.size;
   let running: Set<string> | null = null;
   let prevCount = start;
   return STAGE_ORDER.map((stage, index) => {
-    const set = sessionsFor(stage.kind);
+    const set = index === 0 ? anchor : sessionsFor(stage.kind);
     running = running === null ? set : new Set([...running].filter((id) => set.has(id)));
     const count = running.size;
     const result: FunnelStage = {

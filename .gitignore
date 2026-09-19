@@ -65,3 +65,6 @@ next-env.d.ts
 # local browser regression artifacts
 /test-results/
 /playwright-report/
+
+# scan cost benchmark scratch builds (ARU_PRINT_SCAN_COST)
+/tests/.scan-cost-tmp/

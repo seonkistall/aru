@@ -102,9 +102,9 @@ type VisibleModelManifest = {
   };
 };
 
-type LM = { x: number; y: number; z?: number };
-type SkinPixel = { r: number; g: number; b: number; L: number };
-type RegionStats = {
+export type LM = { x: number; y: number; z?: number };
+export type SkinPixel = { r: number; g: number; b: number; L: number };
+export type RegionStats = {
   meanR: number;
   meanG: number;
   meanB: number;
@@ -197,7 +197,14 @@ function lumAt(data: Uint8ClampedArray, w: number, x: number, y: number) {
   return lum(data[o], data[o + 1], data[o + 2]);
 }
 
-function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: LM[], indices: number[], radius = 4): RegionStats | null {
+/**
+ * The four functions below are exported ONLY so tests/scan-cost-benchmark.test.ts can
+ * time each phase of a scan as it actually ships, rather than against a copy that
+ * drifts. Same reason `confidenceLabel` and `distanceConfidence` are exported. Nothing
+ * outside lib/skin.ts calls them in the product: `extractRawFeatures` is reached through
+ * `analyzeSkin`/`analyzeSkinBurst`, and the other three only through it.
+ */
+export function sampleRegion(data: Uint8ClampedArray, w: number, h: number, landmarks: LM[], indices: number[], radius = 4): RegionStats | null {
   const collected: SkinPixel[] = [];
   let specular = 0;
   let clipped = 0;
@@ -678,7 +685,7 @@ function levelFor(attr: SkinAttr, value: number): SkinLevel {
 // sign whatever the clamp. Tone is therefore measured on the pixels as captured,
 // which is also what ml/ita.py does offline and what its "change one, change both"
 // contract requires. See docs/tone-ita-verification.md.
-function frameChannelGains(data: Uint8ClampedArray, width: number, height: number): { r: number; g: number; b: number } {
+export function frameChannelGains(data: Uint8ClampedArray, width: number, height: number): { r: number; g: number; b: number } {
   let sumR = 0;
   let sumG = 0;
   let sumB = 0;
@@ -751,7 +758,7 @@ function relativeSpread(values: number[]): number {
  * 2.0012 — so the face-relative area is the invariant one and this is the
  * denominator a cross-device index has to use.
  */
-function detectBlemishes(
+export function detectBlemishes(
   data: Uint8ClampedArray,
   w: number,
   h: number,
@@ -794,16 +801,36 @@ function detectBlemishes(
 
   const astar = new Float64Array(gw * gh);
   const valid = new Uint8Array(gw * gh);
+  const excludeRSq = excludeR * excludeR;
+  // The exclusion test used to run all ~42 non-skin points against every one of the
+  // ~18,000 grid cells. `cy` depends only on `gy`, so a point further than excludeR in
+  // y alone can never be within excludeR, and the predicate is a plain OR over the
+  // points: dropping those once per ROW is exactly the same test, not an
+  // approximation. Eyes, brows, lips and nostrils each sit in a narrow y band, so most
+  // rows keep a handful of points or none.
+  // Measured by rebuilding this file with the loop it replaced and checking both
+  // builds return the same count first: 2.19-3.00ms saved per frame at 400x480 falling
+  // to 0.99-1.62ms at 1440x1920, against a detectBlemishes of 5.18-10.21ms — 3.0-9.0ms
+  // per three-frame scan on the build container, which is not a phone.
+  // docs/scan-cost-measurement.md; ARU_PRINT_SCAN_COST=1 npx vitest run
+  // tests/scan-cost-benchmark.test.ts re-derives every figure in it.
+  const rowPoints: Array<{ x: number; y: number }> = [];
   for (let gy = 0; gy < gh; gy += 1) {
+    const cy = y0 + gy * stride;
+    if (cy >= h) continue;
+    rowPoints.length = 0;
+    for (const point of excluded) {
+      const dy = cy - point.y;
+      if (dy * dy < excludeRSq) rowPoints.push(point);
+    }
     for (let gx = 0; gx < gw; gx += 1) {
       const cx = x0 + gx * stride;
-      const cy = y0 + gy * stride;
-      if (cx >= w || cy >= h) continue;
+      if (cx >= w) continue;
       let nearNonSkin = false;
-      for (const point of excluded) {
+      for (const point of rowPoints) {
         const dx = cx - point.x;
         const dy = cy - point.y;
-        if (dx * dx + dy * dy < excludeR * excludeR) {
+        if (dx * dx + dy * dy < excludeRSq) {
           nearNonSkin = true;
           break;
         }
@@ -910,7 +937,7 @@ function detectBlemishes(
   return { count, areaFace: (validCells * stride * stride) / (faceW * faceW) };
 }
 
-function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
+export function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
   const { data, width: w, height: h } = imageData;
   const tzone = sampleRegion(data, w, h, landmarks, TZONE);
   const cheeks = sampleRegion(data, w, h, landmarks, CHEEKS);

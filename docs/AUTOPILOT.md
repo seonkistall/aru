@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 ## What this is for
 
@@ -280,8 +280,15 @@ partly done and stays here.
   **2026-09-17, cycle 8: something now reads the table.** Still `[~]`, and for the same
   §5 reason. The read side is the closed item "Nobody can read `funnel_events`" in
   [`docs/autopilot-changelog.md`](autopilot-changelog.md); the flag is untouched.
-- [AI] Measure the real per-scan cost of the new within-image indices on a mid-range
+- [~] [AI] Measure the real per-scan cost of the new within-image indices on a mid-range
   phone profile, not on the build container.
+  **2026-09-19, cycle 15: the container half is measured and written down; the phone half
+  is a device and stays blocked.** `tests/scan-cost-benchmark.test.ts` +
+  `docs/scan-cost-measurement.md`. What a container CAN establish is established: the
+  per-frame work in pixels, how each phase scales, the split between phases, and each
+  phase's share of a budget here. What it cannot is a phone number, and no device
+  multiplier was invented — that half is the physical-device QA blocker already recorded
+  below. Stays `[~]` for exactly that reason and for no other.
 - [AI] **The promotion gate is fed two different models' numbers in one call.**
   Verified by the supervisor at main `b2ec030`, `ml/train_visible_attributes.py:805-845`,
   independently of PR #69 which reports the same area. The training loop saves
@@ -341,11 +348,6 @@ partly done and stays here.
   its own qwk and pearson and the floor should be re-set against those, not against
   the synthetic table. Do not raise it on a hunch, and do not lower it to make a run
   pass.
-- [AI] `funnelDropoff` still anchors its cumulative chart on `scan_started`, so the
-  camera loss `scan_opened` now measures does not appear in the drop-off bars — it is
-  only in the summary (`captureStart`, `cameraBlockRate`). Moving the anchor would
-  zero every stage of an event log recorded before `scan_opened` existed, because the
-  chart is an intersection from stage 0. Revisit once logs in hand all contain it.
 - [~] [AI] Share surface: audit `app/components/share-card.tsx` against what actually
   renders in KakaoTalk. **Partly answered** 2026-09-15 in `docs/share-preview-findings.md`
   — the structural half is settled, the Kakao-render half is not and needs a phone. The
@@ -632,6 +634,157 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-19 (cycle 15) — Branch `autopilot/2026-09-19-0039`. **A scan costs 6.6-11.6ms
+  a frame on this box, `detectBlemishes` is 79-87% of it, and cycle 14's per-pixel branch
+  is 58µs of it. The brief's premise about where that branch runs was wrong, and the
+  measurement is what showed it.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **509 passed in 79 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The correction first, because it changes what the question means.** The brief put
+  cycle 14's clipped-channel branch "in a loop that runs per region, per frame, on a
+  650ms MediaPipe cadence". It does not. `sampleRegion` is reached only from
+  `extractRawFeatures`, and the only non-test callers of that are `analyzeSkin` (`/eval`)
+  and `analyzeSkinBurst` (**once per scan**, over **at most three** burst frames —
+  `for (let i = 1; i < 3; i += 1)`). The 650ms tick runs `evaluateCapturedQuality` ->
+  `evaluateSkinRoiQuality` in `app/scan/skin-roi-quality.ts`, which takes only the
+  `SAMPLING_LANDMARKS` constant from `lib/skin.ts`. So the branch runs 6 regions x 3
+  frames per scan, not per preview tick, and the budget it is measured against is the
+  scan's, not the tick's. Pinned as a case so the next cycle does not re-derive it wrong.
+
+  **The second structural fact, counted rather than timed: `sampleRegion` does not scale
+  with frame size.** It reads a 9x9 patch around each landmark in six lists — 56 patches,
+  81 pixels, **4,536 pixels per frame**, identical at 400x480 and at 1440x1920. Only
+  `detectBlemishes` reads pixels in proportion to the face, and even it walks a grid of a
+  fixed ~90 cells across the face width. Four runs of the committed benchmark, medians of
+  7 repeats each, ranges spanning all four runs:
+
+  ```
+  frame        analyzeSkin   burst(3f)   6xsampleRegion  frameGains  detectBlemishes
+  400x480      6.60-6.86ms   19.7-20.4   1000-1025us     22us        5.21-5.34ms
+  720x960      8.03-8.35ms   24.3-24.7   1007-1015us     20us        6.81-6.86ms
+  1080x1440    9.53-10.02ms  28.7-29.0   1003-1020us     20us        8.12-8.27ms
+  1440x1920   11.39-11.63ms  34.4-35.3    978-995us      20us        9.92-10.17ms
+  ```
+
+  The face box grows **14.4x** down that table; `sampleRegion` moves **4.8%** and
+  `detectBlemishes` **1.9x**. Over the three rows sharing an 18,291-cell grid,
+  `detectBlemishes` fits **5.8ms fixed + 6.9ns per face-box pixel** — so at 720x960 the
+  whole pixel pass is about 1.0ms of 6.8 and the rest is per-cell work at ~315ns a cell.
+
+  **Cycle 14's branch, isolated against a build of `lib/skin.ts` with exactly that line
+  removed** — the shipped function, not a copy, and the sweep throws rather than
+  measuring nothing if the line is reworded. Sixteen measurements, four runs x four frame
+  sizes, **all positive**: **44.1-72.5µs a frame, median 58.4µs**, i.e. 9.7-16.0ns a
+  pixel and **~175µs a scan, 0.7% of `analyzeSkinBurst` at 720x960**, constant in frame
+  size. Read as an **upper bound**: deleting the line also deletes the `clipped`
+  accumulator and shrinks the body, which moves V8's inlining, and 12.9ns for three
+  integer comparisons is well above what the comparisons alone can cost. Stated rather
+  than hidden, and so is this — an EARLIER arrangement of the same benchmark could not
+  resolve it at all (deltas ±15µs, sign changing between frame sizes). A difference this
+  small is sensitive to how the benchmark is laid out; the number to trust is the one the
+  committed file reproduces, which is why it is committed.
+
+  **What the measurement found instead, and the one change taken.** The non-skin
+  exclusion test ran all ~42 `NON_SKIN` points against each of ~18,000 grid cells.
+  `cy` depends only on the row, so a point further than `excludeR` in y alone can never
+  be within `excludeR`, and the predicate is a plain OR over the points: dropping those
+  once per row is **exactly the same test**. Measured by rebuilding `lib/skin.ts` with
+  the loop it replaced, after asserting both builds return the same count AND the same
+  area:
+
+  ```
+  frame        row-filtered      point-by-point    saved/frame   saved/scan (3f)
+  400x480      5.18-5.43ms       7.47-8.43ms       2.19-3.00ms   6.6-9.0ms
+  720x960      6.61-6.83ms       8.93-9.75ms       2.33-2.92ms   7.0-8.8ms
+  1080x1440    7.99-8.22ms       9.84-10.64ms      1.86-2.41ms   5.6-7.2ms
+  1440x1920    9.99-10.21ms     11.01-11.83ms      0.99-1.62ms   3.0-4.9ms
+  ```
+
+  **No published value moves**, which is the condition on a performance change here.
+  `fallbackVersion`, `ATTR_THRESHOLDS`, `inputSchemaVersion` and the manifest are all
+  untouched; guardrail 8's `status` and `promotionGate` are byte-identical. Two guards,
+  both default cases: `blemishCount`/`blemishDensity` pinned to the values the
+  PRE-change build produced (measured on that build, not assumed) on a fixture whose
+  discs sit inside the nostril group's exclusion band in y, and the two predicates
+  re-derived over the real grid at five radii and asserted to mark the same cells.
+  Reverting the row filter leaves the count pin GREEN — that is the proof — and fails
+  only the source pin.
+
+  **The bigger hot spot is filed, not taken.** `rgbToLab`, once per valid cell, is
+  **3.91-6.20ms — 61-75% of `detectBlemishes` and 53-59% of a whole scan**. The obvious
+  win is unavailable: its inputs are `Math.min(255, channel * gain)`, floats not
+  integers, so a 256-entry transfer-curve table is an approximation and an approximation
+  moves `blemishCount`. The other win — `detectBlemishes` reads only `lab.a`, so `fz`
+  and the `z` dot product are dead — needs a second entry point beside a function
+  `ml/ita.py` already mirrors, and a near-duplicate of a function with a cross-language
+  twin is exactly how `shine_ratio` and `shine` became two formulas under one name.
+  Backlog item, not a quiet third copy.
+
+  **The fixture had to be rebuilt before any of this was a measurement.** Every existing
+  skin fixture in the repository collapses all thirteen T-zone landmarks onto ONE point,
+  so `sampleRegion` reads the same 81 pixels thirteen times out of L1; and with the
+  landmarks stacked, `skinRoiRegionsFromLandmarks` produces a degenerate ROI, so the
+  first run of section D timed an early return and printed **0.000ms**. Both are fixed —
+  56 patches at 56 places, non-skin groups where they belong — and the sweep now throws
+  if the ROI bails out rather than publishing a zero. For the record, the 650ms tick's
+  real cost: **0.88ms (0.14% of the budget) at 400x480 rising to 12.8ms (1.97%) at
+  1440x1920**, scaling with pixels the way `detectBlemishes` does not.
+
+  **Nothing that runs by default asserts a duration.** A timing threshold fails on a
+  loaded box while nothing in the product is broken. The seven default cases count
+  pixels, pin source lines and pin values, and run in 1.6s; every timing is behind
+  `ARU_PRINT_SCAN_COST`, the shape `ARU_PRINT_SCALE_SWEEP` / `ARU_PRINT_SHINE_SWEEP` /
+  `ARU_PRINT_CLIP_SWEEP` already set.
+
+  **Second item: `funnelDropoff`'s anchor, which did not need the wait it was parked
+  on.** The chart is an intersection from stage 0, so anchoring on `scan_opened` alone
+  zeroes every log recorded before that kind existed — which is why the item said
+  "revisit once logs in hand all contain it". The anchor is now `scan_opened` UNION
+  `scan_started`: since `scan_opened` fires on /scan entry and `scan_started` at the
+  shutter, the second implies the first in any modern log and the union IS the
+  `scan_opened` set, so the camera loss appears as the drop into 스캔 시작; a legacy
+  session enters at its own 스캔 시작 and reads a 0% camera drop, which is "not measured
+  here" rather than "nothing happened". The cost is pinned as a case rather than left to
+  be found: a log MIXING the generations understates the drop, 50% becoming 33% on the
+  three-session fixture. Three existing cases pinned the deferral and were rewritten to
+  pin the new property — a decision changed deliberately, not a guard weakened.
+
+  **Every new case broken at the SOURCE line it protects**, eight breaks, each reverted
+  from a file copy:
+
+  ```
+  sampleRegion radius 4 -> 5        1 fail; AssertionError: expected [ 1573, 1694, 968, 847,
+                                    847, 847 ] to deeply equal [ 1053, 1134, 648, 567, 567, 567 ]
+  clipped-channel line deleted      1 fail; expected '/**\n * Visible-signal skin analysis.…'
+                                    to contain '        if (r >= 255 || g >= 255 || b…'
+  burst 3 frames -> 4               1 fail; expected '"use client";\n\nimport { useCallback…'
+                                    to contain 'for (let i = 1; i < 3; i += 1)'
+  row filter bound x0.25            2 fail; AssertionError: 400x480 blemishDensity: expected
+                                    3.8926712054465358 to be 4.122487064212401
+  row filter fully reverted         1 fail (the SOURCE pin only); the blemishCount pin stays
+                                    green, which is the equivalence proof
+  funnel anchor loses the union     5 fail; AssertionError: expected +0 to be 1 — the exact
+                                    harm the backlog item was parked on
+  scan_opened stage removed         5 fail; expected [ 'scan_started', …(4) ] to deeply equal
+                                    [ 'scan_opened', 'scan_started', …(4) ]
+  stage 0 reads scan_opened         5 fail; AssertionError: expected 0.5 to be close to
+    instead of the anchor           0.3333333333333333
+  ```
+
+  Two of the seven new benchmark cases are NOT source guards and are not claimed as
+  such: the grid-mask equivalence case re-derives both predicates in the test, so it
+  checks the reasoning rather than the shipped line (the `blemishCount` pin is what
+  guards that), and the read-twice case is a harness sanity check.
+
+  **Not attempted, deliberately.** No third item. This branch changes the hottest
+  function in the app and adds a benchmark and a doc; a fourth unrelated edit would make
+  the perf claim harder to review and harder to revert. `NEXT_PUBLIC_FUNNEL_FLUSH`
+  untouched. No consent kind or flow invented. `status` and `promotionGate` byte-identical.
 
 - 2026-09-18 (cycle 14) — Branch `autopilot/2026-09-18-1839`. **The silent window
   cycle 13 measured is closed, with a fourth capture signal whose cut was derived from a
@@ -1003,154 +1156,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   Guardrail 8 untouched: `status` and `promotionGate` byte-identical.
   `fallbackVersion`, `ATTR_THRESHOLDS`, `inputSchemaVersion`, `NEXT_PUBLIC_FUNNEL_FLUSH`,
   the retake rule and the shine normalisation all untouched.
-
-- 2026-09-18 (cycle 12) — Branch `autopilot/2026-09-18-0639`. **The oil index carried an
-  absolute brightness term while the whole thesis is within-image measurement.**
-  `lib/skin.ts` computed
-  `shine = tzone.specularRatio + max(0, (tzoneL - cheekL) / 255)`. The first term is a
-  ratio. The second divided a luminance difference by the constant 255 — not by the
-  capture — while `cov` divides by `cheekL` and `relRedness` is a difference of two
-  ratios. One of the three published features was scale-dependent, and it is the one
-  cycle 11 measured taking the most damage from a bad exposure.
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief: `npx tsc --noEmit | grep -c
-  "error TS"` **13**, vitest **475 passed in 76 files**, `python3 ml/selftest.py`
-  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
-
-  **The effect is real and it flips published levels inside the passing band.** One
-  synthetic face whose T-zone is a fixed 8% brighter than its cheeks, read at seven
-  exposures, all three capture signals passing at every row so nothing asks for a
-  retake:
-
-  ```
-  cheekL  tzoneL  before   level        after    level
-    79.9    86.4  0.0254   유분 적음    0.0446   유분 적음
-   120.0   129.7  0.0384   유분 적음    0.0448   유분 적음
-   140.2   151.1  0.0427   유분 적음    0.0427   유분 적음
-   159.6   172.4  0.0501   유분 약간    0.0440   유분 적음
-   200.1   215.3  0.0595   유분 약간    0.0417   유분 적음
-  ```
-
-  The old index runs **x2.34** across cheekL 80 to 200 at fixed relative contrast and
-  changes the published level between 140 and 160. At a T-zone 15% brighter the
-  boundary moves to between cheekL 80 and 100; at 30%, to between 120 and 140. So the
-  answer to the question the brief posed is yes: the same face read the same way at two
-  legal exposures published two different oil levels. After the change the same sweep
-  spans **0.935 to 0.956**, and what is left of that is 8-bit channel rounding.
-
-  **The fix, derived rather than assumed.** The second term becomes Weber contrast
-  against the cheek — `max(0, (tzoneL - cheekL) / cheekL)` — times `140 / 255`.
-  `SHINE_REFERENCE_CHEEK_L = 140` is the midpoint of the band the 조명 signal passes
-  (`buildSignals`: cheekL 70..210), which is this repository's only written definition
-  of a correctly-exposed capture. The constant is **not** what makes the index
-  invariant: the ratio is, for any value of it. All it decides is which exposure keeps
-  today's number, and 140 was chosen so `ATTR_THRESHOLDS.oil` does not have to move.
-
-  **Why moving the cuts instead is not the same change, measured.** The cuts are
-  compared against `specularRatio + gap` and only the gap is rescaled. Cuts scaled by
-  255/140 (0.05 → 0.0911, 0.16 → 0.2914) drop a level on every capture whose specular
-  ratio lands in [0.05, 0.0911) or [0.16, 0.2914) — at the reference exposure, the one
-  exposure the change is supposed to leave alone. Pinned with a measured case: a face
-  with 5 of its 81 T-zone pixels above the specular cut reads `tzoneSpecular = 0.0617`,
-  which is 유분 약간 today and 유분 적음 under the scaled cuts.
-
-  **Which captures change bucket.** At cheekL 140 nothing does: the two formulas agree
-  to within 5e-4 across specular ratios 0 to 0.60 and contrasts 1.00 to 1.20, checked
-  case by case. Brightly-exposed faces read LOWER (cheekL 160-200 at an 8% T-zone gap:
-  유분 약간 → 유분 적음) and darkly-exposed faces read HIGHER (cheekL 70-80 at a 15%
-  gap: 유분 적음 → 유분 약간; at a 30% gap, cheekL 70-120 goes 유분 약간 → 유분 많음).
-  Those are the captures the fix is for.
-
-  **`fallbackVersion` → `roi-calibrated-2026-09-18`** in `lib/skin.ts` AND
-  `public/models/visible-attributes/manifest.json`, the rule `docs/label-free-axes.md`
-  states and cycles 3, 4 and 5 followed. Guardrail 8 untouched: `status` and
-  `promotionGate` are byte-identical. `inputSchemaVersion` untouched.
-
-  **`ml/skin_indices.py` does not carry this term, and checking that found something
-  worse.** Its `shine_ratio(tzone_specular, cheek_specular)` is
-  `tzone_specular / cheek_specular` — a different formula entirely, with no luminance
-  term to mirror, so "change one, change both" had nothing to move. But `FEATURE_KEY`
-  maps `shine_ratio` to the app's `shine`, and `ml/selftest.py`'s
-  `test_shine_and_roughness_are_ratios_so_exposure_cancels` asserts exposure invariance
-  for the index under that name — a property that was true of the Python and false of
-  the TypeScript. It is true of both now, and the two formulas still differ. Filed as a
-  backlog item rather than resolved here: which one is right is a measurement, since a
-  matte cheek's specular ratio is near zero and that is presumably why the app never
-  used the Python form.
-
-  **Second item: cycle 11's sweep is committed, and it does not reproduce.** Behind
-  `ARU_PRINT_RETAKE_SWEEP=1 npx vitest run tests/retake-signal-rule.test.ts`, the shape
-  cycle 5 set. The construction is written into the test because it had to be
-  re-derived from prose: three fixture families bisected so a clean capture sits on one
-  attribute's lower cut point, 120 seeds, the same noise field used for the clean and
-  the degraded capture at each seed. What came back:
-
-  ```
-  condition                          attr      cheekL range   signals   this run   cycle 11
-  조명 dark                          oil        59.6-60.5     조명       21/120      71/120
-  조명 dark                          redness    59.6-60.5     조명       29/120       0/120
-  조명 dark                          pores      55.4-65.8     조명      120/120       4/120
-  조명 blown out                     oil       214.7-215.3    조명,반사  120/120     120/120
-  조명 blown out                     redness   214.7-215.3    조명       91/120     120/120
-  조명 blown out                     pores     210.2-218.8    조명,반사   61/120       0/120
-  반사                               oil       139.6-140.5    반사       120/120     120/120
-  반사                               redness   139.6-140.5    반사       120/120     116/120
-  반사                               pores     135.4-145.8    반사         0/120       0/120
-  피부 영역                          oil       139.3-140.4    피부 영역   37/120      42/120
-  피부 영역                          redness   139.3-140.4    피부 영역   33/120      22/120
-  피부 영역                          pores     131.9-145.7    피부 영역   49/120      49/120
-  ```
-
-  **반사 and 피부 영역 came back; 조명 did not.** 피부 영역's pores column lands on 49
-  exactly and its other two within 11; 반사 reproduces on two columns of three. 조명 is
-  out in both directions — dark oil 21 against 71, dark pores 120 against 4 — and the
-  reason is the part that could not be recovered from prose: the noise amplitude that
-  puts `cov` on its cut point at cheekL 140 is 52 counts, and at cheekL 60 that clips
-  against zero, which is a fixture artifact and not a property of the 조명 signal.
-  Cycle 11's dark band was 51.4-69.1 and this one is 59.6-60.5, so they are not the
-  same condition either. The table is **corrected, not quietly republished**: the new
-  numbers replace the old ones in `lib/skin.ts`'s `retakeRecommendedFor` doc comment,
-  which says in the same breath that they are a re-derivation and what the old ones
-  were. **The rule is untouched and still supported** — every condition costs a
-  published reading on at least a sixth of the seeds, 반사 is still the worst, and
-  "any one failed signal recommends a retake" is what that says.
-
-  One thing the committed sweep deliberately does not claim: its `oil pre-fix` column
-  re-buckets the same captures on the old index, and the counts come out close (17 vs
-  21 dark, 120 vs 120 blown out) for a reason that has nothing to do with invariance —
-  the fixtures are tuned at cheekL 140, the one exposure where the two formulas agree
-  by construction. The normalisation is measured in
-  `tests/shine-exposure-scale.test.ts`, not there, and the comment says so.
-
-  **Verification of the new tests.** All 6 cases in `tests/shine-exposure-scale.test.ts`
-  checked by deleting or mutating the line each protects, four mutations, every case
-  covered by at least one. Restoring
-  `shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255)` failed 2:
-  `AssertionError: contrast 1.08 published 유분 적음 / 유분 적음 / 유분 약간 / 유분 약간: expected 2 to be 1`
-  and `AssertionError: expected 2.3937556835404785 to be less than 1.1`. Changing
-  `const SHINE_REFERENCE_CHEEK_L = 140;` to 100 failed 1:
-  `AssertionError: contrast 1 glint 24: 0.3716842139458374 vs 0.4020067421828359: expected 0.03032252823699849 to be less than 0.001`.
-  Deleting the whole gap term (leaving `shine: tzone.specularRatio,`) failed 3:
-  `expected NaN to be greater than 0.9`, the same reference-exposure case at
-  `expected 0.1057104458865396 to be less than 0.001`, and
-  `AssertionError: 0 0 0 0: expected 0 to be greater than 0`. Changing
-  `oil: [0.05, 0.16]` to the scaled `[0.0911, 0.2914]` failed the remaining case,
-  `expected +0 to be 1` — which is the measured form of the argument against moving the
-  cuts.
-
-  **UI/UX and research skipped, deliberately.** Nothing a user sees changed except the
-  oil level itself on mis-exposed captures, which is the point of the change; adding an
-  unrelated screen edit to a branch whose whole claim is "these numbers move and those
-  do not" would have made the before/after table harder to read. Research likewise —
-  this cycle's question was answered by running the code, and a lookup added to fill
-  the track is how the changelog got long.
-
-  Verification on this branch: vitest **482 passed in 77 files** (from 475 in 76 — the
-  6 cases in `tests/shine-exposure-scale.test.ts` plus the sweep case added to
-  `tests/retake-signal-rule.test.ts`; both env-gated blocks are counted cases and print
-  nothing with the variable unset), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged,
-  `npx eslint .` **2 warnings** both in `lib/care.ts` unchanged, `python3 ml/selftest.py`
-  **Ran 77 tests ... OK** unchanged, `npm run smoke` green. Guardrail 8 untouched.
-  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched, the retake rule
-  itself untouched.
