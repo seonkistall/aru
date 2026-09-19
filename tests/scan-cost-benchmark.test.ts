@@ -160,7 +160,40 @@ const CLIP_LINE = "        if (r >= 255 || g >= 255 || b >= 255) clipped += 1;\n
  *  measuring nothing. The ablations change what the detector COUNTS; only their
  *  durations are read, never their output. */
 const EXCLUDE_FILL = "    const lm = landmarks[idx];\n    if (lm) excluded.push({ x: lm.x * w, y: lm.y * h });\n";
-const LAB_CALL = "      const lab = rgbToLab(Math.min(255, r * gains.r), Math.min(255, g * gains.g), Math.min(255, b * gains.b));\n";
+const LAB_CALL = "      astar[gy * gw + gx] = labAStar(Math.min(255, r * gains.r), Math.min(255, g * gains.g), Math.min(255, b * gains.b));\n";
+/** Cycle 17's change, as the two places it touched. Section C4 rebuilds lib/skin.ts
+ *  with LAB_BEFORE and LAB_CALL_BEFORE back in place — the shape at main f7c52df —
+ *  so the speedup the cycle claims is re-derived by the branch rather than quoted.
+ *  LAB_AFTER is the shipped block, pinned so a reword fails loudly. */
+const LAB_AFTER = `/** sRGB transfer curve, one channel, 0-255 in, linear 0-1 out. */
+function srgbLinear(channel: number): number {
+  const c = channel / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}`;
+/** The sRGB transfer curve's own line. C5 ablates it to bound what a fast path
+ *  could NEVER reach: labAStar keeps all three Math.pow calls. */
+const POW_LINE = "  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);\n";
+const LAB_BEFORE = `function rgbToLabPreFastPath(r: number, g: number, b: number): { l: number; a: number; b: number } {
+  const linear = (channel: number) => {
+    const c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const rl = linear(r);
+  const gl = linear(g);
+  const bl = linear(b);
+  const x = (rl * 0.4124 + gl * 0.3576 + bl * 0.1805) / 0.95047;
+  const y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
+  const z = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const fx = f(x);
+  const fy = f(y);
+  const fz = f(z);
+  return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+` + LAB_AFTER;
+const LAB_CALL_BEFORE =
+  "      const lab = rgbToLabPreFastPath(Math.min(255, r * gains.r), Math.min(255, g * gains.g), Math.min(255, b * gains.b));\n" +
+  "      astar[gy * gw + gx] = lab.a;\n";
 /** The row-filtered exclusion test as shipped, and the point-by-point loop it replaced.
  *  Section C3 rebuilds lib/skin.ts with the second in place of the first, so the
  *  speedup this cycle claims is re-derived by the branch rather than quoted from it. */
@@ -230,6 +263,8 @@ describe("what a scan reads, counted rather than timed", () => {
     // Section E ablates these two inside detectBlemishes, for the same reason.
     expect(source).toContain(EXCLUDE_FILL);
     expect(source).toContain(LAB_CALL);
+    expect(source).toContain(LAB_AFTER);
+    expect(source).toContain(POW_LINE);
     expect(source).toContain(ROW_FILTERED);
   });
 
@@ -343,6 +378,36 @@ function timeIt(label: string, iterations: number, run: () => void) {
   return { label, median, min: per[0], max: per[per.length - 1], spread: per[per.length - 1] / per[0] };
 }
 
+/** Two candidates timed against each other, alternating within each repeat, so a
+ *  drift in the box (or in V8's tiering) lands on both rather than on whichever ran
+ *  second. Same REPEATS and same shape of result as timeIt. */
+function timePair(iterations: number, a: () => void, b: () => void) {
+  const warm = Math.max(3, Math.min(iterations, 20));
+  for (let i = 0; i < warm; i += 1) { a(); b(); }
+  const perA: number[] = [];
+  const perB: number[] = [];
+  for (let r = 0; r < REPEATS; r += 1) {
+    // Swap which one goes first on alternate repeats: whatever runs second inherits
+    // the cache state the first left behind, and that must not always be the same one.
+    const first = r % 2 === 0;
+    const run = (fn: () => void, into: number[]) => {
+      const t0 = performance.now();
+      for (let i = 0; i < iterations; i += 1) fn();
+      into.push((performance.now() - t0) / iterations);
+    };
+    if (first) { run(a, perA); run(b, perB); } else { run(b, perB); run(a, perA); }
+  }
+  // The PAIRED difference is the estimator worth reading: a and b were measured
+  // adjacently in the same repeat, so a drift in the box between repeats cancels in
+  // each delta instead of landing in whichever median it happened to move.
+  const deltas = perA.map((v, i) => perB[i] - v);
+  const summarise = (label: string, per: number[]) => {
+    const sorted = [...per].sort((x, y) => x - y);
+    return { label, median: sorted[Math.floor(sorted.length / 2)], min: sorted[0], max: sorted[sorted.length - 1] };
+  };
+  return [summarise("a", perA), summarise("b", perB), summarise("delta", deltas)] as const;
+}
+
 const ms = (v: number) => v.toFixed(3).padStart(8);
 const us = (v: number) => (v * 1000).toFixed(1).padStart(8);
 
@@ -415,8 +480,28 @@ describe("per-scan cost sweep", () => {
       mkdirSync(dir, { recursive: true });
       write("skin-no-clip-branch", CLIP_LINE, "");
       write("skin-no-exclusion", EXCLUDE_FILL, "");
-      write("skin-no-rgbtolab", LAB_CALL, "      const lab = { l: L, a: r - g, b: g - b };\n");
+      write("skin-no-rgbtolab", LAB_CALL, "      astar[gy * gw + gx] = r - g;\n");
+      write("skin-no-srgb-pow", POW_LINE, "  return c * c;\n");
       write("skin-point-by-point-exclusion", ROW_FILTERED, POINT_BY_POINT);
+      // Two needles, one build: the pre-cycle-17 rgbToLab and the call site that used it.
+      if (!source.includes(LAB_AFTER) || !source.includes(LAB_CALL)) {
+        throw new Error("skin-lab-pre-fast-path: a needle moved; the ablation measures nothing");
+      }
+      writeFileSync(
+        `${dir}/skin-lab-pre-fast-path.ts`,
+        source
+          .replace(LAB_AFTER, LAB_BEFORE)
+          .replace(LAB_CALL, LAB_CALL_BEFORE)
+          .replace('from "./i18n/core"', 'from "../../lib/i18n/core"')
+      );
+      // And an UNCHANGED copy, so C4 compares two freshly loaded modules rather than
+      // one fresh module against the statically imported build that sections B, C1,
+      // C2 and C3 have already driven through V8's tiers. Measured the asymmetric way
+      // first, the "saving" changed sign between frame sizes and between runs.
+      writeFileSync(
+        `${dir}/skin-lab-fast-path.ts`,
+        source.replace('from "./i18n/core"', 'from "../../lib/i18n/core"')
+      );
       // The specifier is a variable behind @vite-ignore: a literal would make tsc
       // resolve a module that only exists while this sweep is running, and adding an
       // error to `npx tsc --noEmit` to print a table is not a trade worth making.
@@ -428,6 +513,9 @@ describe("per-scan cost sweep", () => {
       const noExclude = await load("skin-no-exclusion");
       const noLab = await load("skin-no-rgbtolab");
       const prior = await load("skin-point-by-point-exclusion");
+      const preFast = await load("skin-lab-pre-fast-path");
+      const fast = await load("skin-lab-fast-path");
+      const noPow = await load("skin-no-srgb-pow");
 
       out("");
       out("   C1. the clipped-channel branch. Six regions = one frame's worth of sampling,");
@@ -489,6 +577,62 @@ describe("per-scan cost sweep", () => {
           `${ms(was.median)} ${ms(was.min)}..${ms(was.max)}  ${ms(was.median - now.median)}`
         );
       }
+
+      out("");
+      out("   C4. cycle 17's change: labAStar against the rgbToLab call it replaced,");
+      out("       both built from the same lib/skin.ts. The two builds are asserted to");
+      out("       return the SAME count and the same area — the fast path computes a*");
+      out("       with the identical sequence of doubles — so this is a duration");
+      out("       difference and nothing else.");
+      out("   frame          labAStar   rgbToLab   saved(paired)   min..max        %");
+      for (const [w, h] of FRAMES) {
+        const { data } = syntheticFace(w, h);
+        const lms = faceLandmarks();
+        const gainValues = frameChannelGains(data, w, h);
+        const a = fast.detectBlemishes(data, w, h, lms, gainValues);
+        const b = preFast.detectBlemishes(data, w, h, lms, gainValues);
+        if (a.count !== b.count || a.areaFace !== b.areaFace) {
+          throw new Error(`${w}x${h}: the two builds disagree (${a.count}/${a.areaFace} vs ${b.count}/${b.areaFace})`);
+        }
+        const [now, was, delta] = timePair(
+          30,
+          () => void fast.detectBlemishes(data, w, h, lms, gainValues),
+          () => void preFast.detectBlemishes(data, w, h, lms, gainValues)
+        );
+        out(
+          `   ${`${w}x${h}`.padEnd(12)}${ms(now.median)}  ${ms(was.median)}  ` +
+          `${ms(delta.median)} ${ms(delta.min)}..${ms(delta.max)}  ` +
+          `${((delta.median / was.median) * 100).toFixed(1).padStart(5)}%`
+        );
+      }
+      out("       The saved column is the median of the PAIRED per-repeat differences,");
+      out("       and min..max beside it is their own spread. A median whose spread");
+      out("       straddles zero is not resolvable on this box and is not a result.");
+
+      out("");
+      out("   C5. where the rest of it is. labAStar keeps all three Math.pow(., 2.4)");
+      out("       calls, so the sRGB transfer curve is the part NO a*-only fast path");
+      out("       can reach. Same paired form; the ablated build's counts are not a");
+      out("       reading and are never read.");
+      out("   frame          shipped   pow -> c*c   removed(paired)   min..max        %");
+      for (const [w, h] of FRAMES) {
+        const { data } = syntheticFace(w, h);
+        const lms = faceLandmarks();
+        const gainValues = frameChannelGains(data, w, h);
+        const [on, off, delta] = timePair(
+          30,
+          () => void fast.detectBlemishes(data, w, h, lms, gainValues),
+          () => void noPow.detectBlemishes(data, w, h, lms, gainValues)
+        );
+        out(
+          `   ${`${w}x${h}`.padEnd(12)}${ms(on.median)}    ${ms(off.median)}  ` +
+          `${ms(-delta.median)} ${ms(-delta.max)}..${ms(-delta.min)}  ` +
+          `${((-delta.median / on.median) * 100).toFixed(1).padStart(5)}%`
+        );
+      }
+      out("       An upper bound, like every ablation here: dropping the curve also");
+      out("       changes which cells survive suppression, so it moves the inner loop's");
+      out("       work as well as its own cost.");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -237,6 +237,70 @@
         }
       ]
     },
+    "blemish_count": {
+      "featureKey": "blemishDensity",
+      "pythonFunction": "ml/skin_indices.py :: blemish_density",
+      "formula": "blemishDensity = count / max(sampledAreaPx / faceWidthPx^2, 1e-6)",
+      "covers": "formula only; validCells * stride^2 and the face-box width are not exported fields",
+      "rows": [
+        {
+          "note": "one face at 400x480, 6 blemishes",
+          "count": 6,
+          "sampledAreaPx": 42032,
+          "faceWidthPx": 144,
+          "value": 2.960030452988199
+        },
+        {
+          "note": "the same face at 1440x1728, 6 blemishes",
+          "count": 6,
+          "sampledAreaPx": 537804,
+          "faceWidthPx": 518.4,
+          "value": 2.9981765847780975
+        },
+        {
+          "note": "the same face, 5 blemishes at the larger capture",
+          "count": 5,
+          "sampledAreaPx": 537804,
+          "faceWidthPx": 518.4,
+          "value": 2.498480487315081
+        },
+        {
+          "note": "no blemishes found",
+          "count": 0,
+          "sampledAreaPx": 42032,
+          "faceWidthPx": 144,
+          "value": 0
+        },
+        {
+          "note": "one blemish, small sampled area",
+          "count": 1,
+          "sampledAreaPx": 42032,
+          "faceWidthPx": 144,
+          "value": 0.49333840883136654
+        },
+        {
+          "note": "degenerate face width: both sides clamp",
+          "count": 0,
+          "sampledAreaPx": 0,
+          "faceWidthPx": 0,
+          "value": 0
+        },
+        {
+          "note": "a sliver of sampled skin on a full-size face",
+          "count": 2,
+          "sampledAreaPx": 120,
+          "faceWidthPx": 400,
+          "value": 2666.6666666666665
+        },
+        {
+          "note": "dense face, count linear in the numerator",
+          "count": 24,
+          "sampledAreaPx": 42032,
+          "faceWidthPx": 144,
+          "value": 11.840121811952796
+        }
+      ]
+    },
     "tone_evenness": {
       "featureKey": "toneSpread",
       "formula": "toneSpread = stdev(regionLstars) / abs(mean(regionLstars)), 0 when n < 2 or abs(mean) < 1e-6",
@@ -343,6 +407,259 @@
             -62
           ],
           "value": 0.15934129727864463
+        }
+      ]
+    }
+  },
+  "primitives": {
+    "rgb_to_lab": {
+      "typescript": "lib/skin.ts :: rgbToLab",
+      "python": "ml/ita.py :: rgb_to_lab",
+      "covers": "formula only; the pixels that reach it are not an exported field",
+      "comparison": "tolerance",
+      "why": "Unlike the indices above, this runs pow(., 2.4) three times and a cube root up to three times, and neither language's library rounds those correctly. V8's Math.cbrt and CPython's t ** (1/3) differ by up to 1 ulp, and 500 * (f(x) - f(y)) amplifies that. Exact equality is not available and asserting it would make this table a tripwire for the libm, not for ARU.",
+      "toleranceUnits": "toleranceK * channelScale * 2 ** -52, per channel",
+      "toleranceK": 4,
+      "channelScale": {
+        "l": 116,
+        "a": 500,
+        "b": 200
+      },
+      "measuredWorstInUnits": 1.472,
+      "measuredOver": 268877,
+      "measurement": "docs/rgb-to-lab-parity.md",
+      "fastPath": {
+        "typescript": "lib/skin.ts :: labAStar",
+        "computes": [
+          "a"
+        ],
+        "doesNotCompute": [
+          "l",
+          "b"
+        ],
+        "python": null,
+        "note": "labAStar is the entry point detectBlemishes runs about 18,000 times a frame. It computes a* with the identical sequence of doubles and skips z, the third f() and the object, so rgbToLab(r, g, b).a === labAStar(r, g, b) exactly. It does not compute L* or b* at all, and ml/ita.py has no counterpart: nothing in the Python pipeline wants a* alone."
+      },
+      "rows": [
+        {
+          "note": "cube: black",
+          "rgb": [
+            0,
+            0,
+            0
+          ],
+          "l": 0,
+          "a": 0,
+          "b": 0
+        },
+        {
+          "note": "cube: white",
+          "rgb": [
+            255,
+            255,
+            255
+          ],
+          "l": 100,
+          "a": 0.00526049995830391,
+          "b": -0.010408184525267927
+        },
+        {
+          "note": "cube: mid gray",
+          "rgb": [
+            128,
+            128,
+            128
+          ],
+          "l": 53.58501345216902,
+          "a": 0.003155620347972121,
+          "b": -0.006243566036268078
+        },
+        {
+          "note": "cube: saturated red",
+          "rgb": [
+            255,
+            0,
+            0
+          ],
+          "l": 53.23288178584245,
+          "a": 80.10930952982204,
+          "b": 67.22006831026427
+        },
+        {
+          "note": "cube: saturated blue",
+          "rgb": [
+            0,
+            0,
+            255
+          ],
+          "l": 32.30258666724948,
+          "a": 79.19666178930932,
+          "b": -107.86368104495172
+        },
+        {
+          "note": "cube: near-black, one channel lit",
+          "rgb": [
+            1,
+            3,
+            0
+          ],
+          "l": 0.646555938323317,
+          "a": -0.9402315043574583,
+          "b": 0.951121389826548
+        },
+        {
+          "note": "worst L* disagreement in the sweep",
+          "rgb": [
+            250,
+            165,
+            190
+          ],
+          "l": 76.64990352956195,
+          "a": 34.68340862609354,
+          "b": 0.19702993932835255
+        },
+        {
+          "note": "worst a* disagreement in the sweep",
+          "rgb": [
+            240,
+            170,
+            145
+          ],
+          "l": 75.64938515291749,
+          "a": 22.67573567256148,
+          "b": 23.150730870353463
+        },
+        {
+          "note": "worst b* disagreement in the sweep",
+          "rgb": [
+            20,
+            15,
+            240
+          ],
+          "l": 31.304550001075093,
+          "a": 73.25245868101534,
+          "b": -101.0614680806361
+        },
+        {
+          "note": "knee: just below 0.04045 * 255",
+          "rgb": [
+            10.314749999,
+            128,
+            64
+          ],
+          "l": 46.81015519370713,
+          "a": -44.763080094950034,
+          "b": 26.483444840627545
+        },
+        {
+          "note": "knee: just above 0.04045 * 255",
+          "rgb": [
+            10.314750001,
+            128,
+            64
+          ],
+          "l": 46.810155259040414,
+          "a": -44.76307955157729,
+          "b": 26.483444936814838
+        },
+        {
+          "note": "knee: all three channels on the knee",
+          "rgb": [
+            10.31475,
+            10.31475,
+            10.31475
+          ],
+          "l": 2.8280310681114535,
+          "a": 0.00038475035782359335,
+          "b": -0.0007612810612289689
+        },
+        {
+          "note": "knee: f() linear segment, y below 0.008856",
+          "rgb": [
+            24,
+            22,
+            20
+          ],
+          "l": 7.393586944119004,
+          "a": 0.48708125568475147,
+          "b": 1.616938450697697
+        },
+        {
+          "note": "skin: light cheek, gray-world gains applied",
+          "rgb": [
+            198.40625,
+            171.28125,
+            158.75
+          ],
+          "l": 72.08641410366052,
+          "a": 7.833148706597514,
+          "b": 10.071894749151845
+        },
+        {
+          "note": "skin: mid cheek",
+          "rgb": [
+            171.5625,
+            143.8125,
+            132.40625
+          ],
+          "l": 61.901997391615126,
+          "a": 8.592675278302709,
+          "b": 9.94000281888059
+        },
+        {
+          "note": "skin: deep cheek",
+          "rgb": [
+            112.34375,
+            84.6875,
+            71.53125
+          ],
+          "l": 38.51076104129593,
+          "a": 9.469896195177963,
+          "b": 12.1139509963328
+        },
+        {
+          "note": "skin: a blemish against its background",
+          "rgb": [
+            176.09375,
+            139.375,
+            130.65625
+          ],
+          "l": 61.17189148215121,
+          "a": 12.59216654868739,
+          "b": 9.96105279402153
+        },
+        {
+          "note": "skin: T-zone highlight, one channel clamped at 255",
+          "rgb": [
+            255,
+            221.46875,
+            208.8125
+          ],
+          "l": 90.69539385000851,
+          "a": 9.631860230870315,
+          "b": 10.467298693244032
+        },
+        {
+          "note": "skin: the darkest cell the detector will grade (L just over 40)",
+          "rgb": [
+            58.5,
+            44.25,
+            39.125
+          ],
+          "l": 19.56482755480124,
+          "a": 5.633520933050501,
+          "b": 5.8267838186484955
+        },
+        {
+          "note": "skin: the brightest cell the detector will grade (L just under 230)",
+          "rgb": [
+            246.75,
+            228.5,
+            219.25
+          ],
+          "l": 91.96175164807535,
+          "a": 4.698084656863333,
+          "b": 6.73735090940264
         }
       ]
     }

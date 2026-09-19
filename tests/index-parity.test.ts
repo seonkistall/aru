@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeSkin, relativeSpread, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
+import { analyzeSkin, labAStar, relativeSpread, rgbToLab, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
 
 /**
  * Every within-image index has two implementations in two languages. From 2026-09-14,
@@ -35,6 +35,17 @@ import { analyzeSkin, relativeSpread, shineIndex, SAMPLING_LANDMARKS, SHINE_REFE
  *
  * The other five are name-pinned and value-unchecked. docs/shine-formula-decision.md.
  *
+ * `primitives` is a second section with a different comparison, and the difference is
+ * the point. The `indices` rows above are compared EXACTLY, because every covered
+ * expression is +, -, *, / and sqrt on IEEE doubles, all correctly rounded, so a
+ * matching implementation matches bit for bit. `rgb_to_lab` is not: it runs
+ * `pow(., 2.4)` three times and a cube root up to three times, and neither language's
+ * library rounds those correctly. Measured over 268,877 inputs, V8 and CPython 3.11
+ * agree exactly on 63-80% of them and differ by up to 1.47 units of
+ * `channelScale * 2^-52` on the rest. So these rows carry a tolerance, and the
+ * tolerance came from that measurement rather than from a round number:
+ * docs/rgb-to-lab-parity.md.
+ *
  * Regenerate (deliberately, never to make a red test green):
  *   ARU_PRINT_INDEX_PARITY=1 npx vitest run tests/index-parity.test.ts
  */
@@ -54,6 +65,57 @@ type FaceRow = {
 type EdgeRow = { kind: "edge"; note: string; tzoneSpecular: number; tzoneL: number; cheekL: number; shine: number };
 type Row = FaceRow | EdgeRow;
 type SpreadRow = { note: string; lstars: number[]; value: number };
+type LabRow = { note: string; rgb: [number, number, number]; l: number; a: number; b: number };
+type DensityRow = { note: string; count: number; sampledAreaPx: number; faceWidthPx: number; value: number };
+
+/** blemish_density's inputs are the two quantities detectBlemishes actually produces:
+ *  `validCells * stride * stride` and the face-box width in pixels. The first three
+ *  rows are the pairs lib/skin.ts reported for ONE synthetic face at two capture
+ *  resolutions (docs/capture-resolution-invariance.md), which is what makes the
+ *  resolution-invariance the index exists for checkable rather than asserted; the rest
+ *  are the guard branches a face cannot reach. */
+const DENSITY_INPUTS: Array<[string, number, number, number]> = [
+  ["one face at 400x480, 6 blemishes", 6, 42032, 144],
+  ["the same face at 1440x1728, 6 blemishes", 6, 537804, 518.4],
+  ["the same face, 5 blemishes at the larger capture", 5, 537804, 518.4],
+  ["no blemishes found", 0, 42032, 144],
+  ["one blemish, small sampled area", 1, 42032, 144],
+  ["degenerate face width: both sides clamp", 0, 0, 0],
+  ["a sliver of sampled skin on a full-size face", 2, 120, 400],
+  ["dense face, count linear in the numerator", 24, 42032, 144],
+];
+
+/** Inputs for the rgb_to_lab rows. Four families, and the reason for each:
+ *  - `cube`: corners and interior of the sRGB cube, so the table is not only skin.
+ *  - `worst`: the three inputs where the wide sweep found V8 and CPython furthest
+ *    apart, one per channel. Without these the tolerance would never be exercised.
+ *  - `knee`: either side of the transfer curve's 0.04045 knee and of f()'s 0.008856
+ *    knee, so a branch swapped in one language shows up here.
+ *  - `skin`: the shape detectBlemishes actually feeds — a stride-window mean times a
+ *    gray-world gain, floats rather than integers, which is why a lookup table for
+ *    the transfer curve is not available to either language. */
+const LAB_INPUTS: Array<[string, [number, number, number]]> = [
+  ["cube: black", [0, 0, 0]],
+  ["cube: white", [255, 255, 255]],
+  ["cube: mid gray", [128, 128, 128]],
+  ["cube: saturated red", [255, 0, 0]],
+  ["cube: saturated blue", [0, 0, 255]],
+  ["cube: near-black, one channel lit", [1, 3, 0]],
+  ["worst L* disagreement in the sweep", [250, 165, 190]],
+  ["worst a* disagreement in the sweep", [240, 170, 145]],
+  ["worst b* disagreement in the sweep", [20, 15, 240]],
+  ["knee: just below 0.04045 * 255", [10.314749999, 128, 64]],
+  ["knee: just above 0.04045 * 255", [10.314750001, 128, 64]],
+  ["knee: all three channels on the knee", [10.31475, 10.31475, 10.31475]],
+  ["knee: f() linear segment, y below 0.008856", [24, 22, 20]],
+  ["skin: light cheek, gray-world gains applied", [198.40625, 171.28125, 158.75]],
+  ["skin: mid cheek", [171.5625, 143.8125, 132.40625]],
+  ["skin: deep cheek", [112.34375, 84.6875, 71.53125]],
+  ["skin: a blemish against its background", [176.09375, 139.375, 130.65625]],
+  ["skin: T-zone highlight, one channel clamped at 255", [255, 221.46875, 208.8125]],
+  ["skin: the darkest cell the detector will grade (L just over 40)", [58.5, 44.25, 39.125]],
+  ["skin: the brightest cell the detector will grade (L just under 230)", [246.75, 228.5, 219.25]],
+];
 
 const PARITY_PATH = resolve(import.meta.dirname, "..", "ml", "index-parity.json");
 const TZONE = SAMPLING_LANDMARKS.tzone;
@@ -155,6 +217,14 @@ const SPREAD_INPUTS: Array<[string, number[]]> = [
 const parity = JSON.parse(readFileSync(PARITY_PATH, "utf8"));
 const rows: Row[] = parity.indices.shine_ratio.rows;
 const spreadRows: SpreadRow[] = parity.indices.tone_evenness.rows;
+const labGroup = parity.primitives.rgb_to_lab;
+const densityRows: DensityRow[] = parity.indices.blemish_count.rows;
+const labRows: LabRow[] = labGroup.rows;
+/** The tolerance is built from two committed numbers rather than typed as a float, so
+ *  it cannot drift and cannot be widened by editing a digit. k is the only judgement
+ *  in it; docs/rgb-to-lab-parity.md is the measurement that set it. */
+const labTolerance = (channel: "l" | "a" | "b") =>
+  labGroup.toleranceK * labGroup.channelScale[channel] * 2 ** -52;
 
 describe("cross-language index parity table", () => {
   it("has rows of both kinds, spanning the oil range", () => {
@@ -221,6 +291,79 @@ describe("cross-language index parity table", () => {
     expect(brighter!.value).toBeCloseTo(uneven!.value, 15);
   });
 
+  it("recomputes every blemish-density row through the shipped expression, exactly", () => {
+    // `blemishDensity: blemishes.count / Math.max(blemishes.areaFace, 1e-6)` in
+    // lib/skin.ts, where `areaFace: (validCells * stride * stride) / (faceW * faceW)`.
+    // Python spells the same thing in two steps with a guard on each. Exact, not
+    // toBeCloseTo: this is /, * and max on doubles, all correctly rounded.
+    expect(densityRows.length).toBe(DENSITY_INPUTS.length);
+    const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
+    expect(source).toContain("blemishDensity: blemishes.count / Math.max(blemishes.areaFace, 1e-6),");
+    expect(source).toContain("return { count, areaFace: (validCells * stride * stride) / (faceW * faceW) };");
+    for (const row of densityRows) {
+      const areaFace = row.faceWidthPx > 0 ? row.sampledAreaPx / (row.faceWidthPx * row.faceWidthPx) : 0;
+      expect(row.count / Math.max(areaFace, 1e-6), `${row.note}`).toBe(row.value);
+    }
+    // The property the third argument was added for, on the two rows built to show it:
+    // the same face at 3.6x the capture width reads the same density. Without this the
+    // rows would pin arithmetic and not the index.
+    const small = densityRows.find((row) => row.note.startsWith("one face at 400x480"));
+    const large = densityRows.find((row) => row.note.startsWith("the same face at 1440x1728"));
+    expect(small && large).toBeTruthy();
+    expect(large!.value).toBeCloseTo(small!.value, 1);
+    expect(large!.value).not.toBe(small!.value);
+  });
+
+  it("recomputes every rgb_to_lab row through the shipped function, exactly", () => {
+    // Exact on THIS side of the language boundary. The tolerance in the table is for
+    // ml/ita.py, whose libm rounds pow and cbrt differently; within TypeScript the
+    // rows are ordinary doubles and any drift is a real change.
+    expect(labRows.length).toBe(LAB_INPUTS.length);
+    for (const row of labRows) {
+      const lab = rgbToLab(row.rgb[0], row.rgb[1], row.rgb[2]);
+      expect(lab.l, `${row.note}: L*`).toBe(row.l);
+      expect(lab.a, `${row.note}: a*`).toBe(row.a);
+      expect(lab.b, `${row.note}: b*`).toBe(row.b);
+    }
+    // Not a table of one colour: it has to span L* to be worth pinning.
+    const ls = labRows.map((row) => row.l);
+    expect(Math.min(...ls)).toBe(0);
+    expect(Math.max(...ls)).toBe(100);
+  });
+
+  it("computes a* through the fast path with the same doubles, bit for bit", () => {
+    // The whole safety argument for labAStar. detectBlemishes picks local maxima in a*
+    // and suppresses neighbours, so a difference far below any threshold can still flip
+    // which cells survive — which means "close enough" is not good enough here and
+    // toBeCloseTo would be the wrong assertion. rgbToLab delegates its `a` to
+    // labAStar, so this holds by construction; it is pinned anyway, because the
+    // construction is one edit away from not holding.
+    for (const row of labRows) {
+      expect(labAStar(row.rgb[0], row.rgb[1], row.rgb[2]), `${row.note}: labAStar`).toBe(row.a);
+    }
+    expect(labGroup.fastPath.computes).toEqual(["a"]);
+    expect(labGroup.fastPath.doesNotCompute).toEqual(["l", "b"]);
+  });
+
+  it("states a tolerance that is derived, small, and cannot be widened by a digit", () => {
+    // Three things, because a tolerance nobody can check is not a contract.
+    // 1. It is built from k and the channel's own literal multiplier, not typed out.
+    expect(labGroup.toleranceK).toBe(4);
+    expect(labGroup.channelScale).toEqual({ l: 116, a: 500, b: 200 });
+    // 2. The multipliers are the ones the formula actually uses.
+    const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
+    expect(source).toContain("return { l: 116 * fy - 16, a: labAStar(r, g, b), b: 200 * (fy - fz) };");
+    expect(source).toContain("return 500 * (labF(x) - labF(y));");
+    // 3. It is far below anything that could hide a real difference. a* feeds
+    //    BLEMISH.minResidual = 1.6; the tolerance is 4.4e-13, twelve orders below it,
+    //    and about 1e-14 relative on a skin a* of ~20. A genuine formula split — a
+    //    different white point, a different matrix, a chromaticity where an a* was
+    //    declared — moves a* by whole units, not by parts in 1e14.
+    expect(labTolerance("a")).toBeLessThan(1e-9);
+    expect(labTolerance("a")).toBeGreaterThan(labTolerance("b"));
+    expect(labTolerance("b")).toBeGreaterThan(labTolerance("l"));
+  });
+
   it("regenerates the table when asked", () => {
     if (!process.env.ARU_PRINT_INDEX_PARITY) return;
     const faces: Row[] = FACE_RECIPES.map(([cheekTarget, contrast, glintPixels]) => {
@@ -238,6 +381,14 @@ describe("cross-language index parity table", () => {
     const spreads: SpreadRow[] = SPREAD_INPUTS.map(([note, lstars]) => ({
       note, lstars, value: relativeSpread(lstars),
     }));
+    const labs: LabRow[] = LAB_INPUTS.map(([note, rgb]) => {
+      const lab = rgbToLab(rgb[0], rgb[1], rgb[2]);
+      return { note, rgb, l: lab.l, a: lab.a, b: lab.b };
+    });
+    const densities: DensityRow[] = DENSITY_INPUTS.map(([note, count, sampledAreaPx, faceWidthPx]) => {
+      const areaFace = faceWidthPx > 0 ? sampledAreaPx / (faceWidthPx * faceWidthPx) : 0;
+      return { note, count, sampledAreaPx, faceWidthPx, value: count / Math.max(areaFace, 1e-6) };
+    });
     const body = {
       generatedBy: "ARU_PRINT_INDEX_PARITY=1 npx vitest run tests/index-parity.test.ts",
       assertedBy: ["tests/index-parity.test.ts", "ml/selftest.py"],
@@ -249,6 +400,17 @@ describe("cross-language index parity table", () => {
           covers: "formula and path",
           rows: [...faces, ...edges],
         },
+        // Keyed by the REGISTRY id, which is `blemish_count`, while the function that
+        // computes it is `blemish_density`. The id and the function do not share a name
+        // and neither does the feature key; that is worth seeing in the table rather
+        // than discovering from a KeyError.
+        blemish_count: {
+          featureKey: "blemishDensity",
+          pythonFunction: "ml/skin_indices.py :: blemish_density",
+          formula: "blemishDensity = count / max(sampledAreaPx / faceWidthPx^2, 1e-6)",
+          covers: "formula only; validCells * stride^2 and the face-box width are not exported fields",
+          rows: densities,
+        },
         tone_evenness: {
           featureKey: "toneSpread",
           formula: "toneSpread = stdev(regionLstars) / abs(mean(regionLstars)), 0 when n < 2 or abs(mean) < 1e-6",
@@ -256,9 +418,44 @@ describe("cross-language index parity table", () => {
           rows: spreads,
         },
       },
+      primitives: {
+        rgb_to_lab: {
+          typescript: "lib/skin.ts :: rgbToLab",
+          python: "ml/ita.py :: rgb_to_lab",
+          covers: "formula only; the pixels that reach it are not an exported field",
+          comparison: "tolerance",
+          why:
+            "Unlike the indices above, this runs pow(., 2.4) three times and a cube root up to three " +
+            "times, and neither language's library rounds those correctly. V8's Math.cbrt and CPython's " +
+            "t ** (1/3) differ by up to 1 ulp, and 500 * (f(x) - f(y)) amplifies that. Exact equality is " +
+            "not available and asserting it would make this table a tripwire for the libm, not for ARU.",
+          toleranceUnits: "toleranceK * channelScale * 2 ** -52, per channel",
+          toleranceK: 4,
+          channelScale: { l: 116, a: 500, b: 200 },
+          measuredWorstInUnits: 1.472,
+          measuredOver: 268877,
+          measurement: "docs/rgb-to-lab-parity.md",
+          fastPath: {
+            typescript: "lib/skin.ts :: labAStar",
+            computes: ["a"],
+            doesNotCompute: ["l", "b"],
+            python: null,
+            note:
+              "labAStar is the entry point detectBlemishes runs about 18,000 times a frame. It computes " +
+              "a* with the identical sequence of doubles and skips z, the third f() and the object, so " +
+              "rgbToLab(r, g, b).a === labAStar(r, g, b) exactly. It does not compute L* or b* at all, " +
+              "and ml/ita.py has no counterpart: nothing in the Python pipeline wants a* alone.",
+          },
+          rows: labs,
+        },
+      },
     };
     writeFileSync(PARITY_PATH, `${JSON.stringify(body, null, 2)}\n`);
-    const total = body.indices.shine_ratio.rows.length + body.indices.tone_evenness.rows.length;
+    const total =
+      body.indices.shine_ratio.rows.length +
+      body.indices.tone_evenness.rows.length +
+      body.indices.blemish_count.rows.length +
+      body.primitives.rgb_to_lab.rows.length;
     process.stdout.write(`PARITY wrote ${total} rows to ml/index-parity.json\n`);
   });
 });
