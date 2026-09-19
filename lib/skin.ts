@@ -655,7 +655,32 @@ export const ATTR_THRESHOLDS: Record<SkinAttr, [number, number]> = {
  * by 255/140 drop a level on every capture whose specular ratio lands in
  * [0.05, 0.0911) or [0.16, 0.2914) — see tests/shine-exposure-scale.test.ts.
  */
-const SHINE_REFERENCE_CHEEK_L = 140;
+export const SHINE_REFERENCE_CHEEK_L = 140;
+
+/**
+ * The oil axis's index, in one place so there is one formula to keep in step.
+ *
+ * `ml/skin_indices.py:shine_ratio` is the Python mirror and computes this same
+ * expression; `ml/index-parity.json` is a committed table of inputs and outputs that
+ * BOTH sides assert against, so the two can no longer drift apart silently the way
+ * they did from 2026-09-14 (when `ml/skin_indices.py` was added, with a different
+ * formula) to 2026-09-19. `tests/skin-index-contract.test.ts` pins
+ * the names; `tests/index-parity.test.ts` and `ml/selftest.py` pin the values.
+ *
+ * Extracted from `extractRawFeatures` on 2026-09-19 with the expression byte-for-byte
+ * unchanged, so no published value moved — `tests/shine-exposure-scale.test.ts` and
+ * `tests/axis-exposure-scale.test.ts` pin the numbers that prove it.
+ *
+ * Term 1 is the share of the UNTRIMMED T-zone patch above the 218 luminance cut — a
+ * count fraction, not a luminance, which is why it does not scale with exposure and
+ * why the ratio form this replaced was never exposure-invariant on an actual frame
+ * (docs/shine-formula-decision.md).
+ * Term 2 is Weber contrast of the T-zone against the cheek, scaled so the cuts in
+ * ATTR_THRESHOLDS.oil keep meaning what they meant on a correctly-exposed capture.
+ */
+export function shineIndex(tzoneSpecular: number, tzoneL: number, cheekL: number): number {
+  return tzoneSpecular + Math.max(0, (tzoneL - cheekL) / (cheekL || 1)) * (SHINE_REFERENCE_CHEEK_L / 255);
+}
 
 const ATTR_RAW_KEY: Record<SkinAttr, "shine" | "relRedness" | "cov"> = {
   oil: "shine",
@@ -736,7 +761,18 @@ const BLEMISH = {
   excludeFraction: 0.055,
 };
 
-function relativeSpread(values: number[]): number {
+/**
+ * Spread of a set of L* values divided by their mean. `toneSpread`'s whole formula.
+ *
+ * `ml/skin_indices.py:tone_evenness` is the Python mirror and its docstring has
+ * claimed since 2026-09-14 to be "the same formula as `relativeSpread` in
+ * lib/skin.ts". As of 2026-09-19 that claim is checked rather than asserted:
+ * `ml/index-parity.json` carries inputs and expected outputs that both sides run.
+ * Exported for that test only — the claim's `shine_ratio` counterpart turned out to
+ * be false, and the name-level contract test could never have caught it
+ * (docs/shine-formula-decision.md).
+ */
+export function relativeSpread(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((acc, value) => acc + value, 0) / values.length;
   if (Math.abs(mean) < 1e-6) return 0;
@@ -992,7 +1028,7 @@ export function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinR
     // tzoneL/cheekL of 1.08 the old term ran 0.0254 -> 0.0595 across cheekL 80..200
     // (x2.34) and flipped the published level between cheekL 140 and 160 — on
     // captures where all three signals passed, so nothing asked for a retake.
-    shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / (cheekL || 1)) * (SHINE_REFERENCE_CHEEK_L / 255),
+    shine: shineIndex(tzone.specularRatio, tzoneL, cheekL),
     // Both measured exposure-invariant across cheekL 71.2..172.8 at a fixed relative
     // face structure — cov within 1.0092x, relRedness within 1.0587x — so neither carries the
     // absolute term `shine` did. Above that they collapse, and it is the 8-bit ceiling

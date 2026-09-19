@@ -1,0 +1,350 @@
+{
+  "generatedBy": "ARU_PRINT_INDEX_PARITY=1 npx vitest run tests/index-parity.test.ts",
+  "assertedBy": [
+    "tests/index-parity.test.ts",
+    "ml/selftest.py"
+  ],
+  "note": "Inputs and expected outputs for the ml/skin_indices.py indices whose values are pinned across both languages. See docs/shine-formula-decision.md.",
+  "indices": {
+    "shine_ratio": {
+      "featureKey": "shine",
+      "formula": "shine = tzoneSpecular + max(0, (tzoneL - cheekL) / (cheekL || 1)) * (140 / 255)",
+      "covers": "formula and path",
+      "rows": [
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1, 0/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1,
+          "glintPixels": 0,
+          "tzoneSpecular": 0,
+          "tzoneL": 140.222,
+          "cheekL": 140.222,
+          "shine": 0
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1, 2/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1,
+          "glintPixels": 2,
+          "tzoneSpecular": 0.024691358024691357,
+          "tzoneL": 140.222,
+          "cheekL": 140.222,
+          "shine": 0.024691358024691357
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1, 8/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1,
+          "glintPixels": 8,
+          "tzoneSpecular": 0.09876543209876543,
+          "tzoneL": 140.222,
+          "cheekL": 140.222,
+          "shine": 0.09876543209876543
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1, 20/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1,
+          "glintPixels": 20,
+          "tzoneSpecular": 0.24691358024691357,
+          "tzoneL": 160.40656702253855,
+          "cheekL": 140.222,
+          "shine": 0.32594342628532147
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1, 40/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1,
+          "glintPixels": 40,
+          "tzoneSpecular": 0.49382716049382713,
+          "tzoneL": 194.26455041518386,
+          "cheekL": 140.222,
+          "shine": 0.7054231998869838
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.08, 0/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.08,
+          "glintPixels": 0,
+          "tzoneSpecular": 0,
+          "tzoneL": 151.11899999999997,
+          "cheekL": 140.222,
+          "shine": 0.04266567775860169
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.08, 2/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.08,
+          "glintPixels": 2,
+          "tzoneSpecular": 0.024691358024691357,
+          "tzoneL": 151.11899999999997,
+          "cheekL": 140.222,
+          "shine": 0.06735703578329305
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.08, 8/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.08,
+          "glintPixels": 8,
+          "tzoneSpecular": 0.09876543209876543,
+          "tzoneL": 151.11899999999997,
+          "cheekL": 140.222,
+          "shine": 0.14143110985736712
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.08, 40/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.08,
+          "glintPixels": 40,
+          "tzoneSpecular": 0.49382716049382713,
+          "tzoneL": 199.79707236061682,
+          "cheekL": 140.222,
+          "shine": 0.7270850149293107
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.2, 0/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.2,
+          "glintPixels": 0,
+          "tzoneSpecular": 0,
+          "tzoneL": 168.38599999999997,
+          "cheekL": 140.222,
+          "shine": 0.11027219862285587
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.2, 8/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.2,
+          "glintPixels": 8,
+          "tzoneSpecular": 0.09876543209876543,
+          "tzoneL": 168.38599999999997,
+          "cheekL": 140.222,
+          "shine": 0.2090376307216213
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 140, tzoneL/cheekL 1.2, 40/81 specular",
+          "cheekTarget": 140,
+          "contrast": 1.2,
+          "glintPixels": 40,
+          "tzoneSpecular": 0.49382716049382713,
+          "tzoneL": 208.5637105575326,
+          "cheekL": 140.222,
+          "shine": 0.761409559330142
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 80, tzoneL/cheekL 1.08, 0/81 specular",
+          "cheekTarget": 80,
+          "contrast": 1.08,
+          "glintPixels": 0,
+          "tzoneSpecular": 0,
+          "tzoneL": 86.378,
+          "cheekL": 79.89399999999999,
+          "shine": 0.04455707734316604
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 80, tzoneL/cheekL 1.08, 8/81 specular",
+          "cheekTarget": 80,
+          "contrast": 1.08,
+          "glintPixels": 8,
+          "tzoneSpecular": 0.09876543209876543,
+          "tzoneL": 86.378,
+          "cheekL": 79.89399999999999,
+          "shine": 0.14332250944193148
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 200, tzoneL/cheekL 1.04, 0/81 specular",
+          "cheekTarget": 200,
+          "contrast": 1.04,
+          "glintPixels": 0,
+          "tzoneSpecular": 0,
+          "tzoneL": 208.034,
+          "cheekL": 200.13699999999997,
+          "shine": 0.021663199923738573
+        },
+        {
+          "kind": "face",
+          "note": "cheekL 200, tzoneL/cheekL 1.04, 8/81 specular",
+          "cheekTarget": 200,
+          "contrast": 1.04,
+          "glintPixels": 8,
+          "tzoneSpecular": 0.09876543209876543,
+          "tzoneL": 208.034,
+          "cheekL": 200.13699999999997,
+          "shine": 0.120428632022504
+        },
+        {
+          "kind": "edge",
+          "note": "black frame: the (cheekL || 1) branch",
+          "tzoneSpecular": 0,
+          "tzoneL": 0,
+          "cheekL": 0,
+          "shine": 0
+        },
+        {
+          "kind": "edge",
+          "note": "black frame with a specular T-zone",
+          "tzoneSpecular": 0.5,
+          "tzoneL": 12,
+          "cheekL": 0,
+          "shine": 7.088235294117648
+        },
+        {
+          "kind": "edge",
+          "note": "T-zone darker than the cheek: the gap clamps at 0",
+          "tzoneSpecular": 0,
+          "tzoneL": 100,
+          "cheekL": 140,
+          "shine": 0
+        },
+        {
+          "kind": "edge",
+          "note": "T-zone darker and specular",
+          "tzoneSpecular": 0.25,
+          "tzoneL": 100,
+          "cheekL": 140,
+          "shine": 0.25
+        },
+        {
+          "kind": "edge",
+          "note": "no specular pixel, large gap",
+          "tzoneSpecular": 0,
+          "tzoneL": 210,
+          "cheekL": 140,
+          "shine": 0.27450980392156865
+        },
+        {
+          "kind": "edge",
+          "note": "fully specular T-zone",
+          "tzoneSpecular": 1,
+          "tzoneL": 200,
+          "cheekL": 140,
+          "shine": 1.2352941176470589
+        }
+      ]
+    },
+    "tone_evenness": {
+      "featureKey": "toneSpread",
+      "formula": "toneSpread = stdev(regionLstars) / abs(mean(regionLstars)), 0 when n < 2 or abs(mean) < 1e-6",
+      "covers": "formula only; the region L* inputs are not an exported field",
+      "rows": [
+        {
+          "note": "even face, mid tone",
+          "lstars": [
+            62,
+            62,
+            62,
+            62
+          ],
+          "value": 0
+        },
+        {
+          "note": "uneven face",
+          "lstars": [
+            40,
+            55,
+            48,
+            62
+          ],
+          "value": 0.15934129727864463
+        },
+        {
+          "note": "bright forehead",
+          "lstars": [
+            71,
+            59,
+            61,
+            58
+          ],
+          "value": 0.08298786473803946
+        },
+        {
+          "note": "deep tone, slightly uneven",
+          "lstars": [
+            28.4,
+            26.9,
+            27.2,
+            25.8
+          ],
+          "value": 0.034189304859785045
+        },
+        {
+          "note": "the same face 1.15x brighter: a ratio, so unchanged but for the last ulp",
+          "lstars": [
+            46,
+            63.25,
+            55.2,
+            71.3
+          ],
+          "value": 0.1593412972786446
+        },
+        {
+          "note": "fewer than two values",
+          "lstars": [
+            62
+          ],
+          "value": 0
+        },
+        {
+          "note": "no values at all",
+          "lstars": [],
+          "value": 0
+        },
+        {
+          "note": "all zeros: mean is exactly 0",
+          "lstars": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "note": "mean 2e-7, just inside the 1e-6 guard: returns 0",
+          "lstars": [
+            1e-7,
+            1e-7,
+            3e-7,
+            3e-7
+          ],
+          "value": 0
+        },
+        {
+          "note": "mean 2e-6, just outside it: returns the real ratio",
+          "lstars": [
+            0.000001,
+            0.000001,
+            0.000003,
+            0.000003
+          ],
+          "value": 0.5000000000000001
+        },
+        {
+          "note": "negative mean: the divisor is its magnitude",
+          "lstars": [
+            -40,
+            -55,
+            -48,
+            -62
+          ],
+          "value": 0.15934129727864463
+        }
+      ]
+    }
+  }
+}
