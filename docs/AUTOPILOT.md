@@ -786,6 +786,39 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   the perf claim harder to review and harder to revert. `NEXT_PUBLIC_FUNNEL_FLUSH`
   untouched. No consent kind or flow invented. `status` and `promotionGate` byte-identical.
 
+
+  **Supervisor, same day — reviewed, and two of the reviewer's own expectations were
+  the things that did not survive.** The equivalence proof was checked the way it has
+  to be: `lib/skin.ts` was replaced with main's pre-change version (exports added, no
+  logic touched, `tsc` still 13) and the branch's pinned `blemishCount` /
+  `blemishDensity` values passed against it at all four frame sizes — so those pins are
+  genuinely the before-values, and the optimised build matching them is proof the row
+  filter is behaviour-preserving end to end. Breaking the bound (`excludeRSq / 4`) fails
+  the pin with `400x480 blemishDensity: expected 3.8926712054465358 to be
+  4.122487064212401`; removing the filter entirely while keeping it correct leaves the
+  pin green and fails only the source pin, which is exactly the right shape. Suite
+  timing over four consecutive runs on the branch: 11.02 / 10.27 / 9.89 / 9.97 s against
+  main's 12.59 / 12.66 / 15.58 s — faster than main and not flaky, and no timing
+  assertion runs by default.
+
+  The saving reproduces on an independent fixture built to be UNFAVOURABLE to it
+  (landmarks around an ellipse, so the non-skin points do not cluster in y): 1.95 ms and
+  1.94 ms saved at 400x480 and 720x960, 35% and 29% off `detectBlemishes`. Below the
+  table's range, as an adversarial geometry should be, and recorded in
+  `docs/scan-cost-measurement.md` as the floor.
+
+  **Two supervisor expectations were wrong and both are worth recording.** First, a
+  pre-registered claim that `analyzeSkin` is flat in frame size at ~1.5 ms — measured on
+  a fixture whose landmarks all sat on three points, so `faceW` was 0 and
+  `detectBlemishes` returned early at its `faceW < 20` guard without running at all. The
+  cheap phases are flat; the expensive one is not, and the reviewer's fixture had
+  excluded it. Second, a pre-registered prediction that cycle 14's clipped-channel
+  branch would be below the noise floor and that any specific number for it should be
+  rejected. The cycle measured it properly — isolating `sampleRegion` rather than the
+  whole call, sixteen measurements all positive, median 58.4 µs a frame — and then
+  called it an upper bound because the ablation also changes V8's inlining. That is a
+  better design than the reviewer's and a better piece of self-criticism than the
+  reviewer asked for.
 - 2026-09-18 (cycle 14) — Branch `autopilot/2026-09-18-1839`. **The silent window
   cycle 13 measured is closed, with a fourth capture signal whose cut was derived from a
   sweep — and `confidenceLabel`, eight cycles on the backlog, is decided.**

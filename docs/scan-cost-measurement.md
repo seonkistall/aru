@@ -145,6 +145,17 @@ asserting both builds return the same count and the same area:
 | 1080x1440 | 7.99 – 8.22 ms | 9.84 – 10.64 ms | 1.86 – 2.41 ms | 5.6 – 7.2 ms |
 | 1440x1920 | 9.99 – 10.21 ms | 11.01 – 11.83 ms | 0.99 – 1.62 ms | 3.0 – 4.9 ms |
 
+**Independently corroborated on a fixture chosen against the change** (supervisor,
+2026-09-19). The row filter wins by dropping points that sit outside a row's y band, so
+a face whose `NON_SKIN` points are SPREAD in y rather than clustered is the unfavourable
+case for it. Re-measured on exactly that — 468 landmarks placed around an ellipse, so
+eyes, brows and lips do not cluster — `detectBlemishes` goes 5.592 / 5.583 ms
+point-by-point to 3.640 ms row-filtered at 400x480, and 6.602 / 6.915 to 4.833 at
+720x960: **1.95 ms and 1.94 ms saved, 35% and 29%.** Lower than the table above, which
+is what an adversarial geometry should give, and it is the floor the change is worth
+even when the face works against it. (At 1440x1920 the same fixture spreads 0.12 to
+2.05 ms across two runs — too noisy there to bound anything, and reported as such.)
+
 **No published value moves**, which is the condition a performance change has to meet
 here. `fallbackVersion`, `ATTR_THRESHOLDS` and `inputSchemaVersion` are untouched, and
 so is the manifest. Two guards, both default cases: `blemishCount` and `blemishDensity`
