@@ -21,6 +21,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+# No .pyc, on purpose. Python invalidates its bytecode cache on (mtime, size), both
+# at one-second granularity — and this cycle's verification discipline is to edit a
+# source line, re-run, and read the failure. Two edits of the same size inside one
+# second (140.0 -> 139.0, then restored) are indistinguishable to that check, so the
+# cached module wins and the run reports the PREVIOUS edit's result. Measured on
+# 2026-09-19: a restored ml/skin_indices.py kept failing with `139.0 != 140.0` until
+# ml/__pycache__ was removed by hand. A stale green would be worse than a stale red.
+sys.dont_write_bytecode = True
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import aru_axes  # noqa: E402
@@ -334,10 +343,85 @@ class SkinIndices(unittest.TestCase):
         for key in skin_indices.NEW_FEATURE_KEYS:
             self.assertNotIn(key, ("shine", "relRedness", "cov"))
 
-    def test_shine_and_roughness_are_ratios_so_exposure_cancels(self):
-        self.assertAlmostEqual(skin_indices.shine_ratio(0.30, 0.10), 3.0)
-        self.assertAlmostEqual(skin_indices.shine_ratio(0.30 * 1.7, 0.10 * 1.7), 3.0)
+    def test_shine_brightness_gap_is_relative_so_exposure_cancels(self):
+        """What the old `tzone_specular / cheek_specular` form asserted, on the form
+        that replaced it on 2026-09-19.
+
+        The property moved with the formula and narrowed on the way, deliberately.
+        `shine`'s brightness-gap term is Weber contrast, so an exposure gain applied
+        to BOTH luminances cancels exactly — that part holds. Its specular term is a
+        count of pixels above a fixed 218 cut, which an exposure gain does NOT scale,
+        so it is passed through untouched here rather than asserted invariant. That
+        distinction is the whole reason the old form's invariance was false on a real
+        frame while true in this test's algebra: measured on a face family in
+        docs/shine-formula-decision.md, the old form ran 0 -> 49,383 across an
+        exposure range every capture signal accepted.
+        """
+        base = skin_indices.shine_ratio(0.30, 168.0, 140.0)
+        for gain in (0.5, 1.7, 3.0):
+            self.assertAlmostEqual(skin_indices.shine_ratio(0.30, 168.0 * gain, 140.0 * gain), base, places=12)
+        # The gap term alone, with the specular term zeroed: 0.2 * (140/255).
+        self.assertAlmostEqual(skin_indices.shine_ratio(0.0, 168.0, 140.0), 0.2 * (140.0 / 255.0))
+        # A T-zone darker than the cheek is not negative oil.
+        self.assertEqual(skin_indices.shine_ratio(0.0, 100.0, 140.0), 0.0)
+        self.assertEqual(skin_indices.shine_ratio(0.25, 100.0, 140.0), 0.25)
         self.assertAlmostEqual(skin_indices.roughness_ratio(0.8 * 0.4, 0.2 * 0.4), 4.0)
+
+    def test_indices_match_the_typescript_implementations_value_for_value(self):
+        """The cross-language check that did not exist, and whose absence is why two
+        implementations could be two formulas under one name with every test green.
+
+        `tests/skin-index-contract.test.ts` pins NAMES — which feature key each index
+        id maps to, which columns carry it — and that is what stayed green while the
+        values diverged. ml/index-parity.json is a table of inputs and expected
+        outputs generated from lib/skin.ts and asserted here and in
+        tests/index-parity.test.ts, so neither language can move alone.
+
+        Exact equality, not a tolerance: both covered expressions are +, -, *, / and
+        sqrt on IEEE doubles, all correctly rounded, so a matching implementation
+        matches bit for bit. If this starts failing, one of the two implementations
+        changed — regenerate the table only after deciding on purpose which is right.
+
+        Two of the seven registry indices are covered, and to different depths. Only
+        the shine rows pin the PATH as well as the formula (the TypeScript side
+        rebuilds each frame); the tone_evenness rows pin the formula alone, because
+        its inputs — the four region L* values — are not an exported field. The other
+        five are name-pinned and value-unchecked: docs/shine-formula-decision.md.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        indices = table["indices"]
+        self.assertEqual(set(indices), {"shine_ratio", "tone_evenness"})
+        # Whatever is pinned has to be a real index declaring the real app field.
+        for index_id, group in indices.items():
+            self.assertIn(index_id, skin_indices.INDEX_BY_ID)
+            self.assertEqual(skin_indices.FEATURE_KEY[index_id], group["featureKey"])
+
+        shine_rows = indices["shine_ratio"]["rows"]
+        self.assertGreaterEqual(len(shine_rows), 20)
+        self.assertEqual(skin_indices.SHINE_REFERENCE_CHEEK_L, 140.0)
+        for row in shine_rows:
+            computed = skin_indices.shine_ratio(row["tzoneSpecular"], row["tzoneL"], row["cheekL"])
+            self.assertEqual(
+                computed,
+                row["shine"],
+                f'{row["note"]}: shine_ratio({row["tzoneSpecular"]}, {row["tzoneL"]}, {row["cheekL"]})',
+            )
+        # Not a table of one value repeated: it has to span the axis to be worth pinning.
+        shines = [row["shine"] for row in shine_rows]
+        self.assertEqual(min(shines), 0.0)
+        self.assertGreater(max(shines), 0.7)
+        self.assertGreaterEqual(len({row["kind"] for row in shine_rows}), 2)
+
+        # tone_evenness has claimed in its own docstring since 2026-09-14 to be "the
+        # same formula as relativeSpread in lib/skin.ts". The shine_ratio docstring
+        # made the same kind of claim and was false. This one is true, and this is
+        # what keeps it true.
+        spread_rows = indices["tone_evenness"]["rows"]
+        self.assertGreaterEqual(len(spread_rows), 8)
+        for row in spread_rows:
+            computed = skin_indices.tone_evenness(list(row["lstars"]))
+            self.assertEqual(computed, row["value"], f'{row["note"]}: tone_evenness({row["lstars"]})')
+        self.assertGreaterEqual(len([row for row in spread_rows if row["value"] > 0]), 4)
 
     def test_blemish_density_does_not_move_with_capture_resolution(self):
         """The defect the third argument exists for.

@@ -81,7 +81,7 @@ INDICES: tuple[Index, ...] = (
     Index("tone_evenness", WITHIN_IMAGE, "tone",
           "Spread of L* across facial regions of one frame. Uniformity, not lightness."),
     Index("shine_ratio", WITHIN_IMAGE, "oil",
-          "Specular-to-diffuse luminance of the T-zone against the cheeks, same frame."),
+          "T-zone specular pixel fraction plus the T-zone/cheek Weber contrast, same frame."),
     Index("blemish_count", WITHIN_IMAGE, "trouble",
           "Count of local a* maxima per face-width-squared of sampled skin. Morphology, not colour level."),
     Index("roughness_ratio", WITHIN_IMAGE, "dryness",
@@ -156,10 +156,40 @@ def tone_evenness(region_lstars: list[float]) -> float:
     return math.sqrt(variance) / abs(mean)
 
 
-def shine_ratio(tzone_specular: float, cheek_specular: float) -> float:
-    """T-zone shine against cheek shine in one frame. WITHIN_IMAGE."""
-    denominator = max(cheek_specular, 1e-6)
-    return tzone_specular / denominator
+#: Cheek luminance the brightness-gap term is normalised to. Mirrors
+#: SHINE_REFERENCE_CHEEK_L in lib/skin.ts, which is where the choice of 140 is argued.
+SHINE_REFERENCE_CHEEK_L = 140.0
+
+
+def shine_ratio(tzone_specular: float, tzone_luminance: float, cheek_luminance: float) -> float:
+    """The oil index. WITHIN_IMAGE. Mirrors `shineIndex` in lib/skin.ts exactly.
+
+    Both terms are within-image. The first is the share of the untrimmed T-zone patch
+    above the 218 luminance cut; the second is Weber contrast of the T-zone against the
+    cheek, scaled so ATTR_THRESHOLDS.oil keeps meaning what it meant on a correctly
+    exposed capture. Luminances are 0-255 frame luminance, not CIELAB L*.
+
+    THIS SIGNATURE CHANGED ON 2026-09-19, and the reason is worth keeping.
+
+    Until then this function was `tzone_specular / max(cheek_specular, 1e-6)` — a
+    different formula from the app's under the same name, with FEATURE_KEY declaring
+    the two to be one field. Nothing in the pipeline ever called it (run_pipeline.py
+    and calibrate.py read the app's `shine` column straight out of the export), its
+    second argument was never an exported ARU field, and measured on real frames it
+    was degenerate: on a matte cheek `cheek_specular` is exactly 0, so the epsilon set
+    the scale, and one glint pixel in 81 moved the index by a factor of 12,345.7. It was
+    also not exposure-invariant on a face, which is the one property selftest asserted
+    of it — a specular ratio is a threshold count fraction, so an exposure gain does
+    not scale it. Full measurement and both tables: docs/shine-formula-decision.md.
+
+    ml/index-parity.json is a committed table of inputs and outputs that this function
+    and lib/skin.ts BOTH assert against, so a future divergence fails a test instead of
+    living in the tree until somebody reads both files side by side, which is how this
+    one was found.
+    """
+    denominator = cheek_luminance if cheek_luminance else 1.0
+    gap = max(0.0, (tzone_luminance - cheek_luminance) / denominator)
+    return tzone_specular + gap * (SHINE_REFERENCE_CHEEK_L / 255.0)
 
 
 def roughness_ratio(region_highfreq: float, reference_highfreq: float) -> float:
