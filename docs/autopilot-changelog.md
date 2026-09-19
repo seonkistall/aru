@@ -29,6 +29,31 @@ Ticked `[x]` and moved here; the section each was under is kept.
 
 ### Now
 
+- [x] [AI] ~~`shine_ratio` in `ml/skin_indices.py` and `shine` in `lib/skin.ts` are two
+  different formulas under one name~~ — settled 2026-09-19 (cycle 16), by measurement
+  rather than by rename, as the item required. **The app's formula won and the Python
+  side moved to it.** Five independent grounds, each sufficient alone: `cheek_specular`
+  was never a field of `SkinRawFeatures`, so the Python form was **uncomputable** from
+  an ARU export; no pipeline script ever called `shine_ratio()` (all three read the
+  app's `shine` column), so it was a declaration and the declaration was what was wrong;
+  on a matte cheek `cheek_specular` is exactly 0, so the 1e-6 epsilon set the scale and
+  one cheek pixel in 81 moved the index by **12,345.7x**; adding oil to the cheek made
+  the index **fall**; and it returned exactly 0 for three faces whose T-zone/cheek
+  brightness gap the app separates into two published levels. Its claimed exposure
+  invariance — the one thing `ml/selftest.py` checked — is false on a frame: a specular
+  ratio is a threshold count fraction, not a luminance, and across an exposure range
+  every capture signal accepts it ran **0 -> 49,383** while the app's index held within
+  **0.12%**. `ml/selftest.py`'s invariance case moved with the formula and narrowed
+  (the Weber gap term cancels a gain exactly; the specular term is passed through, not
+  asserted invariant). No published value moved: the app's expression was extracted into
+  an exported `shineIndex` byte-for-byte unchanged, proven by the existing absolute-value
+  pins. The drift itself is closed by `ml/index-parity.json` — a committed table of
+  inputs and expected outputs asserted **exactly** by `tests/index-parity.test.ts` and by
+  `ml/selftest.py`, 16 of whose 22 shine rows are real readings whose frames the
+  TypeScript side rebuilds — because `tests/skin-index-contract.test.ts` pins names and
+  names were never what could drift. Measurement, both tables and the reproduction
+  commands: `docs/shine-formula-decision.md`.
+
 - [x] [AI] ~~`funnelDropoff` anchors its cumulative chart on `scan_started`, so the camera
   loss `scan_opened` measures does not appear in the drop-off bars~~ — done 2026-09-19.
   The item was parked on "revisit once logs in hand all contain it", because the chart is
@@ -2421,3 +2446,165 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **Ran 77 tests ... OK** unchanged, `npm run smoke` green. Guardrail 8 untouched.
   `NEXT_PUBLIC_FUNNEL_FLUSH` untouched, `inputSchemaVersion` untouched, the retake rule
   itself untouched.
+- 2026-09-18 (cycle 13) — Branch `autopilot/2026-09-18-1239`. **The other two axes were
+  swept and they are clean. What is not clean is the 8-bit ceiling, and no capture signal
+  watches it.** Cycle 12 measured `shine` and found an absolute brightness term.
+  `relRedness` and `cov` were asserted exposure-invariant by this repository's own
+  thesis document and had never been measured. They are now.
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npx tsc --noEmit | grep -c
+  "error TS"` **13**, vitest **482 passed in 77 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The negative result, which is the main one.** Cycle 12's fixture could not be reused:
+  its frame is flat, so `texture` is 0 and `cov` is 0 at every exposure — a face needs
+  texture before pores can be measured at all. `tests/axis-exposure-scale.test.ts` builds
+  one: the scene is float, every variation on it is multiplicative (texture, per-channel
+  jitter, exposure gain), and the 8-bit write happens last, which is the only place an
+  exposure can leave a trace in an index built from ratios. Warm face at both cuts
+  (cheek 200/150/138, R/L 1.223, texture amplitude 0.19):
+
+  ```
+  cheekL  R=255   relRedness  등급          cov      등급          failed
+   71.2   0.0%    0.01355     붉은기 약간   0.08704  결 약간 보임   -
+  101.6   0.0%    0.01280     붉은기 약간   0.08698  결 약간 보임   -
+  142.3   0.0%    0.01334     붉은기 약간   0.08699  결 약간 보임   -
+  162.6   0.0%    0.01319     붉은기 약간   0.08698  결 약간 보임   -
+  177.9   2.5%    0.01313     붉은기 약간   0.08694  결 약간 보임   -
+  184.8  14.8%    0.01291     붉은기 약간   0.08568  결 약간 보임   -
+  190.7  25.9%    0.01219     붉은기 약간   0.08355  결 매끈        -
+  197.0  38.3%    0.01159     붉은기 낮음   0.07949  결 매끈        반사
+  209.5  55.6%    0.01058     붉은기 낮음   0.06883  결 매끈        반사
+  ```
+
+  Over cheekL 71.2 to 172.8 — a 2.4x exposure range at a fixed relative face structure,
+  and the whole span in which no channel saturates — `cov` spans **1.0092x** and
+  `relRedness` **1.0587x**. Neither carries an absolute term. The oil control on the same
+  harness spans **1.0116x** and keeps one level. So the answer
+  to the brief's question is: no drift, on both axes, and no fix to `lib/skin.ts`.
+  `ATTR_THRESHOLDS`, `fallbackVersion` and the manifest are all untouched, because
+  nothing was found that would justify moving them. Guardrail 8 untouched.
+
+  **The 190.7 row is the finding.** The published pores level drops a bucket while 조명,
+  반사 and 피부 영역 all say ok. Redness holds there but with 1.6% of margin left against
+  its 0.012 cut, so a slightly less red face loses its level inside the passing band too.
+
+  **It is the sensor range, not the normalisation, and the control is what says so.** A
+  second face with the SAME texture amplitude and the same `relRedness` at the reference
+  exposure, but R/L 1.101 instead of 1.223, swept over the identical exposures:
+
+  ```
+  cheekL  R=255   relRedness  cov      등급
+   71.1   0.0%    0.01396     0.08673  결 약간 보임
+  142.3   0.0%    0.01370     0.08725  결 약간 보임
+  177.8   0.0%    0.01370     0.08698  결 약간 보임
+  191.1   0.0%    0.01338     0.08699  결 약간 보임
+  203.2  12.3%    0.01354     0.08647  결 약간 보임
+  212.8  25.9%    0.01248     0.08354  결 매끈
+  ```
+
+  Same exposure, one face loses the level and the other does not. The difference is how
+  much room the red channel had. Saturation cuts the top off the luminance distribution,
+  so the variance falls and `cov` falls with it; red clips first, so `rIdx(cheeks)` falls
+  and `relRedness` follows. No renormalisation recovers a pixel already written as 255,
+  which is why this one does not end in a formula change the way cycle 12 did.
+
+  **What IS ARU's, filed rather than fixed.** Of the three signals only 반사 can see
+  saturation, and it watches the **T-zone's LUMINANCE** crossing 218 — while `relRedness`
+  and `cov` are computed from the **cheek**, whose red channel pins at 255 first on a
+  warm enough face. Measured above: 2.5% clipped at 177.9 and 14.8% at 184.8, all
+  signals ok. And clipping delays its own detector — a clipped pixel's computed luminance
+  is lower than the scene's, so fewer pixels cross 218 and the saturating face's 반사
+  fails **6 counts of cheekL later** than the control's (197.0 against 191.1). A fourth
+  signal is the fix and it reopens the retake rule and moves what `confidenceLabel`
+  reports, both of which the brief put out of scope. Backlog item, dated.
+
+  **Supervisor, same day — the one number this rested on had no source, and now the band
+  does.** The worker's text put the whole off-fixture case on "skin's R/L is about 1.2",
+  which traces only to this repository's own `[196, 152, 140]` fixture constant
+  (R/L 1.1967) and to nothing measured on skin. Sweeping R/L itself at a fixed cheek
+  luminance, with the two published faces as the endpoints, locates the window instead
+  of asserting it:
+
+  ```
+  R/L    cov@160   worst-silent cov   pores level   verdict
+  1.100  0.08696   0.08687            1 -> 1        holds
+  1.140  0.08691   0.08678            1 -> 1        holds
+  1.170  0.08715   0.08628            1 -> 1        holds
+  1.200  0.08698   0.08428            1 -> 0        FLIPS
+  1.223  0.08701   0.08157            1 -> 0        FLIPS
+  ```
+
+  The silent window opens between **1.17 and 1.20**, and the repository's own fixture
+  sits at 1.1967 — inside it. The claim about skin is removed from `lib/skin.ts` and both
+  docs; what replaces it is the measured band plus a named unknown, and what settles the
+  unknown is the golden-set photos already blocked on the owner. Pinned as a ninth case
+  in the same file; breaking it by moving the specular cut to 185 fails it
+  (`× opens that silent window only above R/L 1.17`).
+
+  **Adversarial review, all of it re-derived rather than accepted.** The invariance was
+  re-measured on an independent fixture — a sinusoid texture instead of the worker's hash
+  noise — and came back the same: `cov` 1.0148x and no trend over cheekL 70..170, with
+  the headroom control flat at 188 (0.06886 -> 0.06860). The clipping attribution
+  reproduced on that fixture too. Every new case was broken at the source line it
+  protects, never at the test: reverting `cov` to `texture / 140` fails 5 of 9, making
+  `relRedness` an absolute red difference fails 3 (2.318x spread), moving the specular
+  cut from 218 to 190 fails 3. Step 8 rotation verified by sorting both docs and
+  `comm -23` against main's pair: **0 lines lost**, 2482 -> 2599. Suite 490 in 78 files,
+  `tsc` 13, eslint 2 warnings, `npm run smoke` passed.
+
+  **The quantisation floor: real, measured, and three cuts below anything that matters.**
+  The brief asked whether a dark-end pores drift would be a normalisation or a sensor
+  problem. There is no dark-end drift to attribute: the face at the pores cut holds
+  within 1.02x from cheekL 66 to 170 and never changes level. The effect the question
+  anticipated does exist one axis down — 8-bit rounding adds a variance of 1/12 count²
+  regardless of exposure, so it inflates `cov` more when the absolute texture is smaller.
+  On a face whose `cheekTexture` is **0.9456** counts at cheekL 66 and 2.3588 at 170:
+
+  ```
+  cov dark mean   (cheekL 66/70/75)        0.013986
+  cov bright mean (cheekL 140/152/160/170) 0.013787
+  ratio                                    1.0144
+  ```
+
+  1.4%, in the direction theory predicts, on a reading already 6x below the 0.085 cut.
+  Neither fix applies because neither problem is present at ARU's cut points.
+
+  **`ml/skin_indices.py` has nothing to keep in step.** Checked, not assumed:
+  `relative_redness(target_astar, reference_astar)` is an a* difference — a different
+  formula with no brightness term — and there is no Python index for pores at all. Same
+  situation as cycle 12 found for `shine_ratio`, and left alone for the same reason.
+
+  **Verification of the new tests.** All 7 substantive cases in
+  `tests/axis-exposure-scale.test.ts` checked by breaking the line each protects in
+  `lib/skin.ts`, four breaks, every case covered by at least one. The 8th is the
+  env-gated print block. Changing `cov: cheeks.texture / (cheekL || 1)` to
+  `cheeks.texture / 140` failed 5, among them
+  `AssertionError: clipping-prone cov 0.04425 0.05026 0.06315 0.07606 0.08841 0.10104 0.10716: expected 2.4219529150904826 to be less than 1.02`
+  and
+  `AssertionError: clipping-prone published 결 매끈/결 매끈/결 매끈/결 매끈/결 약간 보임/결 약간 보임/결 약간 보임: expected 2 to be 1`.
+  Changing `relRedness: rIdx(cheeks) - rIdx(tzone)` to the absolute
+  `(cheeks.meanR - tzone.meanR) / 255` failed 3, among them
+  `AssertionError: clipping-prone relRedness 0.01292 0.01443 0.01711 0.02083 0.02523 0.02857 0.02995: expected 2.318300902953162 to be less than 1.08`.
+  Restoring cycle 12's removed term, `shine: tzone.specularRatio + Math.max(0, (tzoneL - cheekL) / 255)`,
+  failed the oil control alone:
+  `AssertionError: oil 0.02601 0.02955 0.03676 0.04414 0.05145 0.05886 0.06300: expected 2.42241788561679 to be less than 1.08`.
+  Flipping the sign to `rIdx(tzone) - rIdx(cheeks)` failed the ordering case,
+  `AssertionError: -0.011245679366465866 -0.013337001362681844 -0.017442733570711244 -0.026645026780333758: expected -0.013337001362681844 to be greater than -0.011245679366465866`.
+
+  **UI/UX and research skipped, deliberately**, on cycle 12's reasoning. Nothing a user
+  sees changed — the whole finding is that two numbers do not move — and a screen edit
+  bolted onto a branch whose claim is "these are invariant and this is where they stop
+  being" would only make the tables harder to read. The research track's question was
+  answered by running the code; a lookup added to fill the track is how the changelog
+  got long.
+
+  Verification on this branch: vitest **490 passed in 78 files** (from 482 in 77 — the
+  8 cases in `tests/axis-exposure-scale.test.ts`; the print block is a counted case and
+  prints nothing with `ARU_PRINT_AXIS_SWEEP` unset), `npx tsc --noEmit | grep -c "error TS"`
+  **13** unchanged, `npx eslint .` **2 warnings** both in `lib/care.ts` unchanged,
+  `python3 ml/selftest.py` **Ran 77 tests ... OK** unchanged, `npm run smoke` green.
+  Guardrail 8 untouched: `status` and `promotionGate` byte-identical.
+  `fallbackVersion`, `ATTR_THRESHOLDS`, `inputSchemaVersion`, `NEXT_PUBLIC_FUNNEL_FLUSH`,
+  the retake rule and the shine normalisation all untouched.
