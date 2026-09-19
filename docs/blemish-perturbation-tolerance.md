@@ -173,8 +173,34 @@ interpolated: 1.9e-6 against 1.046e-5**, a factor of 5.5 of headroom. 1024 entri
 not-provably-safe table, the same objection one size down. A future cycle that wants
 the 37-61% back should measure whether a 4096-entry interpolated table — 32KB of
 doubles, a floor, two loads and a multiply-add — is actually faster than
-`Math.pow(., 2.4)` on the phone profile that matters, because that is now the only
-open question, and it is a speed question rather than a correctness one.
+`Math.pow(., 2.4)` on the phone profile that matters.
+
+**That last paragraph is one step too confident, and the correction is the supervisor's**
+(2026-09-19). The table's `worst |da*|` column is the error on the pixel values *these
+four fixtures happen to produce*, because the rebuilt `lib/skin.ts` only ever converts
+the cells a real frame hands it. It is not the worst case over the inputs
+`detectBlemishes` will *accept*, and those are the ones a certificate has to cover: the
+gate at `lib/skin.ts:958` is `L in [40, 230] && r > b` on the raw pixel, and the
+conversion then runs on `channel * gain`. Swept over every input that clears that gate,
+at gains 0.72 / 1.0 / 1.33:
+
+| table | worst over the whole cube | worst inside the detector's gate | against 1.046e-5 |
+|---|---|---|---|
+| 1024 linear | 3.701e-4 | 1.962e-4 | does not certify |
+| 4096 linear | 1.621e-5 | **1.251e-5** | **does not certify** |
+
+The 4096 table's worst admissible input is around rgb(22, 35, 17) after gain — dark and
+green-leaning, which passes `r > b` — and it is off by 1.251e-5 against a certified
+radius of 1.046e-5. So **no table measured here certifies**, and the 5.5x of headroom
+above is headroom on this fixture family rather than on the input domain. The §2 and §3
+measurements are unaffected; what changes is that the open question is not only a speed
+question. A table that wanted to certify would have to either go finer than 4096 or
+carry an argument that the inputs near its worst case cannot reach the detector, and
+neither is free.
+
+Reproduce: the sweep is small enough to state in full — build the table over the 0-255
+channel domain, interpolate linearly, and compare `labAStar` through it against
+`labAStar` through `Math.pow`, filtering on the gate above.
 
 Two limits on all of this, stated rather than implied:
 

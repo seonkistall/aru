@@ -877,6 +877,47 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   row's `320000.0`, and the older figure still stands in cycle 17's entry), and the
   "indices still unchecked" item's recount from three covered to four. Nothing from the
   moved entry appears in that list.
+
+  **Supervisor, same day — the method is better than the reviewer's and the verdict is
+  one step too confident.** The reviewer went in with a perturbation sweep of its own and
+  got a tolerance of **0.03 a\* units**, three orders of magnitude looser than this
+  cycle's 1.046e-5. The cycle is right and the reviewer was answering a weaker question:
+  0.03 was the *achieved* radius for one deterministic error shape, and what an
+  approximation has to clear is the *certified* one, computed from the run's own margins
+  and safe against an error of any shape. The cycle reports both, labels them as
+  different claims, and measures `uniform -> null` — the trap where a constant offset
+  cancels in the local-background subtraction and a harness built on one reports an
+  unbounded tolerance. It is pinned as a case.
+
+  **The correction.** §5 green-lights a 4096-entry interpolated table at 1.9e-6 against
+  1.046e-5. That 1.9e-6 is the error on the pixel values the four fixtures happen to
+  produce, because the rebuilt `lib/skin.ts` only converts the cells a real frame hands
+  it. It is not the worst case over the inputs `detectBlemishes` will ACCEPT, and a
+  certificate has to cover those. The gate is `L in [40, 230] && r > b` on the raw pixel
+  (`lib/skin.ts:958`) with the conversion on `channel * gain`. Swept over every input
+  clearing that gate at gains 0.72 / 1.0 / 1.33:
+
+  ```
+  table          whole cube    inside the gate    vs 1.046e-5
+  1024 linear    3.701e-4      1.962e-4           does not certify
+  4096 linear    1.621e-5      1.251e-5           does not certify
+  ```
+
+  The 4096 table's worst admissible input is around rgb(22, 35, 17) after gain — dark and
+  green-leaning, which passes `r > b`. So **no table measured certifies**, the 5.5x of
+  headroom is headroom on the fixture family rather than on the input domain, and the
+  open question is not only the speed question §5 reduces it to. Recorded in
+  `docs/blemish-perturbation-tolerance.md` §5; §2 and §3 are unaffected.
+
+  **Checked rather than accepted.** The printer reproduces every row of §2 exactly.
+  Three source lines were broken: `minResidual` 1.6 -> 1.2 fails 2 cases including the
+  certified-radius one, `suppressionRadius` 2 -> 1 fails 4, and moving the Python
+  `roughness_ratio` epsilon from 1e-6 to 1e-5 fails `ml/selftest.py`, so the new parity
+  group holds the Python side the way cycle 16 established. The `blemishCount` /
+  `blemishDensity` pins in `tests/scan-cost-benchmark.test.ts` are untouched — the diff
+  against main is empty — and `fallbackVersion` and the manifest did not move, which on
+  this cycle is the requirement. Rotation: 42 differing lines, all from the two items
+  this cycle touched, the closed one rewritten as its outcome in the changelog.
 - 2026-09-19 (cycle 17) — Branch `autopilot/2026-09-19-1239`. **The `rgbToLab` fast
   path is taken, and the number it was filed under is wrong. `a*`-only buys 1.4-7.8% of
   `detectBlemishes`, not 53-59%; the sRGB transfer curve, which no `a*`-only path can
