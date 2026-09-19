@@ -301,6 +301,87 @@
         }
       ]
     },
+    "roughness_ratio": {
+      "featureKey": "roughnessRatio",
+      "pythonFunction": "ml/skin_indices.py :: roughness_ratio",
+      "comparison": "divergent",
+      "appFormula": "roughnessRatio = foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0, and 0 if either region is missing",
+      "pythonFormula": "roughness_ratio = region_highfreq / max(reference_highfreq, 1e-6)",
+      "covers": "both sides' guard behaviour; the high-frequency inputs are not an exported field, and the app divides each region's high-frequency energy by that region's own mean L* before this function sees it, which the Python docstring does not say",
+      "divergence": "An epsilon clamp against a guard that publishes nothing. Below 1e-6 of reference texture Python returns region/1e-6 — hundreds of thousands — where the app returns its could-not-measure 0; at exactly 1e-6 they still differ, because Python clamps to the epsilon and the app's > excludes it; above it they agree exactly. Which side moves is a measurement on real faces, not a choice to be made from this table.",
+      "rows": [
+        {
+          "note": "ordinary face: a smoother cheek than forehead",
+          "cheekHf": 0.32,
+          "foreheadHf": 0.4,
+          "app": 0.7999999999999999,
+          "python": 0.7999999999999999
+        },
+        {
+          "note": "a rougher cheek than forehead",
+          "cheekHf": 0.32000000000000006,
+          "foreheadHf": 0.08000000000000002,
+          "app": 4,
+          "python": 4
+        },
+        {
+          "note": "a cheek with no texture at all",
+          "cheekHf": 0,
+          "foreheadHf": 0.4,
+          "app": 0,
+          "python": 0
+        },
+        {
+          "note": "reference an order above the guard: the two agree",
+          "cheekHf": 0.32,
+          "foreheadHf": 0.00001,
+          "app": 31999.999999999996,
+          "python": 31999.999999999996
+        },
+        {
+          "note": "reference one ulp above the guard: the two still agree",
+          "cheekHf": 0.32,
+          "foreheadHf": 0.0000010000001,
+          "app": 319999.9680000032,
+          "python": 319999.9680000032
+        },
+        {
+          "note": "reference exactly at 1e-6: Python clamps to it, the app's > excludes it",
+          "cheekHf": 0.32,
+          "foreheadHf": 0.000001,
+          "app": 0,
+          "python": 320000
+        },
+        {
+          "note": "reference just under the guard",
+          "cheekHf": 0.32,
+          "foreheadHf": 1e-7,
+          "app": 0,
+          "python": 320000
+        },
+        {
+          "note": "a perfectly smooth forehead: reference exactly 0",
+          "cheekHf": 0.32,
+          "foreheadHf": 0,
+          "app": 0,
+          "python": 320000
+        },
+        {
+          "note": "no forehead patch: a branch Python has no concept of",
+          "cheekHf": 0.32,
+          "foreheadHf": null,
+          "app": 0,
+          "python": null
+        },
+        {
+          "note": "no cheek patch: the same branch, the other side",
+          "cheekHf": null,
+          "foreheadHf": 0.4,
+          "app": 0,
+          "python": null
+        }
+      ]
+    },
     "tone_evenness": {
       "featureKey": "toneSpread",
       "formula": "toneSpread = stdev(regionLstars) / abs(mean(regionLstars)), 0 when n < 2 or abs(mean) < 1e-6",

@@ -284,3 +284,13 @@ property of the fixture and of `BLEMISH.minResidual`, and is measurable with the
 machinery already here. Until that number exists, any approximation of the curve is a
 guess about a published value, and a performance change that alters a reading is not a
 performance change.
+
+> **Done 2026-09-19, cycle 18, and the answer closes the option rather than opening
+> it.** `docs/blemish-perturbation-tolerance.md` has the measurement this section asks
+> for. Below **1.046e-5** a* units no per-cell error can change `blemishCount` on the
+> worst of twelve frames, and a 256-entry table is nowhere near it: read at its nearest
+> entry it is off by **0.470** and moves the count from **6 to 7** at 400x480, and read
+> with linear interpolation it is off by **5.0e-4**, 48 times the radius. The curve
+> stays. The smallest table that clears every frame is 4096 entries interpolated
+> (1.9e-6), and whether that is faster than `Math.pow(., 2.4)` on a phone is the only
+> question left.
