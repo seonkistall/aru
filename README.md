@@ -27,6 +27,10 @@ recommendation flow can also be completed with the questionnaire alone.
 - Capture-resolution invariance of the ROI indices:
   [docs/capture-resolution-invariance.md](docs/capture-resolution-invariance.md)
   (`blemishDensity` was resolution-dependent; the blemish *count* still is)
+- What a scan costs and where the time goes:
+  [docs/scan-cost-measurement.md](docs/scan-cost-measurement.md)
+  (`detectBlemishes` is 79-87% of it; measured on the build container, which is not a
+  phone, and the document says so at length)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
   (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest
@@ -500,7 +504,7 @@ git diff --check
 `npm run smoke` currently bundles:
 
 - ESLint and the TypeScript/Next.js production build
-- Vitest: 79 files, 508 tests
+- Vitest: 80 files, 518 tests
 - Playwright Chromium mobile E2E: 44 tests in 12 files
 - `ml/selftest.py`: 77 tests, standard library only (no torch install needed)
 - Home and core callouts across locales
