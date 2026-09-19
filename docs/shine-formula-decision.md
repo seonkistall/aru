@@ -253,3 +253,35 @@ a measurement of its own.
 
 Not taken this cycle, and not recommended as a one-liner. It is a smaller item than it
 was, and the backlog entry now says why.
+
+## The shape that made the old invariance case vacuous (supervisor, 2026-09-19)
+
+`ml/selftest.py` asserted `shine_ratio(0.30, 0.10) == shine_ratio(0.30 * 1.7, 0.10 * 1.7) == 3.0`
+— it scaled both **specular ratios** by an exposure gain. The decision above is right that
+this is not what an exposure change does to a count fraction. The shape is worth having as
+a measurement rather than as an argument.
+
+On a face with a graded highlight (`rampCapture`, T-zone contrast 1.08), swept across the
+exposure range:
+
+| cheekL | tzoneSpecular |
+|---|---|
+| 92.0 | 0.00000 |
+| 115.0 | 0.00000 |
+| 138.0 | 0.00000 |
+| 161.0 | 0.00000 |
+| 184.0 | 0.39506 |
+| 206.0 | 0.70370 |
+| 223.7 | 0.95062 |
+
+It is **exactly zero across the whole correctly-exposed part of the range** — the 조명
+signal passes cheekL 70..210 and the first four rows are all inside it — then climbs
+steeply and approaches the ceiling a fraction cannot exceed. So the deleted case's
+transformation cannot even be applied where the product actually reads faces: every
+multiple of zero is zero. Where the quantity does move, cheekL 184.0 to 206.0 is an
+exposure ratio of 1.12 while the specular ratio moves by 1.78, and 206.0 to 223.7 is 1.09
+against 1.35. A quantity that scaled with exposure would match them.
+
+Pinned as a case in `tests/shine-formula-decision.test.ts`; printed by
+`ARU_PRINT_SHINE_DECISION=1 npx vitest run tests/shine-formula-decision.test.ts`. Moving
+the specular cut from 218 to 150 fails it (`expected 1 to be greater than or equal to 4`).

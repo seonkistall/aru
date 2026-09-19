@@ -846,6 +846,43 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   grep -c "error TS"` **13** unchanged, `npx eslint .` **2 warnings** both in
   `lib/care.ts` unchanged.
 
+
+  **Supervisor, same day — the contract bites in both directions, and the cycle's
+  sharpest finding is one the review did not have.** The reviewer went in with three
+  independent grounds for rejecting the Python form, derived before reading the branch:
+  it is degenerate (on a matte cheek `0.05 / 1e-6 = 50000`, and a cheek at exactly 0 and
+  at 1e-6 read the same, so the value is a property of the clamp); it INVERTS the oil
+  ranking at ordinary values (a matte cheek with mild T-zone shine reads 50000 against
+  1.5 for a face shiny in both regions, while the app ranks the second above the first by
+  4.68); and it is uncomputable, because `grep -rn "cheek_specular\|cheekSpecular"` over
+  the tree returns exactly two hits, both inside the Python function's own body — the
+  second argument is not a field ARU records anywhere.
+
+  The cycle found a fourth that beats all three: **the deleted `ml/selftest.py` case
+  asserted invariance under a transformation an exposure change never performs.** It
+  scaled both specular ratios by a gain, but a specular ratio is a count fraction above
+  the 218 cut. Measured on a graded highlight, `tzoneSpecular` reads 0.00000 at cheekL
+  92.0, 115.0, 138.0 and 161.0 — the whole correctly-exposed range — then 0.39506,
+  0.70370, 0.95062. Zero times any gain is zero, so the old case could not even be
+  applied where the product reads faces; and where the quantity does move, cheekL
+  184.0 to 206.0 is an exposure ratio of 1.12 against a specular ratio of 1.78. Added as
+  a case and a table rather than left as the branch's (correct) one-line argument;
+  moving the specular cut to 150 fails it with `expected 1 to be greater than or equal
+  to 4`.
+
+  **The parity contract is real, checked in both directions.** Changing
+  `SHINE_REFERENCE_CHEEK_L` in `ml/skin_indices.py` alone fails `ml/selftest.py` with
+  `AssertionError: 0.11764705882352942 != 0.10980392156862746`; changing it in
+  `lib/skin.ts` alone fails `tests/index-parity.test.ts` with `expected 150 to be 140`
+  across three cases. `ml/index-parity.json` is a committed table both runners assert
+  against, which is the shape the name-level contract could never have been.
+
+  **No published value moved, verified rather than accepted.** `analyzeSkin` was run on
+  three faces on this branch and on main `18be007`: `shine`, `relRedness`, `cov`, all
+  three published levels and `confidence` are identical to six decimal places on every
+  one. So leaving `fallbackVersion` and the manifest untouched is correct, not an
+  oversight. Rotation: 12 differing lines, all of them the body of the one item this
+  cycle closed, now in the changelog rewritten as its outcome.
 - 2026-09-19 (cycle 15) — Branch `autopilot/2026-09-19-0039`. **A scan costs 6.6-11.6ms
   a frame on this box, `detectBlemishes` is 79-87% of it, and cycle 14's per-pixel branch
   is 58µs of it. The brief's premise about where that branch runs was wrong, and the

@@ -173,6 +173,59 @@ describe("the rejected form is degenerate where the product lives", () => {
     expect(matte.app).toBeCloseTo(0.06735703578329305, 12);
   });
 
+  it("is a saturating step in exposure, which is what made the old invariance case vacuous", () => {
+    // Supervisor addition, 2026-09-19. The deleted ml/selftest.py case asserted
+    // shine_ratio(0.30, 0.10) == shine_ratio(0.30 * 1.7, 0.10 * 1.7) == 3.0 — it scaled
+    // both SPECULAR RATIOS by an exposure gain. This cycle's docstring says that is not
+    // what an exposure change does to a count fraction. It is right, and the shape is
+    // worth having as a number rather than as an argument: on a face with a graded
+    // highlight (rampCapture), tzoneSpecular is 0 while the ramp sits under the 218 cut,
+    // climbs steeply once it crosses, and pins at 1 when the whole patch is over.
+    const rows = EXPOSURE_SWEEP.map((cheekTarget) => {
+      const reads = rampCapture(cheekTarget, 1.08);
+      return { cheekTarget, cheekL: reads.raw.cheekL, specular: reads.raw.tzoneSpecular };
+    });
+    if (process.env.ARU_PRINT_SHINE_DECISION) {
+      for (const row of rows) {
+        process.stdout.write(
+          `DECISION exposure-step cheekL ${row.cheekL.toFixed(1)} tzoneSpecular ${row.specular.toFixed(5)}\n`
+        );
+      }
+    }
+    const specular = rows.map((row) => row.specular);
+    // It is exactly zero across the whole correctly-exposed part of the range, so no
+    // multiple of it is ever anything but zero — the deleted case's transformation
+    // cannot even be applied where the product actually reads faces. Measured:
+    // 0.00000 at cheekL 92.0, 115.0, 138.0 and 161.0, then 0.39506 / 0.70370 / 0.95062.
+    expect(specular[0], rows.map((r) => r.specular.toFixed(5)).join(" ")).toBe(0);
+    expect(specular.filter((value) => value === 0).length).toBeGreaterThanOrEqual(4);
+    // It climbs to within a whisker of the ceiling a fraction cannot exceed (0.95062 on
+    // this ramp, whose brightest cell is the only one left under the cut). Scaling the
+    // first nonzero reading by the exposure ratios that follow it would demand values
+    // past that ceiling, which is the arithmetic the deleted case took for granted.
+    expect(Math.max(...specular)).toBeGreaterThan(0.9);
+    expect(Math.max(...specular)).toBeLessThanOrEqual(1);
+    // And it never decreases: the shape is a step, not a scaling.
+    for (let i = 1; i < specular.length; i += 1) {
+      expect(specular[i], `${specular[i - 1]} -> ${specular[i]}`).toBeGreaterThanOrEqual(specular[i - 1]);
+    }
+    // The decisive one: between the first nonzero reading and the ceiling, the ratio of
+    // consecutive readings is nothing like the ratio of the exposures that produced
+    // them. A quantity that scaled with exposure would match them.
+    const climbing = rows.filter((row) => row.specular > 0 && row.specular < 1);
+    expect(climbing.length, "no reading between the floor and the ceiling to compare").toBeGreaterThan(0);
+    for (const row of climbing) {
+      const previous = rows[rows.indexOf(row) - 1];
+      if (!previous || previous.specular === 0) continue;
+      const exposureRatio = row.cheekL / previous.cheekL;
+      const specularRatio = row.specular / previous.specular;
+      expect(
+        Math.abs(specularRatio - exposureRatio),
+        `cheekL ${previous.cheekL.toFixed(1)}->${row.cheekL.toFixed(1)} moved specular ${previous.specular.toFixed(5)}->${row.specular.toFixed(5)}`
+      ).toBeGreaterThan(0.1);
+    }
+  });
+
   it("moves by a factor of 12,345.7 when one cheek pixel in 81 crosses the cut", () => {
     // The same face, one pixel different. This is the discontinuity: not a sensitivity
     // that could be calibrated away, a cliff at the only cheek state a good capture has.
