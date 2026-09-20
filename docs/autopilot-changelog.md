@@ -29,6 +29,44 @@ Ticked `[x]` and moved here; the section each was under is kept.
 
 ### Now
 
+- [x] [AI] ~~`relative_redness` in `ml/skin_indices.py` and `relRedness` in
+  `lib/skin.ts` are two different formulas under one declared name~~ — settled
+  2026-09-20 (cycle 19), by the measurement the item named rather than by picking a
+  side. **The app's chromaticity difference won and the Python side moved to it.**
+  An a\* difference is not scale-free: a\* is homogeneous of degree 1/3 in the linear
+  signal and the linear signal degree 2.4 in the 8-bit channel, so a common exposure
+  gain g takes an a\* DIFFERENCE to g^0.8 of itself — it factors out of the difference
+  instead of cancelling in it, which is what the old docstring's "both regions went
+  through the same sensor and the same light" got wrong (true of an additive common
+  term, false of a multiplicative one). Verified against a pure 2.4 power law to every
+  printed digit. Over cheekL 70..170 on one face the rejected form runs 1.83 -> 3.96
+  (2.1683x) where the shipped one holds within 1.0249x; as drift against the index's
+  own range over four faces of different redness, the chromaticity form wins by
+  **24.16x** (exposure), **11.19x** (melanin tone) and **3.32x** (white balance), and
+  **ties** on the two transfer-function nuisances where neither form is invariant
+  (tone curve 0.3930 / 0.4076, veiling flare 0.1878 / 0.1822). No published value
+  moved — the app already computed the winner, and nothing in the pipeline had ever
+  called the Python function. `ml/index-parity.json` gains a `relative_redness` group
+  (8 face rows through `analyzeSkin` carrying the region means, 9 edge rows,
+  `covers: "formula and path"`), `lib/skin.ts` gains `redChromaticity` and
+  `relativeRedness` byte-for-byte unchanged, and `tests/redness-formula-decision.test.ts`
+  is the re-runnable sweep. Full write-up, including the published level the tone-curve
+  tie costs and why moving the cut does not fix it:
+  [`docs/redness-formula-decision.md`](redness-formula-decision.md).
+- [x] [AI] ~~Three of the seven indices in `ml/skin_indices.py` still have their names
+  pinned and their values unchecked~~ — the audit cycles 16 to 19 were running is
+  finished, 2026-09-20. All seven have had their values checked and six are pinned in
+  `ml/index-parity.json`. Outcome per index: `shine_ratio` **was wrong** (cycle 16),
+  `tone_evenness` agrees, `blemish_count` agrees (cycle 17), `roughness_ratio`
+  **disagrees** and is pinned divergent (cycle 18), `relative_redness` **was wrong**
+  (cycle 19), `ita` **disagrees by 180 degrees** in a guard window and is pinned
+  divergent (cycle 19). Three of the seven declarations were false, which is the
+  number that justifies the mechanism: `tests/skin-index-contract.test.ts` pinned all
+  seven NAMES throughout and stayed green for every one of them. `melanin_index` is
+  the seventh and is deliberately not in the table — it is the one index a value
+  contract is the wrong instrument for, because no app-side value exists to compare
+  against; it keeps its own open item. Table of where all seven stand:
+  [`docs/redness-formula-decision.md`](redness-formula-decision.md).
 - [x] [AI] ~~`shine_ratio` in `ml/skin_indices.py` and `shine` in `lib/skin.ts` are two
   different formulas under one name~~ — settled 2026-09-19 (cycle 16), by measurement
   rather than by rename, as the item required. **The app's formula won and the Python
@@ -3038,6 +3076,227 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   called it an upper bound because the ablation also changes V8's inlining. That is a
   better design than the reviewer's and a better piece of self-criticism than the
   reviewer asked for.
+
+- 2026-09-19 (cycle 16) — Branch `autopilot/2026-09-19-0639`. **The two `shine`
+  formulas are one formula. The app's won, on five independent grounds, and the thing
+  that let them drift at all is closed with a value contract rather than another name
+  check.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **518 passed in 80 files**, `python3 ml/selftest.py`
+  **Ran 77 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **The decision, measured on faces, not argued.** `tests/shine-formula-decision.test.ts`
+  is committed and re-runnable (`ARU_PRINT_SHINE_DECISION=1`); both tables are in
+  `docs/shine-formula-decision.md`. Five findings, each of which settles it alone:
+
+  1. **The rejected form had no second input.** `cheek_specular` is not a field of
+     `SkinRawFeatures` and never has been — `tzoneSpecular` is exported and there is no
+     cheek counterpart. It could not be computed from an ARU export at all; the
+     measurement had to call `sampleRegion` directly to obtain it.
+  2. **Nothing ever called it.** `run_pipeline.py`, `calibrate.py` and
+     `prepare_crop_dataset.py` all read the app's `shine` column straight out of the
+     export; the only caller of `shine_ratio()` was `ml/selftest.py`.
+  3. **Degenerate on a matte cheek.** A correctly-exposed matte cheek has not "few"
+     pixels above the 218 cut but exactly **zero**, so `max(cheek_specular, 1e-6)` is the
+     epsilon and the reading is `tzoneSpecular x 1e6`: **24,691** where the app reads
+     **0.0674**. One cheek pixel in 81 crossing the cut moves it by
+     `(1 / 1e-6) / 81 = 12,345.7`, to 2.0. The app's index does not move at all.
+  4. **Wrong sign.** Holding the T-zone and adding oil to the cheek: 24,691 -> 2.0 ->
+     1.0 -> 0.4. An all-over-oily face reads matte.
+  5. **Blind to the brightness gap**, which is most of the oil signal on skin that is
+     not actively glinting. Three faces with no glint and T-zone/cheek contrast
+     1.00 / 1.08 / 1.20: the app reads 0.0000 / 0.0427 / 0.1103 and publishes two
+     different levels; the rejected form returns **exactly 0 for all three**. Over the
+     whole 60-row sweep it publishes only levels 0 and 2 — its middle band needs the
+     cheek to be 6 to 20 times oilier than the T-zone — while the app uses all three.
+
+  **And the one property it WAS asserted to have is false on a frame.** `ml/selftest.py`
+  checked `shine_ratio(0.30, 0.10) == shine_ratio(0.30x1.7, 0.10x1.7)`: true of two
+  numbers that both scale, and a specular ratio does not scale — it is the share of a
+  patch above a *fixed* cut. One face, ramped highlights so the specular fraction
+  responds to exposure the way a real capture does:
+
+  ```
+  cheekL   tzSpec    ckSpec     app shine     rejected  signals failed
+    92.0  0.000000  0.000000    0.094300     0.0000e+0  -
+   115.0  0.000000  0.000000    0.094204     0.0000e+0  -
+   138.0  0.000000  0.000000    0.094317     0.0000e+0  -
+   161.0  0.049383  0.000000    0.143483     4.9383e+4  -
+   184.0  0.444444  0.000000    0.528755     4.4444e+5  반사
+   206.0  0.740741  0.259259    0.809682     2.8571e+0  반사,노출 여유
+   223.7  0.987654  0.654321    1.040119     1.5094e+0  조명,반사,노출 여유
+  ```
+
+  Across the four captures **every signal accepts** — nothing asks for a retake — the
+  rejected form runs **0 -> 49,383**. The app's index holds **within 0.12% across a 1.5x
+  exposure range** and then moves at 161 because the T-zone genuinely started to glint.
+
+  **So `ml/skin_indices.py` moved to the app's formula** —
+  `shine_ratio(tzone_specular, tzone_luminance, cheek_luminance)`, with
+  `SHINE_REFERENCE_CHEEK_L = 140.0` mirroring `lib/skin.ts` — **and `ml/selftest.py`'s
+  invariance case moved with it and narrowed on the way**: the gap term is Weber
+  contrast and cancels a gain applied to both luminances exactly, at three gains; the
+  specular term is passed through rather than asserted invariant, because the table
+  above is what happens when you assert that it is.
+
+  **No published value moved.** `lib/skin.ts`'s expression was extracted into an
+  exported `shineIndex(tzoneSpecular, tzoneL, cheekL)` **byte-for-byte unchanged**, so
+  there is one formula for both languages to agree with; the absolute-value pins in
+  `tests/shine-exposure-scale.test.ts`, `tests/axis-exposure-scale.test.ts` and
+  `tests/skin-index-contract.test.ts` are what prove it. `ATTR_THRESHOLDS`,
+  `fallbackVersion`, `inputSchemaVersion` and the manifest are untouched; guardrail 8's
+  `status` and `promotionGate` are byte-identical. The Python function was never on a
+  path that produced a published value — finding 2 is what makes that checkable rather
+  than asserted. `NEXT_PUBLIC_FUNNEL_FLUSH` untouched. No consent kind or flow invented.
+
+  **The contract that compares VALUES.** `tests/skin-index-contract.test.ts` pins NAMES
+  and stayed green from 2026-09-14, when `ml/skin_indices.py` was added, to 2026-09-19,
+  while the values diverged — five days, and only because a cycle read both files side
+  by side, not because anything checked. Names were never what could drift. Python and TypeScript cannot call each other here — vitest in node,
+  `unittest` in `python3`, no bridge and no network — so the cheapest honest check is a
+  committed table: **`ml/index-parity.json`**, asserted by `tests/index-parity.test.ts`
+  AND by `ml/selftest.py`, neither able to move alone. Three things make it a contract
+  rather than a snapshot: the expected values are literals compared **exactly** (`+`,
+  `-`, `*`, `/` and `sqrt` on doubles are correctly rounded, so a matching
+  implementation matches bit for bit — not `toBeCloseTo`); **16 of the 22 shine rows are
+  real readings** carrying the recipe of the frame that produced them, and the
+  TypeScript side rebuilds each frame and checks the whole path through `analyzeSkin`,
+  so moving which patch `tzoneSpecular` is measured over cannot leave them green; and
+  six rows are edge branches a face family cannot reach.
+
+  **Second item, and it came out of checking the first properly: the registry is
+  declaration-only, and one more entry in it is wrong.** No pipeline script calls ANY of
+  the seven index functions — so each is a claim about what an index IS, and only a
+  value contract can catch a false claim. `tone_evenness` has claimed in its docstring
+  since 2026-09-14 to be "the same formula as `relativeSpread` in `lib/skin.ts`", which
+  is exactly the kind of claim that turned out false for `shine_ratio` and was equally
+  untested. **It is true** — both are `sqrt(variance) / abs(mean)` with the same two
+  guards, differing only by a non-numeric filter Python needs and TypeScript's types
+  make unnecessary. So it is pinned rather than fixed: a second group in
+  `ml/index-parity.json`, 10 rows, `relativeSpread` exported for the test. A negative
+  result recorded as one. It is pinned **less deeply** and that is stated rather than
+  implied: its inputs are the four region L* values, which `SkinRawFeatures` does not
+  export, so the rows pin that the two implementations agree on the same inputs and do
+  not pin what reaches them. Adding a field so a test could go deeper is adding a field
+  for the wrong reason.
+
+  **What is NOT fixed, and is now dated rather than rediscovered.** `relative_redness`
+  is the same defect as `shine_ratio`: `FEATURE_KEY` declares it to be `relRedness`,
+  Python returns an a* difference and the app returns a difference of red chromaticities
+  — different colour space, different scale, one declared field. Cycle 13 recorded
+  "nothing to keep in step" about this pair; right about `cov` (no Python index, so no
+  declaration to be wrong), wrong about this one. Not fixed here because deciding which
+  is right is its own measurement and `shine` is the worked example of what picking a
+  side without one costs. Three backlog items filed: this, the five still-unpinned
+  indices, and `rgbToLab` — which cycle 15 called a backlog item inside its cycle entry
+  and never actually added to the backlog, so it would have rotated out of this file and
+  been lost.
+
+  **Does settling this change the `rgbToLab` decision?** It changes what it looks like
+  and does not settle it. Cycle 15 declined the largest remaining win in a scan partly
+  because a second near-duplicate of a function with a cross-language twin is "exactly
+  how `shine_ratio` and `shine` became two formulas under one name". That named the
+  right risk and the wrong remedy: what let the split survive was that nothing compared
+  values, and `ml/index-parity.json` shows that costs one group and a test case. Two
+  things it does not remove — a fast path returning only `a` is a PARTIAL duplicate, so
+  the table must say which outputs it does not compute; and `rgbToLab` involves `pow`
+  and a matrix, where exact cross-language equality is **not** guaranteed the way it is
+  for four arithmetic operations, so a tolerance would have to be chosen and justified.
+  Smaller than it was, still not a one-liner. Not taken, on purpose.
+
+  **One verification hazard found by tripping over it, and closed.** Breaking a Python
+  source line and re-running `ml/selftest.py` can report the PREVIOUS edit's result:
+  Python invalidates bytecode on (mtime, size) at one-second granularity, and
+  `SHINE_REFERENCE_CHEEK_L = 140.0` -> `139.0` -> restored is two same-size edits inside
+  one second. A restored file kept failing with `139.0 != 140.0` until `ml/__pycache__`
+  was deleted by hand, which means two of this cycle's break results were wrong when
+  first read and were redone. `ml/selftest.py` now sets `sys.dont_write_bytecode = True`
+  with the measurement in the comment. A stale green would be worse than the stale red
+  that exposed it.
+
+  **Every new case broken at the SOURCE line it protects**, 13 breaks, each reverted
+  from a file copy, and **two of them found real gaps in the tests rather than
+  confirming them**:
+
+  ```
+  shineIndex 140/255 -> 140/254     3 fail; expected 0.3262545674114569 to be
+                                    0.32594342628532147
+  shineIndex loses max(0, ...)      1 fail; T-zone darker than the cheek: the gap clamps
+                                    at 0: expected -0.1568627450980392 to be +0
+  skin_indices.py reverted to the   2 errors; TypeError: shine_ratio() takes 2 positional
+    rejected form                   arguments but 3 were given, + 1 TS source pin
+  SHINE_REFERENCE_CHEEK_L 139.0     2 fail; AssertionError: 139.0 != 140.0
+    in python only
+  one shine row perturbed 1e-12     1 py + 2 ts fail; 0.14143110985736712 !=
+                                    0.14143110985836713
+  python gap loses max(0, ...)      2 fail; -0.1568627450980392 != 0.0
+  specular cut 218 -> 210           1 fail; expected 3 to be greater than or equal to 4
+  cheekSpecular added to            1 fail; expected 'export type SkinRawFeatures…' not
+    SkinRawFeatures                 to contain 'cheekSpecular'
+  run_pipeline.py calls             1 fail; run_pipeline.py calls shine_ratio
+    shine_ratio(
+  relativeSpread variance / (n-1)   2 fail; expected 0.18399148175369934 to be
+                                    0.15934129727864463
+  one toneSpread row perturbed      1 py + 1 ts fail; 0.15934129727864463 !=
+                                    0.15934131321277437
+  python tone_evenness guard        1 fail; 0.5 != 0 : mean 2e-7, just inside the 1e-6
+    1e-6 -> 1e-12                   guard
+  TS relativeSpread guard           1 fail; expected 0.5 to be +0
+    1e-6 -> 1e-12
+  ```
+
+  The guard break is the one worth recording. It **passed on the first attempt** — the
+  two rows meant to locate the 1e-6 mean guard were `[0,0,0,0]` and
+  `[-1e-7, 1e-7, -1e-7, 1e-7]`, and both have a mean of exactly zero, so moving the
+  guard to 1e-12 left the whole table green. Replaced with a pair that straddles it
+  (mean 2e-7 and mean 2e-6), and the break then failed in both languages. Exactly what
+  "break it on purpose" exists to catch, and the second cycle running that it caught a
+  case that was green by blindness.
+
+  Verification on this branch: vitest **534 passed in 82 files** (from 518 in 80),
+  `python3 ml/selftest.py` **Ran 78 tests ... OK** (from 77), `npx tsc --noEmit |
+  grep -c "error TS"` **13** unchanged, `npx eslint .` **2 warnings** both in
+  `lib/care.ts` unchanged.
+
+
+  **Supervisor, same day — the contract bites in both directions, and the cycle's
+  sharpest finding is one the review did not have.** The reviewer went in with three
+  independent grounds for rejecting the Python form, derived before reading the branch:
+  it is degenerate (on a matte cheek `0.05 / 1e-6 = 50000`, and a cheek at exactly 0 and
+  at 1e-6 read the same, so the value is a property of the clamp); it INVERTS the oil
+  ranking at ordinary values (a matte cheek with mild T-zone shine reads 50000 against
+  1.5 for a face shiny in both regions, while the app ranks the second above the first by
+  4.68); and it is uncomputable, because `grep -rn "cheek_specular\|cheekSpecular"` over
+  the tree returns exactly two hits, both inside the Python function's own body — the
+  second argument is not a field ARU records anywhere.
+
+  The cycle found a fourth that beats all three: **the deleted `ml/selftest.py` case
+  asserted invariance under a transformation an exposure change never performs.** It
+  scaled both specular ratios by a gain, but a specular ratio is a count fraction above
+  the 218 cut. Measured on a graded highlight, `tzoneSpecular` reads 0.00000 at cheekL
+  92.0, 115.0, 138.0 and 161.0 — the whole correctly-exposed range — then 0.39506,
+  0.70370, 0.95062. Zero times any gain is zero, so the old case could not even be
+  applied where the product reads faces; and where the quantity does move, cheekL
+  184.0 to 206.0 is an exposure ratio of 1.12 against a specular ratio of 1.78. Added as
+  a case and a table rather than left as the branch's (correct) one-line argument;
+  moving the specular cut to 150 fails it with `expected 1 to be greater than or equal
+  to 4`.
+
+  **The parity contract is real, checked in both directions.** Changing
+  `SHINE_REFERENCE_CHEEK_L` in `ml/skin_indices.py` alone fails `ml/selftest.py` with
+  `AssertionError: 0.11764705882352942 != 0.10980392156862746`; changing it in
+  `lib/skin.ts` alone fails `tests/index-parity.test.ts` with `expected 150 to be 140`
+  across three cases. `ml/index-parity.json` is a committed table both runners assert
+  against, which is the shape the name-level contract could never have been.
+
+  **No published value moved, verified rather than accepted.** `analyzeSkin` was run on
+  three faces on this branch and on main `18be007`: `shine`, `relRedness`, `cov`, all
+  three published levels and `confidence` are identical to six decimal places on every
+  one. So leaving `fallbackVersion` and the manifest untouched is correct, not an
+  oversight. Rotation: 12 differing lines, all of them the body of the one item this
+  cycle closed, now in the changelog rewritten as its outcome.
 
 - 2026-09-15 (2) — ML track: the qwk/pearson gate, **superseded before it merged.**
   This branch built `promotionGate.subgroup.minQwk` / `minPearson` and an
