@@ -362,6 +362,59 @@ partly done and stays here.
   `tests/scan-cost-benchmark.test.ts` — and the tolerance harness
   (`tests/blemish-perturbation-tolerance.test.ts`) already reports the a* error of any
   table put through it. Noted 2026-09-19.
+  **2026-09-20, supervisor review of cycle 21: it wins, and the acceptance criterion
+  above is not sufficient.** Measured in situ rather than as a leaf micro-benchmark,
+  which is cycle 17's lesson: two copies of `lib/skin.ts` differing only in
+  `srgbLinear`, both imported into one process, 9 alternating paired reps per frame
+  size.
+
+  ```
+  frame          pow(ms)   lut(ms)    faster   reps won
+  400x480          5.396     3.121     42.2%        9/9
+  720x960          5.861     3.403     41.9%        9/9
+  1080x1440        6.660     4.349     34.7%        9/9
+  1440x1920        7.636     5.220     31.6%        9/9
+  ```
+
+  That sits under `C5`'s own upper bound re-run the same session (59.9 / 52.6 / 45.4 /
+  38.5%), which is what it should do: `C5` replaces the curve with `c*c`, so it bounds
+  what any fast path can reach. `blemishCount` and `blemishDensity` — the two fields
+  this item names — are byte-identical at all four sizes. **`toneSpread` is not:**
+
+  ```
+  400x480    0.052883212269148897 -> 0.05288320807659231   d=4.193e-9
+  720x960    0.05289727268417309  -> 0.05289727029154059   d=2.393e-9
+  1080x1440  0.05253761924787499  -> 0.0525376193879307    d=1.401e-10
+  1440x1920  0.05324491896960167  -> 0.05324491583095241   d=3.139e-9
+  ```
+
+  It is published, it is in `NEW_FEATURE_KEYS`, and it is exported into every ML
+  sample. `confidence`, `toneIta`, `toneLstar`, `shine`, `relRedness`, `cov`,
+  `roughnessRatio`, `tzoneL` and `cheekL` did not move — on this fixture. `toneLstar`
+  and `toneIta` come out of `dominantTone`'s k-means, whose cluster assignment is a
+  DISCRETE decision, so "did not move here" is a property of the fixture and not a
+  guarantee: a 1e-9 nudge that flips an assignment moves them by a lot, not a little.
+
+  The **1.9e-6** above is the DETECTOR's domain, not `srgbLinear`'s. Replaying the
+  detector's own gate, the channels it actually feeds `labAStar` are 132–220 on this
+  fixture family and the worst a* error there is 1.513e-6 … 1.538e-6 — consistent with
+  1.9e-6, and clearing 1.046e-5 as the item claims. Over the whole 0–255 domain the
+  worst error is **9.138e-5**, at channel ≈ 11.09, just above the sRGB knee (channel
+  10.31) where a straight line and a power law meet inside one table cell. That is 8.7x
+  OVER the certified radius. It matters because `srgbLinear` is SHARED: the `L >= 40`
+  gate that keeps the input away from the knee lives in `detectBlemishes`
+  (`lib/skin.ts:1031`), not in `srgbLinear`, and `rgbToLab` calls it at
+  `lib/skin.ts:403`, `1120` and `1128` with region means under no such gate.
+
+  So: worth landing, but scoped and bounded — either the a*-only fast path takes the
+  table and `rgbToLab` keeps `Math.pow`, or the table is built so the knee cell is
+  exact. And the criterion is every published field plus a re-derived pin, not the two
+  fields named above.
+
+  One trap checked and rejected before it was written anywhere: "the detector only ever
+  sees 256 integer channel values, so use an exact 256-entry table and the error is
+  zero." False. `lib/skin.ts:1026-1028` averages a stride window (`r = sr / n`) and then
+  applies a gray-world gain, so the input is continuous in [0,255].
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -849,6 +902,71 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   Rotation: `docs/AUTOPILOT.md` 1342 → 1304 lines, `docs/autopilot-changelog.md`
   3591 → 3823, and the moved cycle-18 block is byte-identical — `diff` of the 202-line
   block against the changelog's last 202 lines is empty.
+
+  **Supervisor review.** Everything load-bearing was re-derived independently before the
+  worker reported, and the two things that decided the cycle were derived against it.
+
+  *The melanin_index declaration was worse than the backlog said, and the fix closes it.*
+  The backlog called the declaration wrong. Measured on main, it was **unpinned**: the
+  declaration was swapped at its source line to a different, wrong field (`toneIta`, an
+  angle in degrees), patching only inside the `FEATURE_KEY` block so no docstring was
+  hit, and **565 vitest and 84 Python tests all stayed green**. The check meant to catch
+  it (`tests/skin-index-contract.test.ts:196`) asserted only that the name appears as a
+  `number` field on `SkinRawFeatures` — a name-only check, blind to a transform — and it
+  had already been the vector for `shine_ratio` (cycles 16/19) and `relative_redness`
+  (cycle 19). Re-run on this branch, both breaks fail as they should: restoring
+  `melanin_index` to `FEATURE_KEY` fails `ml/selftest.py`
+  (`melanin_index is declared both carried and derived`) **and** vitest; pointing
+  `DERIVED_FROM` at a wrong-but-existing column (`cov`) fails vitest. The cycle also
+  caught something this review did not: the old slice ran to `#: Feature keys added`,
+  so with a second map between them it would have swallowed `DERIVED_FROM`'s entries and
+  passed them through the `SkinRawFeatures` check as though they were carried. It now
+  slices at each map's own closing brace.
+
+  *The 24 figures were re-fetched, not taken on trust.* All three cited files were
+  re-fetched independently and all three sha256 match byte for byte:
+  `src/clinical.py` **008796658a2af68d…** (16,843 bytes), `parameters.tex`
+  **b7ced068d7dbcdf…** (10,528), `README.md` **ced5768ac11f057…** (6,406). Against the
+  fetched source: `compute_melanin_index` is `100 × log10(100 / L*)`,
+  `MI_L_STAR_FLOOR = 1.0`, and line 361 is `np.clip(L_star, MI_L_STAR_FLOOR, 100.0)` —
+  so the "one deviation is the upper end" claim is exact. The attribution split holds
+  too: line 67 credits the six-category CUTPOINTS to Del Bino & Bernerd (2013) and line
+  388 the FORMULA to Chardon et al. (1991), and the source's
+  `ITA_BIN_EDGES = (-30.0, 10.0, 28.0, 41.0, 55.0)` are ARU's `ITA_BANDS` edges with
+  Brown and Dark merged, which is the only difference the docstring claims.
+
+  *The two new app-side guards bite at their source lines.* Reverting `pores[1]` to
+  `결 약간` fails `tests/share-link.test.ts` on two cases; dropping `effect` from the
+  English pattern fails `tests/claim-filter.test.ts`. `reasonClean` was checked for the
+  obvious hazard in widening the pattern — `app/api/reason/route.ts:77` returns
+  `item.fallback` WITHOUT re-filtering it, so a blunt pattern costs a template fallback
+  and cannot loop. Checked separately: the new `결 약간 보임` is present in all four
+  dictionaries, so the label change does not leak Korean.
+
+  *Rotation, checked against a pre-review snapshot of main.* 1342 → 1304 and 3591 →
+  3823 as claimed. `sort -u` over the non-blank lines of both files then `comm -23`
+  against main's 4,164: **25 lines missing**, and all 25 belong to the two backlog items
+  this cycle worked. All **14** non-blank lines of the closed `melanin_index` item are
+  preserved verbatim in the changelog blockquote. The ITA-band item did NOT close — its
+  primary source is still unreachable — and the near-duplicate it absorbed was real:
+  main carried the same claim twice, at `docs/AUTOPILOT.md` lines 495 and 530.
+
+  *Nothing published moved.* The manifest is untouched, `fallbackVersion` is still
+  `roi-calibrated-2026-09-18`, `lib/tone-bands.ts` and `ml/subgroups.py` are
+  comment-only, and no band edge changed.
+
+  *One thing this review found that the cycle did not*, recorded on the backlog item
+  itself: the `srgbLinear` LUT wins in situ (31.6–42.2% off `analyzeSkin`, 35/36 then
+  36/36 paired reps) but the item's stated acceptance criterion is not sufficient —
+  `toneSpread` moves at all four frame sizes while `blemishCount` and `blemishDensity`
+  do not, and the item's **1.9e-6** error figure is the detector's domain rather than
+  `srgbLinear`'s, which is **9.138e-5** at the sRGB knee.
+
+  *One re-verification, so a five-day-old block is not quoted as current.* The commerce
+  deep-link item's egress block was re-run today: `curl: (56) CONNECT tunnel failed,
+  response 403` for all three merchant hosts, and the proxy's own
+  `recentRelayFailures` names each one with `gateway answered 403 to CONNECT`. Still
+  blocked, same reason.
 
 - 2026-09-20 (cycle 20) — Branch `autopilot/2026-09-20-0639`. **A guard on `|b*|` could
   not have been right, because what diverges is the ratio and not b\*. The window cycle
