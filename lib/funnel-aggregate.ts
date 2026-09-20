@@ -62,11 +62,15 @@ export type FunnelAggregateRawRow = {
 
 export type FunnelSourceAggregate = {
   source: SyncSource;
-  /** Rows actually read into this aggregate — at most `FUNNEL_AGGREGATE_ROW_CAP`. */
+  /** Rows this aggregate could COUNT. Rows that were read but had no usable `kind` or
+   *  `session_id` are not here; they are `unusableRows`, and `rows + unusableRows` is
+   *  what the page returned. Truncation is measured against that sum and not against
+   *  this, which is the 2026-09-20 fix below. */
   rows: number;
   /** Rows the table holds for this source, whether or not they were read. */
   totalRows: number;
-  /** `totalRows > rows`: the counts below describe the most recent `rows` only. */
+  /** `totalRows` exceeds what the page actually returned: the counts below describe
+   *  the most recent rows only, and `unattributedRowCount` refuses to subtract. */
   truncated: boolean;
   /** Rows dropped because `kind` or `session_id` was not a usable string. */
   unusableRows: number;
@@ -155,13 +159,28 @@ export function aggregateFunnelSource(
 ): FunnelSourceAggregate {
   const { rows, unusableRows, unknownKinds } = toCountableRows(raw);
   const stamps = rows.map((row) => row.ts).filter((ts): ts is number => ts !== null);
+  /**
+   * What the page RETURNED, which is not what it could count.
+   *
+   * `toCountableRows` drops rows whose `kind` or `session_id` is not a usable string
+   * and reports them separately as `unusableRows`, so `rows.length` is the countable
+   * subset. Comparing the source's exact `count` against that subset made any unusable
+   * row read as truncation: ten rows in the table, ten rows returned, two unusable, and
+   * `truncated` came back true with the cap nowhere near. `/ops` then printed "Showing
+   * the most recent 8 of 10 rows" about a page that was not short, and
+   * `unattributedRowCount` — which returns `null` the moment any source is truncated —
+   * stopped reporting unattributed rows at all. Both are the operator's only view of
+   * the table, and both were wrong in the direction of saying data is missing when it
+   * is not. Fixed 2026-09-20; pinned in tests/funnel-aggregate.test.ts.
+   */
+  const readRows = raw.length;
 
   return {
     source,
     rows: rows.length,
     // A total below what was read would be incoherent; clamp rather than print it.
-    totalRows: Math.max(totalRows, rows.length),
-    truncated: totalRows > rows.length,
+    totalRows: Math.max(totalRows, readRows),
+    truncated: totalRows > readRows,
     unusableRows,
     unknownKinds,
     firstTs: stamps.length ? Math.min(...stamps) : null,
@@ -186,9 +205,11 @@ export function aggregateSourceOrder(): SyncSource[] {
 /**
  * Rows in the table that carry neither known marker.
  *
- * Only derivable when nothing was truncated: with a cap in play, `rows` is not the
- * source's row count and the subtraction would report a made-up number. `null` then,
- * and the screen says the figure is unavailable rather than showing a zero.
+ * Only derivable when nothing was truncated: with a cap in play, what was read is not
+ * the source's row count and the subtraction would report a made-up number. `null`
+ * then, and the screen says the figure is unavailable rather than showing a zero.
+ * Truncation is a property of the PAGE, not of how many of its rows were countable —
+ * see `readRows` above.
  */
 export function unattributedRowCount(tableRows: number, sources: FunnelSourceAggregate[]): number | null {
   if (sources.some((source) => source.truncated)) return null;

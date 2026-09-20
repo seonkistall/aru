@@ -3822,6 +3822,212 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   this cycle is the requirement. Rotation: 42 differing lines, all from the two items
   this cycle touched, the closed one rewritten as its outcome in the changelog.
 
+- 2026-09-20 (cycle 19) — Branch `autopilot/2026-09-20-0039`. **An a\* difference is
+  not scale-free, and that is arithmetic rather than a property of the fixture: a
+  common gain takes it to g^0.8 of itself. The app's chromaticity difference wins by
+  24x, 11x and 3.3x on the three nuisances the design doc names, ties on the two it
+  does not, and the Python side moved. The registry audit cycles 16-18 were running is
+  finished, and the last index it covered turned out to be wrong too — by 180 degrees.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **551 passed in 84 files**, `python3
+  ml/selftest.py` **Ran 80 tests ... OK**, `npx eslint .` **2 warnings** both in
+  `lib/care.ts`.
+
+  **The question, and why it needed a construction rather than a sweep.** Two indices
+  on two scales cannot be compared by spread — that rewards whichever sits further
+  from zero. So every sweep is reported as **nuisance / signal**: how far a capture
+  change moves the index, over how far four faces of genuinely different redness move
+  it at one capture. Both forms order those four, so this is not a contest between an
+  index and a constant. Both columns come from the SAME two `sampleRegion` outputs of
+  the SAME frame, and the rejected column goes through the shipped `labAStar`.
+
+  ```
+  nuisance                     chromaticity   a* difference   winner
+  exposure, cheekL 70..170          0.0209          0.5047    chromaticity by 24.16x
+  melanin tone                      0.0227          0.2545    chromaticity by 11.19x
+  white balance                     0.0624          0.2071    chromaticity by  3.32x
+  tone curve, gamma 0.8..1.25       0.3930          0.4076    chromaticity by  1.04x
+  veiling flare, black lift 0..30   0.1878          0.1822    a*           by  1.03x
+  ```
+
+  The exposure row as values: chromaticity **1.0249x** over a 2.43x exposure range,
+  a\* **2.1683x** — 1.82634 to 3.95999 on one face whose skin did not change, monotone
+  in the brightness, every row unclipped.
+
+  **The mechanism, checked against the shipped code rather than argued.** `a* = 500 *
+  (f(x) - f(y))` with f a cube root above its knee, so a\* is homogeneous of degree 1/3
+  in the linear signal; the linear signal is degree 2.4 in the 8-bit channel. A common
+  gain g multiplies BOTH regions' a\* by `g^0.8` — and a difference of two things that
+  both scale scales too. **It factors out of the difference instead of cancelling in
+  it**, which is exactly what the old docstring got wrong: "both regions went through
+  the same sensor and the same light" is true of an ADDITIVE common term and false of a
+  multiplicative one. Under a pure 2.4 power law the prediction is exact to every
+  printed digit (0.66454 / 0.83651 / 1.15703 against `g^0.8`); the shipped
+  affine-then-power curve sits near it without being it (0.65561 at g = 0.6), because
+  the +0.055 offset does not scale. The chromaticity form over the same scalings moves
+  by at most **one ulp of 1.0**, a bound derived from two correctly-rounded divisions
+  and measured at exactly half of it.
+
+  **Two construction choices, either of which would have changed the answer, and they
+  are in the file rather than in a paragraph.** The melanin sweep raises each channel
+  to a different power (`s^0.75 / s^1.0 / s^1.2`) because melanin absorbs more at short
+  wavelengths — a scalar darkening would make that sweep arithmetically identical to
+  the exposure sweep and the second table would be the first one twice. The gamma and
+  flare sweeps re-normalise the exposure, because both change the frame's brightness as
+  a side effect; uncorrected, the gamma sweep's a\* column reads BETTER than it should.
+
+  **The two ties are kept rather than trimmed, and one of them costs a published
+  level.** Neither form is invariant to a camera that is not linear. Gamma 0.8 to 1.25
+  with the exposure held takes this face from **0.010348 to 0.016477**, across the
+  `ATTR_THRESHOLDS.redness` 0.012 cut — and **moving the cut does not help**, because
+  the sweep straddles it wherever it is put and the rejected form moves by as much. It
+  is a limit of reading redness off an uncalibrated camera and a cousin of the
+  illuminant-correction backlog item, not an argument for either formula. Pinned as a
+  case, so a later cycle claiming the chromaticity form is simply the stable one has to
+  fail a test to say so. One synthetic face; the golden-set blocker is what would
+  change that.
+
+  **No published value moved**, and it is checkable rather than asserted: the app
+  already computed the winner. `ATTR_THRESHOLDS`, `fallbackVersion`,
+  `inputSchemaVersion` and `public/models/visible-attributes/manifest.json` are
+  untouched — guardrail 8's `status` and `promotionGate` byte-identical.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched. No consent kind or flow invented. The Python
+  function was never on a path that produced a value (all three pipeline scripts read
+  the app's `relRedness` column) and its old inputs were a\* values no ARU export
+  carries.
+
+  **Second item, which the brief filed as the cheap half and which is not a negative
+  result.** `ita` was the last index both unpinned and not known to be wrong. It is
+  wrong. **Three implementations exist and only two agree**: `lib/skin.ts:itaDegrees`
+  and `ml/ita.py:ita_from_lab` fall back to ±90 at `|b*| < 0.01`, the registry's uses
+  `1e-6`. That would be a rounding question if the fallback were continuous, and it is
+  not — **the ±90 fallback ignores the SIGN of b\***:
+
+  ```
+   L*     b*        app        registry     note
+   70   0.005    90.000000    89.985676     inside the app's guard, outside the registry's
+   70  -0.005    90.000000   -89.985676     +90 against -90: light against deep
+   30  -0.005   -90.000000    89.985676     the same, the other way, below the L* pivot
+   70    1e-06   90.000000    89.999997     the registry's guard is `<`, so it computes
+   70    1e-09   90.000000    90.000000     inside both: they agree, at the fallback
+   70   0.01     89.971352    89.971352     the app's guard is `<` too, so both compute
+  ```
+
+  41 is the light cut and 10 the deep one, so one column is above the first and the
+  other below the second — **opposite ends of the tone stratifier from one frame.**
+  Reachable rather than arithmetic: `docs/tone-ita-verification.md` §3 has a cool cast
+  taking ITA from 61.8 to −87.6 on a real fixture, so a capture travels through zero.
+  **Pinned divergent, not decided**, because both implementations carry the same
+  discontinuity and disagree only about where it sits. `lib/skin.ts` gains
+  `itaDegrees`, which existed **twice, byte for byte**, in that one file — the
+  duplication the 2026-09-15 `confidenceLabel` finding is about — and
+  `ml/skin_indices.py:ita` converts with `* 180 / math.pi` instead of `math.degrees`,
+  the same trade-off cycle 17 recorded for the cube root: `math.degrees` rounds once
+  and is MORE accurate, and over **1,186,709** (L\*, b\*) pairs the two associations
+  are bit-identical on **74.5%** and differ by up to **1.42e-14** degrees, **0.71**
+  units of `90 * 2^-52`. Matching the app isolates the guard as the group's only
+  divergence. `ml/ita.py` keeps `math.degrees` and is held to the app's guard exactly
+  and its value within `2 * 90 * 2^-52`.
+
+  **Ten new cases — seven in vitest, three in `ml/selftest.py` — and ten breaks**, each
+  altering the SOURCE line the case protects, never the test, and reverted from a file
+  copy:
+
+  ```
+  redChromaticity r/(r+g+b||1)         2 fail; cheekL 80 ...: expected
+    -> r/(r+g+b+1)                     0.011632146391430398 to be 0.011694677871148473
+  relativeRedness operands swapped     3 fail; expected -0.011694677871148473 to be
+                                       0.011694677871148473
+  the relRedness call site stops       1 fail; expected '/**\n * Visible-signal skin
+    delegating (values identical)      analysis.…' to contain 'relRedness:
+                                       relativeRedness(cheeks, t…'
+  labF Math.cbrt(t) -> Math.sqrt(t)    1 fail; shipped labAStar at gain 0.6: expected
+                                       0.5451407988491981 to be close to
+                                       0.664539805948974 ... but expected 0.05
+  python red_chromaticity guard        1 fail; -0.4011393442622951 !=
+    -> max(total, 1e-6)                0.09836065573770492 : a region summing to 1e-9
+  python relative_redness swapped      2 fail; -0.011694677871148473 !=
+                                       0.011694677871148473
+  app itaDegrees guard 0.01 -> 1e-6    1 fail; itaDegrees(70, 0.005): expected
+                                       89.98567605542014 to be 90
+  one tone site stops delegating       1 fail; both tone sites must delegate: expected
+                                       1 to be 2
+  python ita guard 1e-6 -> 0.01        1 fail; 90.0 != 89.98567605542014
+  python ita -> math.degrees           1 fail; 44.47436539354238 !=
+                                       44.474365393542385
+  ```
+
+  **The fifth is the one that earned its place, and it did not fail the first time.**
+  The redness group originally had two black-region rows and nothing between zero and
+  an epsilon, so swapping Python's `total if total else 1.0` for `max(total, 1e-6)`
+  agreed on a region of exactly zero and `ml/selftest.py` stayed green: the rows
+  located the branch ON zero and located nothing about WHERE IT SITS. That is the same
+  failure `tone_evenness`'s 2e-7 / 2e-6 pair was added to close, one index over, and it
+  was found only because the guardrail requires breaking every new case. Two rows now
+  straddle it — a region summing to 1e-9 and the same chromaticity a million times
+  larger, which must read the same — and the break fails in both languages.
+
+  **Where the registry stands now, which is the thing cycles 16-19 were for.** All
+  seven indices have had their values checked; six are pinned in
+  `ml/index-parity.json`. Three of the seven declarations were false — `shine_ratio`,
+  `relative_redness`, `ita` — while `tests/skin-index-contract.test.ts` pinned all
+  seven NAMES throughout and stayed green for every one of them. `melanin_index` is
+  the seventh and is deliberately not in the table: it is the one index a value
+  contract is the wrong instrument for, because there is no app-side value to compare
+  against, and it keeps its own open item.
+
+  **Verification before the push**, all four re-run on the final tree: vitest **558
+  passed in 85 files** (551 + 7), `python3 ml/selftest.py` **Ran 83 tests ... OK**
+  (80 + 3), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .`
+  **2 warnings** both in `lib/care.ts` unchanged.
+
+
+  **Supervisor, same day — same verdict, reached independently, and one claim bounded.**
+  The reviewer swept both forms on its own fixture before reading the branch and got the
+  same answer on every axis it tried: relative spread of 31.40% against 62.39% on
+  exposure, 6.02% against 37.82% on white balance, and **1.18% against 45.72% on skin
+  tone**. The tone row is the one that matters for this product and it is the one where
+  the gap is widest. The mechanism is that `rIdx = R/(R+G+B)` is homogeneous of degree
+  zero — multiply the whole pixel by any scalar and it is unchanged exactly — while
+  `a* = 500(f(x) - f(y))` with f a cube root is not, so subtracting two regions does not
+  cancel the nonlinearity. The cycle's own five axes are a superset of the reviewer's
+  three, and it reports the one axis where the a* form wins (veiling flare, 1.03x)
+  instead of leaving it out.
+
+  **What the review bounds is the exposure row.** It is measured over cheekL 70..170,
+  but `buildSignals` passes 조명 for **70..210**, so the product publishes readings
+  above that band. Re-swept in 0.02 exposure steps and split:
+
+  ```
+  band        n    chromaticity   a*        ratio
+   70..170    30    3.84%         65.15%    chromaticity by 16.95x
+   70..210    43   28.03%         71.64%    chromaticity by  2.56x
+  170..210    13   28.29%         25.94%    a* by 1.09x
+  ```
+
+  The decision stands — over the band the product uses, chromaticity is still the more
+  stable form — but the 24x is a property of stopping at 170. Over the real band it is
+  2.56x, and in the top fifth alone the two are equivalent. The cause is the one cycles
+  14 and 18 measured: above ~170 the cheek's channels start pinning at the 8-bit ceiling,
+  and a ratio of channel sums is homogeneous only while no channel is pinned. Recorded in
+  `docs/redness-formula-decision.md`; one synthetic face, so the crossover may be
+  fixture-specific while the collapse of the margin is not.
+
+  **Checked rather than accepted.** The app's expressions were extracted byte-identically
+  — `rIdx` into `redChromaticity`/`relativeRedness`, and the ITA expression, which was
+  duplicated inline in two places, into `itaDegrees` — so nothing published moved:
+  `analyzeSkin` on this branch and on main `edbe5c9` agrees at four frame sizes on
+  `blemishCount`, `blemishDensity`, `shine`, `relRedness`, `cov`, `toneIta`, `toneLstar`,
+  all three levels and `confidence` to twelve decimals, with blemish counts of 7–9 so the
+  detector path is exercised. `fallbackVersion` and the manifest are untouched. Three
+  source lines broken: the TypeScript `redChromaticity` denominator fails 2 cases
+  (`expected 0.010499683744465527 to be 0.011694677871148473`), the Python side of the
+  new group fails `ml/selftest.py` with 2 errors, and moving `itaDegrees`' guard from
+  0.01 to 0.5 fails with `itaDegrees(70, 0.02): expected 90 to be 89.94270423958551`.
+  Rotation: 33 differing lines, all from the two items this cycle touched.
+
 - 2026-09-15 (2) — ML track: the qwk/pearson gate, **superseded before it merged.**
   This branch built `promotionGate.subgroup.minQwk` / `minPearson` and an
   `ordinal_quality_check`; cycle 2 on `autopilot/2026-09-15-1839` independently built

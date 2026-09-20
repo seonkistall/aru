@@ -240,9 +240,21 @@ export function QualityPanel({ quality, requireSteady, zonesReady }: { quality: 
     return base;
   }, [quality, requireSteady, zonesReady]);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${checks.length}, 1fr)`, gap: 5, marginTop: 10 }}>
+    /* One column per check put six 47px cells in the 320px content box of a 360px
+       phone, and the cells clipped their own labels: `overflow: hidden` zeroes a grid
+       item's automatic minimum size, so the 1fr tracks shrank below min-content and
+       `whiteSpace: "nowrap"` had nowhere to go. Measured in chromium at 360px on
+       2026-09-20: 20 of the 30 label cells were cut, in all five locales — ko
+       "피부 선명도" lost 24.1px of 71.1px, en "Capture area" 33.6px of 80.6px, ar
+       "منطقة القياس" 29.1px of 76.1px — and `body { overflow-x: hidden }` meant
+       nothing scrolled into view either. This is the screen that tells the user what
+       to fix before the shutter fires, so a half-word is worse here than anywhere.
+       auto-fit at a 96px floor gives three columns of 103.3px at that width, which
+       fits every label in every locale on one line, and six across when there is room
+       for six. The cells may wrap now rather than clip. */
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 5, marginTop: 10 }}>
       {checks.map(([label, ok]) => (
-        <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 2px", textAlign: "center", fontSize: 11, fontWeight: ok ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden" }}>
+        <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 2px", textAlign: "center", fontSize: 11, fontWeight: ok ? 700 : 500 }}>
           {ok ? "✓ " : ""}{t(label)}
         </div>
       ))}
