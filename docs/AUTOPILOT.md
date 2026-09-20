@@ -888,6 +888,51 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   E2E specs passed** behind the `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override the protocol
   records.
 
+
+  **Supervisor, same day — the cycle found the case the reviewer missed, and the
+  reviewer's reachability conclusion was wrong.** Going in, the review had derived two
+  things independently: that `Math.atan` handles `b* = 0` on its own in V8 (`(l-50)/0` is
+  ±Infinity, `atan(±Infinity)` is ±90) so the fallback is unnecessary for its stated
+  purpose, and that inside its own window the guard *creates* the 180-degree error rather
+  than preventing one — at L\* 70, b\* −0.005 plain `atan` gives −89.986 and the guard
+  gives +90. Both hold and the cycle's fix follows them.
+
+  It had also concluded the defect was **latent rather than live**, by sweeping a blue
+  cast across a skin-coloured region and finding the closest sampled approach to be
+  `|b*| = 0.44`, 44x the window. **That is true of skin and false of the case that
+  decides it.** The cycle swept the neutral axis instead and found it sits *inside* the
+  window. Recomputed from scratch in review: the z row sums to
+  `(0.0193 + 0.1192 + 0.9505) / 1.08883 = 1.00015613` of the y row, so
+  **242 of 256 greys** fall inside `|b*| < 0.01` and exactly **1** inside `1e-6`; the old
+  guard was 180 degrees off on every grey from 32 up. One fixture family is not a
+  reachability argument when the quantity under test is a distance to the neutral axis
+  and the fixture is, by construction, not neutral. Recorded in
+  `docs/ita-guard-decision.md`.
+
+  **The obvious-looking simplification was avoided, and it is a trap.** The review flagged
+  `atan2` before reading the branch: `atan2(l-50, b)` needs no branch at all but resolves
+  the quadrant, so at L\* 70, b\* −0.005 it returns +90.014 where ITA's convention
+  (`arctan((L*-50)/b*)` on (−90, 90]) requires −89.986 — 180 degrees, the same class of
+  error the cycle exists to remove. `grep -rn atan2 lib/ ml/ tests/` returns nothing.
+
+  **Checked rather than accepted.** No published axis moved: `analyzeSkin` on this branch
+  and on main `eb527e9` agrees at four frame sizes on `blemishCount`, `blemishDensity`,
+  `shine`, `relRedness`, `cov`, `toneIta`, `toneLstar`, all three levels and `confidence`.
+  The `fallbackVersion` reasoning is argued rather than asserted — the semantics moved
+  only within 0.043 of an 8-bit unit of the neutral axis, where no cheek centroid lands,
+  so a bump would partition byte-identical samples — and `toneIta` is computed from
+  `dominantTone` over cheek pixels, which is never neutral, so the argument holds. All
+  three guards are pinned: widening the TypeScript one back to `|b*| < 0.01` fails 4 cases
+  (`itaDegrees(70, 0.005): expected 90 to be 89.98567605542014`), and widening either
+  Python one fails `ml/selftest.py`.
+
+  One reviewer error worth recording, since the standard here is to record them: the first
+  attempt at breaking `ml/skin_indices.py` reported the guard as *unpinned*, because the
+  regex replaced the first `bstar == 0` in the file — which is in the docstring, not the
+  code. Re-run against line 150 it fails as it should. A break that does not break is a
+  false negative, and it looks exactly like a coverage gap.
+
+  Rotation: 27 differing lines, all from the two items this cycle touched.
 - 2026-09-20 (cycle 19) — Branch `autopilot/2026-09-20-0039`. **An a\* difference is
   not scale-free, and that is arithmetic rather than a property of the fixture: a
   common gain takes it to g^0.8 of itself. The app's chromaticity difference wins by

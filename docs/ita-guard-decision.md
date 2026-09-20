@@ -112,6 +112,22 @@ PIL's `convert("RGB")` — and on an L-mode file that yields `r = g = b` exactly
 cycle did not audit which of the datasets in `ml/external_datasets.json` ship greyscale
 images, so the claim here is about the path and not about a particular corpus.
 
+**Independently confirmed, and it corrects the reviewer rather than the cycle**
+(supervisor, 2026-09-20). Recomputing the matrix ratio and the grey table from scratch:
+the z row sums to `(0.0193 + 0.1192 + 0.9505) / 1.08883 = 1.00015613` of the y row, and
+**242 of 256 greys sit inside `|b*| < 0.01`** with exactly **1 of 256** inside `1e-6`
+(grey 0, where b\* is exactly zero). On every grey from 32 upward the old guard published
+a value 180 degrees from the limit — +89.996 against −90 at grey 32, −89.900 against +90
+at grey 128.
+
+The reviewer's own pre-derived position had this wrong in a way worth recording. It swept
+a blue cast across a **skin-coloured** region, found the closest sampled approach to be
+`|b*| = 0.44` — 44x the window — and concluded the defect was latent rather than live. That
+is true of skin and false of the case that decides it. One fixture family is not a
+reachability argument when the quantity under test is a distance to the neutral axis and
+the fixture is, by construction, not neutral.
+
+
 ## 2. Why not the other two options
 
 The backlog named three. Each is rejected on something measured.
