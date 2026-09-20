@@ -265,6 +265,16 @@ deciding it means deciding what ITA should read when b\* is near zero, which is 
 question about the stratifier and not about a guard. The group is `divergent`, like
 `roughness_ratio`, and the backlog carries the decision.
 
+> **Decided 2026-09-20 (cycle 20), and one claim above is corrected.** The guard is
+> `b* == 0` in all three implementations and the group is `exact`. The reachability
+> sentence here — that §3's cool cast shows a capture reaches the window — is too
+> strong: a capture **crosses** it, and a 121-step blue-gain sweep through `analyzeSkin`
+> steps from ITA 89.6 to −89.2 without once producing a clamped reading. What made the
+> window reachable is the neutral axis, which sits inside it: 242 of the 256 8-bit
+> greys satisfied `|b*| < 0.01` against 1 of 256 for `1e-6`, and on all 241 non-black
+> ones the ±90 fallback returned the sign the limit does not have — so the registry's
+> narrower guard held the correct column. [`docs/ita-guard-decision.md`](ita-guard-decision.md).
+
 Two things did change:
 
 - `lib/skin.ts` gains `itaDegrees(lstar, bstar)` and both tone sites delegate to it.
@@ -313,7 +323,7 @@ the seventh and is the one index for which a value contract is the wrong instrum
 | `blemish_count` | formula | agrees; pinned as a negative result |
 | `roughness_ratio` | formula, `divergent` | **disagrees**; which side moves needs faces |
 | `relative_redness` | formula and path | **was wrong**, fixed this cycle |
-| `ita` | formula, `divergent` | **disagrees**; 180° in the guard window |
+| `ita` | formula, `exact` | **was wrong**; the guard was decided cycle 20 ([here](ita-guard-decision.md)) |
 | `melanin_index` | name only | **declaration is wrong**; no app-side value exists to declare |
 
 `melanin_index` is not a gap this mechanism can close and the backlog says why:

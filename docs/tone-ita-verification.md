@@ -162,6 +162,16 @@ fixture sits at `b* = 10.74`, lower than any of the six swatches except the ligh
 and the cool cast takes it to `brown_dark`. Deep tones are the most stable, having the
 largest `b*`.
 
+**What this section does NOT establish, added 2026-09-20.** Cycle 19 read the cool-cast
+row — b\* taken to −0.82 and ITA to −87.6 — as evidence that a capture reaches the
+`|b*| < 0.01` window the ITA guard used to carry. It is evidence that a capture
+*crosses* it. A 121-step blue-gain sweep of this same fixture through `analyzeSkin`
+steps from ITA 89.6 to −89.2 in one 0.005 step of the gain and never once produces a
+clamped reading, because the window is 2.6e-4 gain units wide on this cheek. The guard
+was still wrong, and for a different reason — a neutral grey sits inside the window,
+where the ±90 fallback had the sign backwards — which is
+[`docs/ita-guard-decision.md`](ita-guard-decision.md).
+
 None of this is caused by the change in §2 and none of it is fixed by it. It is a
 property of ITA-from-a-photo, `ml/ita.py` has always had it, and what §2 removed is a
 *second*, avoidable dependence on top of it — the wall, which is not the person. The

@@ -51,8 +51,19 @@ def rgb_to_lab(r: float, g: float, b: float) -> tuple[float, float, float]:
 
 
 def ita_from_lab(lstar: float, bstar: float) -> float:
-    """ITA in degrees. The b* ~ 0 guard mirrors the browser's."""
-    if abs(bstar) < 0.01:
+    """ITA in degrees. The b* == 0 guard mirrors the browser's.
+
+    It was `abs(bstar) < 0.01` until 2026-09-20, here and in lib/skin.ts, against 1e-6
+    in the registry's ml/skin_indices.py:ita. Since the +-90 fallback ignores the SIGN
+    of b*, inside that window the three implementations landed 180 degrees apart, and a
+    neutral grey is inside it: this module's own four-decimal matrix gives r = g = b a
+    small negative b*, so 242 of the 256 8-bit greys satisfied the old guard and on all
+    241 non-black ones the fallback returned the sign the limit does not have. The
+    measurement and the decision are docs/ita-guard-decision.md. Now the fallback fires
+    only where the quotient has no value at all, and `== 0` covers -0.0 as well because
+    CPython raises ZeroDivisionError on both zeros while V8 divides to -Infinity.
+    """
+    if bstar == 0:
         return 90.0 if lstar > 50 else -90.0
     return math.degrees(math.atan((lstar - 50) / bstar))
 

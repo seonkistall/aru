@@ -1,5 +1,5 @@
 import { DEVICE_DATA_KEY } from "./device-data";
-import type { AgeBand, ToneBand } from "./tone-bands";
+import type { AgeBand } from "./tone-bands";
 
 /**
  * Local feedback storage for calibration.
@@ -59,12 +59,21 @@ export type SampleMeta = {
   /** Optional user observations outside the graded attrs (observation only — never severity grades). */
   observations?: { troubleSeen?: boolean };
   /**
-   * Subgroup stratifiers, recorded for model evaluation and never shown to the user.
-   * `toneBand` is derived on-device from the ITA already measured during the scan.
-   * `ageBand` is only present for consented pilot sessions that collected it; the
-   * consumer survey does not ask for age.
+   * Subgroup stratifier, recorded for model evaluation and never shown to the user.
+   * Only present for consented pilot sessions that collected it; the consumer survey
+   * does not ask for age.
+   *
+   * There used to be a `toneBand?: ToneBand` here too, documented as "derived on-device
+   * from the ITA already measured during the scan", and no code path ever wrote it.
+   * Removed 2026-09-20, which is the `populate it or delete it` the backlog asked for,
+   * and deleting is the side that is safe: `resolve_tone_band` (ml/subgroups.py) PREFERS
+   * a recorded band over recomputing one from `toneIta`, so a band written by one
+   * generation of the formula would silently outrank the current definition of the
+   * stratifier. That is exactly the drift docs/ita-guard-decision.md just closed in the
+   * formula itself. The band is derived where it is consumed, from the `toneIta` the
+   * scan records; `lib/tone-bands.ts:toneBandFromIta` is the on-device derivation and
+   * nothing needs it stored next to the number it comes from.
    */
-  toneBand?: ToneBand;
   ageBand?: AgeBand;
 };
 
