@@ -193,12 +193,51 @@ function calibrateFeatureMaps() {
 describe("index registry contract", () => {
   const python = readMl("skin_indices.py");
 
+  // Each map is sliced at its own closing brace, not at the next section header. Until
+  // 2026-09-20 there was one map and the slice ran to "#: Feature keys added"; with a
+  // second map between them that slice swallowed DERIVED_FROM's entries too, and they
+  // would have passed the SkinRawFeatures check while being a different KIND of claim.
+  const mapBody = (name: string) => {
+    const start = python.indexOf(`${name} = {`);
+    expect(start, `${name} not found in ml/skin_indices.py`).toBeGreaterThan(-1);
+    const end = python.indexOf("\n}", start);
+    expect(end, `${name} has no closing brace`).toBeGreaterThan(start);
+    return python.slice(start, end);
+  };
+  const rawFeatures = () =>
+    skinTs.slice(skinTs.indexOf("export type SkinRawFeatures"), skinTs.indexOf("export type ConfidenceSignal"));
+
   it("names feature keys that lib/skin.ts actually writes", () => {
-    const block = python.slice(python.indexOf("FEATURE_KEY = {"), python.indexOf("#: Feature keys added"));
+    const block = mapBody("FEATURE_KEY");
     const keys = [...block.matchAll(/"[a-z_]+": "([A-Za-z]+)"/g)].map(([, key]) => key);
     expect(keys.length).toBeGreaterThan(4);
-    const rawType = skinTs.slice(skinTs.indexOf("export type SkinRawFeatures"), skinTs.indexOf("export type ConfidenceSignal"));
+    const rawType = rawFeatures();
     for (const key of keys) expect(rawType, `${key} missing from SkinRawFeatures`).toContain(`${key}: number`);
+  });
+
+  it("keeps an offline-derived index out of the carried map", () => {
+    // The defect this splits: FEATURE_KEY declared `melanin_index` to be `toneLstar`,
+    // and FEATURE_KEY's contract is that the column holds the index's OWN value.
+    // 100*log10(100/L*) is not L*, so the declaration was false for every sample ever
+    // exported. DERIVED_FROM names the input instead, which is what is true.
+    const carried = mapBody("FEATURE_KEY");
+    const derived = mapBody("DERIVED_FROM");
+    expect(carried).not.toContain("melanin_index");
+    expect(derived).toContain('"melanin_index": "toneLstar"');
+
+    // A derived index's SOURCE still has to be a column the app really writes —
+    // otherwise "derived from" names nothing and the registry has swapped one false
+    // declaration for another.
+    const sources = [...derived.matchAll(/"[a-z_]+": "([A-Za-z]+)"/g)].map(([, key]) => key);
+    expect(sources.length).toBeGreaterThan(0);
+    const rawType = rawFeatures();
+    for (const key of sources) expect(rawType, `${key} missing from SkinRawFeatures`).toContain(`${key}: number`);
+
+    // And no id may sit in both maps: one says the column IS the value, the other says
+    // the column is the input, and nothing downstream could tell which was meant.
+    const carriedIds = [...carried.matchAll(/"([a-z_]+)": "[A-Za-z]+"/g)].map(([, id]) => id);
+    const derivedIds = [...derived.matchAll(/"([a-z_]+)": "[A-Za-z]+"/g)].map(([, id]) => id);
+    expect(carriedIds.filter((id) => derivedIds.includes(id))).toEqual([]);
   });
 
   it("keeps the pipeline's new-feature column list in step with the app", () => {

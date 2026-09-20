@@ -17,8 +17,20 @@ So the stratifier is a two-axis cell: measured tone band x self-reported age ban
 Every model report is computed per cell, and a cell with too few samples is reported
 as UNEVALUATED rather than quietly folded into the average.
 
-ITA (Individual Typology Angle) bands follow the Chardon convention and match
-`ita_bucket` in evaluate_dataset.py, which shipped first.
+ITA (Individual Typology Angle) bands match `ita_bucket` in evaluate_dataset.py, which
+shipped first. On their attribution, corrected 2026-09-20: this file and
+lib/tone-bands.ts credited "the Chardon convention" while ml/skin_indices.py credited
+Del Bino & Bernerd — three files describing the same five edges with two different
+citations. The benchmark this project already cites (hpicsk/regional-ccm) separates
+them: `src/clinical.py` attributes the FORMULA arctan((L*-50)/b*) to Chardon et al.
+(1991) and Del Bino et al. (2006), and the six-category CUTPOINTS -30/10/28/41/55 to
+Del Bino & Bernerd (2013). ARU uses those cutpoints, so Del Bino & Bernerd is the
+citation the edges belong to.
+
+That resolves an internal inconsistency, not the open question. regional-ccm is another
+project's source code, not either paper, and no primary source for the cutpoints is
+reachable from this network. docs/melanin-index-verification.md records what was checked
+and against what.
 """
 
 from __future__ import annotations
@@ -33,7 +45,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ordinal_metrics  # noqa: E402
 
-#: Chardon ITA bands, ordered light to dark. Upper bound is exclusive of the next band.
+#: Del Bino & Bernerd ITA bands, ordered light to dark, with Brown and Dark merged
+#: into brown_dark (ml/selftest.py pins that merge as the only difference).
+#: Upper bound is exclusive of the next band.
 ITA_BANDS: tuple[tuple[str, float], ...] = (
     ("very_light", 55.0),
     ("light", 41.0),

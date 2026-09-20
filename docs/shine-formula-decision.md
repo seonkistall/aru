@@ -243,9 +243,13 @@ agrees (cycle 17), `roughness_ratio` disagrees and is pinned divergent (cycle 18
 `relative_redness` was wrong and is fixed (cycle 19), and `ita` — the one index that
 was both unpinned and not yet known to be wrong — turned out to disagree by 180
 degrees inside a guard window (cycle 19) and was decided in cycle 20, which narrowed
-all three guards to `b* == 0` ([`docs/ita-guard-decision.md`](ita-guard-decision.md)). `melanin_index` is the only one left, and
+all three guards to `b* == 0` ([`docs/ita-guard-decision.md`](ita-guard-decision.md)). `melanin_index` was the only one left, and
 it is the one index a value contract is the wrong instrument for: there is no app-side
-value to compare against. The table of where all seven stand is at the end of
+value to compare against, and cycle 21 established there should not be one — it moved
+from `FEATURE_KEY` to `DERIVED_FROM`, which is the registry admitting the index is
+computed from an exported column rather than held in one
+([`docs/melanin-index-verification.md`](melanin-index-verification.md)). The table of
+where all seven stand is at the end of
 [`docs/redness-formula-decision.md`](redness-formula-decision.md).
 
 ## What this changes for the `rgbToLab` decision

@@ -324,12 +324,22 @@ the seventh and is the one index for which a value contract is the wrong instrum
 | `roughness_ratio` | formula, `divergent` | **disagrees**; which side moves needs faces |
 | `relative_redness` | formula and path | **was wrong**, fixed this cycle |
 | `ita` | formula, `exact` | **was wrong**; the guard was decided cycle 20 ([here](ita-guard-decision.md)) |
-| `melanin_index` | name only | **declaration is wrong**; no app-side value exists to declare |
+| `melanin_index` | name only, now as DERIVED | declaration **was wrong**; the registry gained a second kind of entry, cycle 21 |
 
-`melanin_index` is not a gap this mechanism can close and the backlog says why:
-`FEATURE_KEY` declares it to be `toneLstar` and it is a nonlinear transform of it
-(`100 * log10(100 / L*)`, so 15.49 where the declared column holds 70), and no
-TypeScript counterpart exists anywhere. There is no second column to pin. Closing it is
-a decision about what `FEATURE_KEY` means — either the app computes and exports a
-melanin index, which needs a reason beyond a test wanting one, or the registry gains a
-second kind of entry for an index derived offline. Not a parity row.
+`melanin_index` was never a gap this mechanism could close, and cycle 21 closed it the
+other way round. `FEATURE_KEY` declared it to be `toneLstar` and it is a nonlinear
+transform of it (`100 * log10(100 / L*)`, so 15.49 where the declared column holds 70),
+with no TypeScript counterpart anywhere — so there was no second column to pin and never
+would be. The fork was: add an app-side melanin field, or record that the index is
+derived offline from a column rather than carried by one.
+
+The second was chosen, on the benchmark this registry already cites rather than on
+taste: hpicsk/regional-ccm computes the melanin index from a CIELAB L\* reading too
+(`src/clinical.py:compute_melanin_index`, same `100*log10(100/L*)`, same `1.0` floor),
+so it is a derived quantity and an app-side field would be an export column with no
+producer and no reader. `ml/skin_indices.py` now has `DERIVED_FROM` alongside
+`FEATURE_KEY`; an index in neither, or in both, fails `ml/selftest.py`, and a derived
+index whose source is not a real `SkinRawFeatures` field fails
+`tests/skin-index-contract.test.ts`. Still not a parity row — there is nothing to
+compare — but no longer an untrue declaration.
+[`docs/melanin-index-verification.md`](melanin-index-verification.md) is the check.

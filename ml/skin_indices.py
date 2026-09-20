@@ -99,7 +99,8 @@ INDICES: tuple[Index, ...] = (
 
 INDEX_BY_ID = {index.id: index for index in INDICES}
 
-#: Index id -> the feature key lib/skin.ts writes into every exported sample.
+#: Index id -> the feature key lib/skin.ts writes into every exported sample, for the
+#: indices the app CARRIES. The column named here holds that index's own value.
 #: tests/skin-index-contract.test.ts fails if the two sides drift apart.
 FEATURE_KEY = {
     "relative_redness": "relRedness",
@@ -107,8 +108,32 @@ FEATURE_KEY = {
     "shine_ratio": "shine",
     "blemish_count": "blemishDensity",
     "roughness_ratio": "roughnessRatio",
-    "melanin_index": "toneLstar",
     "ita": "toneIta",
+}
+
+#: Index id -> the exported feature key it is computed FROM. An index listed here is
+#: DERIVED OFFLINE: no column of any export holds its value, and the function of the
+#: same name in this module is the only thing that produces it.
+#:
+#: The second kind of entry exists because `melanin_index` was in FEATURE_KEY against
+#: "toneLstar" until 2026-09-20 and the declaration was false. FEATURE_KEY's contract
+#: is "the feature key lib/skin.ts writes into every exported sample", so a reader
+#: resolving melanin_index through it got L* itself: at L* = 70 the index is 15.49 and
+#: the declared column holds 70. It is not a rounding gap or a units gap — the index is
+#: 100*log10(100/L*), a nonlinear transform of the column that was named as its value.
+#:
+#: Which side moves was settled by looking at the benchmark this module cites rather
+#: than by preference. hpicsk/regional-ccm computes the melanin index from CIELAB L*
+#: too (src/clinical.py:compute_melanin_index) — it is a quantity derived from a
+#: lightness reading, not a separate measurement a camera path would make — so adding
+#: an app-side field would invent an export column with no reader. Verified against
+#: that source 2026-09-20: docs/melanin-index-verification.md.
+#:
+#: Nothing in the pipeline reads this map yet: `melanin_index()` has no caller outside
+#: ml/selftest.py. That is the point — the declaration was wrong in the one place a
+#: first caller would have looked.
+DERIVED_FROM = {
+    "melanin_index": "toneLstar",
 }
 
 #: Feature keys added by the within-image indices, in export column order. The
@@ -117,7 +142,21 @@ NEW_FEATURE_KEYS = ("toneSpread", "roughnessRatio", "blemishCount", "blemishDens
 
 
 def melanin_index(lstar: float) -> float:
-    """Takiwaki's melanin index on the CIELAB substitution. ABSOLUTE."""
+    """Takiwaki's melanin index on the CIELAB substitution. ABSOLUTE.
+
+    DERIVED, not carried: `DERIVED_FROM` names the export column this reads (toneLstar)
+    and there is no column holding the result. Checked against the benchmark this module
+    cites, hpicsk/regional-ccm `src/clinical.py:compute_melanin_index`, on 2026-09-20:
+    the expression is the same `100 * log10(100 / L*)` and the low guard is the same
+    value (`MI_L_STAR_FLOOR = 1.0` there, `max(lstar, 1.0)` here).
+
+    The one deviation is the UPPER end: the reference clips to `[1.0, 100.0]` and this
+    does not, so above L* = 100 the reference returns 0.0 and this returns a negative
+    number. It is unreachable from a photo — L* from an 8-bit sRGB triple tops out at
+    exactly 100.0 (measured over all 16,777,216 of them, docs/melanin-index-verification.md)
+    — and it is left alone rather than "fixed", because clamping would make the function
+    silently report pure white and a physically impossible L* as the same skin.
+    """
     return 100.0 * math.log10(100.0 / max(lstar, 1.0))
 
 

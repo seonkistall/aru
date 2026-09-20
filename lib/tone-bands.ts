@@ -4,7 +4,9 @@
  * ARU does not predict ethnicity. What the camera can measure is melanin level,
  * as the Individual Typology Angle already computed in lib/skin.ts, and that is
  * what actually shifts the baseline every redness and texture read is compared
- * against. Bands are Chardon's, and they must stay identical to `ITA_BANDS` in
+ * against. The band edges are Del Bino & Bernerd's six-category cutpoints (the
+ * arctan formula itself is Chardon's; this file credited Chardon for both until
+ * 2026-09-20 — see ml/subgroups.py), and they must stay identical to `ITA_BANDS` in
  * ml/subgroups.py — tests/subgroup-contract.test.ts fails the build if they drift,
  * because a band boundary that differs between app and training silently reassigns
  * samples to the wrong subgroup.
