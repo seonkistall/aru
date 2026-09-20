@@ -310,6 +310,30 @@ export function labAStar(r: number, g: number, b: number): number {
   return 500 * (labF(x) - labF(y));
 }
 
+/**
+ * Individual Typology Angle in degrees, in one place.
+ *
+ * Extracted from `dominantTone` and from `extractRawFeatures`'s fallback on 2026-09-20
+ * with the expression byte-for-byte unchanged and both call sites delegating to it, so
+ * no published value moved — `tests/tone-ita-contract.test.ts`'s six reference-verified
+ * rows are what prove it. Before that it was written out twice in this file, which is
+ * the duplication the 2026-09-15 `confidenceLabel` finding is about.
+ *
+ * `ml/ita.py:ita_from_lab` is the offline mirror and carries the SAME 0.01 guard.
+ * `ml/skin_indices.py:ita` — the registry's declaration of what this index is — carries
+ * `1e-6` instead, and that is a real divergence rather than a rounding difference: the
+ * ±90 fallback ignores the SIGN of b*, so where the two guards differ, a frame with a
+ * small negative b* and L* above 50 reads +90 here and about −90 there. That is
+ * `light` against `deep` on `coarse_tone_band` — opposite ends of the stratifier from
+ * one frame. Both implementations put a 180° discontinuity in the same place in the
+ * formula and disagree about where it sits; neither is obviously the right one, so
+ * `ml/index-parity.json` -> `ita` pins BOTH columns at their values, the way the
+ * `roughness_ratio` group does, and the backlog carries the decision.
+ */
+export function itaDegrees(lstar: number, bstar: number): number {
+  return Math.abs(bstar) < 0.01 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;
+}
+
 export function rgbToLab(r: number, g: number, b: number): { l: number; a: number; b: number } {
   const rl = srgbLinear(r);
   const gl = srgbLinear(g);
@@ -371,7 +395,7 @@ function dominantTone(pixels: SkinPixel[]): { lstar: number; ita: number } | nul
   for (const clusterIndex of assignment) counts[clusterIndex] += 1;
   const dominant = centroids[counts.indexOf(Math.max(...counts))];
   const lab = rgbToLab(dominant.r, dominant.g, dominant.b);
-  const ita = Math.abs(lab.b) < 0.01 ? (lab.l > 50 ? 90 : -90) : (Math.atan((lab.l - 50) / lab.b) * 180) / Math.PI;
+  const ita = itaDegrees(lab.l, lab.b);
   return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
 }
 
@@ -737,6 +761,49 @@ export function roughnessRatio(cheekHf: number | null, foreheadHf: number | null
   return cheekHf !== null && foreheadHf !== null && foreheadHf > 1e-6 ? cheekHf / foreheadHf : 0;
 }
 
+/**
+ * Red chromaticity: the red channel's share of a region's total signal.
+ *
+ * Homogeneous of degree 0, which is the property the redness axis is built on: multiply
+ * all three channels of a region by anything — an exposure change, a darker skin tone,
+ * a dimmer room — and the value does not move. In exact arithmetic it does not move at
+ * all; in doubles it is one correctly-rounded division, so a DIFFERENCE of two of them
+ * moves by at most one ulp of 1.0, which `ml/selftest.py` derives and measures at half
+ * of. `|| 1` is the black-region branch, so a region with no signal reads 0 rather than
+ * NaN.
+ */
+export function redChromaticity(r: number, g: number, b: number): number {
+  return r / (r + g + b || 1);
+}
+
+/**
+ * The redness axis's index: how much redder the cheeks are than the T-zone, in one
+ * place so there is one formula for both languages to agree with.
+ *
+ * Extracted from `extractRawFeatures` on 2026-09-20 with the expression byte-for-byte
+ * unchanged, so no published value moved; the `relRedness` pins in
+ * `tests/skin-index-contract.test.ts` and `tests/axis-exposure-scale.test.ts` are what
+ * prove it.
+ *
+ * `ml/skin_indices.py:relative_redness` was a DIFFERENT formula under this same
+ * declared name from 2026-09-14 to 2026-09-20 — a CIELAB a* difference, where this is a
+ * difference of red chromaticities — and `FEATURE_KEY` declared the two to be one
+ * field. The Python side moved to this one, and it moved on a measurement rather than
+ * on which was more standard: an a* difference is NOT scale-free. a* is homogeneous of
+ * degree 1/3 in the linear signal and the linear signal is homogeneous of degree 2.4 in
+ * the channel, so a common exposure gain g takes an a* DIFFERENCE to g^0.8 times
+ * itself — it factors out of the difference instead of cancelling in it. Measured on
+ * one face across the 조명 band, the a* form runs 1.83 -> 3.96 while this one holds
+ * within 1.025x. docs/redness-formula-decision.md, and
+ * `tests/redness-formula-decision.test.ts` is the re-runnable sweep.
+ */
+export function relativeRedness(
+  cheek: Pick<RegionStats, "meanR" | "meanG" | "meanB">,
+  tzone: Pick<RegionStats, "meanR" | "meanG" | "meanB">,
+): number {
+  return redChromaticity(cheek.meanR, cheek.meanG, cheek.meanB) - redChromaticity(tzone.meanR, tzone.meanG, tzone.meanB);
+}
+
 const ATTR_RAW_KEY: Record<SkinAttr, "shine" | "relRedness" | "cov"> = {
   oil: "shine",
   redness: "relRedness",
@@ -1039,14 +1106,13 @@ export function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinR
 
   const cheekL = lum(cheeks.meanR, cheeks.meanG, cheeks.meanB);
   const tzoneL = lum(tzone.meanR, tzone.meanG, tzone.meanB);
-  const rIdx = (m: RegionStats) => m.meanR / (m.meanR + m.meanG + m.meanB || 1);
   const gains = frameChannelGains(data, w, h);
   // Unbalanced on purpose — see the frameChannelGains comment. The same cheek
   // pixels must yield the same band whatever is behind the person, and must match
   // what ml/ita.py computes from a dataset image of the same face.
   const tone = dominantTone(cheeks.pixels) ?? (() => {
     const lab = rgbToLab(cheeks.meanR, cheeks.meanG, cheeks.meanB);
-    const ita = Math.abs(lab.b) < 0.01 ? (lab.l > 50 ? 90 : -90) : (Math.atan((lab.l - 50) / lab.b) * 180) / Math.PI;
+    const ita = itaDegrees(lab.l, lab.b);
     return { lstar: Math.round(lab.l * 10) / 10, ita: Math.round(ita * 10) / 10 };
   })();
 
@@ -1092,7 +1158,7 @@ export function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinR
     // NOT known here: the 1.2 this repository's fixtures use comes from its own
     // [196, 152, 140] skin constant (R/L 1.1967), which is a fixture and not a
     // measurement. tests/axis-exposure-scale.test.ts, docs/label-free-axes.md.
-    relRedness: rIdx(cheeks) - rIdx(tzone),
+    relRedness: relativeRedness(cheeks, tzone),
     cov: cheeks.texture / (cheekL || 1),
     tzoneL,
     cheekL,

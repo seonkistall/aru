@@ -207,6 +207,16 @@ measurement — whether an a\* difference or a chromaticity difference is the mo
 within-image quantity — and `shine` is the worked example of what happens when you pick
 a side without making it. Dated backlog item.
 
+**2026-09-20 (cycle 19): the measurement was made and the app's form won.** An a\*
+difference is not scale-free — a\* is homogeneous of degree 1/3 in the linear signal
+and the linear signal degree 2.4 in the channel, so a common gain takes an a\*
+difference to g^0.8 of itself rather than leaving it alone. Over cheekL 70..170 on one
+face the rejected form runs 1.83 -> 3.96 where the chromaticity difference holds within
+1.025x, and it loses by 24x, 11x and 3.3x on exposure, melanin tone and white balance
+measured as drift against the index's own range. The Python side moved and no published
+value changed. Full measurement, the two sweeps where it is a TIE, and the
+`relative_redness` parity group: [`docs/redness-formula-decision.md`](redness-formula-decision.md).
+
 Of the remaining four, one is now checked and three are not.
 
 `tone_evenness` claimed in its own docstring, since 2026-09-14, to be "the same formula
@@ -227,6 +237,15 @@ adding a field because a test would like one, which is not a reason;
 
 `roughness_ratio`, `blemish_density` and `melanin_index` have their names pinned and
 their values unchecked.
+
+**As of 2026-09-20 none of them does, and neither does `ita`.** `blemish_density`
+agrees (cycle 17), `roughness_ratio` disagrees and is pinned divergent (cycle 18),
+`relative_redness` was wrong and is fixed (cycle 19), and `ita` — the one index that
+was both unpinned and not yet known to be wrong — turned out to disagree by 180
+degrees inside a guard window, also cycle 19. `melanin_index` is the only one left, and
+it is the one index a value contract is the wrong instrument for: there is no app-side
+value to compare against. The table of where all seven stand is at the end of
+[`docs/redness-formula-decision.md`](redness-formula-decision.md).
 
 ## What this changes for the `rgbToLab` decision
 

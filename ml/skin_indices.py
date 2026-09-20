@@ -77,7 +77,9 @@ class Index:
 
 INDICES: tuple[Index, ...] = (
     Index("relative_redness", WITHIN_IMAGE, "redness",
-          "a* of the target region minus a* of a reference region in the same frame."),
+          "Red chromaticity R/(R+G+B) of the target region minus that of a reference "
+          "region in the same frame. An a* difference until 2026-09-20; it is not "
+          "scale-free, and relative_redness() says what replaced it and why."),
     Index("tone_evenness", WITHIN_IMAGE, "tone",
           "Spread of L* across facial regions of one frame. Uniformity, not lightness."),
     Index("shine_ratio", WITHIN_IMAGE, "oil",
@@ -120,20 +122,89 @@ def melanin_index(lstar: float) -> float:
 
 
 def ita(lstar: float, bstar: float) -> float:
-    """Individual Typology Angle in degrees. ABSOLUTE."""
+    """Individual Typology Angle in degrees. ABSOLUTE.
+
+    `* 180 / math.pi` rather than `math.degrees`, and the reason is the one cycle 17
+    recorded for `ml/ita.py`'s cube root: the more accurate expression is not the one
+    that agrees with the app. `math.degrees(x)` multiplies by a single precomputed
+    180/pi and rounds once; `lib/skin.ts:itaDegrees` computes `(x * 180) / Math.PI`
+    and rounds twice. Over 1,186,709 (L*, b*) pairs the two associations are
+    bit-identical on 74.5% and differ by up to 1.42e-14 degrees on the rest, which is
+    0.71 units of `90 * 2**-52`. With this association CPython and V8 agree bit for
+    bit on every row `ml/index-parity.json` commits, so the ita group's only remaining
+    divergence is the one that matters.
+
+    And that one is NOT closed here. The guard is `1e-6` where `lib/skin.ts` and
+    `ml/ita.py` both use `0.01`, and because the +-90 fallback ignores the SIGN of b*,
+    inside that window the two do not round differently — they land 180 degrees apart.
+    At L* 70, b* -0.005 the app reads +90 and this reads -89.99: `light` against
+    `deep` on coarse_tone_band, from one frame. Both implementations carry the same
+    discontinuity and disagree only about where it sits, so neither is pinned as
+    correct; ml/index-parity.json -> ita holds both columns and the backlog carries
+    the decision.
+    """
     if abs(bstar) < 1e-6:
         return 90.0 if lstar > 50 else -90.0
-    return math.degrees(math.atan((lstar - 50.0) / bstar))
+    return math.atan((lstar - 50.0) / bstar) * 180 / math.pi
 
 
-def relative_redness(target_astar: float, reference_astar: float) -> float:
+def red_chromaticity(r: float, g: float, b: float) -> float:
+    """The red channel's share of a region's total signal. Mirrors `redChromaticity`
+    in lib/skin.ts exactly, `|| 1` black-region branch included."""
+    total = r + g + b
+    return r / (total if total else 1.0)
+
+
+def relative_redness(
+    target_rgb: tuple[float, float, float],
+    reference_rgb: tuple[float, float, float],
+) -> float:
     """Redness of one region against another in the SAME frame. WITHIN_IMAGE.
+    Mirrors `relativeRedness` in lib/skin.ts exactly.
 
-    An absolute a* moves by roughly 8 units between a DSLR and a phone on the same
-    face. The difference between two regions of one photo does not, because both
-    regions went through the same sensor and the same light.
+    THIS SIGNATURE CHANGED ON 2026-09-20, and the reason is the same one that moved
+    `shine_ratio` the day before.
+
+    Until then this function was `target_astar - reference_astar` — a CIELAB a*
+    difference — while the app returned a difference of RED CHROMATICITIES, with
+    FEATURE_KEY declaring the two to be one field. Different colour space, different
+    scale, one declared name, and nothing compared their values.
+
+    Which one is right is a measurement, not a preference, and the measurement is not
+    close. The docstring this replaces claimed that "the difference between two regions
+    of one photo does not [move with the device], because both regions went through the
+    same sensor and the same light". That is true of an ADDITIVE common term and false
+    of a multiplicative one, and a device or an exposure is multiplicative. a* is
+    homogeneous of degree 1/3 in the linear signal (the cube root in f()) and the linear
+    signal is homogeneous of degree 2.4 in the 8-bit channel, so a common gain g takes
+    a* — and therefore any DIFFERENCE of two a* values — to g**0.8 times itself. It
+    factors out of the difference instead of cancelling in it. Verified against the
+    shipped code to five decimals at four gains: docs/redness-formula-decision.md §D.
+
+    Measured on one synthetic face, drift as a fraction of the index's own range over
+    four faces of genuinely different redness (lower is better):
+
+        nuisance              chromaticity      a* difference
+        exposure 70..170            0.0209             0.5047
+        melanin tone                0.0227             0.2545
+        white balance               0.0624             0.2071
+        tone curve                  0.3930             0.4076
+        veiling flare               0.1878             0.1822
+
+    The chromaticity difference wins by 24x, 11x and 3.3x on the three nuisances
+    docs/label-free-axes.md names, and ties on the two transfer-function ones where
+    neither form is invariant. There is no sweep on which the a* difference wins by a
+    margin that matters.
+
+    NO PUBLISHED VALUE MOVED when this changed: the app already computed this form,
+    nothing in the pipeline ever called this function (run_pipeline.py, calibrate.py
+    and prepare_crop_dataset.py all read the app's `relRedness` column straight out of
+    the export), and its old inputs were a* values that no ARU export carries.
+
+    ml/index-parity.json -> relative_redness is the committed table this and
+    lib/skin.ts BOTH assert against, so the two cannot drift apart again in silence.
     """
-    return target_astar - reference_astar
+    return red_chromaticity(*target_rgb) - red_chromaticity(*reference_rgb)
 
 
 def tone_evenness(region_lstars: list[float]) -> float:

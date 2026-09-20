@@ -301,17 +301,73 @@ class SkinIndices(unittest.TestCase):
         frame scales together, which is exactly what makes a relative index survive."""
         return lstar * gain, astar * gain, bstar * gain
 
-    def test_relative_redness_survives_a_device_change_up_to_scale(self):
-        cheek_a, forehead_a = 18.0, 12.0
-        plain = skin_indices.relative_redness(cheek_a, forehead_a)
-        for gain in (0.6, 0.85, 1.4):
-            _, cheek_g, _ = self._lab_under_gain(60, cheek_a, 20, gain)
-            _, fore_g, _ = self._lab_under_gain(60, forehead_a, 20, gain)
-            # The sign and the ordering are what the product reads, and they hold.
-            self.assertGreater(skin_indices.relative_redness(cheek_g, fore_g), 0)
-            self.assertAlmostEqual(
-                skin_indices.relative_redness(cheek_g, fore_g) / gain, plain, places=6
+    def test_relative_redness_survives_a_device_change_exactly_not_up_to_scale(self):
+        """The case this replaces was named `..._up_to_scale` and divided by the gain
+        to recover the plain value — which concedes, in the assertion itself, that the
+        index was not scale-free. It was measuring an a* difference, and an a*
+        difference is not (docs/redness-formula-decision.md).
+
+        The shipped form is, and there is nothing to divide by: red chromaticity is a
+        ratio of a channel to the sum of all three, so a common multiplier cancels in
+        the ratio rather than factoring out of the difference.
+
+        The bound is DERIVED rather than a tolerance picked to pass. Each chromaticity
+        is one correctly-rounded division landing in (0, 1), so each carries at most
+        half an ulp of 1.0, and their difference carries at most one — 2**-52. Measured
+        worst over the gains below plus 0.3/0.45/0.7/1.0/1.1/1.7/2.0/3.0/0.123/7.77:
+        exactly 0.5 * 2**-52, which is that bound's own half. It is 4.4e-17 against a
+        `redness` cut of 0.012, fourteen orders of magnitude below anything the product
+        reads, and a genuine formula split moves this index by whole percent — the
+        rejected a* form below moves it by 50% of its own range.
+        """
+        cheek = (200.0, 150.0, 138.0)
+        tzone = (195.0, 154.0, 142.0)
+        plain = skin_indices.relative_redness(cheek, tzone)
+        self.assertGreater(plain, 0)
+        for gain in (0.6, 0.85, 1.4, 2.5):
+            scaled_cheek = tuple(channel * gain for channel in cheek)
+            scaled_tzone = tuple(channel * gain for channel in tzone)
+            moved = abs(skin_indices.relative_redness(scaled_cheek, scaled_tzone) - plain)
+            self.assertLessEqual(
+                moved, 2.0**-52, f"a gain of {gain} moved a scale-free index by {moved}"
             )
+        # And a black region takes the `|| 1` branch rather than dividing by zero.
+        self.assertEqual(skin_indices.red_chromaticity(0.0, 0.0, 0.0), 0.0)
+        self.assertEqual(skin_indices.relative_redness((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)), 0.0)
+
+    def test_the_rejected_a_star_difference_is_the_thing_that_was_not_scale_free(self):
+        """Why the Python side moved rather than the app's, kept as arithmetic.
+
+        a* = 500 * (f(X/Xn) - f(Y/Yn)) and f is a cube root above its knee, so a* is
+        homogeneous of degree 1/3 in the linear signal; the linear signal is degree 2.4
+        in the 8-bit channel. A common gain g therefore multiplies BOTH regions' a* by
+        g**0.8 — and a difference of two things that both scale scales too, instead of
+        cancelling the way the old docstring claimed. Under a pure 2.4 power law this
+        is exact; docs/redness-formula-decision.md §D measures the shipped transfer
+        curve, whose +0.055 offset moves it a little off the clean exponent.
+        """
+
+        def astar_difference(cheek, tzone, gain):
+            def astar(rgb):
+                linear = [(channel * gain / 255.0) ** 2.4 for channel in rgb]
+                x = (linear[0] * 0.4124 + linear[1] * 0.3576 + linear[2] * 0.1805) / 0.95047
+                y = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+                f = lambda t: t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+                return 500.0 * (f(x) - f(y))
+
+            return astar(cheek) - astar(tzone)
+
+        cheek = (200.0, 150.0, 138.0)
+        tzone = (195.0, 154.0, 142.0)
+        plain = astar_difference(cheek, tzone, 1.0)
+        for gain in (0.6, 0.85, 1.4):
+            self.assertAlmostEqual(
+                astar_difference(cheek, tzone, gain) / plain, gain**0.8, places=9,
+                msg=f"an a* difference at gain {gain} is not g**0.8 of itself",
+            )
+            # Which is the same as saying it is NOT invariant, on the same frames where
+            # the shipped chromaticity form is exactly invariant above.
+            self.assertNotAlmostEqual(astar_difference(cheek, tzone, gain), plain, places=2)
 
     def test_absolute_indices_do_not_survive_it(self):
         # The same face through a device that renders 15% darker: both absolute indices
@@ -382,15 +438,27 @@ class SkinIndices(unittest.TestCase):
         matches bit for bit. If this starts failing, one of the two implementations
         changed — regenerate the table only after deciding on purpose which is right.
 
-        Two of the seven registry indices are covered, and to different depths. Only
-        the shine rows pin the PATH as well as the formula (the TypeScript side
-        rebuilds each frame); the tone_evenness rows pin the formula alone, because
-        its inputs — the four region L* values — are not an exported field. The other
-        five are name-pinned and value-unchecked: docs/shine-formula-decision.md.
+        Five of the seven registry indices are covered, and to different depths. The
+        shine rows and, since 2026-09-20, the relative_redness rows pin the PATH as
+        well as the formula (the TypeScript side rebuilds each frame); the
+        tone_evenness, blemish_count and roughness_ratio rows pin the formula alone,
+        because their inputs are not exported fields. The other two — melanin_index
+        and ita — are name-pinned and value-unchecked:
+        docs/shine-formula-decision.md.
         """
         table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
         indices = table["indices"]
-        self.assertEqual(set(indices), {"shine_ratio", "tone_evenness", "blemish_count", "roughness_ratio"})
+        self.assertEqual(
+            set(indices),
+            {
+                "shine_ratio",
+                "tone_evenness",
+                "blemish_count",
+                "roughness_ratio",
+                "relative_redness",
+                "ita",
+            },
+        )
         # Whatever is pinned has to be a real index declaring the real app field.
         for index_id, group in indices.items():
             self.assertIn(index_id, skin_indices.INDEX_BY_ID)
@@ -442,6 +510,142 @@ class SkinIndices(unittest.TestCase):
             computed = skin_indices.tone_evenness(list(row["lstars"]))
             self.assertEqual(computed, row["value"], f'{row["note"]}: tone_evenness({row["lstars"]})')
         self.assertGreaterEqual(len([row for row in spread_rows if row["value"] > 0]), 4)
+
+    def test_relative_redness_matches_the_app_on_every_committed_row(self):
+        """The group added when this side moved onto the app's formula (2026-09-20).
+
+        It is `exact`, not `divergent` like roughness_ratio, because the decision was
+        made rather than deferred — docs/redness-formula-decision.md is the
+        measurement. Which means this case does something the roughness one cannot:
+        if either language's expression moves, the rows go red in BOTH languages
+        instead of in one.
+
+        The face rows carry the two region mean RGBs `lib/skin.ts` actually fed its
+        index, not the colours the fixture painted, so this asserts on the numbers the
+        app's formula received. The TypeScript side additionally rebuilds each frame
+        and checks that those means are what `sampleRegion` still produces — the half
+        Python cannot do, and the half that would otherwise let a change to WHICH
+        regions the index compares leave every row here green.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        redness = table["indices"]["relative_redness"]
+        self.assertEqual(redness["comparison"], "exact")
+        self.assertEqual(redness["featureKey"], skin_indices.FEATURE_KEY["relative_redness"])
+        self.assertEqual(redness["pythonFunction"], "ml/skin_indices.py :: relative_redness")
+        rows = redness["rows"]
+        self.assertGreaterEqual(len(rows), 15)
+
+        for row in rows:
+            computed = skin_indices.relative_redness(tuple(row["cheekMean"]), tuple(row["tzoneMean"]))
+            self.assertEqual(
+                computed,
+                row["relRedness"],
+                f'{row["note"]}: relative_redness({row["cheekMean"]}, {row["tzoneMean"]})',
+            )
+
+        # A table of zeroes would satisfy the loop above and pin nothing. The rows have
+        # to span the published axis, both signs and the exact zero included.
+        values = [row["relRedness"] for row in rows]
+        self.assertGreaterEqual(len([v for v in values if v > 0.03]), 1)
+        self.assertGreaterEqual(len([v for v in values if v < 0]), 2)
+        self.assertGreaterEqual(len([v for v in values if v == 0.0]), 2)
+
+        # The property that decided which side moved, held by the rows: one face at
+        # three exposures across the 조명 band reads the same redness to 5.2%, where the
+        # a* difference this function used to compute reads it to 142% over the same
+        # three frames. The app-side test computes the rejected column from these same
+        # means; here it is enough that the committed readings do not move.
+        same_face = [
+            row for row in rows
+            if row.get("kind") == "face" and row.get("tzoneMul") == [0.98, 1.03, 1.03]
+        ]
+        self.assertEqual(len(same_face), 3)
+        self.assertEqual(len({row["cheekTarget"] for row in same_face}), 3)
+        readings = [row["relRedness"] for row in same_face]
+        self.assertLess(max(readings) / min(readings), 1.06)
+
+        # And the pair whose inputs are exact multiples, where nothing is rounded: the
+        # invariance is down to one ulp of 1.0, the bound derived in the case above.
+        plain = next(row for row in rows if row["note"].startswith("non-integer means"))
+        brighter = next(row for row in rows if row["note"].startswith("the same pair 2.5x brighter"))
+        self.assertLessEqual(abs(brighter["relRedness"] - plain["relRedness"]), 2.0**-52)
+        for index, channel in enumerate(plain["cheekMean"]):
+            self.assertAlmostEqual(brighter["cheekMean"][index], channel * 2.5, places=9)
+
+    def test_ita_guard_disagrees_with_the_app_and_the_table_records_where(self):
+        """The seventh and last registry index to be value-checked. It does not agree.
+
+        Three implementations exist. `lib/skin.ts:itaDegrees` and
+        `ml/ita.py:ita_from_lab` fall back to +-90 when `|b*| < 0.01`; the one in THIS
+        module, which is the registry's declaration of what the index is, uses 1e-6.
+        So this group is `divergent` like roughness_ratio: each row carries both
+        columns and each language asserts its own.
+
+        What makes it worth a case rather than a note is that the +-90 fallback ignores
+        the SIGN of b*. Between the two guards the disagreement is therefore not a
+        rounding difference but 180 degrees — `light` against `deep` on
+        coarse_tone_band, from one frame. Neither column is pinned as correct: both
+        implementations put the same discontinuity in the formula and disagree only
+        about where it sits.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        group = table["indices"]["ita"]
+        self.assertEqual(group["comparison"], "divergent")
+        self.assertEqual(group["featureKey"], skin_indices.FEATURE_KEY["ita"])
+        self.assertEqual(group["pythonFunction"], "ml/skin_indices.py :: ita")
+        rows = group["rows"]
+        self.assertGreaterEqual(len(rows), 12)
+
+        for row in rows:
+            computed = skin_indices.ita(row["lstar"], row["bstar"])
+            self.assertEqual(
+                computed, row["python"], f'{row["note"]}: ita({row["lstar"]}, {row["bstar"]})'
+            )
+
+        # A table where the two columns happened to agree everywhere would pin the
+        # arithmetic and hide the finding, and one where they disagreed everywhere
+        # would not locate it at the guard.
+        agreeing = [row for row in rows if row["app"] == row["python"]]
+        divergent = [row for row in rows if row["app"] != row["python"]]
+        self.assertGreaterEqual(len(agreeing), 5)
+        self.assertGreaterEqual(len(divergent), 3)
+
+        # And the two rows that carry it: 180 degrees apart, one above the 41 light cut
+        # and the other below the 10 deep cut (ITA_BIN_EDGES).
+        for note in (
+            "the same b* negative: +90 against -90, light against deep from one frame",
+            "b* small and negative below the pivot: the sign blindness, the other way",
+        ):
+            row = next(entry for entry in rows if entry["note"] == note)
+            self.assertNotEqual(math.copysign(1, row["app"]), math.copysign(1, row["python"]), note)
+            self.assertGreater(abs(row["app"] - row["python"]), 179, note)
+            self.assertEqual(skin_indices.coarse_tone_band(max(row["app"], row["python"])), "light")
+            self.assertEqual(skin_indices.coarse_tone_band(min(row["app"], row["python"])), "deep")
+
+        # ml/ita.py is the third implementation and it sides with the app ON THE GUARD,
+        # which is what makes the registry's 1e-6 the outlier rather than a considered
+        # choice. Not bit-exact, and the gap is a different thing entirely: ml/ita.py
+        # converts with math.degrees (one rounding) where the app and this module use
+        # `* 180 / pi` (two). Over 1,186,709 (L*, b*) pairs the two associations are
+        # bit-identical on 74.5% and differ by at most 1.42e-14 degrees, which is 0.71
+        # units of `90 * 2**-52`; the bound below is the next integer up. It is twelve
+        # orders of magnitude under the 0.1 degree this index is rounded to before
+        # anything reads it, and fifteen under the 180 the guard costs.
+        tolerance = 2 * 90 * 2.0**-52
+        for row in rows:
+            offline = ita.ita_from_lab(row["lstar"], row["bstar"])
+            self.assertLessEqual(
+                abs(offline - row["app"]),
+                tolerance,
+                f'{row["note"]}: ml/ita.py must agree with the app, not with this module',
+            )
+            # The guard, which is the part that is not a rounding question: on every
+            # row where the app takes its fallback, ml/ita.py takes it too.
+            self.assertEqual(
+                offline in (90.0, -90.0),
+                row["app"] in (90.0, -90.0),
+                f'{row["note"]}: ml/ita.py must take the fallback exactly where the app does',
+            )
 
     def test_roughness_ratio_disagrees_with_the_app_and_the_table_records_where(self):
         """The one parity group whose two columns are NOT expected to match.

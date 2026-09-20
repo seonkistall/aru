@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeSkin, labAStar, relativeSpread, rgbToLab, roughnessRatio, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
+import { analyzeSkin, itaDegrees, labAStar, redChromaticity, relativeRedness, relativeSpread, rgbToLab, roughnessRatio, sampleRegion, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
 
 /**
  * Every within-image index has two implementations in two languages. From 2026-09-14,
@@ -17,9 +17,8 @@ import { analyzeSkin, labAStar, relativeSpread, rgbToLab, roughnessRatio, shineI
  * table — inputs with one expected output each — that both languages assert against.
  * Neither side can move without failing its own language's test.
  *
- * Four of the seven registry indices are covered, to different depths and — since
- * cycle 18 — under two different KINDS of comparison, and that is said here rather
- * than implied:
+ * Six of the seven registry indices are covered, to different depths and under two
+ * different KINDS of comparison, and that is said here rather than implied:
  *
  * - `shine_ratio` / `shine`: formula AND path. Of its 22 rows, 16 are `face` rows —
  *   real readings of real frames through `analyzeSkin`, carrying the recipe that
@@ -44,8 +43,22 @@ import { analyzeSkin, labAStar, relativeSpread, rgbToLab, roughnessRatio, shineI
  *   implementations put their guard in different places and deciding which is right
  *   needs faces. Each row carries both columns and each language asserts its own.
  *
- * The other three are name-pinned and value-unchecked, and two of those three are
- * already known to be wrong. docs/shine-formula-decision.md.
+ * - `relative_redness` / `relRedness`: formula AND path, added cycle 19. Its 8 `face`
+ *   rows are read through `analyzeSkin` and carry BOTH the frame recipe and the two
+ *   region mean RGBs `sampleRegion` produced, because those means are what the index
+ *   is fed and `SkinRawFeatures` does not export them. Exact, because the decision was
+ *   MADE rather than deferred: the Python side was a CIELAB a* difference and moved
+ *   onto this one, on the measurement in docs/redness-formula-decision.md.
+ * - `ita` / `toneIta`: formula only, added cycle 19, and the second `divergent` group.
+ *   Three implementations exist and only two agree — lib/skin.ts and ml/ita.py guard
+ *   at |b*| < 0.01, ml/skin_indices.py at 1e-6 — and because the ±90 fallback ignores
+ *   the SIGN of b*, the window between them is a 180-degree disagreement rather than a
+ *   rounding one. Pinned, not decided.
+ *
+ * The seventh, `melanin_index`, is name-pinned and has no second column to check
+ * against: FEATURE_KEY declares it to be `toneLstar` and it is a nonlinear transform
+ * of it, with no TypeScript counterpart anywhere. Closing that is a decision about
+ * what FEATURE_KEY means, not a row. docs/redness-formula-decision.md.
  *
  * `primitives` is a second section with a third comparison, and the difference is the
  * point. The `indices` rows above are compared EXACTLY — each against its own
@@ -87,6 +100,26 @@ type RoughnessRow = {
   app: number;
   python: number | null;
 };
+type RednessFaceRow = {
+  kind: "face";
+  note: string;
+  cheekTarget: number;
+  tzoneMul: [number, number, number];
+  cheekRgb: [number, number, number];
+  tzoneRgb: [number, number, number];
+  cheekMean: [number, number, number];
+  tzoneMean: [number, number, number];
+  relRedness: number;
+};
+type RednessEdgeRow = {
+  kind: "edge";
+  note: string;
+  cheekMean: [number, number, number];
+  tzoneMean: [number, number, number];
+  relRedness: number;
+};
+type RednessRow = RednessFaceRow | RednessEdgeRow;
+type ItaRow = { note: string; lstar: number; bstar: number; app: number; python: number };
 
 /** blemish_density's inputs are the two quantities detectBlemishes actually produces:
  *  `validCells * stride * stride` and the face-box width in pixels. The first three
@@ -237,12 +270,126 @@ function readFace(cheekTarget: number, contrast: number, glintPixels: number) {
   return reads!.raw;
 }
 
+/**
+ * One redness capture, read through the shipped `analyzeSkin` AND through
+ * `sampleRegion`, because the two region mean RGBs are what `relativeRedness` is fed
+ * and `SkinRawFeatures` does not export them. Committing the means is what lets Python
+ * assert on the numbers the app's formula actually receives rather than on the painted
+ * colours, which a change to the trim would silently decouple from each other.
+ */
+function readRednessFace(cheekTarget: number, tzoneMul: [number, number, number]) {
+  const gain = cheekTarget / luminance(SKIN);
+  const cheek = SKIN.map((v) => Math.min(255, Math.round(v * gain))) as [number, number, number];
+  const tzone = cheek.map((v, c) => Math.min(255, Math.round(v * tzoneMul[c]))) as [number, number, number];
+  const frame = bandFrame(tzone, cheek, 0);
+  const data = (frame as unknown as { data: Uint8ClampedArray }).data;
+  const lms = landmarks();
+  const cheekStats = sampleRegion(data, W, H, lms, CHEEKS);
+  const tzoneStats = sampleRegion(data, W, H, lms, TZONE);
+  expect(cheekStats && tzoneStats, `cheekL ${cheekTarget} tzoneMul ${tzoneMul.join("/")} produced no region`).toBeTruthy();
+  const reads = analyzeSkin(bandFrame(tzone, cheek, 0), lms);
+  expect(reads, `cheekL ${cheekTarget} tzoneMul ${tzoneMul.join("/")} produced no reading`).not.toBeNull();
+  return {
+    cheek,
+    tzone,
+    cheekMean: [cheekStats!.meanR, cheekStats!.meanG, cheekStats!.meanB] as [number, number, number],
+    tzoneMean: [tzoneStats!.meanR, tzoneStats!.meanG, tzoneStats!.meanB] as [number, number, number],
+    relRedness: reads!.raw.relRedness,
+  };
+}
+
 /** The face family the committed rows are drawn from: the oil range, at three exposures. */
 const FACE_RECIPES: Array<[number, number, number]> = [
   [140, 1.0, 0], [140, 1.0, 2], [140, 1.0, 8], [140, 1.0, 20], [140, 1.0, 40],
   [140, 1.08, 0], [140, 1.08, 2], [140, 1.08, 8], [140, 1.08, 40],
   [140, 1.2, 0], [140, 1.2, 8], [140, 1.2, 40],
   [80, 1.08, 0], [80, 1.08, 8], [200, 1.04, 0], [200, 1.04, 8],
+];
+
+/**
+ * Inputs for the relative_redness rows, added cycle 19 when the Python side moved onto
+ * the app's formula (docs/redness-formula-decision.md).
+ *
+ * `[cheekTarget, tzoneMul]`: the cheek is the SKIN constant scaled to that luminance
+ * and the T-zone is the cheek scaled PER CHANNEL, which is what the shine family's
+ * single `contrast` cannot do — a scalar contrast leaves both regions on the same
+ * chromaticity and every row would read exactly 0.
+ *
+ * The first three recipes are one face at three exposures across the 조명 band, so the
+ * scale-freedom the decision rests on is a property of the committed rows rather than a
+ * sentence in a docstring. The rest span the axis: a T-zone redder than the cheek
+ * (negative), one barely different, one well past the 0.03 cut.
+ */
+const REDNESS_FACE_RECIPES: Array<[number, [number, number, number]]> = [
+  [80, [0.98, 1.03, 1.03]],
+  [140, [0.98, 1.03, 1.03]],
+  [200, [0.98, 1.03, 1.03]],
+  [140, [1.0, 1.0, 1.0]],
+  [140, [1.02, 0.98, 0.98]],
+  [140, [0.995, 1.005, 1.005]],
+  [140, [0.92, 1.09, 1.09]],
+  [110, [0.95, 1.05, 1.06]],
+];
+
+/**
+ * Inputs for the ita rows, added cycle 19 to finish the registry audit — `ita` was the
+ * last index that was both unpinned and not yet known to be wrong. It is wrong, and
+ * the rows below are where.
+ *
+ * THREE implementations exist and only two of them agree. `lib/skin.ts:itaDegrees` and
+ * `ml/ita.py:ita_from_lab` both fall back to ±90 when `|b*| < 0.01`;
+ * `ml/skin_indices.py:ita` — the REGISTRY's declaration of what this index is — uses
+ * `1e-6`, four orders of magnitude tighter. So this group is `divergent` like
+ * `roughness_ratio`: each row carries both columns and each language asserts its own.
+ *
+ * The rows are chosen to locate the guard rather than to average over it, and the pair
+ * at b* = ±0.005 is the one that carries the finding. The ±90 fallback ignores the SIGN
+ * of b*, so inside the app's guard a frame with a small NEGATIVE b* and L* above 50
+ * reads +90 where the registry computes about −90 — `light` against `deep` on
+ * `coarse_tone_band`, from one frame. The last row shows it firing the other way below
+ * the L* pivot. docs/tone-ita-verification.md §3 is why this is not only arithmetic:
+ * a cool cast takes b* through zero on a real fixture, so the window is on a path
+ * captures actually travel.
+ */
+const ITA_INPUTS: Array<[string, number, number]> = [
+  ["ordinary light skin", 71.6, 22.0],
+  ["ordinary deep skin", 27.2, 12.0],
+  ["L* exactly at the 50 pivot: the angle is 0 whatever b* is", 50.0, 20.0],
+  ["a cool cast, b* still well clear of both guards", 61.1, -8.0],
+  ["b* just outside the app's guard: the two agree", 70.0, 0.02],
+  ["b* exactly at the app's 0.01 guard: < excludes it, so both compute", 70.0, 0.01],
+  ["b* inside the app's guard and outside the registry's: 90 against the real angle", 70.0, 0.005],
+  ["the same b* negative: +90 against -90, light against deep from one frame", 70.0, -0.005],
+  ["b* exactly at the registry's 1e-6 guard: < excludes it, so it computes", 70.0, 1e-6],
+  ["b* inside both guards: the two agree, at the fallback", 70.0, 1e-9],
+  ["b* exactly zero, L* below the pivot", 30.0, 0.0],
+  ["b* small and negative below the pivot: the sign blindness, the other way", 30.0, -0.005],
+];
+
+/** The registry's expression, spelled in TypeScript so the generator can produce the
+ *  column ml/selftest.py asserts `ml/skin_indices.py:ita` against. It is NOT what the
+ *  app computes and is never called by anything but the generator. */
+const registryIta = (lstar: number, bstar: number) =>
+  Math.abs(bstar) < 1e-6 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;
+
+/** Branches the face family cannot reach. Expected values come from `relativeRedness`. */
+const REDNESS_EDGE_INPUTS: Array<[string, [number, number, number], [number, number, number]]> = [
+  ["identical regions: exactly 0, not nearly 0", [196, 152, 140], [196, 152, 140]],
+  ["both regions black: the (r + g + b || 1) branch on both sides", [0, 0, 0], [0, 0, 0]],
+  ["a black T-zone against a lit cheek: only the reference takes the branch", [196, 152, 140], [0, 0, 0]],
+  ["a black cheek against a lit T-zone: the branch, and the sign is negative", [0, 0, 0], [196, 152, 140]],
+  ["non-integer means, which is what a trimmed mean of a textured region gives", [180.375, 149.8125, 141.5], [176.25, 152.9375, 145.0625]],
+  ["the same pair 2.5x brighter: a ratio, so it must not move", [450.9375, 374.53125, 353.75], [440.625, 382.34375, 362.65625]],
+  ["a saturated region, all three channels at the ceiling", [255, 255, 255], [196, 152, 140]],
+  // These two straddle any epsilon somebody might reach for, and they are here because
+  // the group was BROKEN on purpose without them and Python stayed green: swapping its
+  // `total if total else 1.0` for `max(total, 1e-6)` agrees on a region of exactly
+  // zero, so the black rows above locate the branch on ZERO and locate nothing about
+  // where it sits. The same failure mode tone_evenness's 2e-7 / 2e-6 pair was added to
+  // close. Not a capture anyone will take — an 8-bit mean is 0 or it is not small —
+  // which is what makes it an `edge` row.
+  ["a region summing to 1e-9: the branch is on zero, not on small", [5e-10, 3e-10, 2e-10], [196, 152, 140]],
+  ["the same chromaticity a million times larger: both must read the same", [5e-4, 3e-4, 2e-4], [196, 152, 140]],
 ];
 
 /** Branches the face family cannot produce. Expected values come from `shineIndex` itself. */
@@ -288,6 +435,10 @@ const densityRows: DensityRow[] = parity.indices.blemish_count.rows;
  *  failure rather than a silent zero-row pass. */
 const roughnessGroup = parity.indices.roughness_ratio;
 const roughnessRows: RoughnessRow[] = roughnessGroup?.rows ?? [];
+const rednessGroup = parity.indices.relative_redness;
+const rednessRows: RednessRow[] = rednessGroup?.rows ?? [];
+const itaGroup = parity.indices.ita;
+const itaRows: ItaRow[] = itaGroup?.rows ?? [];
 const labRows: LabRow[] = labGroup.rows;
 /** The tolerance is built from two committed numbers rather than typed as a float, so
  *  it cannot drift and cannot be widened by editing a digit. k is the only judgement
@@ -426,6 +577,159 @@ describe("cross-language index parity table", () => {
     }
   });
 
+  it("recomputes every relative_redness row through the shipped formula and the shipped path", () => {
+    // The fourth index whose two implementations were two formulas under one declared
+    // name, and the last one with a real measurement behind it. Until 2026-09-20
+    // `ml/skin_indices.py:relative_redness` returned a CIELAB a* difference while this
+    // side returned a difference of red chromaticities, and `FEATURE_KEY` called them
+    // one field. The Python side moved, on the measurement in
+    // docs/redness-formula-decision.md rather than on which was more standard.
+    expect(rednessRows.length, "ml/index-parity.json has no relative_redness group").toBe(
+      REDNESS_FACE_RECIPES.length + REDNESS_EDGE_INPUTS.length
+    );
+    expect(rednessGroup.comparison).toBe("exact");
+    expect(rednessGroup.featureKey).toBe("relRedness");
+    expect(rednessRows.filter((row) => row.kind === "face").length).toBe(REDNESS_FACE_RECIPES.length);
+    expect(rednessRows.filter((row) => row.kind === "edge").length).toBe(REDNESS_EDGE_INPUTS.length);
+
+    // Exact, not toBeCloseTo: two divisions and a subtraction on doubles, all
+    // correctly rounded. Python asserts these same rows the same way.
+    for (const row of rednessRows) {
+      const computed = relativeRedness(
+        { meanR: row.cheekMean[0], meanG: row.cheekMean[1], meanB: row.cheekMean[2] },
+        { meanR: row.tzoneMean[0], meanG: row.tzoneMean[1], meanB: row.tzoneMean[2] }
+      );
+      expect(computed, `${row.note}: relativeRedness(${row.cheekMean.join("/")}, ${row.tzoneMean.join("/")})`).toBe(
+        row.relRedness
+      );
+    }
+
+    // The path, not just the leaf. Without this the rows would pin arithmetic and a
+    // change to WHICH regions the index compares — or to the trim that produces their
+    // means — would leave every row above green, which is exactly the hole the shine
+    // group's face rows exist to close.
+    for (const row of rednessRows) {
+      if (row.kind !== "face") continue;
+      const read = readRednessFace(row.cheekTarget, row.tzoneMul);
+      expect(read.cheek, `${row.note}: painted cheek`).toEqual(row.cheekRgb);
+      expect(read.tzone, `${row.note}: painted T-zone`).toEqual(row.tzoneRgb);
+      expect(read.cheekMean, `${row.note}: cheek region mean`).toEqual(row.cheekMean);
+      expect(read.tzoneMean, `${row.note}: T-zone region mean`).toEqual(row.tzoneMean);
+      expect(read.relRedness, `${row.note}: relRedness`).toBe(row.relRedness);
+    }
+    const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
+    expect(source).toContain("relRedness: relativeRedness(cheeks, tzone),");
+    expect(source).toContain("return r / (r + g + b || 1);");
+
+    // A table of zeroes would satisfy every loop above and pin nothing. The rows have
+    // to span the published axis, both signs included.
+    const values = rednessRows.map((row) => row.relRedness);
+    expect(values.filter((value) => value > 0.03).length, `above the 높음 cut: ${values.join(" ")}`).toBeGreaterThanOrEqual(1);
+    expect(values.filter((value) => value < 0).length, "no row is negative").toBeGreaterThanOrEqual(2);
+    expect(values.filter((value) => value === 0).length, "no row is exactly 0").toBeGreaterThanOrEqual(2);
+
+    // The property the decision rests on, carried by the rows rather than by a
+    // docstring: one face at three exposures across the 조명 band reads the same
+    // redness. The rejected a* difference moves by 2.17x over the same band.
+    const sameFace = rednessRows.filter(
+      (row): row is RednessFaceRow => row.kind === "face" && row.tzoneMul.join("/") === "0.98/1.03/1.03"
+    );
+    expect(sameFace.length).toBe(3);
+    expect(new Set(sameFace.map((row) => row.cheekTarget)).size).toBe(3);
+    const readings = sameFace.map((row) => row.relRedness);
+    // The rejected form, computed from the SAME committed means, so the comparison is
+    // between two readings of one frame rather than between two fixtures. Measured:
+    // chromaticity 0.011695 / 0.011843 / 0.012302, spread 1.0520; a* 1.801081 /
+    // 2.870473 / 4.364763, spread 2.4234. Neither is 1.0000 — a capture writes 8-bit
+    // integers and rounding is not a multiplicative operation — but one of them is
+    // rounding and the other is the formula.
+    const rejected = sameFace.map(
+      (row) =>
+        labAStar(row.cheekMean[0], row.cheekMean[1], row.cheekMean[2]) -
+        labAStar(row.tzoneMean[0], row.tzoneMean[1], row.tzoneMean[2])
+    );
+    const spread = (values: number[]) => Math.max(...values) / Math.min(...values);
+    expect(spread(readings), readings.join(" ")).toBeLessThan(1.06);
+    expect(spread(rejected), rejected.join(" ")).toBeGreaterThan(2.4);
+    // The number the decision turns on: the excess over 1.0 — what the sweep costs —
+    // is more than twenty times larger for the rejected form on these three frames.
+    expect((spread(rejected) - 1) / (spread(readings) - 1)).toBeGreaterThan(20);
+    // And the edge pair, where the inputs are exact multiples and nothing is rounded:
+    // there the invariance is down to the last place of a difference of two ~0.34
+    // chromaticities, which is one ulp of 1.0.
+    const exact = rednessRows.find((row) => row.note.startsWith("non-integer means"));
+    const exactBrighter = rednessRows.find((row) => row.note.startsWith("the same pair 2.5x brighter"));
+    expect(exact && exactBrighter).toBeTruthy();
+    expect(Math.abs(exactBrighter!.relRedness - exact!.relRedness)).toBeLessThanOrEqual(2 ** -52);
+
+    // The two branches a face cannot reach, named rather than left to the loop.
+    const black = rednessRows.find((row) => row.note.startsWith("both regions black"));
+    expect(black!.relRedness, "a black frame must read 0, not NaN").toBe(0);
+    expect(Number.isNaN(black!.relRedness)).toBe(false);
+    expect(redChromaticity(0, 0, 0), "the (r + g + b || 1) branch").toBe(0);
+    // And where that branch SITS, which the black rows cannot say: `|| 1` fires on
+    // exactly zero, so a region summing to 1e-9 is still divided by its own sum and
+    // reads the same chromaticity as one a million times larger. An epsilon clamp in
+    // either language would return 5e-4 for the first and 0.5 for the second.
+    const tiny = rednessRows.find((row) => row.note.startsWith("a region summing to 1e-9"));
+    const large = rednessRows.find((row) => row.note.startsWith("the same chromaticity a million"));
+    expect(tiny && large).toBeTruthy();
+    expect(tiny!.relRedness, "the guard fires on small instead of on zero").toBe(large!.relRedness);
+    expect(redChromaticity(5e-10, 3e-10, 2e-10)).toBe(0.5);
+  });
+
+  it("records where the ita guard diverges, in both columns", () => {
+    // The seventh and last registry index to be value-checked, and it does not agree.
+    // Two of the three implementations use 0.01 and the registry's uses 1e-6, so this
+    // group is `divergent`: the app asserts `itaDegrees`, ml/selftest.py asserts
+    // `ml/skin_indices.py:ita`, and neither can move while the decision waits.
+    expect(itaRows.length, "ml/index-parity.json has no ita group").toBe(ITA_INPUTS.length);
+    expect(itaGroup.comparison).toBe("divergent");
+    expect(itaGroup.featureKey).toBe("toneIta");
+    for (const row of itaRows) {
+      expect(itaDegrees(row.lstar, row.bstar), `${row.note}: itaDegrees(${row.lstar}, ${row.bstar})`).toBe(row.app);
+    }
+    // The extraction that made this assertable has to keep pointing at both shipped
+    // call sites, or the rows would pin a function nothing calls.
+    const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
+    expect(source.match(/const ita = itaDegrees\(lab\.l, lab\.b\);/g)?.length, "both tone sites must delegate").toBe(2);
+    expect(source).toContain(
+      "return Math.abs(bstar) < 0.01 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;"
+    );
+
+    // Rows where they agree, so the divergence is located at the guard rather than
+    // being everywhere, and rows where they do not.
+    const agreeing = itaRows.filter((row) => row.app === row.python);
+    expect(agreeing.length, "the two guards must agree away from the window").toBeGreaterThanOrEqual(5);
+    const divergent = itaRows.filter((row) => row.app !== row.python);
+    expect(divergent.length).toBeGreaterThanOrEqual(3);
+
+    // The finding, named rather than left to a count. Inside the app's guard and
+    // outside the registry's, the ±90 fallback ignores the sign of b*, so the two
+    // land 180 degrees apart — opposite ends of the tone stratifier from one frame.
+    for (const note of [
+      "the same b* negative: +90 against -90, light against deep from one frame",
+      "b* small and negative below the pivot: the sign blindness, the other way",
+    ]) {
+      const row = itaRows.find((entry) => entry.note === note);
+      expect(row, note).toBeTruthy();
+      expect(Math.sign(row!.app), `${note}: the two columns must disagree on the SIGN`).not.toBe(Math.sign(row!.python));
+      expect(Math.abs(row!.app - row!.python), `${note}: ${row!.app} vs ${row!.python}`).toBeGreaterThan(179);
+      // Which is the consequence: 41 is the light cut and 10 the deep one
+      // (ITA_BIN_EDGES, ml/subgroups.py and lib/tone-bands.ts), so one column is above
+      // the first and the other below the second.
+      expect(Math.max(row!.app, row!.python)).toBeGreaterThan(41);
+      expect(Math.min(row!.app, row!.python)).toBeLessThan(10);
+    }
+    // And the same b* with the opposite sign is where the app itself is discontinuous,
+    // so this is not the registry alone being odd: both implementations carry the jump
+    // and disagree only about where it sits.
+    const positive = itaRows.find((row) => row.note.startsWith("b* inside the app's guard and outside"));
+    const negative = itaRows.find((row) => row.note.startsWith("the same b* negative"));
+    expect(positive!.app).toBe(negative!.app);
+    expect(Math.abs(positive!.python - negative!.python)).toBeGreaterThan(179);
+  });
+
   it("recomputes every rgb_to_lab row through the shipped function, exactly", () => {
     // Exact on THIS side of the language boundary. The tolerance in the table is for
     // ml/ita.py, whose libm rounds pow and cbrt differently; within TypeScript the
@@ -508,6 +812,37 @@ describe("cross-language index parity table", () => {
       app: roughnessRatio(cheekHf, foreheadHf),
       python: cheekHf === null || foreheadHf === null ? null : pythonRoughness(cheekHf, foreheadHf),
     }));
+    const rednessFaces: RednessRow[] = REDNESS_FACE_RECIPES.map(([cheekTarget, tzoneMul]) => {
+      const read = readRednessFace(cheekTarget, tzoneMul);
+      return {
+        kind: "face",
+        note: `cheekL ${cheekTarget}, T-zone ${tzoneMul.join("/")} of the cheek`,
+        cheekTarget,
+        tzoneMul,
+        cheekRgb: read.cheek,
+        tzoneRgb: read.tzone,
+        cheekMean: read.cheekMean,
+        tzoneMean: read.tzoneMean,
+        relRedness: read.relRedness,
+      };
+    });
+    const rednessEdges: RednessRow[] = REDNESS_EDGE_INPUTS.map(([note, cheekMean, tzoneMean]) => ({
+      kind: "edge",
+      note,
+      cheekMean,
+      tzoneMean,
+      relRedness: relativeRedness(
+        { meanR: cheekMean[0], meanG: cheekMean[1], meanB: cheekMean[2] },
+        { meanR: tzoneMean[0], meanG: tzoneMean[1], meanB: tzoneMean[2] }
+      ),
+    }));
+    const itas: ItaRow[] = ITA_INPUTS.map(([note, lstar, bstar]) => ({
+      note,
+      lstar,
+      bstar,
+      app: itaDegrees(lstar, bstar),
+      python: registryIta(lstar, bstar),
+    }));
     const body = {
       generatedBy: "ARU_PRINT_INDEX_PARITY=1 npx vitest run tests/index-parity.test.ts",
       assertedBy: ["tests/index-parity.test.ts", "ml/selftest.py"],
@@ -551,6 +886,53 @@ describe("cross-language index parity table", () => {
             "epsilon and the app's > excludes it; above it they agree exactly. Which side moves is a " +
             "measurement on real faces, not a choice to be made from this table.",
           rows: roughnesses,
+        },
+        // The fourth index found to be two formulas under one declared name, and the
+        // last of those with a real measurement behind it. Unlike roughness_ratio this
+        // one is `exact`, because the decision was made rather than deferred: the
+        // Python side moved onto the app's formula on 2026-09-20, and the reason it
+        // moved is that an a* difference is not scale-free while a chromaticity
+        // difference is. docs/redness-formula-decision.md.
+        relative_redness: {
+          featureKey: "relRedness",
+          pythonFunction: "ml/skin_indices.py :: relative_redness",
+          comparison: "exact",
+          formula: "relRedness = redChromaticity(cheekMean) - redChromaticity(tzoneMean), redChromaticity(r, g, b) = r / (r + g + b || 1)",
+          covers:
+            "formula and path; the two region mean RGBs are not an exported field, so each face row " +
+            "carries the means sampleRegion produced as well as the frame recipe that produced them",
+          replaced:
+            "relative_redness(target_astar, reference_astar) — a CIELAB a* difference, declared by " +
+            "FEATURE_KEY to be the same field as the app's chromaticity difference from 2026-09-14 to " +
+            "2026-09-20. Rejected on measurement: a* is homogeneous of degree 1/3 in the linear signal " +
+            "and the linear signal degree 2.4 in the channel, so a common exposure gain g takes an a* " +
+            "DIFFERENCE to g^0.8 of itself instead of leaving it alone. Over cheekL 70..170 on one face " +
+            "the a* form runs 1.83 -> 3.96 (2.17x) where this one holds within 1.025x.",
+          rows: [...rednessFaces, ...rednessEdges],
+        },
+        // The seventh index, and the one that finishes the audit cycles 16-19 have
+        // been running. Divergent, like roughness_ratio and for a related reason: a
+        // guard in two places. ml/ita.py agrees with the app, so the registry entry is
+        // the odd one of three.
+        ita: {
+          featureKey: "toneIta",
+          pythonFunction: "ml/skin_indices.py :: ita",
+          comparison: "divergent",
+          appFormula: "itaDegrees = |b*| < 0.01 ? (L* > 50 ? 90 : -90) : atan((L* - 50) / b*) in degrees",
+          pythonFormula: "ita = |b*| < 1e-6 ? (L* > 50 ? 90 : -90) : degrees(atan((L* - 50) / b*))",
+          covers:
+            "formula only; the cheek L* and b* that reach it come from dominantTone's k-means centroid, " +
+            "which is not an exported field. ml/ita.py :: ita_from_lab carries the app's 0.01 guard, so " +
+            "two of the three implementations agree and the registry's is the outlier.",
+          divergence:
+            "The +-90 fallback ignores the SIGN of b*. Between the two guards it therefore does not " +
+            "merely round differently: at L* 70 and b* -0.005 the app reads +90 and the registry reads " +
+            "-89.99, which is `light` against `deep` on coarse_tone_band from one frame, and the pair " +
+            "below the L* pivot shows it firing the other way. Both implementations put a 180-degree " +
+            "discontinuity in the same place in the formula and disagree about where it sits, so " +
+            "neither column is pinned as correct. docs/tone-ita-verification.md section 3 is why the " +
+            "window is reachable: a cool cast takes b* through zero on a real fixture.",
+          rows: itas,
         },
         tone_evenness: {
           featureKey: "toneSpread",
@@ -597,6 +979,8 @@ describe("cross-language index parity table", () => {
       body.indices.tone_evenness.rows.length +
       body.indices.blemish_count.rows.length +
       body.indices.roughness_ratio.rows.length +
+      body.indices.relative_redness.rows.length +
+      body.indices.ita.rows.length +
       body.primitives.rgb_to_lab.rows.length;
     process.stdout.write(`PARITY wrote ${total} rows to ml/index-parity.json\n`);
   });
