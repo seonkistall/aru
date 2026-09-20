@@ -345,6 +345,45 @@ partly done and stays here.
   move). Still `[~]` for exactly the reason the item gave: **which side moves** is the
   question of which guard produces a usable dryness reading on a smooth forehead, and
   that needs faces, which is the golden-set blocker.
+  **2026-09-20, cycle 22: built, measured, and taken back out — and what stopped it was
+  not the table.** `lib/skin.ts` is byte-identical to main on that branch. Everything
+  below is in `docs/srgb-transfer-table.md`, including the five source-line breaks the
+  reverted test file was verified against, so landing it does not mean re-deriving it.
+
+  The speed question is answered: **42.0-61.2% off `detectBlemishes`** and **37.6-48.9%
+  off `analyzeSkin`**, 9/9 paired reps at four frame sizes, and what would be left of
+  the transfer curve in the detector is **3.5-6.5%**.
+
+  The table the item names is the wrong one, and by a lot. Its **1.9e-6** is the
+  FIXTURE's error, not the function's: over the whole domain `detectBlemishes` can
+  reach — `lum` in [40, 230], `r > b`, gains clamped to [0.6, 1.6] — a 4096-entry
+  linear table's worst `|delta a*|` is **1.783e-4** against the certified radius
+  **1.046e-5** re-derived the same session. That is 17x OVER, where on the fixture's
+  132-220 channels it reads 1.9e-6 and looks comfortable. Knee alignment alone is worth
+  **13.7x** (1.783e-4 to 1.297e-5, same size, same interpolation) because a table
+  indexed off the 0-255 channel puts the kink inside a cell. And interpolation order
+  beats table size: a **512-cell per-cell quadratic** over the power branch is
+  **5.485e-7**, a **19.08x** margin, in 12,288 bytes — a third the size and 24x the
+  accuracy.
+
+  **What stopped it**: `blemishCount` on the NOISELESS fixture in
+  `tests/blemish-density-scale.test.ts` moved from `3, 3, 3, 3, 3` to `2, 3, 3, 2, 3`.
+  Making the table 8x finer does not converge on main's answer, it gives three more
+  different ones. A nudge of **1e-16** to a\* does the same thing. That fixture has no
+  margin: `detectBlemishes`'s suppression breaks plateau ties on an exact float
+  equality (`residual[j] === residual[i] && j < i`), a noiseless synthetic face is
+  nothing but plateaus, and the assertion holds for one bit pattern only. On the NOISY
+  fixture every build agrees, the table included.
+
+  So what this item now waits on is a decision it did not create: **should
+  `tests/blemish-density-scale.test.ts`'s "every frame must agree" hold across
+  resolutions at all?** The same file's noisy fixture does not satisfy it on main
+  either (`5, 4, 2, 4, 2`), so count-invariance is already a property of the noiseless
+  path alone. That is a question about what `blemishCount` guarantees, it is bigger
+  than a speed item, and a cycle that also wants the speed should not be the one to
+  answer it. The behaviour now has a guard either way
+  (`tests/blemish-tie-break.test.ts`).
+
 - [AI] **Is a 4096-entry interpolated table for `srgbLinear` actually faster than
   `Math.pow(., 2.4)`?** This is what is left of "the remaining win in a scan is the
   sRGB transfer curve" after cycle 18 measured it — that item is closed, with its
@@ -415,6 +454,50 @@ partly done and stays here.
   sees 256 integer channel values, so use an exact 256-entry table and the error is
   zero." False. `lib/skin.ts:1026-1028` averages a stride window (`r = sr / n`) and then
   applies a gray-world gain, so the input is continuous in [0,255].
+- [AI] **The blemish detector has no guard on its own decision margin, and the obvious
+  one is vacuous.** Cycle 22 tried to assert that a realistic (noisy) frame's
+  `blemishCount` does not move under a 1e-16 perturbation of a\*. It does not — measured
+  at five frame sizes — but **seven source-line breaks of `lib/skin.ts` were tried
+  against an assertion of it and none made it fail**, so it ships as a printed
+  measurement in `tests/blemish-tie-break.test.ts` and not as a case. The reason is
+  structural: a uniform nudge cancels in `astar[i] - background`, and what actually
+  moves the noiseless fixture is that the addition ROUNDS differently at different
+  magnitudes; quantising the residual absorbs the nudge, and quantising the channel
+  averages into plateaus leaves the ties exactly tied. A real guard has to measure the
+  margin between competing cells directly — the smallest gap between a surviving cell
+  and its suppression-window neighbours, and between a residual and
+  `BLEMISH.minResidual` — and assert it is far above float noise. That is what would
+  have caught the noiseless fixture's zero margin years before a lookup table did.
+  `tests/blemish-perturbation-tolerance.test.ts` already replicates the classifier and
+  is the natural home. Noted 2026-09-20.
+- [AI] **ARU's sRGB breakpoint is the rounded one, in both languages, and moving it is a
+  decision rather than a fix.** Found 2026-09-20 (cycle 22) while deciding where to
+  align the transfer table, from `colour-science/colour`'s own source — another
+  project's implementation, not IEC 61966-2-1, which this network cannot reach
+  (`webstore.iec.ch` `http=000`, and so do `www.itu.int`, `www.w3.org` and
+  `en.wikipedia.org`). Its `eotf_sRGB` does not branch on a literal: it branches on
+  `eotf_inverse_sRGB(0.0031308)`, that is on `12.92 * 0.0031308 = 0.040449936`.
+  `lib/skin.ts:srgbLinear` and `ml/ita.py:36` both use **0.04045**, which is 6.4e-8
+  higher, 1.632e-5 of one 8-bit level, and leaves ARU's own curve discontinuous by
+  **2.3295e-9** at its knee. The multiplicative constants (12.92, 0.055, 1.055, 2.4)
+  agree exactly. **0 of 256** integer channels fall in the window where the two
+  implementations take different branches, though the detector's inputs are continuous
+  so it is reachable in principle. Nothing is wrong today and nothing depends on moving
+  it — the two languages agree with each other, which is what parity needs — but it
+  must not be written down as verified against the standard, and if it moves it has to
+  move in BOTH files in one change or it reintroduces exactly the split cycle 18 closed.
+  Measurements and the fetch's sha256: `docs/srgb-transfer-table.md` §1.
+- [AI] **`/scan` has no pixel-level mobile-layout coverage, and that is how the camera
+  quality checklist clipped its labels in all five locales unnoticed.**
+  `tests/e2e/mobile-layout.spec.ts` asserts overflow on `/` and `/studio` only, and
+  visits `/scan` solely for the camera-denied tap-target case, because reaching
+  `phase === "ready"` needs a fake media stream that suite does not set up. So the
+  clipping fixed in cycle 22 was caught by hand in a browser and is pinned by a SOURCE
+  contract (`tests/mobile-layout-contract.test.ts`), which cannot see a pixel. A fake
+  `getUserMedia` returning a canvas stream would let the spec reach the live-camera
+  screen and assert `scrollWidth <= clientWidth` on every check, which is the assertion
+  that would have caught it. Noted 2026-09-20; the measurement both ways is in
+  `docs/scan-quality-checklist-layout.md`.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -737,6 +820,229 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-20 (cycle 22) — Branch `autopilot/2026-09-20-1839`. **The `srgbLinear` lookup
+  table was built, measured at 42.0-61.2% off `detectBlemishes`, and taken back out —
+  and what stopped it was not the table. It moved `blemishCount` on one committed
+  fixture, and so does a nudge of 1e-16, because that fixture is noiseless and
+  `detectBlemishes` settles plateau ties on an exact float equality. `lib/skin.ts` is
+  byte-identical to main; the finding got a guard instead.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npm run smoke` green with
+  the chromium override (`Smoke test passed.`), `npx tsc --noEmit | grep -c "error TS"`
+  **13**, `npm run lint` **0 errors, 2 warnings** both in `lib/care.ts`, vitest **571
+  passed in 86 files**, `python3 ml/selftest.py` **Ran 85 tests ... OK**.
+
+  **Research: ARU's sRGB breakpoint is the rounded one, and that decided where the
+  table's knee goes.** No primary source is reachable — `webstore.iec.ch`,
+  `www.itu.int`, `www.w3.org` and `en.wikipedia.org` all returned `http=000` on the
+  same probe — so IEC 61966-2-1 was not read and nothing is attributed to it. What
+  `raw.githubusercontent.com` served is `colour-science/colour`'s own source
+  (`http=200 bytes=4308`, sha256 `520ba88acb642628ee2d99f3d4802ea1e0725f946ece49f725b581fdcfb9f973`,
+  re-fetched in-session and matching byte for byte). Its multiplicative constants —
+  12.92, 0.055, 1.055, 2.4 — are `lib/skin.ts:srgbLinear` and `ml/ita.py:36` character
+  for character. Its BREAKPOINT is not a literal: it branches on
+  `eotf_inverse_sRGB(0.0031308)`, that is `12.92 * 0.0031308 = 0.040449936`, against
+  ARU's **0.04045**. The gap is 6.4e-8 in `c`, **1.632e-5 of one 8-bit level**, it
+  leaves ARU's own curve discontinuous by **2.3295e-9** at its knee, and **0 of 256**
+  integer channels fall inside it. So the table was aligned to ARU's breakpoint and not
+  to the reference's: aligning it to the "more correct" one would have silently changed
+  the shipped curve and split `lib/skin.ts` from `ml/ita.py`, which is exactly the
+  divergence cycle 18 closed. On the backlog now, as a decision for both languages at
+  once. `docs/srgb-transfer-table.md` §1.
+
+  **ML: the item's own acceptance criterion was met by 19x and the change still could
+  not ship.** Three numbers the item did not have. The **1.9e-6** in it is the
+  FIXTURE's error, not the function's: over the whole domain `detectBlemishes` can
+  reach — `lum` in [40, 230], `r > b`, each channel then scaled by a gain
+  `frameChannelGains` clamps to [0.6, 1.6] — a 4096-entry linear table's worst
+  `|delta a*|` is **1.783e-4** against the certified radius **1.046e-5** re-derived the
+  same session, i.e. **17x over**, while on the fixture's 132-220 channels it reads
+  1.9e-6 and looks safe. Knee alignment alone is worth **13.7x** (1.783e-4 to 1.297e-5,
+  same size, same interpolation). And interpolation order beats table size: a 512-cell
+  per-cell QUADRATIC over the power branch is **5.485e-7** — a **19.08x** margin — in
+  12,288 bytes, a third the size of the table that does not clear it.
+
+  Scoped the way the cycle-21 review asked: `labAStar` and `rgbToLab` kept `Math.pow`,
+  a second entry point took the table, both sharing one extracted a\* formula. So
+  `toneSpread` — which moved at all four frame sizes when that review replaced
+  `srgbLinear` wholesale — did not move at all, and every field `analyzeSkin` publishes
+  was byte-identical against a `Math.pow` build at four frame sizes on a light fixture
+  AND a dark one, compared with `Object.is`. Measured in situ, both builds loaded
+  fresh, 9 alternating paired reps:
+
+  ```
+  frame          pow(ms)   table(ms)   faster   reps won
+  400x480          6.664       3.588     46.2%        9/9
+  720x960          7.472       3.821     48.9%        9/9
+  1080x1440        8.242       4.568     44.6%        9/9
+  1440x1920       10.075       6.286     37.6%        9/9
+  ```
+
+  **And then smoke went red on a fixture the branch had not looked at.**
+  `tests/blemish-density-scale.test.ts` reads the five-spot face with
+  `noiseAmplitude = 0` at five resolutions and asserts every frame agrees:
+  `AssertionError: counts across resolutions: 2, 3, 3, 2, 3: expected 2 to be 1`.
+  Making the table finer does not converge on main's answer — `N=1024` gives
+  `2, 3, 2, 3, 4`, `N=2048` gives `2, 5, 4, 3, 3`, `N=4096` gives `2, 3, 2, 3, 2` —
+  which is what said the table was not the cause. Builds differing only by a constant
+  added where a\* is consumed:
+
+  ```
+  build                counts across the five realistic resolutions   (noiseAmplitude 0)
+  m-exact              3, 3, 3, 3, 3   distinct=1
+  m-table              2, 3, 3, 2, 3   distinct=2
+  m-e15  (+1e-15)      4, 3, 2, 4, 4   distinct=3
+  m-e16  (+1e-16)      2, 4, 4, 4, 3   distinct=3
+
+  the same builds at noiseAmplitude 9
+  m-exact / m-table / m-e15 / m-e16    5, 4, 2, 4, 2   distinct=3, all four identical
+  ```
+
+  **1e-16** moves it — below one ulp of a\* at these magnitudes, eleven orders of
+  magnitude under the certified radius. The mechanism is one line:
+  `detectBlemishes`'s suppression breaks plateau ties on `residual[j] === residual[i]
+  && j < i`, and a noiseless synthetic face is nothing but plateaus, so the count is
+  settled by scan order rather than by the image. On a noisy face every build agrees.
+  So the assertion holds for exactly one bit pattern, and whether `blemishCount` should
+  be resolution-invariant at all is a question about what the detector guarantees —
+  made harder by the fact that the same file's NOISY fixture does not satisfy it on
+  **main** either (`5, 4, 2, 4, 2`). That is bigger than a speed item and a cycle that
+  wants the speed is the wrong one to decide it. The table came out, the item stays
+  open with every number on it, and `lib/skin.ts` and `tests/scan-cost-benchmark.test.ts`
+  are byte-identical to main.
+
+  **What landed instead: `tests/blemish-tie-break.test.ts`.** It pins the tie-break line
+  and its comment as source and asserts that the noiseless fixture's agreement really
+  does rest on it. Five breaks in `lib/skin.ts`, never in the test: removing the
+  tie-break clause fails `the suppression tie-break moved` and reads `12, 4, 7, 4, 4`;
+  rewording its comment fails the source pin; rounding the averaged channels to integers
+  fails `the shipped build is supposed to agree: 2, 4, 3, 4, 3`; quantising the residual
+  to 3 decimals fails with `2, 3, 2, 2, 2`; quantising the channel averages to steps of
+  8 fails with `14, 8, 11, 15, 13`. **One thing is deliberately not asserted**: that a
+  noisy face is stable under the nudge. It is (printed under `ARU_PRINT_TIE_BREAK=1`),
+  but **seven source-line breaks were tried against an assertion of it and none made it
+  fail** — a uniform nudge cancels in `astar[i] - background` — so it ships as a
+  measurement. An assertion nothing can break is a green line that looks like coverage.
+  On the backlog as the margin guard that would actually bite.
+
+  **UI/UX: the live camera checklist clipped its own labels in all five locales, and it
+  was measured in a browser rather than reasoned about.** `QualityPanel`
+  (`app/scan/guide.tsx`) laid out one grid track per check, which is 47px per cell in
+  the 320px content box of a 360px phone; `overflow: hidden` zeroes a grid item's
+  automatic minimum size, so the `1fr` tracks shrank below min-content and
+  `whiteSpace: "nowrap"` had nowhere to go. In chromium at 360px on the real `/scan`
+  page, so the app's own stylesheet and fonts decided the metrics: **20 of 30 label
+  cells clipped, every locale** — ko `피부 선명도` lost 24.1px of 71.1px, en
+  `Capture area` 33.6px of 80.6px, ja `測定エリア` 22.3px of 69.3px, zh `肌肤清晰度`
+  21.5px of 68.5px, ar `منطقة القياس` 29.1px of 76.1px — and `body { overflow-x: hidden }`
+  meant nothing scrolled into view either. This is the screen that tells a user what to
+  fix before the shutter fires. `repeat(auto-fit, minmax(96px, 1fr))` and no clipping
+  gives three columns of 101px at that width; re-measured the same way, **0 of 30**.
+  Pinned in `tests/mobile-layout-contract.test.ts`, broken three ways at the source.
+  The assertion is sliced to the ONE line carrying the cell style, because the first
+  attempt matched the comment explaining the fix — the cycle-20 docstring trap, hit and
+  caught. `docs/scan-quality-checklist-layout.md`.
+
+  **Bug fix: a full page of funnel rows read as a truncated one, and `/ops` said so.**
+  `aggregateFunnelSource` (`lib/funnel-aggregate.ts`) computed
+  `truncated: totalRows > rows.length`, but `rows` is the COUNTABLE subset —
+  `toCountableRows` drops rows whose `kind` or `session_id` is not a usable string and
+  reports them separately as `unusableRows`. So any unusable row made a complete page
+  read as truncated. Reproduced against the real module before it was touched:
+
+  ```
+  raw rows PostgREST returned : 10
+  exact count for the source  : 10
+  aggregate.rows              : 8
+  aggregate.unusableRows      : 2
+  aggregate.totalRows         : 10
+  aggregate.truncated         : true   <- nothing was truncated
+  unattributedRowCount(10,..) : null
+  ```
+
+  Both consequences are the operator's only view of the table: `/ops` printed "Showing
+  the most recent 8 of 10 rows" about a page that was not short, and
+  `unattributedRowCount` returns `null` the moment any source is truncated, so it
+  stopped reporting unattributed rows at all. Both wrong in the direction of claiming
+  data is missing when it is not. Truncation is now measured against `raw.length`.
+  Two cases in `tests/funnel-aggregate.test.ts`, one for each direction so the fix
+  cannot be "never truncated"; broken at the source line, `truncated: totalRows >
+  rows.length` fails with `nothing was truncated: 3 of 3 rows were read: expected true
+  to be false`.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest **577 passed in
+  87 files** (+6 cases, +1 file), `npx tsc --noEmit | grep -c "error TS"` **13**
+  unchanged, eslint **0 errors, 2 warnings** the same two in `lib/care.ts`,
+  `python3 ml/selftest.py` **Ran 85 tests ... OK**. `lib/skin.ts`,
+  `tests/scan-cost-benchmark.test.ts`, `public/models/visible-attributes/manifest.json`
+  and `fallbackVersion` are all untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set.
+
+  **Supervisor review.** The cycle's own conclusion was re-derived here before it
+  reported, and it holds on a fixture it never used.
+
+  *The 1e-16 claim reproduces on different landmarks.* Built three copies of
+  `lib/skin.ts` differing only by a constant added where a\* is consumed, and ran them
+  over the scan-cost benchmark's SPREAD landmark layout rather than
+  `tests/blemish-density-scale.test.ts`'s, at five frame sizes:
+
+  ```
+  NOISELESS (amp 0)
+    exact     5, 5, 5, 5, 5   distinct=1
+    +1e-16    5, 5, 6, 5, 6   distinct=2
+    +1e-15    5, 5, 5, 5, 5   distinct=1
+  NOISY (amp 9)
+    exact     6, 6, 5, 5, 5   distinct=2
+    +1e-16    6, 6, 5, 5, 5   distinct=2
+    +1e-15    6, 6, 5, 5, 5   distinct=2
+  ```
+
+  Different fixture, different absolute counts, same phenomenon: on the noiseless face
+  a 1e-16 nudge destroys resolution stability, and on the noisy face all three builds
+  are bit-identical. **One detail sharpens the cycle's argument rather than weakening
+  it: here +1e-15 did NOT move the counts while +1e-16 did.** The effect is not
+  monotonic in epsilon, which is what it must look like if the cause is WHICH ties
+  break rather than HOW BIG the error is. An accuracy problem would be monotonic. The
+  mechanism is one line and it reads as claimed — `lib/skin.ts:1091`,
+  `residual[j] === residual[i] && j < i`, an exact float equality on a plateau that a
+  noiseless synthetic face is made entirely of.
+
+  *The parity breach was hit here first, and the cycle's design routes around it
+  better than this review's did.* This review had built the table behind a scoped
+  `srgbLinearFast` called from `labAStar`, which keeps `toneSpread` still (confirmed:
+  no published field moved at any of four sizes, 26.3–36.3% faster, 35/36 paired reps)
+  and then fails `tests/index-parity.test.ts` exactly as the cycle records —
+  `expected 0.0031556203582971953 to be 0.003155620347972121` from a 4096-interval
+  linear table, against the cycle's `expected 0.003155620347528032 to be
+  0.003155620347972121` from its 512-cell quadratic. Same committed value, two
+  different tables, one contract. The cycle's second entry point (`labAStarTabulated`,
+  sharing an extracted `aStarFromLinear`) leaves `labAStar` on `Math.pow` and is the
+  right shape; the scoped-`srgbLinear` design this review proposed in the cycle-21
+  backlog note was not, and is superseded.
+
+  Regenerating the committed table would not have rescued it either, it would move the
+  failure to Python: `ml/selftest.py:813` compares `ml/ita.py` to the same rows on a
+  MECHANISM-DERIVED tolerance of `4 * channelScale * 2**-52` = **4.4409e-13** for a\*,
+  and the observed difference at mid grey is **1.0325e-11**, **23.2x** over it — with
+  ~1.5e-6 on the detector's own domain, seven orders out. That bound is the size of a
+  last-place disagreement between two correctly implemented `pow`/`cbrt`; a table's
+  interpolation error is not that kind of error, and widening k to swallow it would
+  turn a derived bound into a fitted one.
+
+  *The funnel defect is real on main.* Putting main's `lib/funnel-aggregate.ts` back
+  and running the new case fails with `nothing was truncated: 3 of 3 rows were read:
+  expected true to be false`, so the guard bites at its source and the bug it describes
+  is live today.
+
+  *One reviewer error, recorded because that is the standard here.* This review first
+  read the branch as RED — one failing test — and it was this review's own
+  contamination. `git checkout origin/main -- <path>` writes the INDEX as well as the
+  working tree, so the later `git checkout -- <path>` restored main's version from that
+  staged index rather than the branch's. The branch was green throughout: with the tree
+  actually clean, **577 passed in 87 files**. Same class as cycle 20's docstring regex —
+  a check that fails for a reason that is not the code's, and it looks exactly like a
+  defect.
 
 - 2026-09-20 (cycle 21) — Branch `autopilot/2026-09-20-1239`. **The registry's 24
   borrowed numbers were never checked against the work they came from; all 24 hold. And
@@ -1215,208 +1521,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   false negative, and it looks exactly like a coverage gap.
 
   Rotation: 27 differing lines, all from the two items this cycle touched.
-- 2026-09-20 (cycle 19) — Branch `autopilot/2026-09-20-0039`. **An a\* difference is
-  not scale-free, and that is arithmetic rather than a property of the fixture: a
-  common gain takes it to g^0.8 of itself. The app's chromaticity difference wins by
-  24x, 11x and 3.3x on the three nuisances the design doc names, ties on the two it
-  does not, and the Python side moved. The registry audit cycles 16-18 were running is
-  finished, and the last index it covered turned out to be wrong too — by 180 degrees.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
-  grep -c "error TS"` **13**, vitest **551 passed in 84 files**, `python3
-  ml/selftest.py` **Ran 80 tests ... OK**, `npx eslint .` **2 warnings** both in
-  `lib/care.ts`.
-
-  **The question, and why it needed a construction rather than a sweep.** Two indices
-  on two scales cannot be compared by spread — that rewards whichever sits further
-  from zero. So every sweep is reported as **nuisance / signal**: how far a capture
-  change moves the index, over how far four faces of genuinely different redness move
-  it at one capture. Both forms order those four, so this is not a contest between an
-  index and a constant. Both columns come from the SAME two `sampleRegion` outputs of
-  the SAME frame, and the rejected column goes through the shipped `labAStar`.
-
-  ```
-  nuisance                     chromaticity   a* difference   winner
-  exposure, cheekL 70..170          0.0209          0.5047    chromaticity by 24.16x
-  melanin tone                      0.0227          0.2545    chromaticity by 11.19x
-  white balance                     0.0624          0.2071    chromaticity by  3.32x
-  tone curve, gamma 0.8..1.25       0.3930          0.4076    chromaticity by  1.04x
-  veiling flare, black lift 0..30   0.1878          0.1822    a*           by  1.03x
-  ```
-
-  The exposure row as values: chromaticity **1.0249x** over a 2.43x exposure range,
-  a\* **2.1683x** — 1.82634 to 3.95999 on one face whose skin did not change, monotone
-  in the brightness, every row unclipped.
-
-  **The mechanism, checked against the shipped code rather than argued.** `a* = 500 *
-  (f(x) - f(y))` with f a cube root above its knee, so a\* is homogeneous of degree 1/3
-  in the linear signal; the linear signal is degree 2.4 in the 8-bit channel. A common
-  gain g multiplies BOTH regions' a\* by `g^0.8` — and a difference of two things that
-  both scale scales too. **It factors out of the difference instead of cancelling in
-  it**, which is exactly what the old docstring got wrong: "both regions went through
-  the same sensor and the same light" is true of an ADDITIVE common term and false of a
-  multiplicative one. Under a pure 2.4 power law the prediction is exact to every
-  printed digit (0.66454 / 0.83651 / 1.15703 against `g^0.8`); the shipped
-  affine-then-power curve sits near it without being it (0.65561 at g = 0.6), because
-  the +0.055 offset does not scale. The chromaticity form over the same scalings moves
-  by at most **one ulp of 1.0**, a bound derived from two correctly-rounded divisions
-  and measured at exactly half of it.
-
-  **Two construction choices, either of which would have changed the answer, and they
-  are in the file rather than in a paragraph.** The melanin sweep raises each channel
-  to a different power (`s^0.75 / s^1.0 / s^1.2`) because melanin absorbs more at short
-  wavelengths — a scalar darkening would make that sweep arithmetically identical to
-  the exposure sweep and the second table would be the first one twice. The gamma and
-  flare sweeps re-normalise the exposure, because both change the frame's brightness as
-  a side effect; uncorrected, the gamma sweep's a\* column reads BETTER than it should.
-
-  **The two ties are kept rather than trimmed, and one of them costs a published
-  level.** Neither form is invariant to a camera that is not linear. Gamma 0.8 to 1.25
-  with the exposure held takes this face from **0.010348 to 0.016477**, across the
-  `ATTR_THRESHOLDS.redness` 0.012 cut — and **moving the cut does not help**, because
-  the sweep straddles it wherever it is put and the rejected form moves by as much. It
-  is a limit of reading redness off an uncalibrated camera and a cousin of the
-  illuminant-correction backlog item, not an argument for either formula. Pinned as a
-  case, so a later cycle claiming the chromaticity form is simply the stable one has to
-  fail a test to say so. One synthetic face; the golden-set blocker is what would
-  change that.
-
-  **No published value moved**, and it is checkable rather than asserted: the app
-  already computed the winner. `ATTR_THRESHOLDS`, `fallbackVersion`,
-  `inputSchemaVersion` and `public/models/visible-attributes/manifest.json` are
-  untouched — guardrail 8's `status` and `promotionGate` byte-identical.
-  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched. No consent kind or flow invented. The Python
-  function was never on a path that produced a value (all three pipeline scripts read
-  the app's `relRedness` column) and its old inputs were a\* values no ARU export
-  carries.
-
-  **Second item, which the brief filed as the cheap half and which is not a negative
-  result.** `ita` was the last index both unpinned and not known to be wrong. It is
-  wrong. **Three implementations exist and only two agree**: `lib/skin.ts:itaDegrees`
-  and `ml/ita.py:ita_from_lab` fall back to ±90 at `|b*| < 0.01`, the registry's uses
-  `1e-6`. That would be a rounding question if the fallback were continuous, and it is
-  not — **the ±90 fallback ignores the SIGN of b\***:
-
-  ```
-   L*     b*        app        registry     note
-   70   0.005    90.000000    89.985676     inside the app's guard, outside the registry's
-   70  -0.005    90.000000   -89.985676     +90 against -90: light against deep
-   30  -0.005   -90.000000    89.985676     the same, the other way, below the L* pivot
-   70    1e-06   90.000000    89.999997     the registry's guard is `<`, so it computes
-   70    1e-09   90.000000    90.000000     inside both: they agree, at the fallback
-   70   0.01     89.971352    89.971352     the app's guard is `<` too, so both compute
-  ```
-
-  41 is the light cut and 10 the deep one, so one column is above the first and the
-  other below the second — **opposite ends of the tone stratifier from one frame.**
-  Reachable rather than arithmetic: `docs/tone-ita-verification.md` §3 has a cool cast
-  taking ITA from 61.8 to −87.6 on a real fixture, so a capture travels through zero.
-  **Pinned divergent, not decided**, because both implementations carry the same
-  discontinuity and disagree only about where it sits. `lib/skin.ts` gains
-  `itaDegrees`, which existed **twice, byte for byte**, in that one file — the
-  duplication the 2026-09-15 `confidenceLabel` finding is about — and
-  `ml/skin_indices.py:ita` converts with `* 180 / math.pi` instead of `math.degrees`,
-  the same trade-off cycle 17 recorded for the cube root: `math.degrees` rounds once
-  and is MORE accurate, and over **1,186,709** (L\*, b\*) pairs the two associations
-  are bit-identical on **74.5%** and differ by up to **1.42e-14** degrees, **0.71**
-  units of `90 * 2^-52`. Matching the app isolates the guard as the group's only
-  divergence. `ml/ita.py` keeps `math.degrees` and is held to the app's guard exactly
-  and its value within `2 * 90 * 2^-52`.
-
-  **Ten new cases — seven in vitest, three in `ml/selftest.py` — and ten breaks**, each
-  altering the SOURCE line the case protects, never the test, and reverted from a file
-  copy:
-
-  ```
-  redChromaticity r/(r+g+b||1)         2 fail; cheekL 80 ...: expected
-    -> r/(r+g+b+1)                     0.011632146391430398 to be 0.011694677871148473
-  relativeRedness operands swapped     3 fail; expected -0.011694677871148473 to be
-                                       0.011694677871148473
-  the relRedness call site stops       1 fail; expected '/**\n * Visible-signal skin
-    delegating (values identical)      analysis.…' to contain 'relRedness:
-                                       relativeRedness(cheeks, t…'
-  labF Math.cbrt(t) -> Math.sqrt(t)    1 fail; shipped labAStar at gain 0.6: expected
-                                       0.5451407988491981 to be close to
-                                       0.664539805948974 ... but expected 0.05
-  python red_chromaticity guard        1 fail; -0.4011393442622951 !=
-    -> max(total, 1e-6)                0.09836065573770492 : a region summing to 1e-9
-  python relative_redness swapped      2 fail; -0.011694677871148473 !=
-                                       0.011694677871148473
-  app itaDegrees guard 0.01 -> 1e-6    1 fail; itaDegrees(70, 0.005): expected
-                                       89.98567605542014 to be 90
-  one tone site stops delegating       1 fail; both tone sites must delegate: expected
-                                       1 to be 2
-  python ita guard 1e-6 -> 0.01        1 fail; 90.0 != 89.98567605542014
-  python ita -> math.degrees           1 fail; 44.47436539354238 !=
-                                       44.474365393542385
-  ```
-
-  **The fifth is the one that earned its place, and it did not fail the first time.**
-  The redness group originally had two black-region rows and nothing between zero and
-  an epsilon, so swapping Python's `total if total else 1.0` for `max(total, 1e-6)`
-  agreed on a region of exactly zero and `ml/selftest.py` stayed green: the rows
-  located the branch ON zero and located nothing about WHERE IT SITS. That is the same
-  failure `tone_evenness`'s 2e-7 / 2e-6 pair was added to close, one index over, and it
-  was found only because the guardrail requires breaking every new case. Two rows now
-  straddle it — a region summing to 1e-9 and the same chromaticity a million times
-  larger, which must read the same — and the break fails in both languages.
-
-  **Where the registry stands now, which is the thing cycles 16-19 were for.** All
-  seven indices have had their values checked; six are pinned in
-  `ml/index-parity.json`. Three of the seven declarations were false — `shine_ratio`,
-  `relative_redness`, `ita` — while `tests/skin-index-contract.test.ts` pinned all
-  seven NAMES throughout and stayed green for every one of them. `melanin_index` is
-  the seventh and is deliberately not in the table: it is the one index a value
-  contract is the wrong instrument for, because there is no app-side value to compare
-  against, and it keeps its own open item.
-
-  **Verification before the push**, all four re-run on the final tree: vitest **558
-  passed in 85 files** (551 + 7), `python3 ml/selftest.py` **Ran 83 tests ... OK**
-  (80 + 3), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .`
-  **2 warnings** both in `lib/care.ts` unchanged.
-
-
-  **Supervisor, same day — same verdict, reached independently, and one claim bounded.**
-  The reviewer swept both forms on its own fixture before reading the branch and got the
-  same answer on every axis it tried: relative spread of 31.40% against 62.39% on
-  exposure, 6.02% against 37.82% on white balance, and **1.18% against 45.72% on skin
-  tone**. The tone row is the one that matters for this product and it is the one where
-  the gap is widest. The mechanism is that `rIdx = R/(R+G+B)` is homogeneous of degree
-  zero — multiply the whole pixel by any scalar and it is unchanged exactly — while
-  `a* = 500(f(x) - f(y))` with f a cube root is not, so subtracting two regions does not
-  cancel the nonlinearity. The cycle's own five axes are a superset of the reviewer's
-  three, and it reports the one axis where the a* form wins (veiling flare, 1.03x)
-  instead of leaving it out.
-
-  **What the review bounds is the exposure row.** It is measured over cheekL 70..170,
-  but `buildSignals` passes 조명 for **70..210**, so the product publishes readings
-  above that band. Re-swept in 0.02 exposure steps and split:
-
-  ```
-  band        n    chromaticity   a*        ratio
-   70..170    30    3.84%         65.15%    chromaticity by 16.95x
-   70..210    43   28.03%         71.64%    chromaticity by  2.56x
-  170..210    13   28.29%         25.94%    a* by 1.09x
-  ```
-
-  The decision stands — over the band the product uses, chromaticity is still the more
-  stable form — but the 24x is a property of stopping at 170. Over the real band it is
-  2.56x, and in the top fifth alone the two are equivalent. The cause is the one cycles
-  14 and 18 measured: above ~170 the cheek's channels start pinning at the 8-bit ceiling,
-  and a ratio of channel sums is homogeneous only while no channel is pinned. Recorded in
-  `docs/redness-formula-decision.md`; one synthetic face, so the crossover may be
-  fixture-specific while the collapse of the margin is not.
-
-  **Checked rather than accepted.** The app's expressions were extracted byte-identically
-  — `rIdx` into `redChromaticity`/`relativeRedness`, and the ITA expression, which was
-  duplicated inline in two places, into `itaDegrees` — so nothing published moved:
-  `analyzeSkin` on this branch and on main `edbe5c9` agrees at four frame sizes on
-  `blemishCount`, `blemishDensity`, `shine`, `relRedness`, `cov`, `toneIta`, `toneLstar`,
-  all three levels and `confidence` to twelve decimals, with blemish counts of 7–9 so the
-  detector path is exercised. `fallbackVersion` and the manifest are untouched. Three
-  source lines broken: the TypeScript `redChromaticity` denominator fails 2 cases
-  (`expected 0.010499683744465527 to be 0.011694677871148473`), the Python side of the
-  new group fails `ml/selftest.py` with 2 errors, and moving `itaDegrees`' guard from
-  0.01 to 0.5 fails with `itaDegrees(70, 0.02): expected 90 to be 89.94270423958551`.
-  Rotation: 33 differing lines, all from the two items this cycle touched.

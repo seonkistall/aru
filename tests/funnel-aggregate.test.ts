@@ -382,6 +382,41 @@ describe("what the read cannot promise, said in the payload", () => {
     expect(aggregate.unusableRows).toBe(2);
     expect(aggregate.summary.sessions).toBe(1);
   });
+
+  it("does not call a full page truncated because some of its rows were unusable", () => {
+    // The defect this pins, found 2026-09-20: `truncated` compared the source's exact
+    // `count` against the COUNTABLE rows rather than the rows the page returned, so any
+    // unusable row made a complete page read as a truncated one. Three rows in the
+    // table, three rows returned, two of them unusable, the 5000-row cap nowhere near.
+    const aggregate = aggregateFunnelSource(
+      "public-funnel",
+      [row("scan_started", "s1"), { kind: null, session_id: "s2", ts: 1 }, { kind: "scan_started", session_id: "", ts: 1 }],
+      3
+    );
+    expect(aggregate.rows, "countable rows").toBe(1);
+    expect(aggregate.unusableRows, "rows read but not countable").toBe(2);
+    expect(aggregate.rows + aggregate.unusableRows, "every row the page returned").toBe(3);
+    expect(aggregate.truncated, "nothing was truncated: 3 of 3 rows were read").toBe(false);
+    expect(aggregate.totalRows, "the clamp must not inflate the total either").toBe(3);
+    // And the consequence, which is what an operator actually loses: with any source
+    // marked truncated, `unattributedRowCount` refuses to subtract and /ops prints
+    // "unmarked rows not countable" instead of a number.
+    const empty = aggregateFunnelSource("ops-local", [], 0);
+    expect(unattributedRowCount(3, [aggregate, empty]), "nothing unattributed").toBe(0);
+  });
+
+  it("still calls a page truncated when the table really does hold more", () => {
+    // The other direction, so the fix cannot be "never truncated". Two rows returned,
+    // one of them unusable, and the table says it holds nine.
+    const aggregate = aggregateFunnelSource(
+      "public-funnel",
+      [row("scan_started", "s1"), { kind: null, session_id: "s2", ts: 1 }],
+      9
+    );
+    expect(aggregate.truncated, "9 rows in the table, 2 returned").toBe(true);
+    expect(aggregate.totalRows).toBe(9);
+    expect(unattributedRowCount(9, [aggregate])).toBeNull();
+  });
 });
 
 describe("the flag this read does not touch", () => {
