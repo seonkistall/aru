@@ -83,6 +83,40 @@ describe("mobile journey layout contract", () => {
     expect(home).not.toContain('whiteSpace: "nowrap"');
   });
 
+  it("lets the camera quality checklist wrap instead of clipping its localized labels", () => {
+    const guide = source("app/scan/guide.tsx");
+    // One track per check is what broke it: six cells in the 320px content box of a
+    // 360px phone is 47px each, and every label longer than that was cut in half.
+    // Measured in chromium at 360px on 2026-09-20 — 20 of 30 label cells clipped,
+    // every locale — and re-measured after this change at 0 of 30. The write-up with
+    // both tables is docs/scan-quality-checklist-layout.md.
+    expect(guide).not.toContain("gridTemplateColumns: `repeat(${checks.length}, 1fr)`");
+    expect(guide).toContain('gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))"');
+    // And the cell must not clip. `overflow: hidden` is the other half of the defect:
+    // it zeroes a grid item's automatic minimum size, so the 1fr tracks were free to
+    // shrink below min-content instead of widening the grid.
+    //
+    // Sliced to the ONE line that carries the cell's style, not to the function, and
+    // not to the file. Both spellings appear elsewhere in app/scan/guide.tsx — on the
+    // zone badge at line 223, and inside the comment that explains this very fix — so
+    // a check over any wider slice passes or fails on prose instead of on code. That
+    // is the cycle-20 failure mode: a guard that reads a docstring is a false negative
+    // and looks exactly like coverage.
+    const cellStyle = guide
+      .split("\n")
+      .find((line) => line.includes("{checks.map") === false && line.includes('borderRadius: 8, padding: "7px 2px"'));
+    expect(cellStyle, "the checklist cell's style line moved; this case checks nothing").toBeTruthy();
+    expect(cellStyle!).not.toContain('whiteSpace: "nowrap"');
+    expect(cellStyle!).not.toContain('overflow: "hidden"');
+    expect(cellStyle!, "still the checklist cell and not some other 8px-radius box").toContain("fontSize: 11");
+    // The floor has to clear the widest label actually rendered. `✓ Capture area` is
+    // 80.59px at fontSize 11 in the app's own stack; 96px is the smallest round figure
+    // above it that still fits three columns in 320px.
+    const floor = /minmax\((\d+)px, 1fr\)/.exec(guide);
+    expect(floor, "the checklist no longer declares a track floor").not.toBeNull();
+    expect(Number(floor![1]), "too narrow for the widest label measured (80.59px)").toBeGreaterThanOrEqual(84);
+  });
+
   it("uses a metric-adjusted Korean fallback to avoid display-font layout shifts", () => {
     const css = source("app/globals.css");
     expect(css).toContain('font-family: "ARU Display Fallback"');
