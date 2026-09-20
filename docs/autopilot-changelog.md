@@ -415,6 +415,35 @@ Ticked `[x]` and moved here; the section each was under is kept.
   alone on this fixture by luck rather than by property. What survives is a narrower and
   purely-speed question, filed as its own item below.
 
+- [x] [AI] ~~`FEATURE_KEY` declares `melanin_index` to be `toneLstar`, and it is not~~ —
+  closed 2026-09-20 (cycle 21) on the second of the two options the item named. The
+  registry gained `DERIVED_FROM`, a second kind of entry for an index computed offline
+  from an exported column, and `melanin_index` moved into it. The app did NOT grow a
+  melanin field: the benchmark this registry already cites computes the index from a
+  CIELAB L* reading the same way (`src/clinical.py:compute_melanin_index` in
+  hpicsk/regional-ccm, same `100*log10(100/L*)`, same `1.0` floor), so it is derived
+  rather than measured and a new column would have had no producer and no reader.
+  Guards: an index in neither map or in both fails `ml/selftest.py`, a derived index
+  equal to its source fails it too, and a derived index whose source is not a real
+  `SkinRawFeatures` field fails `tests/skin-index-contract.test.ts`. Full verification,
+  including all 24 of the module's borrowed figures, in
+  `docs/melanin-index-verification.md`. The original item read:
+
+  > [AI] **`FEATURE_KEY` declares `melanin_index` to be `toneLstar`, and it is not — it is
+  > a nonlinear transform of it.** `FEATURE_KEY`'s own documented contract is "index id ->
+  > the feature key `lib/skin.ts` writes into every exported sample". `melanin_index` is
+  > `100 * log10(100 / max(lstar, 1.0))`; `toneLstar` carries L\* itself, so at
+  > L\* = 70 the index is **15.49** and the declared column holds **70**. Verified
+  > 2026-09-19 that no TypeScript counterpart exists anywhere — the only match for
+  > "melanin" in `lib/` and `app/` is a prose comment in `lib/tone-bands.ts`. So this is
+  > the reverse of `cov`, which cycle 13 correctly left alone: `cov` has no Python index
+  > and therefore no declaration that can be wrong, while this has a declaration and no
+  > app-side value to declare. The fix is a decision, not an edit: either the app computes
+  > and exports a melanin index (a new field, which needs a reason beyond a test wanting
+  > one) or the registry records that this index is derived offline from `toneLstar`
+  > rather than carried by it, which means `FEATURE_KEY` needs a second kind of entry.
+  > Noted 2026-09-19.
+
 ### Next
 
 - [x] [AI] ~~`SampleMeta.toneBand` is declared, documented as derived on-device, and
@@ -3589,3 +3618,206 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   accounted for — the closed `rgbToLab` item's body, rewritten as its outcome in the
   changelog, and the "seven indices" item correctly renumbered from five to three
   because this cycle covered two more.
+
+- 2026-09-19 (cycle 18) — Branch `autopilot/2026-09-19-1839`. **The number cycle 17
+  said was missing is measured, and it is a red light. Below 1.046e-5 a* units nothing
+  can change `blemishCount`; a 256-entry table for the transfer curve is off by 0.470
+  and moves the count from 6 to 7. The curve stays, and the item closes on a
+  measurement rather than on a judgement.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **542 passed in 83 files**, `python3 ml/selftest.py`
+  **Ran 79 tests ... OK**, `npx eslint .` **2 warnings** both in `lib/care.ts`.
+
+  **What was measured, and why it is two numbers rather than one.** `detectBlemishes`
+  counts a cell when its residual — a* minus the mean a* of the valid cells within 5 of
+  it — clears `BLEMISH.minResidual` 1.6 AND it is the maximum in its 5x5 neighbourhood.
+  So the count moves only when a cell changes its classification, and that is bounded
+  from the run's own margins: a per-cell error of delta moves a residual by at most
+  `2*delta` and a difference of two residuals by at most `4*delta`. The minimum over
+  every valid cell is a **certified radius** — below it no error field of that size can
+  change the count, whatever its shape — and it is a different claim from an
+  **achieved radius**, which is the smallest delta at which a perturbation the cycle
+  actually applied did change it. Both are reported because a cycle that reported only
+  the second would be saying "we tried some error fields" and calling it a bound.
+
+  **The certified radius, over twelve frames — the same face at three noise amplitudes
+  either side of the committed 9, at all four frame sizes:**
+
+  ```
+  noise  frame        count  certified
+      4  400x480         5   1.046e-5
+      4  720x960         5   8.490e-5
+      4  1080x1440       5   3.268e-4
+      4  1440x1920       5   4.135e-5
+      9  400x480         6   1.786e-4
+      9  720x960         5   4.588e-4
+      9  1080x1440       5   2.332e-3
+      9  1440x1920       5   2.625e-4
+     14  400x480         7   1.482e-4
+     14  720x960         5   2.037e-3
+     14  1080x1440       5   3.013e-3
+     14  1440x1920       5   9.423e-4
+  smallest: 1.046e-5
+  ```
+
+  Two and a half orders of magnitude across twelve frames, which is why the brief asked
+  for the distribution: the useful number is the **smallest**, 1.046e-5, because an
+  approximation has to beat the worst frame it will ever meet.
+
+  **And then the thing the tolerance is for, measured rather than reasoned about.** The
+  same machinery rebuilds `lib/skin.ts` with `srgbLinear` replaced by a table over the
+  0-255 channel domain and nothing else changed, so the a* difference it produces IS the
+  approximation error on the inputs the detector feeds:
+
+  ```
+  table          frame        worst |da*|   count
+  256 nearest   400x480        4.703e-1       7
+  256 linear    400x480        4.788e-4       6
+  1024 linear   400x480        3.026e-5       6
+  4096 linear   400x480        1.849e-6       6
+  ```
+
+  The committed count at 400x480 is **6**. **The 256-entry table the item named moves a
+  published value**, on the first fixture anyone tried — no argument required.
+  Interpolating it does not rescue it: **5.0e-4 is 48 times** the worst frame's
+  certified radius, and it leaves the count alone here by luck rather than by property.
+  The smallest table that clears every frame is **4096 entries interpolated**, 1.9e-6
+  against 1.046e-5. So the curve stays, cycle 17 was right to stop, and what is left is
+  a narrower and purely-speed item: is a 4096-entry table actually faster than
+  `Math.pow(., 2.4)` on a phone? Full write-up, every table, and the two limits that
+  bound all of it — one synthetic face, and a radius stricter than the count —
+  `docs/blemish-perturbation-tolerance.md`.
+
+  **An asymmetry nobody was looking for, and it is pinned rather than described.**
+  Dropping the most marginal counted cell by TWICE the margin that would take it under
+  the floor **does not remove a count**, at any of the four frame sizes: the cell it was
+  suppressing becomes the local maximum and is counted in its place. A count comes off
+  only when the suppression neighbourhood goes with it. Lifting, by contrast, takes
+  about **1.25 a\*** at every size, because the best noise peak on this fixture sits at
+  a residual of 0.35 against a floor of 1.6.
+
+  **The harness guards itself, because a hook that perturbs nothing reports an enormous
+  tolerance and looks like good news.** With no perturbation installed the rebuilt module
+  reproduces the committed counts and densities exactly; a 4.0 a* checkerboard moves the
+  count to a pinned 415/421/414/418; the test's replica of the classification is asserted
+  to produce the same count as `detectBlemishes` on every frame before the oracle uses it
+  to pick a target; and `minResidual`, `backgroundRadius` and `suppressionRadius` are
+  READ OUT of `lib/skin.ts` rather than copied into the test — which was found by
+  breaking it. The first version copied them, and a `minResidual` break failed exactly
+  one assertion, the achieved radius, while the twelve certified radii went on being
+  computed against a floor the detector no longer used. A test that keeps measuring
+  after the thing it measures has moved is the same failure as a hook that perturbs
+  nothing.
+
+  **Second item: the `roughness_ratio` parity group, which is the cheap half the backlog
+  item said could land first.** `ml/index-parity.json` gains the first group whose
+  `comparison` is `"divergent"` rather than exact: 10 rows, each carrying BOTH columns,
+  each language asserting its own. `python: 320000.0` against `app: 0` on a forehead
+  with no texture, the same pair at 1e-7 and at exactly 1e-6 (Python clamps to the
+  epsilon, the app's `>` excludes it), and exact agreement above the guard — so the
+  divergence is located rather than declared. The two app-only rows record the
+  missing-region branch as an ABSENT Python column rather than as a zero that looks like
+  a value. **Which side moves is not decided**, which is what the item asked for: that
+  needs faces. `lib/skin.ts:roughnessRatio` was extracted from the object literal to make
+  the app column assertable, expression byte-for-byte unchanged.
+
+  **No published value moved, and it is checkable rather than asserted.** The
+  `blemishCount` / `blemishDensity` pins in `tests/scan-cost-benchmark.test.ts` were not
+  edited and stayed green; `tests/skin-index-contract.test.ts`'s `roughnessRatio`
+  1.07506721426881 did not move. `fallbackVersion`, `ATTR_THRESHOLDS`,
+  `inputSchemaVersion` and `public/models/visible-attributes/manifest.json` are
+  untouched — guardrail 8's `status` and `promotionGate` byte-identical.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched. No consent kind or flow invented.
+
+  **Ten new cases — nine in vitest, one in `ml/selftest.py` — and nine breaks**, each
+  altering the SOURCE line the case protects, never the test, and reverted from a file
+  copy:
+
+  ```
+  BLEMISH.minResidual 1.6 -> 1.55      2 fail; BLEMISH.minResidual: expected 1.55 to be
+                                       1.6, and 400x480 lift: expected
+                                       0.9597128738739016 to be close to 1
+  BLEMISH.backgroundRadius 5 -> 4      7 fail; 400x480 committed count: expected 7 to
+                                       be 6
+  srgbLinear 2.4 -> 2.41               3 fail; 400x480 certified: expected
+                                       0.00017903110422778923 to be
+                                       0.00017859239785300574
+  the hook's anchor comment reworded   6 fail; Error: perturbation hook: the astar
+                                       consumer moved; the harness measures nothing
+  the hook perturbs a COPY of the      2 fail; 400x480: a 4.0 a* checkerboard left the
+    grid (the failure mode itself)     count alone: expected 6 not to be 6
+  python epsilon 1e-6 -> 1e-5          1 fail; 31999.999999999996 !=
+                                       319999.9680000032 : reference one ulp above the
+                                       guard: the two still agree
+  app guard > 1e-6 -> >= 1e-6          1 fail; reference exactly at 1e-6 ...:
+                                       roughnessRatio(0.32, 0.000001): expected 320000
+                                       to be +0
+  the call site stops delegating       1 fail; expected '/**\n * Visible-signal skin
+                                       analysis.…' to contain 'roughnessRatio:
+                                       roughnessRatio(cheekH…'
+  ```
+
+  The fifth is the one worth having: it is the harness's own failure mode, and the guard
+  case is the only thing in the file that catches it.
+
+  **Verification before the push**, all four re-run on the final tree: vitest
+  **551 passed in 84 files** (542 + 9), `python3 ml/selftest.py` **Ran 80 tests ... OK**
+  (79 + 1), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .`
+  **2 warnings** both in `lib/care.ts` unchanged, `npm run smoke` green —
+  `Smoke test passed.`, with its own vitest 551, `ml/selftest.py` 80, and **44 mobile
+  E2E specs passed in 3.4m** behind the `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override the
+  protocol records.
+
+  **Rotation, per step 8.** "Recent cycles" holds cycles 18, 17 and 16; cycle 15's
+  184-line entry moved to `docs/autopilot-changelog.md` and `diff` reports it
+  **byte-identical**, and the one item this cycle ticked `[x]` moved to "Closed backlog
+  items -> Now" with its body rewritten as its outcome. `comm -23` against a sorted
+  snapshot of the pre-change pair reports **43 differing lines**, every one of them from
+  the three backlog items this cycle rewrote: the closed transfer-curve item's old body,
+  the `roughness_ratio` item's body (its `500000.0` example replaced by the committed
+  row's `320000.0`, and the older figure still stands in cycle 17's entry), and the
+  "indices still unchecked" item's recount from three covered to four. Nothing from the
+  moved entry appears in that list.
+
+  **Supervisor, same day — the method is better than the reviewer's and the verdict is
+  one step too confident.** The reviewer went in with a perturbation sweep of its own and
+  got a tolerance of **0.03 a\* units**, three orders of magnitude looser than this
+  cycle's 1.046e-5. The cycle is right and the reviewer was answering a weaker question:
+  0.03 was the *achieved* radius for one deterministic error shape, and what an
+  approximation has to clear is the *certified* one, computed from the run's own margins
+  and safe against an error of any shape. The cycle reports both, labels them as
+  different claims, and measures `uniform -> null` — the trap where a constant offset
+  cancels in the local-background subtraction and a harness built on one reports an
+  unbounded tolerance. It is pinned as a case.
+
+  **The correction.** §5 green-lights a 4096-entry interpolated table at 1.9e-6 against
+  1.046e-5. That 1.9e-6 is the error on the pixel values the four fixtures happen to
+  produce, because the rebuilt `lib/skin.ts` only converts the cells a real frame hands
+  it. It is not the worst case over the inputs `detectBlemishes` will ACCEPT, and a
+  certificate has to cover those. The gate is `L in [40, 230] && r > b` on the raw pixel
+  (`lib/skin.ts:958`) with the conversion on `channel * gain`. Swept over every input
+  clearing that gate at gains 0.72 / 1.0 / 1.33:
+
+  ```
+  table          whole cube    inside the gate    vs 1.046e-5
+  1024 linear    3.701e-4      1.962e-4           does not certify
+  4096 linear    1.621e-5      1.251e-5           does not certify
+  ```
+
+  The 4096 table's worst admissible input is around rgb(22, 35, 17) after gain — dark and
+  green-leaning, which passes `r > b`. So **no table measured certifies**, the 5.5x of
+  headroom is headroom on the fixture family rather than on the input domain, and the
+  open question is not only the speed question §5 reduces it to. Recorded in
+  `docs/blemish-perturbation-tolerance.md` §5; §2 and §3 are unaffected.
+
+  **Checked rather than accepted.** The printer reproduces every row of §2 exactly.
+  Three source lines were broken: `minResidual` 1.6 -> 1.2 fails 2 cases including the
+  certified-radius one, `suppressionRadius` 2 -> 1 fails 4, and moving the Python
+  `roughness_ratio` epsilon from 1e-6 to 1e-5 fails `ml/selftest.py`, so the new parity
+  group holds the Python side the way cycle 16 established. The `blemishCount` /
+  `blemishDensity` pins in `tests/scan-cost-benchmark.test.ts` are untouched — the diff
+  against main is empty — and `fallbackVersion` and the manifest did not move, which on
+  this cycle is the requirement. Rotation: 42 differing lines, all from the two items
+  this cycle touched, the closed one rewritten as its outcome in the changelog.

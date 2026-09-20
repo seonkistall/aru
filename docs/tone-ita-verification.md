@@ -80,13 +80,23 @@ swatch-6   (86, 58, 42)         27.2   14.89   -56.8   brown_dark         -56.82
 `analyzeSkin` on a flat frame of each colour. That is the first thing anywhere that ties
 the browser's tone reading to a number checked outside this repository.
 
-**What is not verified.** The band cut points themselves (55 / 41 / 28 / 10) are
-attributed in `ml/subgroups.py` to the Chardon convention. No primary source for them
-could be opened from this network — see the egress list in `docs/AUTOPILOT.md`; the
-run above establishes that ARU computes the *angle* correctly, not that these are the
-right places to cut it. Both agree the cut points are unchanged from what shipped, so
-nothing here depends on settling it, but it stays unverified and should not be written
-down as though it were.
+**What is not verified.** The band cut points themselves (55 / 41 / 28 / 10) still have
+no primary source that can be opened from this network — see the egress list in
+`docs/AUTOPILOT.md`; the run above establishes that ARU computes the *angle* correctly,
+not that these are the right places to cut it. Both agree the cut points are unchanged
+from what shipped, so nothing here depends on settling it, but it stays unverified and
+should not be written down as though it were.
+
+**Their attribution moved on 2026-09-20, and that is a different thing from verifying
+them.** This file and `ml/subgroups.py` credited the cut points to "the Chardon
+convention" while `ml/skin_indices.py` credited Del Bino & Bernerd — three files, one set
+of edges, two citations. The benchmark ARU already cites separates them: `src/clinical.py`
+in hpicsk/regional-ccm attributes the arctan FORMULA to Chardon et al. (1991) and Del Bino
+et al. (2006), and the six-category CUTPOINTS −30/10/28/41/55 to Del Bino & Bernerd (2013).
+ARU uses those cut points, so the files now all say Del Bino & Bernerd for the edges and
+name Chardon for the formula. That is another project's source code, not either paper,
+so the item above is unaffected: the repository stopped contradicting itself, and nothing
+became verified. [`docs/melanin-index-verification.md`](melanin-index-verification.md) §4.
 
 ## 2. What was being fed in — the defect
 
