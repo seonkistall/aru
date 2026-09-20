@@ -134,16 +134,20 @@ def ita(lstar: float, bstar: float) -> float:
     bit on every row `ml/index-parity.json` commits, so the ita group's only remaining
     divergence is the one that matters.
 
-    And that one is NOT closed here. The guard is `1e-6` where `lib/skin.ts` and
-    `ml/ita.py` both use `0.01`, and because the +-90 fallback ignores the SIGN of b*,
-    inside that window the two do not round differently — they land 180 degrees apart.
-    At L* 70, b* -0.005 the app reads +90 and this reads -89.99: `light` against
-    `deep` on coarse_tone_band, from one frame. Both implementations carry the same
-    discontinuity and disagree only about where it sits, so neither is pinned as
-    correct; ml/index-parity.json -> ita holds both columns and the backlog carries
-    the decision.
+    The guard, which cycle 19 pinned as divergent and did not decide, was decided
+    2026-09-20: it is `bstar == 0` in all three implementations. This module used 1e-6
+    where lib/skin.ts and ml/ita.py used 0.01, and because the +-90 fallback ignores the
+    SIGN of b* the disagreement inside that window was 180 degrees rather than a
+    rounding difference — `light` against `deep` on coarse_tone_band, from one frame.
+    What settled which side moves is that a neutral grey is inside the wider window:
+    r = g = b has a small negative b* under this matrix, 242 of the 256 8-bit greys
+    satisfied `|b*| < 0.01` against 1 of 256 for `1e-6`, and on all 241 non-black ones
+    the fallback returned the sign the limit does not have — so the narrow guard was
+    the correct column and the narrowest correct guard is no window at all.
+    docs/ita-guard-decision.md is the measurement. `== 0` rather than `abs(...) < eps`
+    also covers -0.0, which CPython cannot divide by and V8 can.
     """
-    if abs(bstar) < 1e-6:
+    if bstar == 0:
         return 90.0 if lstar > 50 else -90.0
     return math.atan((lstar - 50.0) / bstar) * 180 / math.pi
 
