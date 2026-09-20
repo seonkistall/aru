@@ -107,6 +107,32 @@ not a contest between an index and a constant.
 | tone curve (gamma 0.8..1.25) | 0.3930 | 0.4076 | chromaticity by 1.04x |
 | veiling flare (black lift 0..30) | 0.1878 | **0.1822** | a\* by 1.03x |
 
+**The exposure row is measured on a band narrower than the one the product publishes in,
+and that matters** (supervisor, 2026-09-20). `buildSignals` passes 조명 for cheekL
+**70..210**, so a reading is published anywhere in that range, and the row above stops at
+170. Re-swept on an independent fixture in 0.02 exposure steps, splitting the band:
+
+| band (cheekL) | n | chromaticity rel. spread | a\* rel. spread | ratio |
+|---|---|---|---|---|
+| 70..170 | 30 | 3.84% | 65.15% | chromaticity by 16.95x |
+| **70..210** | 43 | **28.03%** | 71.64% | **chromaticity by 2.56x** |
+| 170..210 | 13 | 28.29% | 25.94% | **a\* by 1.09x** |
+
+The decision does not change: over the band the product actually uses, the chromaticity
+form is still the more stable of the two. What changes is the size of the claim. The
+24x is a property of stopping at 170; over the real band it is **2.56x**, and in the top
+fifth of that band, taken alone, the two are equivalent and the a\* difference is
+marginally ahead.
+
+The mechanism is the one cycles 14 and 18 already measured: above cheekL ~170 the cheek's
+channels begin to clip at the 8-bit ceiling (25.9% of the patch at 190.7 on a warm face),
+and clipping is exactly what breaks a ratio of channel sums — `rIdx` is homogeneous of
+degree 0 only while no channel is pinned. So the chromaticity form's advantage is real
+and is largest where the capture is good, which is the honest way to state it.
+
+One caveat: this is one synthetic face. The 170..210 crossover may be fixture-specific;
+the collapse of the margin over the full band is not, because its cause is clipping.
+
 The same rows as max/min spread: exposure 1.0249 / 2.1683, melanin 1.0266 / 1.4552,
 white balance 1.0763 / 1.2956, tone curve 1.5922 / 1.6731, flare 1.2840 / 1.2977.
 

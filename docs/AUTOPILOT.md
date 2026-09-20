@@ -871,6 +871,50 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   (80 + 3), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .`
   **2 warnings** both in `lib/care.ts` unchanged.
 
+
+  **Supervisor, same day — same verdict, reached independently, and one claim bounded.**
+  The reviewer swept both forms on its own fixture before reading the branch and got the
+  same answer on every axis it tried: relative spread of 31.40% against 62.39% on
+  exposure, 6.02% against 37.82% on white balance, and **1.18% against 45.72% on skin
+  tone**. The tone row is the one that matters for this product and it is the one where
+  the gap is widest. The mechanism is that `rIdx = R/(R+G+B)` is homogeneous of degree
+  zero — multiply the whole pixel by any scalar and it is unchanged exactly — while
+  `a* = 500(f(x) - f(y))` with f a cube root is not, so subtracting two regions does not
+  cancel the nonlinearity. The cycle's own five axes are a superset of the reviewer's
+  three, and it reports the one axis where the a* form wins (veiling flare, 1.03x)
+  instead of leaving it out.
+
+  **What the review bounds is the exposure row.** It is measured over cheekL 70..170,
+  but `buildSignals` passes 조명 for **70..210**, so the product publishes readings
+  above that band. Re-swept in 0.02 exposure steps and split:
+
+  ```
+  band        n    chromaticity   a*        ratio
+   70..170    30    3.84%         65.15%    chromaticity by 16.95x
+   70..210    43   28.03%         71.64%    chromaticity by  2.56x
+  170..210    13   28.29%         25.94%    a* by 1.09x
+  ```
+
+  The decision stands — over the band the product uses, chromaticity is still the more
+  stable form — but the 24x is a property of stopping at 170. Over the real band it is
+  2.56x, and in the top fifth alone the two are equivalent. The cause is the one cycles
+  14 and 18 measured: above ~170 the cheek's channels start pinning at the 8-bit ceiling,
+  and a ratio of channel sums is homogeneous only while no channel is pinned. Recorded in
+  `docs/redness-formula-decision.md`; one synthetic face, so the crossover may be
+  fixture-specific while the collapse of the margin is not.
+
+  **Checked rather than accepted.** The app's expressions were extracted byte-identically
+  — `rIdx` into `redChromaticity`/`relativeRedness`, and the ITA expression, which was
+  duplicated inline in two places, into `itaDegrees` — so nothing published moved:
+  `analyzeSkin` on this branch and on main `edbe5c9` agrees at four frame sizes on
+  `blemishCount`, `blemishDensity`, `shine`, `relRedness`, `cov`, `toneIta`, `toneLstar`,
+  all three levels and `confidence` to twelve decimals, with blemish counts of 7–9 so the
+  detector path is exercised. `fallbackVersion` and the manifest are untouched. Three
+  source lines broken: the TypeScript `redChromaticity` denominator fails 2 cases
+  (`expected 0.010499683744465527 to be 0.011694677871148473`), the Python side of the
+  new group fails `ml/selftest.py` with 2 errors, and moving `itaDegrees`' guard from
+  0.01 to 0.5 fails with `itaDegrees(70, 0.02): expected 90 to be 89.94270423958551`.
+  Rotation: 33 differing lines, all from the two items this cycle touched.
 - 2026-09-19 (cycle 18) — Branch `autopilot/2026-09-19-1839`. **The number cycle 17
   said was missing is measured, and it is a red light. Below 1.046e-5 a* units nothing
   can change `blemishCount`; a 256-entry table for the transfer curve is off by 0.470
