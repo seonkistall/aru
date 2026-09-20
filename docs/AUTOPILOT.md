@@ -979,6 +979,71 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `tests/scan-cost-benchmark.test.ts`, `public/models/visible-attributes/manifest.json`
   and `fallbackVersion` are all untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set.
 
+  **Supervisor review.** The cycle's own conclusion was re-derived here before it
+  reported, and it holds on a fixture it never used.
+
+  *The 1e-16 claim reproduces on different landmarks.* Built three copies of
+  `lib/skin.ts` differing only by a constant added where a\* is consumed, and ran them
+  over the scan-cost benchmark's SPREAD landmark layout rather than
+  `tests/blemish-density-scale.test.ts`'s, at five frame sizes:
+
+  ```
+  NOISELESS (amp 0)
+    exact     5, 5, 5, 5, 5   distinct=1
+    +1e-16    5, 5, 6, 5, 6   distinct=2
+    +1e-15    5, 5, 5, 5, 5   distinct=1
+  NOISY (amp 9)
+    exact     6, 6, 5, 5, 5   distinct=2
+    +1e-16    6, 6, 5, 5, 5   distinct=2
+    +1e-15    6, 6, 5, 5, 5   distinct=2
+  ```
+
+  Different fixture, different absolute counts, same phenomenon: on the noiseless face
+  a 1e-16 nudge destroys resolution stability, and on the noisy face all three builds
+  are bit-identical. **One detail sharpens the cycle's argument rather than weakening
+  it: here +1e-15 did NOT move the counts while +1e-16 did.** The effect is not
+  monotonic in epsilon, which is what it must look like if the cause is WHICH ties
+  break rather than HOW BIG the error is. An accuracy problem would be monotonic. The
+  mechanism is one line and it reads as claimed — `lib/skin.ts:1091`,
+  `residual[j] === residual[i] && j < i`, an exact float equality on a plateau that a
+  noiseless synthetic face is made entirely of.
+
+  *The parity breach was hit here first, and the cycle's design routes around it
+  better than this review's did.* This review had built the table behind a scoped
+  `srgbLinearFast` called from `labAStar`, which keeps `toneSpread` still (confirmed:
+  no published field moved at any of four sizes, 26.3–36.3% faster, 35/36 paired reps)
+  and then fails `tests/index-parity.test.ts` exactly as the cycle records —
+  `expected 0.0031556203582971953 to be 0.003155620347972121` from a 4096-interval
+  linear table, against the cycle's `expected 0.003155620347528032 to be
+  0.003155620347972121` from its 512-cell quadratic. Same committed value, two
+  different tables, one contract. The cycle's second entry point (`labAStarTabulated`,
+  sharing an extracted `aStarFromLinear`) leaves `labAStar` on `Math.pow` and is the
+  right shape; the scoped-`srgbLinear` design this review proposed in the cycle-21
+  backlog note was not, and is superseded.
+
+  Regenerating the committed table would not have rescued it either, it would move the
+  failure to Python: `ml/selftest.py:813` compares `ml/ita.py` to the same rows on a
+  MECHANISM-DERIVED tolerance of `4 * channelScale * 2**-52` = **4.4409e-13** for a\*,
+  and the observed difference at mid grey is **1.0325e-11**, **23.2x** over it — with
+  ~1.5e-6 on the detector's own domain, seven orders out. That bound is the size of a
+  last-place disagreement between two correctly implemented `pow`/`cbrt`; a table's
+  interpolation error is not that kind of error, and widening k to swallow it would
+  turn a derived bound into a fitted one.
+
+  *The funnel defect is real on main.* Putting main's `lib/funnel-aggregate.ts` back
+  and running the new case fails with `nothing was truncated: 3 of 3 rows were read:
+  expected true to be false`, so the guard bites at its source and the bug it describes
+  is live today.
+
+  *One reviewer error, recorded because that is the standard here.* This review first
+  read the branch as RED — one failing test — and it was this review's own
+  contamination. `git checkout origin/main -- <path>` writes the INDEX as well as the
+  working tree, so the later `git checkout -- <path>` restored main's version from that
+  staged index rather than the branch's. The branch was green throughout: with the tree
+  actually clean, **577 passed in 87 files**. Same class as cycle 20's docstring regex —
+  a check that fails for a reason that is not the code's, and it looks exactly like a
+  defect.
+
 - 2026-09-20 (cycle 21) — Branch `autopilot/2026-09-20-1239`. **The registry's 24
   borrowed numbers were never checked against the work they came from; all 24 hold. And
   that check is what settled the `melanin_index` fork the backlog had been holding open:
