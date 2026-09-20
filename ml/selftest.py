@@ -394,11 +394,49 @@ class SkinIndices(unittest.TestCase):
         self.assertAlmostEqual(skin_indices.tone_evenness(regions), skin_indices.tone_evenness(brighter))
 
     def test_every_index_declares_the_feature_key_the_app_writes(self):
-        # An index with no feature key is one the pipeline cannot find in an export.
+        # An index in NEITHER map is one the pipeline cannot find in an export. An index
+        # in BOTH claims to be carried and derived at once, which is the state the split
+        # exists to make unrepresentable: FEATURE_KEY[id] is that index's own value and
+        # DERIVED_FROM[id] is its INPUT, so a reader that finds an id in both has no way
+        # to know which of the two a column holds.
         for index in skin_indices.INDICES:
-            self.assertIn(index.id, skin_indices.FEATURE_KEY)
+            carried = index.id in skin_indices.FEATURE_KEY
+            derived = index.id in skin_indices.DERIVED_FROM
+            self.assertTrue(carried or derived, f"{index.id} declares no feature key at all")
+            self.assertFalse(carried and derived, f"{index.id} is declared both carried and derived")
         for key in skin_indices.NEW_FEATURE_KEYS:
             self.assertNotIn(key, ("shine", "relRedness", "cov"))
+
+    def test_a_derived_index_is_not_the_column_it_is_derived_from(self):
+        """Why melanin_index left FEATURE_KEY on 2026-09-20.
+
+        FEATURE_KEY's contract is that the named column holds the index's own value.
+        An index whose value is a nonlinear transform of a column cannot satisfy that
+        contract by naming the column, so this asserts the transform is not the identity
+        on the readings the product actually produces. If some future derived index IS
+        the identity on its source, it belongs in FEATURE_KEY and not here.
+        """
+        derived = {
+            "melanin_index": skin_indices.melanin_index,
+        }
+        self.assertEqual(set(skin_indices.DERIVED_FROM), set(derived))
+        for index_id, source_key in skin_indices.DERIVED_FROM.items():
+            # The source has to be a column something actually exports, or "derived
+            # from" names nothing. toneLstar is checked against SkinRawFeatures on the
+            # TypeScript side (tests/skin-index-contract.test.ts).
+            self.assertTrue(source_key and source_key[0].islower(), source_key)
+            self.assertNotIn(source_key, skin_indices.FEATURE_KEY.values(),
+                             f"{source_key} is already some other index's own value")
+            fn = derived[index_id]
+            # L* 30/50/70/90: the skin band the product reads, not a constructed input.
+            for lstar in (30.0, 50.0, 70.0, 90.0):
+                self.assertNotAlmostEqual(
+                    fn(lstar), lstar, places=6,
+                    msg=f"{index_id} equals its source {source_key} at L*={lstar}; "
+                        f"if that holds everywhere it belongs in FEATURE_KEY",
+                )
+            # The specific number the old declaration got wrong, kept as a number.
+            self.assertAlmostEqual(skin_indices.melanin_index(70.0), 15.490195998574317, places=12)
 
     def test_shine_brightness_gap_is_relative_so_exposure_cancels(self):
         """What the old `tzone_specular / cheek_specular` form asserted, on the form

@@ -59,9 +59,13 @@ import { analyzeSkin, itaDegrees, labAStar, redChromaticity, relativeRedness, re
  *   docs/ita-guard-decision.md is the measurement that chose it.
  *
  * The seventh, `melanin_index`, is name-pinned and has no second column to check
- * against: FEATURE_KEY declares it to be `toneLstar` and it is a nonlinear transform
- * of it, with no TypeScript counterpart anywhere. Closing that is a decision about
- * what FEATURE_KEY means, not a row. docs/redness-formula-decision.md.
+ * against, and since 2026-09-20 the registry says so out loud rather than misdeclaring
+ * it. It used to sit in FEATURE_KEY against `toneLstar`, which is its INPUT and not its
+ * value — a nonlinear transform, 15.49 where the column holds 70 — with no TypeScript
+ * counterpart anywhere. It is now in `DERIVED_FROM`, a second kind of entry for an index
+ * computed offline from an exported column. Still not a row here, because there is no
+ * second implementation to compare; the guards that hold it live in ml/selftest.py and
+ * tests/skin-index-contract.test.ts. docs/melanin-index-verification.md.
  *
  * `primitives` is a second section with a third comparison, and the difference is the
  * point. The `indices` rows above are compared EXACTLY — each against its own
