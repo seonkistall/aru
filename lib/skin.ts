@@ -314,24 +314,30 @@ export function labAStar(r: number, g: number, b: number): number {
  * Individual Typology Angle in degrees, in one place.
  *
  * Extracted from `dominantTone` and from `extractRawFeatures`'s fallback on 2026-09-20
- * with the expression byte-for-byte unchanged and both call sites delegating to it, so
- * no published value moved — `tests/tone-ita-contract.test.ts`'s six reference-verified
- * rows are what prove it. Before that it was written out twice in this file, which is
- * the duplication the 2026-09-15 `confidenceLabel` finding is about.
+ * so that both call sites delegate to it; before that it was written out twice in this
+ * file, which is the duplication the 2026-09-15 `confidenceLabel` finding is about.
  *
- * `ml/ita.py:ita_from_lab` is the offline mirror and carries the SAME 0.01 guard.
- * `ml/skin_indices.py:ita` — the registry's declaration of what this index is — carries
- * `1e-6` instead, and that is a real divergence rather than a rounding difference: the
- * ±90 fallback ignores the SIGN of b*, so where the two guards differ, a frame with a
- * small negative b* and L* above 50 reads +90 here and about −90 there. That is
- * `light` against `deep` on `coarse_tone_band` — opposite ends of the stratifier from
- * one frame. Both implementations put a 180° discontinuity in the same place in the
- * formula and disagree about where it sits; neither is obviously the right one, so
- * `ml/index-parity.json` -> `ita` pins BOTH columns at their values, the way the
- * `roughness_ratio` group does, and the backlog carries the decision.
+ * The guard is `b* === 0` and nothing wider, decided 2026-09-20 on a measurement
+ * (`docs/ita-guard-decision.md`, pinned by `tests/ita-guard-decision.test.ts`). It used
+ * to be `|b*| < 0.01` here and in `ml/ita.py`, against `1e-6` in the registry's
+ * `ml/skin_indices.py:ita`, and the ±90 fallback ignores the SIGN of b*, so inside that
+ * window the three landed 180° apart — `light` against `deep` on `coarse_tone_band`
+ * from one frame. What settled it is that a neutral grey is INSIDE the old window:
+ * ARU's four-decimal sRGB→XYZ matrix gives r = g = b a small negative b*, so 242 of the
+ * 256 8-bit greys satisfied `|b*| < 0.01` (1 of 256 satisfies `1e-6`), and on all 241
+ * non-black ones the old fallback returned the sign the limit does not have. A guard on
+ * b* alone was wrong for a second reason too: what diverges is the RATIO, so at
+ * L* 50.001 and b* 0.005 it published +90 (`very_light`) where the angle is 11.3 (`tan`).
+ *
+ * So the fallback survives only where the arithmetic genuinely has no value: b* exactly
+ * zero, where the limit depends on which side b* approaches from. `=== 0` is also true
+ * of −0, deliberately — V8 divides by −0 to −Infinity while CPython raises on both
+ * zeros, so the convention has to be taken here or the two languages part company.
+ * Every other b*, denormals included, divides to a finite or infinite quotient that
+ * `Math.atan` maps to the right one-sided limit in both.
  */
 export function itaDegrees(lstar: number, bstar: number): number {
-  return Math.abs(bstar) < 0.01 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;
+  return bstar === 0 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;
 }
 
 export function rgbToLab(r: number, g: number, b: number): { l: number; a: number; b: number } {

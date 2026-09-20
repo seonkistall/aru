@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { toneBandFromIta } from "@/lib/tone-bands";
 import { analyzeSkin, itaDegrees, labAStar, redChromaticity, relativeRedness, relativeSpread, rgbToLab, roughnessRatio, sampleRegion, shineIndex, SAMPLING_LANDMARKS, SHINE_REFERENCE_CHEEK_L } from "@/lib/skin";
 
 /**
@@ -49,11 +50,13 @@ import { analyzeSkin, itaDegrees, labAStar, redChromaticity, relativeRedness, re
  *   is fed and `SkinRawFeatures` does not export them. Exact, because the decision was
  *   MADE rather than deferred: the Python side was a CIELAB a* difference and moved
  *   onto this one, on the measurement in docs/redness-formula-decision.md.
- * - `ita` / `toneIta`: formula only, added cycle 19, and the second `divergent` group.
- *   Three implementations exist and only two agree — lib/skin.ts and ml/ita.py guard
- *   at |b*| < 0.01, ml/skin_indices.py at 1e-6 — and because the ±90 fallback ignores
- *   the SIGN of b*, the window between them is a 180-degree disagreement rather than a
- *   rounding one. Pinned, not decided.
+ * - `ita` / `toneIta`: formula only, added cycle 19 as the second `divergent` group and
+ *   `exact` since cycle 20 decided it. Three implementations guarded the b* ≈ 0
+ *   singularity in two different places — |b*| < 0.01 in lib/skin.ts and ml/ita.py,
+ *   1e-6 in ml/skin_indices.py — and because the ±90 fallback ignores the SIGN of b*
+ *   the window between them was a 180-degree disagreement rather than a rounding one.
+ *   All three now guard `b* == 0` and nothing wider, so the rows carry one column;
+ *   docs/ita-guard-decision.md is the measurement that chose it.
  *
  * The seventh, `melanin_index`, is name-pinned and has no second column to check
  * against: FEATURE_KEY declares it to be `toneLstar` and it is a nonlinear transform
@@ -119,7 +122,7 @@ type RednessEdgeRow = {
   relRedness: number;
 };
 type RednessRow = RednessFaceRow | RednessEdgeRow;
-type ItaRow = { note: string; lstar: number; bstar: number; app: number; python: number };
+type ItaRow = { note: string; lstar: number; bstar: number; value: number };
 
 /** blemish_density's inputs are the two quantities detectBlemishes actually produces:
  *  `validCells * stride * stride` and the face-box width in pixels. The first three
@@ -332,45 +335,55 @@ const REDNESS_FACE_RECIPES: Array<[number, [number, number, number]]> = [
 ];
 
 /**
- * Inputs for the ita rows, added cycle 19 to finish the registry audit — `ita` was the
- * last index that was both unpinned and not yet known to be wrong. It is wrong, and
- * the rows below are where.
+ * Inputs for the ita rows. Added cycle 19, which pinned the group `divergent` because
+ * three implementations existed and only two agreed; rewritten cycle 20, which decided
+ * it. The guard is now `b* === 0` in `lib/skin.ts:itaDegrees`, `ml/ita.py:ita_from_lab`
+ * and `ml/skin_indices.py:ita` alike, so the group is `exact` and carries ONE column.
  *
- * THREE implementations exist and only two of them agree. `lib/skin.ts:itaDegrees` and
- * `ml/ita.py:ita_from_lab` both fall back to ±90 when `|b*| < 0.01`;
- * `ml/skin_indices.py:ita` — the REGISTRY's declaration of what this index is — uses
- * `1e-6`, four orders of magnitude tighter. So this group is `divergent` like
- * `roughness_ratio`: each row carries both columns and each language asserts its own.
+ * What the rows have to locate has therefore changed. They are no longer a record of a
+ * disagreement; they are the boundary of the only fallback left. Three things are held:
  *
- * The rows are chosen to locate the guard rather than to average over it, and the pair
- * at b* = ±0.005 is the one that carries the finding. The ±90 fallback ignores the SIGN
- * of b*, so inside the app's guard a frame with a small NEGATIVE b* and L* above 50
- * reads +90 where the registry computes about −90 — `light` against `deep` on
- * `coarse_tone_band`, from one frame. The last row shows it firing the other way below
- * the L* pivot. docs/tone-ita-verification.md §3 is why this is not only arithmetic:
- * a cool cast takes b* through zero on a real fixture, so the window is on a path
- * captures actually travel.
+ * 1. Where the old windows used to sit — b* at 0.01, at 0.005 either side, at 1e-6 —
+ *    the angle now simply computes, and the ±0.005 pair reads ±89.986 instead of both
+ *    reading +90. That pair is the whole finding cycle 19 recorded, inverted: the sign
+ *    of b* now reaches the answer.
+ * 2. The two neutral 8-bit greys, which are why the old window was reachable rather
+ *    than arithmetic. `rgbToLab` gives r = g = b a small NEGATIVE b*, so a grey sat
+ *    inside `|b*| < 0.01` and the old fallback answered with the sign of L* − 50, which
+ *    is the sign the limit does not have. Their L* and b* come from `rgbToLab` itself
+ *    rather than being typed in, so the row cannot outlive the conversion that produced
+ *    it. docs/ita-guard-decision.md and tests/ita-guard-decision.test.ts are the
+ *    measurement; this is the cross-language half of it.
+ * 3. b* exactly zero, above and below the pivot and at it, where the quotient has no
+ *    value and ±90 is a documented convention rather than an approximation. −0 is NOT
+ *    a row here and cannot be: `JSON.stringify(-0)` is `"0"`, so the table cannot carry
+ *    the distinction. tests/ita-guard-decision.test.ts and ml/selftest.py assert it
+ *    against the functions directly, which is where a sign of zero belongs.
  */
+const GREY_128 = rgbToLab(128, 128, 128);
+const GREY_60 = rgbToLab(60, 60, 60);
 const ITA_INPUTS: Array<[string, number, number]> = [
   ["ordinary light skin", 71.6, 22.0],
   ["ordinary deep skin", 27.2, 12.0],
   ["L* exactly at the 50 pivot: the angle is 0 whatever b* is", 50.0, 20.0],
-  ["a cool cast, b* still well clear of both guards", 61.1, -8.0],
-  ["b* just outside the app's guard: the two agree", 70.0, 0.02],
-  ["b* exactly at the app's 0.01 guard: < excludes it, so both compute", 70.0, 0.01],
-  ["b* inside the app's guard and outside the registry's: 90 against the real angle", 70.0, 0.005],
-  ["the same b* negative: +90 against -90, light against deep from one frame", 70.0, -0.005],
-  ["b* exactly at the registry's 1e-6 guard: < excludes it, so it computes", 70.0, 1e-6],
-  ["b* inside both guards: the two agree, at the fallback", 70.0, 1e-9],
-  ["b* exactly zero, L* below the pivot", 30.0, 0.0],
-  ["b* small and negative below the pivot: the sign blindness, the other way", 30.0, -0.005],
+  ["a cool cast, b* well clear of zero", 61.1, -8.0],
+  ["b* at the old 0.01 guard, which the app used to stop computing at", 70.0, 0.01],
+  ["b* inside the old 0.01 window: the angle, not the 90 it used to publish", 70.0, 0.005],
+  ["the same b* negative: -89.99, where the old guard read +90 from the same frame", 70.0, -0.005],
+  ["small negative b* below the pivot: +89.99, where the old guard read -90", 30.0, -0.005],
+  ["b* at the old registry guard of 1e-6", 70.0, 1e-6],
+  ["b* a thousand times smaller again: still an ordinary quotient", 70.0, 1e-9],
+  ["b* denormal: the quotient overflows to Infinity and atan maps it to exactly 90", 70.0, 5e-324],
+  // Why the old window was reachable. Not a knife-edge cast: the neutral axis itself.
+  ["neutral 8-bit grey 128, above the pivot: b* is negative, so the limit is -90", GREY_128.l, GREY_128.b],
+  ["neutral 8-bit grey 60, below the pivot: b* is negative, so the limit is +90", GREY_60.l, GREY_60.b],
+  // The second defect a guard on b* alone carried: what diverges is the RATIO.
+  ["L* a thousandth above the pivot inside the old window: 11.3, not the 90 it read", 50.001, 0.005],
+  // The only fallback left, and it is a convention rather than an approximation.
+  ["b* exactly zero above the pivot: the b* -> 0+ limit, by convention", 70.0, 0.0],
+  ["b* exactly zero below the pivot", 30.0, 0.0],
+  ["b* exactly zero AT the pivot: 0/0, so the convention is all there is", 50.0, 0.0],
 ];
-
-/** The registry's expression, spelled in TypeScript so the generator can produce the
- *  column ml/selftest.py asserts `ml/skin_indices.py:ita` against. It is NOT what the
- *  app computes and is never called by anything but the generator. */
-const registryIta = (lstar: number, bstar: number) =>
-  Math.abs(bstar) < 1e-6 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;
 
 /** Branches the face family cannot reach. Expected values come from `relativeRedness`. */
 const REDNESS_EDGE_INPUTS: Array<[string, [number, number, number], [number, number, number]]> = [
@@ -678,56 +691,66 @@ describe("cross-language index parity table", () => {
     expect(redChromaticity(5e-10, 3e-10, 2e-10)).toBe(0.5);
   });
 
-  it("records where the ita guard diverges, in both columns", () => {
-    // The seventh and last registry index to be value-checked, and it does not agree.
-    // Two of the three implementations use 0.01 and the registry's uses 1e-6, so this
-    // group is `divergent`: the app asserts `itaDegrees`, ml/selftest.py asserts
-    // `ml/skin_indices.py:ita`, and neither can move while the decision waits.
+  it("recomputes every ita row through the shipped function, exactly", () => {
+    // Cycle 19 pinned this group as a disagreement between three implementations; cycle
+    // 20 decided it, so what the case holds now is the agreement AND the shape of the
+    // one fallback left. `exact` rather than `divergent` is itself an assertion: if the
+    // guards part again, the row set stops matching in one language or the other.
     expect(itaRows.length, "ml/index-parity.json has no ita group").toBe(ITA_INPUTS.length);
-    expect(itaGroup.comparison).toBe("divergent");
+    expect(itaGroup.comparison).toBe("exact");
     expect(itaGroup.featureKey).toBe("toneIta");
     for (const row of itaRows) {
-      expect(itaDegrees(row.lstar, row.bstar), `${row.note}: itaDegrees(${row.lstar}, ${row.bstar})`).toBe(row.app);
+      expect(itaDegrees(row.lstar, row.bstar), `${row.note}: itaDegrees(${row.lstar}, ${row.bstar})`).toBe(row.value);
     }
     // The extraction that made this assertable has to keep pointing at both shipped
     // call sites, or the rows would pin a function nothing calls.
     const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
     expect(source.match(/const ita = itaDegrees\(lab\.l, lab\.b\);/g)?.length, "both tone sites must delegate").toBe(2);
     expect(source).toContain(
-      "return Math.abs(bstar) < 0.01 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;"
+      "return bstar === 0 ? (lstar > 50 ? 90 : -90) : (Math.atan((lstar - 50) / bstar) * 180) / Math.PI;"
     );
 
-    // Rows where they agree, so the divergence is located at the guard rather than
-    // being everywhere, and rows where they do not.
-    const agreeing = itaRows.filter((row) => row.app === row.python);
-    expect(agreeing.length, "the two guards must agree away from the window").toBeGreaterThanOrEqual(5);
-    const divergent = itaRows.filter((row) => row.app !== row.python);
-    expect(divergent.length).toBeGreaterThanOrEqual(3);
+    // The fallback fires on exactly the rows where b* is zero and on no others, which
+    // is the whole of the decision. A row set that took the fallback anywhere else
+    // would mean a window had reappeared.
+    const fellBack = itaRows.filter((row) => row.value === 90 || row.value === -90);
+    expect(new Set(fellBack.map((row) => row.bstar)), "only b* == 0 may reach the fallback").toEqual(new Set([0, 5e-324]));
+    // 5e-324 is there precisely because it does NOT take the guard: the quotient
+    // overflows to Infinity and Math.atan maps that to exactly pi/2, so the value is
+    // the limit rather than the convention. Both routes produce 90 and only one of
+    // them is a branch.
+    expect(itaDegrees(70, 5e-324)).toBe(90);
+    expect(Number.isFinite((70 - 50) / 5e-324)).toBe(false);
 
-    // The finding, named rather than left to a count. Inside the app's guard and
-    // outside the registry's, the ±90 fallback ignores the sign of b*, so the two
-    // land 180 degrees apart — opposite ends of the tone stratifier from one frame.
-    for (const note of [
-      "the same b* negative: +90 against -90, light against deep from one frame",
-      "b* small and negative below the pivot: the sign blindness, the other way",
-    ]) {
-      const row = itaRows.find((entry) => entry.note === note);
-      expect(row, note).toBeTruthy();
-      expect(Math.sign(row!.app), `${note}: the two columns must disagree on the SIGN`).not.toBe(Math.sign(row!.python));
-      expect(Math.abs(row!.app - row!.python), `${note}: ${row!.app} vs ${row!.python}`).toBeGreaterThan(179);
-      // Which is the consequence: 41 is the light cut and 10 the deep one
-      // (ITA_BIN_EDGES, ml/subgroups.py and lib/tone-bands.ts), so one column is above
-      // the first and the other below the second.
-      expect(Math.max(row!.app, row!.python)).toBeGreaterThan(41);
-      expect(Math.min(row!.app, row!.python)).toBeLessThan(10);
+    // The pair cycle 19 recorded, now reading the sign of b* instead of ignoring it.
+    // Before the decision both of these published +90.
+    const positive = itaRows.find((row) => row.note.startsWith("b* inside the old 0.01 window"))!;
+    const negative = itaRows.find((row) => row.note.startsWith("the same b* negative"))!;
+    expect(positive.value).toBeCloseTo(89.98567605542014, 12);
+    expect(negative.value).toBe(-positive.value);
+    // Which is the consequence that made it worth deciding: 41 is the light cut and 10
+    // the deep one (ITA_BIN_EDGES, ml/subgroups.py and lib/tone-bands.ts), and the old
+    // fallback put both of these above the first.
+    expect(positive.value).toBeGreaterThan(41);
+    expect(negative.value).toBeLessThan(10);
+
+    // Why the old window was reachable, in the table rather than only in the doc: a
+    // neutral grey has a small negative b*, so it sat inside |b*| < 0.01, and the old
+    // fallback answered with sign(L* - 50) where the limit is its negation.
+    for (const note of ["neutral 8-bit grey 128", "neutral 8-bit grey 60"]) {
+      const row = itaRows.find((entry) => entry.note.startsWith(note))!;
+      expect(row.bstar, `${note}: b* must be negative for the sign to matter`).toBeLessThan(0);
+      expect(Math.abs(row.bstar), `${note}: and inside the guard that used to catch it`).toBeLessThan(0.01);
+      expect(Math.sign(row.value), `${note}: the limit is -sign(L* - 50)`).toBe(-Math.sign(row.lstar - 50));
+      expect(Math.abs(row.value), `${note}: and it is still a near-vertical angle`).toBeGreaterThan(89);
     }
-    // And the same b* with the opposite sign is where the app itself is discontinuous,
-    // so this is not the registry alone being odd: both implementations carry the jump
-    // and disagree only about where it sits.
-    const positive = itaRows.find((row) => row.note.startsWith("b* inside the app's guard and outside"));
-    const negative = itaRows.find((row) => row.note.startsWith("the same b* negative"));
-    expect(positive!.app).toBe(negative!.app);
-    expect(Math.abs(positive!.python - negative!.python)).toBeGreaterThan(179);
+
+    // The second defect a guard on b* alone carried. What diverges is the ratio, so a
+    // window on b* published a vertical angle for a face a thousandth off the pivot.
+    const pivot = itaRows.find((row) => row.note.startsWith("L* a thousandth above the pivot"))!;
+    expect(pivot.value).toBeCloseTo(11.309932474020215, 10);
+    expect(toneBandFromIta(pivot.value)).toBe("tan");
+    expect(toneBandFromIta(90)).toBe("very_light");
   });
 
   it("recomputes every rgb_to_lab row through the shipped function, exactly", () => {
@@ -840,8 +863,7 @@ describe("cross-language index parity table", () => {
       note,
       lstar,
       bstar,
-      app: itaDegrees(lstar, bstar),
-      python: registryIta(lstar, bstar),
+      value: itaDegrees(lstar, bstar),
     }));
     const body = {
       generatedBy: "ARU_PRINT_INDEX_PARITY=1 npx vitest run tests/index-parity.test.ts",
@@ -910,28 +932,30 @@ describe("cross-language index parity table", () => {
             "the a* form runs 1.83 -> 3.96 (2.17x) where this one holds within 1.025x.",
           rows: [...rednessFaces, ...rednessEdges],
         },
-        // The seventh index, and the one that finishes the audit cycles 16-19 have
-        // been running. Divergent, like roughness_ratio and for a related reason: a
-        // guard in two places. ml/ita.py agrees with the app, so the registry entry is
-        // the odd one of three.
+        // The seventh index, and the one that finished the audit cycles 16-19 ran.
+        // Pinned `divergent` by cycle 19 with both columns; ONE column since cycle 20
+        // decided the guard, which is what a settled index looks like in this table.
         ita: {
           featureKey: "toneIta",
           pythonFunction: "ml/skin_indices.py :: ita",
-          comparison: "divergent",
-          appFormula: "itaDegrees = |b*| < 0.01 ? (L* > 50 ? 90 : -90) : atan((L* - 50) / b*) in degrees",
-          pythonFormula: "ita = |b*| < 1e-6 ? (L* > 50 ? 90 : -90) : degrees(atan((L* - 50) / b*))",
+          comparison: "exact",
+          formula: "ita = b* == 0 ? (L* > 50 ? 90 : -90) : atan((L* - 50) / b*) in degrees",
           covers:
             "formula only; the cheek L* and b* that reach it come from dominantTone's k-means centroid, " +
-            "which is not an exported field. ml/ita.py :: ita_from_lab carries the app's 0.01 guard, so " +
-            "two of the three implementations agree and the registry's is the outlier.",
-          divergence:
-            "The +-90 fallback ignores the SIGN of b*. Between the two guards it therefore does not " +
-            "merely round differently: at L* 70 and b* -0.005 the app reads +90 and the registry reads " +
-            "-89.99, which is `light` against `deep` on coarse_tone_band from one frame, and the pair " +
-            "below the L* pivot shows it firing the other way. Both implementations put a 180-degree " +
-            "discontinuity in the same place in the formula and disagree about where it sits, so " +
-            "neither column is pinned as correct. docs/tone-ita-verification.md section 3 is why the " +
-            "window is reachable: a cool cast takes b* through zero on a real fixture.",
+            "which is not an exported field. All three implementations are held to this column: " +
+            "lib/skin.ts :: itaDegrees by tests/index-parity.test.ts, ml/skin_indices.py :: ita exactly " +
+            "and ml/ita.py :: ita_from_lab within the math.degrees tolerance by ml/selftest.py.",
+          replaced:
+            "|b*| < 0.01 in lib/skin.ts and ml/ita.py against |b*| < 1e-6 in ml/skin_indices.py, which " +
+            "cycle 19 pinned as a divergence because the +-90 fallback ignores the SIGN of b* and the " +
+            "three therefore landed 180 degrees apart inside the window -- `light` against `deep` on " +
+            "coarse_tone_band from one frame. Decided on a measurement rather than on taste: a neutral " +
+            "grey is INSIDE the wider window, because ARU's four-decimal sRGB->XYZ matrix gives " +
+            "r = g = b a small negative b*, so 242 of the 256 8-bit greys satisfied |b*| < 0.01 against " +
+            "1 of 256 for 1e-6, and on all 241 non-black ones the fallback returned the sign the limit " +
+            "does not have. A guard on b* alone was wrong twice over: what diverges is the RATIO, so at " +
+            "L* 50.001 and b* 0.005 it published +90 (very_light) where the angle is 11.3 (tan). " +
+            "docs/ita-guard-decision.md.",
           rows: itas,
         },
         tone_evenness: {

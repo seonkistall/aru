@@ -778,95 +778,112 @@
     "ita": {
       "featureKey": "toneIta",
       "pythonFunction": "ml/skin_indices.py :: ita",
-      "comparison": "divergent",
-      "appFormula": "itaDegrees = |b*| < 0.01 ? (L* > 50 ? 90 : -90) : atan((L* - 50) / b*) in degrees",
-      "pythonFormula": "ita = |b*| < 1e-6 ? (L* > 50 ? 90 : -90) : degrees(atan((L* - 50) / b*))",
-      "covers": "formula only; the cheek L* and b* that reach it come from dominantTone's k-means centroid, which is not an exported field. ml/ita.py :: ita_from_lab carries the app's 0.01 guard, so two of the three implementations agree and the registry's is the outlier.",
-      "divergence": "The +-90 fallback ignores the SIGN of b*. Between the two guards it therefore does not merely round differently: at L* 70 and b* -0.005 the app reads +90 and the registry reads -89.99, which is `light` against `deep` on coarse_tone_band from one frame, and the pair below the L* pivot shows it firing the other way. Both implementations put a 180-degree discontinuity in the same place in the formula and disagree about where it sits, so neither column is pinned as correct. docs/tone-ita-verification.md section 3 is why the window is reachable: a cool cast takes b* through zero on a real fixture.",
+      "comparison": "exact",
+      "formula": "ita = b* == 0 ? (L* > 50 ? 90 : -90) : atan((L* - 50) / b*) in degrees",
+      "covers": "formula only; the cheek L* and b* that reach it come from dominantTone's k-means centroid, which is not an exported field. All three implementations are held to this column: lib/skin.ts :: itaDegrees by tests/index-parity.test.ts, ml/skin_indices.py :: ita exactly and ml/ita.py :: ita_from_lab within the math.degrees tolerance by ml/selftest.py.",
+      "replaced": "|b*| < 0.01 in lib/skin.ts and ml/ita.py against |b*| < 1e-6 in ml/skin_indices.py, which cycle 19 pinned as a divergence because the +-90 fallback ignores the SIGN of b* and the three therefore landed 180 degrees apart inside the window -- `light` against `deep` on coarse_tone_band from one frame. Decided on a measurement rather than on taste: a neutral grey is INSIDE the wider window, because ARU's four-decimal sRGB->XYZ matrix gives r = g = b a small negative b*, so 242 of the 256 8-bit greys satisfied |b*| < 0.01 against 1 of 256 for 1e-6, and on all 241 non-black ones the fallback returned the sign the limit does not have. A guard on b* alone was wrong twice over: what diverges is the RATIO, so at L* 50.001 and b* 0.005 it published +90 (very_light) where the angle is 11.3 (tan). docs/ita-guard-decision.md.",
       "rows": [
         {
           "note": "ordinary light skin",
           "lstar": 71.6,
           "bstar": 22,
-          "app": 44.474365393542385,
-          "python": 44.474365393542385
+          "value": 44.474365393542385
         },
         {
           "note": "ordinary deep skin",
           "lstar": 27.2,
           "bstar": 12,
-          "app": -62.24145939893998,
-          "python": -62.24145939893998
+          "value": -62.24145939893998
         },
         {
           "note": "L* exactly at the 50 pivot: the angle is 0 whatever b* is",
           "lstar": 50,
           "bstar": 20,
-          "app": 0,
-          "python": 0
+          "value": 0
         },
         {
-          "note": "a cool cast, b* still well clear of both guards",
+          "note": "a cool cast, b* well clear of zero",
           "lstar": 61.1,
           "bstar": -8,
-          "app": -54.21892613810745,
-          "python": -54.21892613810745
+          "value": -54.21892613810745
         },
         {
-          "note": "b* just outside the app's guard: the two agree",
-          "lstar": 70,
-          "bstar": 0.02,
-          "app": 89.94270423958551,
-          "python": 89.94270423958551
-        },
-        {
-          "note": "b* exactly at the app's 0.01 guard: < excludes it, so both compute",
+          "note": "b* at the old 0.01 guard, which the app used to stop computing at",
           "lstar": 70,
           "bstar": 0.01,
-          "app": 89.97135211263078,
-          "python": 89.97135211263078
+          "value": 89.97135211263078
         },
         {
-          "note": "b* inside the app's guard and outside the registry's: 90 against the real angle",
+          "note": "b* inside the old 0.01 window: the angle, not the 90 it used to publish",
           "lstar": 70,
           "bstar": 0.005,
-          "app": 90,
-          "python": 89.98567605542014
+          "value": 89.98567605542014
         },
         {
-          "note": "the same b* negative: +90 against -90, light against deep from one frame",
+          "note": "the same b* negative: -89.99, where the old guard read +90 from the same frame",
           "lstar": 70,
           "bstar": -0.005,
-          "app": 90,
-          "python": -89.98567605542014
+          "value": -89.98567605542014
         },
         {
-          "note": "b* exactly at the registry's 1e-6 guard: < excludes it, so it computes",
+          "note": "small negative b* below the pivot: +89.99, where the old guard read -90",
+          "lstar": 30,
+          "bstar": -0.005,
+          "value": 89.98567605542014
+        },
+        {
+          "note": "b* at the old registry guard of 1e-6",
           "lstar": 70,
           "bstar": 0.000001,
-          "app": 90,
-          "python": 89.99999713521103
+          "value": 89.99999713521103
         },
         {
-          "note": "b* inside both guards: the two agree, at the fallback",
+          "note": "b* a thousand times smaller again: still an ordinary quotient",
           "lstar": 70,
           "bstar": 1e-9,
-          "app": 90,
-          "python": 90
+          "value": 89.9999999971352
         },
         {
-          "note": "b* exactly zero, L* below the pivot",
+          "note": "b* denormal: the quotient overflows to Infinity and atan maps it to exactly 90",
+          "lstar": 70,
+          "bstar": 5e-324,
+          "value": 90
+        },
+        {
+          "note": "neutral 8-bit grey 128, above the pivot: b* is negative, so the limit is -90",
+          "lstar": 53.58501345216902,
+          "bstar": -0.006243566036268078,
+          "value": -89.90021526387883
+        },
+        {
+          "note": "neutral 8-bit grey 60, below the pivot: b* is negative, so the limit is +90",
+          "lstar": 25.316793542669572,
+          "bstar": -0.0037071794067755626,
+          "value": 89.99139472690973
+        },
+        {
+          "note": "L* a thousandth above the pivot inside the old window: 11.3, not the 90 it read",
+          "lstar": 50.001,
+          "bstar": 0.005,
+          "value": 11.309932473994534
+        },
+        {
+          "note": "b* exactly zero above the pivot: the b* -> 0+ limit, by convention",
+          "lstar": 70,
+          "bstar": 0,
+          "value": 90
+        },
+        {
+          "note": "b* exactly zero below the pivot",
           "lstar": 30,
           "bstar": 0,
-          "app": -90,
-          "python": -90
+          "value": -90
         },
         {
-          "note": "b* small and negative below the pivot: the sign blindness, the other way",
-          "lstar": 30,
-          "bstar": -0.005,
-          "app": -90,
-          "python": 89.98567605542014
+          "note": "b* exactly zero AT the pivot: 0/0, so the convention is all there is",
+          "lstar": 50,
+          "bstar": 0,
+          "value": -90
         }
       ]
     },

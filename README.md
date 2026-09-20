@@ -24,6 +24,9 @@ recommendation flow can also be completed with the questionnaire alone.
 - Tone / ITA, checked against outside references: [docs/tone-ita-verification.md](docs/tone-ita-verification.md)
   (what `toneIta` is worth, and what it is not — it is the only tone stratifier the
   fairness gate uses)
+- What ITA reads when b\* is near zero: [docs/ita-guard-decision.md](docs/ita-guard-decision.md)
+  (three implementations guarded the singularity in two places and the ±90 fallback
+  ignored the sign of b\*; the guard is now `b* == 0` in all three)
 - Capture-resolution invariance of the ROI indices:
   [docs/capture-resolution-invariance.md](docs/capture-resolution-invariance.md)
   (`blemishDensity` was resolution-dependent; the blemish *count* still is)

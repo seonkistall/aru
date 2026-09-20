@@ -573,80 +573,146 @@ class SkinIndices(unittest.TestCase):
         for index, channel in enumerate(plain["cheekMean"]):
             self.assertAlmostEqual(brighter["cheekMean"][index], channel * 2.5, places=9)
 
-    def test_ita_guard_disagrees_with_the_app_and_the_table_records_where(self):
-        """The seventh and last registry index to be value-checked. It does not agree.
+    def test_ita_guard_is_b_star_exactly_zero_in_all_three_implementations(self):
+        """The seventh registry index, pinned divergent by cycle 19 and decided by 20.
 
-        Three implementations exist. `lib/skin.ts:itaDegrees` and
-        `ml/ita.py:ita_from_lab` fall back to +-90 when `|b*| < 0.01`; the one in THIS
-        module, which is the registry's declaration of what the index is, uses 1e-6.
-        So this group is `divergent` like roughness_ratio: each row carries both
-        columns and each language asserts its own.
+        Three implementations guarded the b* ~ 0 singularity in two different places:
+        `lib/skin.ts:itaDegrees` and `ml/ita.py:ita_from_lab` at `|b*| < 0.01`, this
+        module at `1e-6`. Because the +-90 fallback ignores the SIGN of b* that was a
+        180-degree disagreement inside the window rather than a rounding one -- `light`
+        against `deep` on coarse_tone_band from one frame.
 
-        What makes it worth a case rather than a note is that the +-90 fallback ignores
-        the SIGN of b*. Between the two guards the disagreement is therefore not a
-        rounding difference but 180 degrees — `light` against `deep` on
-        coarse_tone_band, from one frame. Neither column is pinned as correct: both
-        implementations put the same discontinuity in the formula and disagree only
-        about where it sits.
+        What decided it is in the rows rather than in a paragraph: a NEUTRAL GREY sits
+        inside the wider window. This module's own four-decimal sRGB->XYZ matrix gives
+        r = g = b a small negative b*, so 242 of the 256 8-bit greys satisfied
+        `|b*| < 0.01` against 1 of 256 for `1e-6`, and on every non-black one the
+        fallback answered with sign(L* - 50) where the limit is its negation. So the
+        narrow guard held the correct column, and the narrowest correct guard is no
+        window at all. docs/ita-guard-decision.md.
         """
         table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
         group = table["indices"]["ita"]
-        self.assertEqual(group["comparison"], "divergent")
+        self.assertEqual(group["comparison"], "exact")
         self.assertEqual(group["featureKey"], skin_indices.FEATURE_KEY["ita"])
         self.assertEqual(group["pythonFunction"], "ml/skin_indices.py :: ita")
         rows = group["rows"]
-        self.assertGreaterEqual(len(rows), 12)
+        self.assertGreaterEqual(len(rows), 17)
 
         for row in rows:
             computed = skin_indices.ita(row["lstar"], row["bstar"])
             self.assertEqual(
-                computed, row["python"], f'{row["note"]}: ita({row["lstar"]}, {row["bstar"]})'
+                computed, row["value"], f'{row["note"]}: ita({row["lstar"]}, {row["bstar"]})'
             )
 
-        # A table where the two columns happened to agree everywhere would pin the
-        # arithmetic and hide the finding, and one where they disagreed everywhere
-        # would not locate it at the guard.
-        agreeing = [row for row in rows if row["app"] == row["python"]]
-        divergent = [row for row in rows if row["app"] != row["python"]]
-        self.assertGreaterEqual(len(agreeing), 5)
-        self.assertGreaterEqual(len(divergent), 3)
+        # The fallback fires where b* is zero and nowhere else. A denormal b* is in the
+        # table precisely because it does NOT take the branch: the quotient overflows to
+        # inf and math.atan maps that to pi/2 exactly, so 90 there is the limit rather
+        # than the convention, and the two routes must not be conflated.
+        branch = {row["bstar"] for row in rows if row["value"] in (90.0, -90.0)}
+        self.assertEqual(branch, {0.0, 5e-324}, "only b* == 0 may reach the fallback")
+        self.assertEqual(20.0 / 5e-324, float("inf"))
+        self.assertEqual(skin_indices.ita(70.0, 5e-324), 90.0)
 
-        # And the two rows that carry it: 180 degrees apart, one above the 41 light cut
-        # and the other below the 10 deep cut (ITA_BIN_EDGES).
-        for note in (
-            "the same b* negative: +90 against -90, light against deep from one frame",
-            "b* small and negative below the pivot: the sign blindness, the other way",
-        ):
-            row = next(entry for entry in rows if entry["note"] == note)
-            self.assertNotEqual(math.copysign(1, row["app"]), math.copysign(1, row["python"]), note)
-            self.assertGreater(abs(row["app"] - row["python"]), 179, note)
-            self.assertEqual(skin_indices.coarse_tone_band(max(row["app"], row["python"])), "light")
-            self.assertEqual(skin_indices.coarse_tone_band(min(row["app"], row["python"])), "deep")
+        # -0.0 cannot be a row: json.dumps(-0.0) is "-0.0" in Python but
+        # JSON.stringify(-0) is "0" in the generator, so the table cannot carry the
+        # distinction and the functions have to be asked directly. It matters because
+        # CPython raises ZeroDivisionError on BOTH zeros while V8 divides by -0 to
+        # -Infinity, so an unguarded -0 is where the two languages would part.
+        with self.assertRaises(ZeroDivisionError):
+            (70.0 - 50.0) / -0.0
+        self.assertEqual(skin_indices.ita(70.0, -0.0), 90.0)
+        self.assertEqual(skin_indices.ita(30.0, -0.0), -90.0)
+        self.assertEqual(ita.ita_from_lab(70.0, -0.0), 90.0)
 
-        # ml/ita.py is the third implementation and it sides with the app ON THE GUARD,
-        # which is what makes the registry's 1e-6 the outlier rather than a considered
-        # choice. Not bit-exact, and the gap is a different thing entirely: ml/ita.py
-        # converts with math.degrees (one rounding) where the app and this module use
-        # `* 180 / pi` (two). Over 1,186,709 (L*, b*) pairs the two associations are
-        # bit-identical on 74.5% and differ by at most 1.42e-14 degrees, which is 0.71
-        # units of `90 * 2**-52`; the bound below is the next integer up. It is twelve
-        # orders of magnitude under the 0.1 degree this index is rounded to before
-        # anything reads it, and fifteen under the 180 the guard costs.
+        # ml/ita.py is the third implementation and is held to the SAME column. Not bit
+        # exact, and the gap is a different thing entirely: it converts with
+        # math.degrees (one rounding) where the app and this module use `* 180 / pi`
+        # (two). Over 1,186,709 (L*, b*) pairs the two associations are bit-identical on
+        # 74.5% and differ by at most 1.42e-14 degrees, which is 0.71 units of
+        # `90 * 2**-52`; the bound below is the next integer up. It is twelve orders of
+        # magnitude under the 0.1 degree this index is rounded to before anything reads
+        # it, and fifteen under the 180 the old guard cost.
         tolerance = 2 * 90 * 2.0**-52
         for row in rows:
             offline = ita.ita_from_lab(row["lstar"], row["bstar"])
             self.assertLessEqual(
-                abs(offline - row["app"]),
+                abs(offline - row["value"]),
                 tolerance,
-                f'{row["note"]}: ml/ita.py must agree with the app, not with this module',
+                f'{row["note"]}: ml/ita.py must agree with the committed column',
             )
-            # The guard, which is the part that is not a rounding question: on every
-            # row where the app takes its fallback, ml/ita.py takes it too.
+            # The guard itself is not a rounding question: the branch has to fire in the
+            # same place in all three, which is what `exact` on this group now means. A
+            # b* of zero is the only row that may come back EXACTLY +-90 from a branch,
+            # and it is asserted as an identity rather than as a closeness so that a
+            # widened guard shows up here and not only in the value column.
+            if row["bstar"] == 0:
+                self.assertEqual(
+                    offline,
+                    90.0 if row["lstar"] > 50 else -90.0,
+                    f'{row["note"]}: ml/ita.py must take the convention, exactly',
+                )
+            else:
+                self.assertEqual(
+                    offline,
+                    math.degrees(math.atan((row["lstar"] - 50) / row["bstar"])),
+                    f'{row["note"]}: ml/ita.py must compute rather than fall back',
+                )
+
+    def test_the_neutral_axis_is_why_the_old_ita_window_was_reachable(self):
+        """The measurement that decided the guard, recomputed rather than quoted.
+
+        A window of `|b*| < 0.01` sounds like a knife edge, and on a skin-coloured region
+        it is one: the blue-channel gain has to be tuned to about 2e-4 to land in it, and
+        over the 8-bit cube the window is 0.015% of the volume
+        (docs/ita-guard-decision.md). What makes it reachable is not a tuned cast. It is
+        that the NEUTRAL AXIS sits inside it -- ARU's four-decimal sRGB->XYZ matrix sends
+        r = g = b to a small negative b*, monotone in level -- and 8-bit quantisation
+        puts real pixel values exactly on that axis. A grayscale source is the plain
+        case: PIL's convert("RGB") on an L-mode file gives r = g = b exactly, and
+        ml/ita.py is the path external dataset images take.
+        """
+        inside_old = [level for level in range(256) if abs(ita.rgb_to_lab(level, level, level)[2]) < 0.01]
+        inside_registry = [level for level in range(256) if abs(ita.rgb_to_lab(level, level, level)[2]) < 1e-6]
+        self.assertEqual(len(inside_old), 242, "greys inside the old lib/skin.ts and ml/ita.py guard")
+        self.assertEqual(inside_registry, [0], "only pure black has b* exactly 0 on the grey axis")
+        # Monotone and negative, which is the mechanism rather than a coincidence: it is
+        # the matrix's own truncation, so every grey leans the same way.
+        bstars = [ita.rgb_to_lab(level, level, level)[2] for level in range(1, 256)]
+        self.assertTrue(all(value < 0 for value in bstars), "a neutral grey has a NEGATIVE b*")
+        self.assertEqual(bstars, sorted(bstars, reverse=True), "and it grows in magnitude with level")
+
+        wrong_sign = 0
+        for level in inside_old:
+            lstar, _, bstar = ita.rgb_to_lab(level, level, level)
+            if bstar == 0:
+                continue
+            shipped = skin_indices.ita(lstar, bstar)
             self.assertEqual(
-                offline in (90.0, -90.0),
-                row["app"] in (90.0, -90.0),
-                f'{row["note"]}: ml/ita.py must take the fallback exactly where the app does',
+                math.copysign(1, shipped),
+                math.copysign(1, (lstar - 50.0) / bstar),
+                f"grey {level}: the shipped angle must carry the limit's sign",
             )
+            self.assertGreater(abs(shipped), 80.0, f"grey {level}: and still be a steep angle")
+            if math.copysign(1, 90.0 if lstar > 50 else -90.0) != math.copysign(1, shipped):
+                wrong_sign += 1
+        self.assertEqual(
+            wrong_sign, 241, "every non-black grey inside the old window had its sign inverted by the fallback"
+        )
+
+        # The least vertical grey on the whole axis, and it is on the axis rather than
+        # constructed: grey 119 lands at L* 50.034, so (L* - 50) is the same size as b*
+        # and the angle is 80.24 where the old fallback published exactly 90. Same band
+        # here, ten degrees apart in the recorded value -- which is the ratio effect
+        # showing up on real pixel values rather than in a designed row.
+        lstar119, _, bstar119 = ita.rgb_to_lab(119, 119, 119)
+        self.assertAlmostEqual(skin_indices.ita(lstar119, bstar119), -80.2381693436971, places=10)
+
+        # The second defect a guard on b* alone carried, and the reason sign-awareness
+        # alone would not have been enough: what diverges is the RATIO, not b*. So a
+        # window on b* published a vertical angle for a face a thousandth off the pivot.
+        self.assertAlmostEqual(skin_indices.ita(50.001, 0.005), 11.309932474020215, places=10)
+        self.assertEqual(skin_indices.coarse_tone_band(skin_indices.ita(50.001, 0.005)), "medium")
+        self.assertEqual(skin_indices.coarse_tone_band(90.0), "light")
 
     def test_roughness_ratio_disagrees_with_the_app_and_the_table_records_where(self):
         """The one parity group whose two columns are NOT expected to match.

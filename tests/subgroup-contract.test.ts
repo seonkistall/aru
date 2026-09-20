@@ -28,6 +28,52 @@ describe("tone band contract", () => {
     expect(parsed).toEqual(TONE_BAND_LOWER_BOUNDS.map(([name, bound]) => [name, bound]));
   });
 
+  /**
+   * The first-party tone band is DERIVED, never recorded — added 2026-09-20 with the
+   * `SampleMeta.toneBand` field it replaces.
+   *
+   * `resolve_tone_band` in ml/subgroups.py reads a recorded band BEFORE it reads
+   * `toneIta`, so a stored band outranks the current definition of the stratifier. That
+   * preference is right for an external manifest, where the band comes from a
+   * Fitzpatrick or Monk column and there is no ITA to recompute from. It is wrong for an
+   * ARU scan, which records the ITA itself: a band stored by one generation of
+   * `itaDegrees` would keep winning after the formula moved, which is precisely the
+   * drift docs/ita-guard-decision.md closed inside the formula. `SampleMeta` declared
+   * such a field and nothing ever wrote it; this holds it deleted.
+   */
+  it("records no tone band on the first-party path, so ITA is the only source", () => {
+    const labels = readFileSync(resolve(root, "lib/labels.ts"), "utf8");
+    const meta = labels.slice(labels.indexOf("export type SampleMeta"), labels.indexOf("export const SCALES"));
+    expect(meta.length, "SampleMeta not found in lib/labels.ts").toBeGreaterThan(200);
+    expect(meta, "SampleMeta must not declare a stored tone band").not.toMatch(/^\s*toneBand\?:/m);
+    // The age band next to it is a genuine recorded field and must stay, or this case
+    // would pass by having found the wrong block.
+    expect(meta).toMatch(/^\s*ageBand\?: AgeBand;/m);
+
+    // And nothing in the app writes one under either spelling, which is what makes the
+    // deletion a deletion rather than a rename.
+    for (const file of ["lib/labels.ts", "lib/skin.ts", "lib/pilot.ts", "lib/consent.ts"]) {
+      const source = readFileSync(resolve(root, file), "utf8");
+      expect(source, `${file} must not assign a tone band into a sample`).not.toMatch(
+        /(toneBand|tone_band)\s*[:=]\s*(toneBandFromIta|"|')/
+      );
+    }
+
+    // The Python side keeps both spellings on purpose — that is the external-manifest
+    // path — and `toneIta` has to stay in its ITA list or every consumer scan reads as
+    // tone-unknown, which blocks promotion for the wrong reason.
+    const python = readMl("subgroups.py");
+    const resolver = python.slice(python.indexOf("def resolve_tone_band"), python.indexOf("def resolve_age_band"));
+    expect(resolver).toContain('for key in ("tone_band", "toneBand")');
+    // Matched out of the key TUPLE and not out of the function text, which is how this
+    // was found: the docstring above that line names "toneIta" too, so a `toContain`
+    // stayed green with the key deleted from the code.
+    const itaKeys = resolver.match(/for key in \((\s*"(?:ita|toneIta|tone_ita|[a-zA-Z_]+)",?)+\s*\):[\s\S]{0,80}tone_band_from_ita/);
+    expect(itaKeys, "the ITA key tuple was not found in resolve_tone_band").toBeTruthy();
+    expect(itaKeys![0], 'resolve_tone_band must read the "toneIta" the app writes').toContain('"toneIta"');
+    expect(resolver.indexOf('for key in ("tone_band"')).toBeLessThan(resolver.indexOf(itaKeys![0]));
+  });
+
   it("uses the same age bands as the training pipeline", () => {
     const python = readMl("subgroups.py");
     const line = python.match(/AGE_BANDS:[^=]*=\s*\(([^)]*)\)/);
