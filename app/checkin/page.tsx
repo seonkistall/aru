@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCheckins, getProductUses, recordCheckin, type ProductUse } from "@/lib/store";
-import { SKUS } from "@/lib/skus";
+import { SKUS, type Sku } from "@/lib/skus";
+import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
+import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
+import { recordFunnelEvent } from "@/lib/funnel";
 import { ProductVisual } from "@/app/components/product-visual";
 import { Xiaohei } from "@/app/components/sketch";
 import { t } from "@/lib/i18n/core";
@@ -105,10 +108,18 @@ export default function Checkin() {
   );
 }
 
-function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; done: boolean; onDone: () => void }) {
+export function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; done: boolean; onDone: () => void }) {
   const [sat, setSat] = useState<number | null>(null);
   const [trouble, setTrouble] = useState<boolean | null>(null);
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
+  // Survives `done`, which the parent also sets from storage on mount. A user who
+  // said 할래요 in this session gets the buy link; one returning to an already-answered
+  // card does not, because the answer is all that was stored and re-offering a
+  // purchase to someone who may already have made it is worse than not offering.
+  const [justSaidRepurchase, setJustSaidRepurchase] = useState(false);
+  // `save` awaits before the button unmounts, so two taps inside that window both
+  // passed the `ready` guard and fired `repurchase_intent` twice.
+  const [saving, setSaving] = useState(false);
   const ready = sat !== null && trouble !== null && repurchase !== null;
 
   const sku = SKUS.find((s) => s.id === productUse.sku_id);
@@ -116,8 +127,17 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
   const due = round > 0;
 
   async function save() {
-    if (!ready || !due) return;
-    await recordCheckin({ sku_id: productUse.sku_id, week: round === 4 ? 4 : 2, satisfaction: sat, trouble, repurchase });
+    if (!ready || !due || saving) return;
+    setSaving(true);
+    const week = round === 4 ? 4 : 2;
+    await recordCheckin({ sku_id: productUse.sku_id, week, satisfaction: sat, trouble, repurchase });
+    if (repurchase) {
+      // The product asked "재구매 할래요?", the answer was yes, and until now that
+      // answer went into localStorage and nowhere else. Skincare is consumable, so
+      // this is the moment a retained user is worth more than a new one.
+      recordFunnelEvent("repurchase_intent", { week, satisfaction: sat });
+      setJustSaidRepurchase(true);
+    }
     onDone();
   }
 
@@ -137,18 +157,75 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
       {!due ? (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t("2주 정도 사용해 본 뒤에 다시 물어볼게요.")}</p>
       ) : done ? (
-        <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("남겨주신 피드백을 저장했어요.")}</p>
+        <CheckinDone showRepurchase={justSaidRepurchase} sku={sku} />
       ) : (
         <>
           <Row label="만족도"><Seg options={["별로", "보통", "좋음"]} value={sat} onPick={setSat} /></Row>
           <Row label="트러블"><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
           <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
-          <button onClick={save} disabled={!ready} style={saveBtn(ready)}>{t("기록하기")}</button>
+          <button onClick={save} disabled={!ready || saving} style={saveBtn(ready && !saving)}>{t("기록하기")}</button>
         </>
       )}
     </div>
   );
 }
+
+/**
+ * The answered state of a card, extracted so BOTH of its branches can be rendered by a
+ * test. A review of the first version of this change found that four of its six cases
+ * were `expect(source).toContain(...)` greps, and that all four still passed with the
+ * buy link deleted from the render tree — a grep cannot see whether a component is
+ * mounted. Taking `showRepurchase` as a prop rather than reading the parent's state
+ * leaves only the one-line wiring untested instead of the whole branch.
+ */
+export function CheckinDone({ showRepurchase, sku }: { showRepurchase: boolean; sku?: Sku }) {
+  return (
+    <>
+      <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("남겨주신 피드백을 저장했어요.")}</p>
+      {showRepurchase && sku ? <RepurchaseLink sku={sku} /> : null}
+    </>
+  );
+}
+
+/** The buy link a 재구매 = 할래요 answer earns. Same shape as the product card's:
+ *  `/api/out` for the redirect so the click is attributable, and the disclosure
+ *  above it, which `tests/commerce-disclosure.test.ts` requires of every surface
+ *  that renders one. */
+export function RepurchaseLink({ sku }: { sku: Sku }) {
+  const commerce = primaryCommerceLink(sku);
+  const placement = "checkin_repurchase";
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+      <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>{t("다 쓰기 전에 같은 제품을 다시 볼까요?")}</p>
+      <CommerceDisclosure style={{ marginTop: 6, marginBottom: 10 }} />
+      <a
+        href={commerceOutHref(sku.id, commerce.merchant, placement)}
+        target="_blank"
+        rel="noopener noreferrer nofollow sponsored"
+        onClick={() => recordFunnelEvent("commerce_clicked", { placement, merchant: commerce.merchant })}
+        style={repurchaseBtn}
+      >
+        {t("{merchant}에서 다시 보기", { merchant: t(commerce.label) })}
+      </a>
+    </div>
+  );
+}
+
+const repurchaseBtn: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: "var(--tap-min)",
+  width: "100%",
+  padding: "10px 14px",
+  borderRadius: 9,
+  border: "1.4px solid var(--plum)",
+  background: "var(--plum-soft)",
+  color: "var(--plum-press)",
+  fontSize: 14,
+  fontWeight: 700,
+  textDecoration: "none",
+};
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (

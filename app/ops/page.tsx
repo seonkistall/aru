@@ -72,6 +72,7 @@ const emptyFunnel: FunnelSummary = {
     reco_viewed: 0,
     care_viewed: 0,
     checkin_opened: 0,
+    repurchase_intent: 0,
     share_clicked: 0,
     commerce_clicked: 0,
     share_landed: 0,

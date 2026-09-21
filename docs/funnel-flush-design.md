@@ -96,13 +96,14 @@ kind may send and the test scans every call site in `app/` and `lib/` against it
 ### The audit the item asked for: does the coercion hold for everything `FUNNEL_ORDER` now carries?
 
 Yes. Enumerated from the tree rather than from memory — 15 call sites pass an explicit
-props object:
+props object (16 since 2026-09-21):
 
 | kind | prop keys | where |
 |---|---|---|
 | camera_blocked | `reason` | `app/scan/page.tsx` ×3 (`unsupported`, `busy`/`notfound`/`permission`, `attach`) |
 | camera_interrupted | `reason` | `app/scan/page.tsx` (`muted`/`ended`/`backgrounded`) |
-| commerce_clicked | `placement`, `merchant` | `app/care/page.tsx`, `app/components/product-card.tsx`, `app/report/page.tsx` |
+| commerce_clicked | `placement`, `merchant` | `app/care/page.tsx`, `app/components/product-card.tsx`, `app/report/page.tsx`, `app/checkin/page.tsx` |
+| repurchase_intent | `week`, `satisfaction` | `app/checkin/page.tsx` (added 2026-09-21 with the repurchase offer; `week` is 2\|4 and `satisfaction` 1-3, and `sku` is deliberately excluded) |
 | reco_viewed | `scanApplied`, `picks` | `app/report/page.tsx` |
 | scan_completed | `retake`, `source` | `app/scan/use-capture-analysis.ts` |
 | scan_started | `mode` | `app/scan/use-capture-analysis.ts` |

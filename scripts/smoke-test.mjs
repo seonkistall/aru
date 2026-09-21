@@ -31,6 +31,11 @@ const routeChecks = [
   { method: "GET", path: "/privacy", status: 200 },
   { method: "GET", path: "/offline.html", status: 200, bodyIncludes: "ARU needs a connection" },
   { method: "GET", path: "/sw.js", status: 200, bodyIncludes: "aru-mediapipe-v1" },
+  // The two metadata routes. `Disallow: /ops` is checked as content rather than as
+  // a 200, because a robots.txt that serves but forgets the research surfaces is
+  // the failure that matters.
+  { method: "GET", path: "/robots.txt", status: 200, bodyIncludes: "Disallow: /ops" },
+  { method: "GET", path: "/sitemap.xml", status: 200, bodyIncludes: "<loc>https://aru-beauty.vercel.app/scan</loc>" },
   { method: "GET", path: "/pilot", status: 404 },
   { method: "GET", path: "/ops", status: 404 },
   { method: "GET", path: "/eval", status: 404 },

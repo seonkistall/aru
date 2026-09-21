@@ -23,14 +23,26 @@ Be clear-eyed about what the loop can and cannot move:
 Target: **$10,000 / month**. ARU's only revenue surface today is the commerce
 out-link (`/api/out` → `lib/commerce.ts`).
 
+**Corrected 2026-09-21. The basket figure below was 1.54x too high for twenty cycles,
+in the direction that flattered the plan.** The table said ~₩30,000 and credited it to
+"catalogue price band in `lib/skus.ts`". The median of that band is **₩19,500** and the
+mean ₩19,514. Do not re-derive any of this by hand — run `node scripts/revenue-model.mjs`,
+which reads the price band out of `lib/skus.ts` at run time and labels every assumption.
+The full design is [`docs/revenue-design.md`](revenue-design.md).
+
 | Quantity | Value | Where it comes from |
 |---|---|---|
-| Typical Korean skincare basket | ~₩30,000 (~$22) | catalogue price band in `lib/skus.ts` |
-| Affiliate commission | **7%** on a recommended item, 3% on another item bought through the link | 올리브영 쇼핑 큐레이터 terms, 2026-09-15 |
-| Revenue per converted click | ~₩2,100 (~$1.5) at 7% | basket × commission |
-| Conversions needed per month | **~6,700** | $10,000 ÷ revenue per conversion |
-| Scan→purchase conversion (optimistic) | 2–5% | affiliate-content benchmark, unverified for this product |
-| Monthly scans implied | **~100,000–700,000** | conversions ÷ conversion rate |
+| Catalogue median price | **₩19,500** (mean ₩19,514, 22 SKUs) | MEASURED from `lib/skus.ts` by the model script |
+| Affiliate commission | **7%** on a recommended item, 3% on another item bought through the link | 올리브영 쇼핑 큐레이터 terms, 2026-09-15 — a search result, not a page this repo opened |
+| Revenue per converted click | **~₩1,365 (~$0.99)** at 7% of the median | basket × commission |
+| Conversions needed per month | **~10,110** | $10,000 ÷ revenue per conversion |
+| Scan→purchase conversion | 2–5% | ASSUMED. Never measured for this product, which has never had traffic |
+| New scans implied, one purchase per user | **~202,000–505,000** | conversions ÷ conversion rate |
+| New scans implied, with replenishment | **~67,000–168,000** | the same, over 3 purchases per retained user per year |
+
+A ₩30,000 basket is defensible if a user buys more than one item — the recommendation
+shows up to three — but that is an assumption about behaviour, and it was credited to
+the price band. The model now carries it as a separate, labelled row.
 
 Two things follow, and every cycle should act on them rather than re-deriving them:
 
@@ -91,11 +103,17 @@ While that table reads $0, prefer work in this order. It is not a rule against q
 work — a broken product converts nothing — but a tie-breaker when two items look equally
 worth doing.
 
-1. **Anything that makes an existing click earn money.** The affiliate plumbing is the
-   clearest case: `COMMERCE_LINK_OVERRIDES_JSON` is the designed insertion point and is
-   empty, and every link currently lands on a *search results page* rather than a product
-   page. That second one is a conversion leak the loop can fix today, without waiting for
-   the owner's programme applications.
+1. **Anything that makes an existing click earn money, or makes a user worth more than
+   one click.** The affiliate plumbing is the clearest case: `COMMERCE_LINK_OVERRIDES_JSON`
+   is the designed insertion point and is empty, and every link currently lands on a
+   *search results page* rather than a product page.
+   **Revised 2026-09-21 by the design in [`docs/revenue-design.md`](revenue-design.md):
+   the bigger lever was never the click, it was the second purchase.** Skincare is
+   consumable and the product had built an entire retention loop — product-use tracking,
+   2-week and 4-week check-ins, the reminder email — while `/checkin` asked
+   "재구매 할래요?" and wrote the answer to localStorage without offering one. Fixing that
+   moves the traffic $10,000/month needs from ~202,000-505,000 new scans a month to
+   ~67,000-168,000. Landed; the next increments are basket size and the reminder email.
 2. **Anything that makes the funnel observable.** Optimising what you cannot measure is
    guessing. `lib/funnel.ts` is still localStorage-only.
 3. **Anything that makes one user bring another.** The share loop is the only organic
@@ -264,6 +282,30 @@ partly done and stays here.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
+- [AI] **Per-language urls.** `LanguageProvider` switches language client-side, so
+  ARU's five languages share one url each. There is nothing for `hreflang` to point at
+  and the copy a Korean-language crawler reads is English — a Korean query cannot rank
+  an English page, and Korea is the market. This is the largest SEO defect in the
+  product and the reason `app/sitemap.ts` has three urls that are all effectively
+  English. It is a routing change (paths, metadata, the switcher, every internal
+  link), not a metadata one. Recorded 2026-09-21; see `docs/marketing-plan.md`.
+- [AI] **`/guide/[topic]`: the only unbuilt acquisition surface a code cycle can
+  build.** ARU has three indexable urls because every other page renders an empty
+  session state to a crawler. 6-8 server-rendered Korean pages, each answering one
+  query the product already has an opinion about and ending at `/scan`. Every one of
+  them must pass `efficacyClean()` — these are the pages most likely to drift into a
+  medical claim, and an indexed 의료기기법 problem is worse than an unfound one. Topic
+  list, cost, and kill criteria in `docs/marketing-plan.md`.
+- [AI] **Raise the basket.** `recommend()` returns up to three picks and the funnel
+  drives one click at one product. Two items at the catalogue median is ₩39,000 and
+  halves every traffic requirement in `scripts/revenue-model.mjs`; a full routine cuts
+  it by two thirds. Not mechanical: a bundle that exists to raise the basket rather
+  than to suit the skin is exactly what `efficacyClean()` cannot catch and a user can
+  feel. Gap 3 in `docs/revenue-design.md`.
+- [AI] The repurchase offer appears only to an answer given in the same session,
+  because a `Checkin` row stores the boolean and nothing else. Storing "offered, not
+  yet clicked" would let a returning user see it once without re-offering a purchase
+  to someone who already made one. Noted 2026-09-21 with the fix that created it.
 - [~] [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
   can see where users drop off. Without it every UX cycle is guessing. (2026-09-15 added
   `share_landed` and `viralActivation`, but they are still on-device.)
@@ -837,6 +879,52 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-21 (owner-requested, out of cycle) — **Design for $10,000/month, the gaps it
+  exposed, and the two that were fixed.** Branch `revenue/design-10k`. Not a numbered
+  cycle: the owner asked for the revenue architecture to be designed, its gaps found and
+  fixed, and the marketing done. `npm run smoke` green before and after.
+
+  **The model.** `scripts/revenue-model.mjs` — committed rather than written in prose,
+  because the number this file has carried since 2026-09-15 was never re-derived. It
+  reads the price band out of `lib/skus.ts` at run time and labels every input MEASURED
+  or ASSUMED. `docs/revenue-design.md` is the design; `docs/marketing-plan.md` the
+  acquisition half.
+
+  **What it found.** At the catalogue's own median (₩19,500, not the ₩30,000 this file
+  credited to it) a conversion is worth **$0.99**, so $10,000/month is **10,110
+  purchases** and — with one purchase per user, which is what shipped — **202,198 to
+  505,495 new scans a month**. The correction is not that ₩30,000 is wrong; a two-item
+  basket is ₩39,000. It is that a behavioural assumption was credited to a price band
+  that does not support it, which made it look measured.
+
+  **Gap 1, fixed.** `/checkin` asked 재구매 할래요?, and a user who tapped 할래요 got a
+  boolean in `localStorage` and a thank-you. The highest-intent moment in the product
+  earned nothing and was not counted. It now renders the buy link through `/api/out`
+  (`placement=checkin_repurchase`) under the disclosure, and fires `repurchase_intent`
+  carrying `week` and `satisfaction` and no sku. That is the whole difference between
+  the two architectures in the model: **202,198-505,495 new scans a month becomes
+  67,399-168,498**. Every piece it needed — product-use tracking, the 2- and 4-week
+  rounds, the reminder email — was already built; the loop had made a retention engine
+  and left the last link out.
+
+  **Gap 2, partly fixed.** No `robots.txt` and no sitemap existed. `app/robots.ts`,
+  `app/sitemap.ts`, `lib/site.ts`, `tests/seo-surface.test.ts`. The sitemap has three
+  urls and that is the finding rather than the fix: every other page renders an empty
+  session state to a crawler. The structural half — five languages at one url each, so
+  a Korean query meets English copy — is a routing change and is now a backlog item.
+
+  **What the adversarial review changed before this was committed**, which is the part
+  worth keeping: four of the six original tests were `expect(source).toContain(...)`
+  greps that **still passed with the buy link deleted from the render tree**. They are
+  now real renders — the answered branch was extracted to `CheckinDone` so both
+  directions can be rendered, and the mutation that fooled the greps now fails.
+  The review also caught a `1/12` ramp claim that is really `1/p`, a hardcoded "~2,700
+  subscribers" that is 2,816 when computed, `/survey` sitting in neither the allow nor
+  the disallow list (so crawlable and in no sitemap), a scan->purchase band being used
+  as a scan->buyer rate without saying so — which is where the whole 3x comes from —
+  and five claims stronger than their evidence, including "cannot reach $10,000/month"
+  in a document whose own table shows architecture A reaching it at 500,000 scans.
 
 - 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
   has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:

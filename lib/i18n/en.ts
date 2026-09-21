@@ -911,4 +911,6 @@ export const EN: Record<string, string> = {
   "기기 데이터 삭제는 이 서버 기록을 삭제하지 않습니다. 리마인더는 받은 이메일의 해지 링크로, 연구 데이터는 파일럿 운영자에게 참여자·세션 ID로 요청해 주세요.": "Deleting device data does not delete these server records. Use the unsubscribe link in a reminder email, or ask the pilot operator about research data using your participant and session IDs.",
   "이용 기록 전송": "Usage log transfer",
   "화면 이동과 버튼 누름 같은 이용 기록이 ARU 서버로 전송돼요. 사진, 직접 입력한 내용, 이름이나 연락처는 보내지 않고, 이 기기에서 만든 무작위 방문자·세션 번호만 함께 저장돼요.": "Usage records such as page views and button taps are sent to ARU's servers. No photos, no text you typed, and no name or contact details are sent — only the random visitor and session numbers this device generated are stored alongside them.",
+  "다 쓰기 전에 같은 제품을 다시 볼까요?": "Want to look at the same product again before you run out?",
+  "{merchant}에서 다시 보기": "See it again at {merchant}",
 };
