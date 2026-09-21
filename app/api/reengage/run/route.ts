@@ -44,14 +44,27 @@ export async function GET(request: Request) {
   weekLoop:
   for (const week of [2, 4] as const) {
     const column = week === 2 ? "week2_sent_at" : "week4_sent_at";
-    const { data, error } = await admin
+    let query = admin
       .from("reengage_contacts")
       .select(`email,locale,${column}`)
       .eq("consent", true)
       .is("revoked_at", null)
       .is(column, null)
-      .lte("consented_at", new Date(now - week * WEEK_MS).toISOString())
-      .limit(BATCH);
+      .lte("consented_at", new Date(now - week * WEEK_MS).toISOString());
+    if (week === 4) {
+      // The four-week mail follows the two-week one, two weeks behind it. Without this
+      // the two passes are independent: a contact who consented four weeks ago with
+      // neither column set matches BOTH queries, the week-2 pass sets only
+      // `week2_sent_at`, and the week-4 query — which never looked at that column —
+      // picks the same contact up minutes later. Both mails land in one delivery
+      // window, saying different things about the same routine. The first cron tick
+      // after the owner sets RESEND_API_KEY is exactly that run, for every contact
+      // who has been waiting since consent, so this is the default path and not a
+      // corner case. A NULL `week2_sent_at` also fails this comparison, so "week two
+      // has not gone out yet" holds week four back as well.
+      query = query.lte("week2_sent_at", new Date(now - 2 * WEEK_MS).toISOString());
+    }
+    const { data, error } = await query.limit(BATCH);
     if (error) {
       failed += 1;
       continue;

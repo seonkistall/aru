@@ -109,6 +109,7 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
   const [sat, setSat] = useState<number | null>(null);
   const [trouble, setTrouble] = useState<boolean | null>(null);
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   const ready = sat !== null && trouble !== null && repurchase !== null;
 
   const sku = SKUS.find((s) => s.id === productUse.sku_id);
@@ -117,7 +118,12 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
 
   async function save() {
     if (!ready || !due) return;
-    await recordCheckin({ sku_id: productUse.sku_id, week: round === 4 ? 4 : 2, satisfaction: sat, trouble, repurchase });
+    const saved = await recordCheckin({ sku_id: productUse.sku_id, week: round === 4 ? 4 : 2, satisfaction: sat, trouble, repurchase });
+    if (!saved) {
+      setSaveFailed(true);
+      return;
+    }
+    setSaveFailed(false);
     onDone();
   }
 
@@ -144,6 +150,11 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
           <Row label="트러블"><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
           <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
           <button onClick={save} disabled={!ready} style={saveBtn(ready)}>{t("기록하기")}</button>
+          {saveFailed && (
+            <p role="status" style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 7 }}>
+              {t("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.")}
+            </p>
+          )}
         </>
       )}
     </div>

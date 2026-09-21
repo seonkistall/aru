@@ -147,6 +147,10 @@ def score(
             "labelledRows": labelled,
             "scoredRows": scored,
             "skippedNoFeature": skipped,
+            # The matrix itself, not only the metrics read off it. ml/qwk_noise.py
+            # resamples it to put a band on the qwk gain, and a band computed from a
+            # second, re-derived matrix would not be a band on THIS comparison.
+            "confusion": matrix,
         }
         if scored:
             entry.update(ordinal_metrics.metrics_from_confusion({axis: matrix})[axis])
