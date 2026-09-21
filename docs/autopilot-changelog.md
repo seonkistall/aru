@@ -4299,3 +4299,98 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   false negative, and it looks exactly like a coverage gap.
 
   Rotation: 27 differing lines, all from the two items this cycle touched.
+
+- 2026-09-15 (2) — ML track: the qwk/pearson gate, **superseded before it merged.**
+  This branch built `promotionGate.subgroup.minQwk` / `minPearson` and an
+  `ordinal_quality_check`; cycle 2 on `autopilot/2026-09-15-1839` independently built
+  the same rule as `promotionGate.ordinal` and `subgroups.ordinal_check`, and merged
+  first (PR #70). Its version won on merge: it verified both scorers against
+  scikit-learn and SciPy and chose 0.4 from a measured table of predictors, where this
+  one cited a convention whose primary source is egress-blocked from the worker. This
+  branch's duplicate was deleted rather than reconciled — including two copies of
+  `min_qwk()`/`min_pearson()` in `model_contract.py`, where the later definition
+  silently shadowed the earlier and would have read a manifest key nothing else wrote.
+
+  **Two autopilot cycles built the same thing at the same time.** Nothing in the loop
+  tells a cycle what another is holding, so the only signal was a merge conflict. Worth
+  a guard before the next parallel cycle: a branch naming convention, or a claim line
+  in this file that a cycle writes before starting a backlog item.
+
+  What survived from it, because cycle 2 had none of it: the gate scored the LAST
+  epoch's confusion while promoting the BEST checkpoint, so every number it judged
+  belonged to weights nobody would ship — main still had that bug and this branch
+  fixes it.
+
+- 2026-09-15 (3) — ML track, continued at the owner's direction: the heuristic
+  baseline. The gate now scores the **shipped ROI heuristic** — the three threshold
+  pairs in `lib/skin.ts` — on the same validation rows, through the same
+  confusion-matrix code, and blocks a model that does not beat it per axis on qwk.
+
+  This closes the gap the last two cycles kept naming. Every rule in the gate asked
+  whether the model was good in absolute terms; none asked whether it should REPLACE
+  what already ships. A model could clear the subgroup gap, clear the qwk floor, and
+  still be worse than three numbers in a TypeScript file — and promoting it would have
+  made the product worse with every figure in the report looking healthy.
+
+  - `ml/ordinal_metrics.py` (new, stdlib-only): `quadratic_weighted_kappa`,
+    `pearson_from_confusion`, `metrics_from_confusion` moved out of the torch-importing
+    trainer, which re-exports them. Model and heuristic are now scored by the same code
+    — a baseline from a second implementation is not a baseline.
+  - `ml/heuristic_baseline.py` (new, stdlib-only): applies the shipped rule to the
+    recorded ROI features and reports `scoredRows` / `skippedNoFeature`, so "the
+    heuristic scored well" and "the heuristic was scored on nine rows" cannot look the
+    same.
+  - The manifest gains a `fallbackHeuristic` block mirroring `ATTR_THRESHOLDS` and
+    `ATTR_RAW_KEY`, so Python never re-declares them.
+    `tests/skin-index-contract.test.ts` fails on drift AND checks that applying the
+    manifest rule to real `analyzeSkin` output reproduces the levels the app reports,
+    cut-point edge convention included. Verified the guard bites: drifting one
+    threshold 0.05 -> 0.06 fails with
+    `AssertionError: oil: expected [ 0.05, 0.16 ] to deeply equal [ 0.06, 0.16 ]`.
+  - Fails closed. An axis the heuristic covers but whose feature is missing from the
+    data blocks, which is what correctly makes a pretrain on external data
+    unpromotable: it carries none of ARU's ROI features.
+  - **Both numbers must come from the same rows**, and this was a real flaw found in
+    this cycle's own draft. The model is scored on every labelled validation row; the
+    heuristic can only be scored on labelled rows that also carry its ROI feature. The
+    first version compared the two qwk values anyway, so a heuristic measured on a
+    strict subset would have been presented as a like-for-like baseline. The gate now
+    requires `scoredRows == n` per axis and blocks otherwise, naming the count. A test
+    pins it with a model "winning" by 0.80 on mismatched rows and still not passing.
+
+  A tie does not pass — `minQwkGainOverHeuristic` is 0.0 meaning strictly greater. It
+  is 0.0 rather than a positive margin because a margin should exceed validation noise
+  and nothing estimates that noise yet; inventing one would have been a fake number.
+  The bootstrap that would earn a real margin is now the top ML backlog item.
+
+  **Not exercised on real data.** There are zero consented crops, so this gate has
+  never produced a `metrics.json` containing a `heuristic_baseline` block, and
+  `score()` has never run against a real trainer `Row` — every case uses a fake row or
+  a hand-built dict. Verified by construction and by selftest, not by a training run.
+
+  Adversarial review then found two blocking defects in this cycle's own draft:
+
+  - **It failed OPEN when the manifest was missing.** `fallback_heuristic()` returned
+    `{}`, so `covered_axes()` went empty, the beats-the-heuristic rule skipped every
+    axis, and a model was promotable having never been compared to the rule it would
+    replace — in exactly the scenario `FALLBACK_GATE`'s own comment anticipates, a
+    checkout without the web app. Every other floor survived that; this one evaporated.
+    There is now a `FALLBACK_HEURISTIC` constant beside `FALLBACK_GATE`.
+  - **The cut-point guarantee was false.** The edge test defined its own copy of the
+    rule and asserted the copy against itself, and all three synthetic frames land in
+    level 0, so nothing exercised a cut point. Confirmed by flipping `<` to `<=` in
+    `lib/skin.ts`: all 13 tests stayed green. `levelFor` is now exported and the test
+    asserts the REAL function at `lo`, `lo-ε`, `hi`, `hi-ε` for every axis, plus a
+    41-point sweep and a check that `bucket()` and `levelFor()` share one expression.
+    Re-verified after the fix: flipping either copy, or both, fails 3 tests.
+
+  Also fixed from the same review: the gate scored the LAST epoch's confusion while
+  promoting the BEST checkpoint, so the qwk being compared belonged to weights nobody
+  was going to ship; the drift guard only looked one way, so an axis added to
+  `lib/skin.ts` and absent from the manifest was invisible; a malformed threshold list
+  was masked rather than rejected, and a short list makes the heuristic WEAKER and the
+  gate easier; labels were never range-checked; and four stale sentences still said the
+  pipeline records no heuristic baseline, one of them three lines above the section
+  describing it.
+
+  Verified: `python ml/selftest.py` 61 -> 81 tests, OK.

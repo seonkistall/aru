@@ -199,6 +199,73 @@ comparability with published skin-grading work, but it is never a promotion sign
 its own — the survey turned up a published case of 94% within-one-grade agreement at a
 correlation of 0.25.
 
+Since 2026-09-15 this is **enforced, not just advised**. The manifest's
+`promotionGate.subgroup` carries `minQwk` and `minPearson`, and `promotion_check`
+applies them per axis to the final validation confusion. Three properties worth
+knowing before you tune them:
+
+- **It fails closed, and the list is exhaustive.** An axis missing from the metrics,
+  one whose entry is not a dict, one with no validation samples, and one whose
+  `accuracy`, `qwk` or `pearson` is absent, non-numeric, NaN or infinite ALL block.
+  "Not measured" and "fine" must not look the same in a gate. `accuracy` is in that
+  list even though the floor does not apply to it, because it feeds the mean the
+  subgroup gap is measured against — defaulting it to 0 would drag that mean down and
+  make the gap test easier to pass.
+- **The floor is per axis, not on the mean.** A strong mean cannot hide one dead head.
+- **The floor is on the overall confusion, not per subgroup cell.** At
+  `minSamplesPerBand: 20` a per-cell QWK is mostly noise; the subgroup rule stays the
+  accuracy-gap test.
+
+The two rules are independent on purpose. The gap test alone *rewards* a degenerate
+predictor: a model that always answers level 0 is equally wrong in every cell, so it
+has almost no gap between its mean and its worst group. Fed the majority-class
+confusion, `metrics_from_confusion` returns accuracy 0.80, `within_one_grade` 0.95,
+`qwk` 0.0 and `pearson` 0.0 — which used to pass.
+
+### The model must beat the heuristic it would replace
+
+Since 2026-09-15 the gate also scores the **shipped ROI heuristic** — the three
+threshold pairs in `lib/skin.ts` — on the same validation rows, through the same
+confusion-matrix code (`ml/heuristic_baseline.py` -> `ml/ordinal_metrics.py`), and
+requires the model's `qwk` to exceed it per axis by `minQwkGainOverHeuristic`.
+
+Every other rule asks whether the model is good in absolute terms. None of them asked
+the question the gate exists for: *should this model REPLACE what already ships?* A
+model can clear the subgroup gap, clear the qwk floor, and still be worse than three
+numbers in a TypeScript file — and promoting it would make the product worse with every
+figure in the report looking healthy.
+
+- **0.0 means strictly greater.** A model that ties the rule it would replace has not
+  earned the swap. It is 0.0 rather than a positive margin on purpose: a margin should
+  exceed validation noise, and nothing here estimates that noise yet, so any specific
+  margin would be an invented number.
+- **Compared on `qwk`, not accuracy.** Accuracy is the metric a degenerate predictor
+  wins, and a threshold rule on skewed data is itself close to degenerate.
+- **An unscored heuristic blocks.** "We never scored it" must not read the same as "the
+  model won". This is what correctly makes a pretrain on external data — which carries
+  none of ARU's ROI features — unpromotable.
+- **Both numbers must come from the same rows.** The model is scored on every labelled
+  validation row; the heuristic can only be scored on labelled rows that also carry its
+  ROI feature. If even one row has a label and no feature, the two qwk values describe
+  different row sets and their difference is not attributable to the model, so the gate
+  blocks and names the count. `skippedNoFeature` in `metrics.json` says how many, and
+  the fix is the export, not the gate.
+- **Only the three axes with a scalar ROI feature are covered.** The rest have no
+  heuristic to beat and the gate asks nothing of them.
+
+The thresholds live in `lib/skin.ts` and are mirrored into the manifest's
+`fallbackHeuristic` block so Python can score the identical rule;
+`tests/skin-index-contract.test.ts` fails if the two drift, and also checks that
+applying the manifest rule to real `analyzeSkin` output reproduces the levels the app
+reports, cut-point edge convention included.
+
+`minQwk`/`minPearson` are currently **0.4, and provisional**. It is a floor against
+degeneracy, not a quality claim: 0.4 sits near the fair/moderate boundary of the
+commonly cited Landis & Koch kappa bands — whose *moderate* band actually begins at
+0.41, and which could not be checked against its primary source from the build network
+— and it has not been measured on ARU data. That bar is now enforced separately by
+`minQwkGainOverHeuristic` (above), which is the rule carrying the decision.
+
 For any axis supervised by an instrument reading rather than a human grade, report
 correlation against held-out instrument values before building the head at all. Asking
 whether an axis is recoverable from RGB has to come before choosing a dataset for it.
