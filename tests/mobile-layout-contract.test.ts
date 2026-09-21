@@ -48,6 +48,12 @@ describe("mobile journey layout contract", () => {
     expect(source("app/survey/page.tsx")).toContain('minHeight: "var(--tap-min)"');
     expect(source("app/scan/page.tsx")).toContain('minHeight: "var(--tap-min)"');
     expect(source("app/unsubscribe/unsubscribe-form.tsx")).toContain('minWidth: "var(--tap-min)"');
+    // /checkin was the one consumer page absent from this list, and that is how its seven
+    // answer pills shipped at 35.5px. Both dimensions, because the single-glyph answers
+    // (zh 好, ar لا) were narrow as well as short. The pixel measurement is in
+    // tests/e2e/checkin-touch-target.regression-1.spec.ts; this is the cheap half.
+    expect(source("app/checkin/page.tsx")).toContain('minHeight: "var(--tap-min)"');
+    expect(source("app/checkin/page.tsx")).toContain('minWidth: "var(--tap-min)"');
   });
 
   it("keeps the camera fallback action at least 44px high", () => {

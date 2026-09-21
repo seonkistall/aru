@@ -456,6 +456,83 @@ function certifiedRadius(grid: Grid, residual: Float64Array, counted: Uint8Array
   return radius;
 }
 
+/**
+ * The decision margin: how much daylight there is under each count the detector
+ * reports. A DIFFERENT number from the certified radius above, and the reason it is a
+ * different number is the whole point of this section.
+ *
+ * `certifiedRadius` answers "what error is provably safe" — it takes the minimum over
+ * EVERY valid cell, divides the two margins by the amplification factors 2 and 4, and
+ * combines a counted cell's two margins with `min` and an uncounted cell's with `max`.
+ * That makes it the right input to a question about an approximation, and the wrong one
+ * to a question about the count itself: it conflates "this cell is one ulp from being
+ * counted" with "this cell is one ulp from not being", and the division by 4 means a
+ * reader cannot tell a suppression tie from a floor graze.
+ *
+ * These margins are the raw distances, undivided, over the cells that actually SURVIVED:
+ *
+ * - `peakGap` — the smallest `residual[i] - max(residual over i's suppression window)`
+ *   across counted cells. Zero exactly when a counted cell is tied with a neighbour and
+ *   won on `j < i`, i.e. when scan order and not the image decided that count.
+ * - `floorGap` — the smallest `residual[i] - BLEMISH.minResidual` across counted cells.
+ * - `tiedPeaks` — how many counted cells have `peakGap === 0`. This is the census the
+ *   detector never took.
+ *
+ * `noiseScale` is a computed upper bound on the rounding error the detector's own
+ * arithmetic can put into one residual, not a recalled constant: the local background
+ * is four reads of a summed-area table over `gw*gh` cells, so an absolute error of
+ * `gw*gh * EPSILON * max|a*|` bounds it with room to spare. A margin is "real" when it
+ * is orders of magnitude above that, and "settled by scan order" when it is zero.
+ */
+type Margins = {
+  peakGap: number;
+  floorGap: number;
+  tiedPeaks: number;
+  counted: number;
+  noiseScale: number;
+};
+
+function marginsOf(grid: Grid, residual: Float64Array, counted: Uint8Array): Margins {
+  const { astar, valid, gw, gh } = grid;
+  let maxAbs = 0;
+  for (let i = 0; i < astar.length; i += 1) if (valid[i]) maxAbs = Math.max(maxAbs, Math.abs(astar[i]));
+  let peakGap = Infinity;
+  let floorGap = Infinity;
+  let tiedPeaks = 0;
+  let countedCells = 0;
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      if (!counted[i]) continue;
+      countedCells += 1;
+      floorGap = Math.min(floorGap, residual[i] - MIN_RESIDUAL);
+      let best = -Infinity;
+      for (let dy = -SUPPRESSION_RADIUS; dy <= SUPPRESSION_RADIUS; dy += 1) {
+        for (let dx = -SUPPRESSION_RADIUS; dx <= SUPPRESSION_RADIUS; dx += 1) {
+          const nx = gx + dx;
+          const ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || (dx === 0 && dy === 0)) continue;
+          if (!valid[ny * gw + nx]) continue;
+          best = Math.max(best, residual[ny * gw + nx]);
+        }
+      }
+      // A counted cell with no valid neighbour has nothing to be tied with, so it
+      // constrains nothing; it is left out rather than reported as an infinite margin.
+      if (best === -Infinity) continue;
+      const gap = residual[i] - best;
+      if (gap === 0) tiedPeaks += 1;
+      peakGap = Math.min(peakGap, gap);
+    }
+  }
+  return {
+    peakGap,
+    floorGap,
+    tiedPeaks,
+    counted: countedCells,
+    noiseScale: gw * gh * Number.EPSILON * maxAbs,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Perturbation shapes.
 // ---------------------------------------------------------------------------
@@ -854,3 +931,192 @@ describe("how far a* can move before blemishCount changes", () => {
   });
 });
 
+
+/**
+ * The guard the tolerance work above could not produce, and the reason it could not.
+ *
+ * Cycle 22 tried to assert that a realistic frame's `blemishCount` survives a 1e-16
+ * nudge of a*. It does, but SEVEN source-line breaks of lib/skin.ts were tried against
+ * that assertion and none made it fail, because a uniform nudge cancels in
+ * `astar[i] - background` — so it shipped as a printed measurement in
+ * tests/blemish-tie-break.test.ts instead of as a case. An assertion nothing can break
+ * is a green line that looks like coverage.
+ *
+ * The thing that is actually worth asserting is one level down: not "a small error does
+ * not move the count" but "the count does not rest on an exact float equality in the
+ * first place". That is measurable directly — `marginsOf` above measures it — and it
+ * separates the two fixture families in this repository, which is what makes it a guard
+ * rather than a second vacuous assertion:
+ *
+ * - on the realistic (noisy) frames, every counted cell wins its suppression window by
+ *   a margin orders of magnitude above the detector's own rounding error;
+ * - on the same face rendered with `noiseAmplitude = 0`, counted cells are tied with
+ *   their neighbours EXACTLY, and the count is settled by `j < i` — by scan order, not
+ *   by the image. That is the state tests/blemish-density-scale.test.ts's fixture is in,
+ *   and it is why a 1e-16 nudge moves that file's counts while no lookup table is at
+ *   fault.
+ *
+ * Both cases run the same predicate, so neither can pass by being weak. The threshold
+ * is a ratio against a computed bound on the detector's own arithmetic, never a
+ * hand-picked epsilon.
+ *
+ * Full tables: ARU_PRINT_BLEMISH_MARGIN=1 npx vitest run tests/blemish-perturbation-tolerance.test.ts
+ */
+
+/** How far above its own rounding error a margin has to sit to count as decided: four
+ *  orders of magnitude. Chosen from the measurement rather than for how large it sounds.
+ *  The tightest of the twelve realistic rows is noise 4 at 400x480, whose suppression
+ *  margin is 4.185e-5 a* against a noise bound of 3.435e-11 — a ratio of 1.218e6. So
+ *  1e6 would be "cleared" by 1.22x, which is a coin flip dressed as a guard, while 1e4
+ *  is cleared by 122x there and by 3.2e4 at the loosest row. Either way the noiseless
+ *  fixture fails it with a margin of exactly zero, which is the comparison that matters. */
+const MARGIN_RATIO = 1e4;
+
+/** The one predicate both cases below run. A count is DECIDED when no counted cell is
+ *  exactly tied with a neighbour and both margins clear the noise floor; otherwise it is
+ *  merely SETTLED, by whatever the tie-break happens to be. */
+function decided(m: Margins): boolean {
+  const floor = MARGIN_RATIO * m.noiseScale;
+  return m.tiedPeaks === 0 && m.peakGap > floor && m.floorGap > floor;
+}
+
+/** Per noise amplitude and frame size: counted cells, tied peaks, peak gap, floor gap.
+ *  Regenerate with ARU_PRINT_BLEMISH_MARGIN=1 and copy the PIN lines it prints. */
+const EXPECTED_MARGINS: Array<[number, number, number, number, number, number]> = [
+  [4, 400, 5, 0, 0.000041849469386789906, 3.460827870790577],
+  [4, 720, 5, 0, 0.0003395853425693929, 7.276109382418614],
+  [4, 1080, 5, 0, 0.001307281572222152, 7.320772058134777],
+  [4, 1440, 5, 0, 0.00016540516577912, 7.049801037391136],
+  [9, 400, 6, 0, 0.0007143695914120229, 3.517519811652717],
+  [9, 720, 5, 0, 0.001835022017402821, 7.294225448874842],
+  [9, 1080, 5, 0, 0.00932699880916843, 7.330567715043038],
+  [9, 1440, 5, 0, 0.0010501163247713663, 7.047981540269735],
+  [14, 400, 7, 0, 0.0005928388602498558, 3.5560116374332176],
+  [14, 720, 5, 0, 0.00814714894259616, 7.332984857467885],
+  [14, 1080, 5, 0, 0.01205125694099074, 7.352717149572985],
+  [14, 1440, 5, 0, 0.003769017102747796, 7.034719852509035],
+];
+const EXPECTED_FLAT_MARGINS: Array<[number, number, number, number, number]> = [
+  [400, 5, 1, 0, 3.4306109505675786],
+  [720, 5, 1, 0, 7.249357545068296],
+  [1080, 5, 3, 0, 7.303853934022106],
+  [1440, 5, 3, 0, 7.0571639873858985],
+];
+
+describe("the margin the blemish count is decided by", () => {
+  it("measures a real margin on every realistic frame, and says how real", async () => {
+    const mod = await load("skin-perturbable", (source) => source);
+    const rows: Array<{ noise: number; w: number; h: number; m: Margins }> = [];
+    for (const noise of NOISE_LEVELS) {
+      for (const [w, h] of COMMITTED) {
+        const grid = capture(mod, w, h, noise);
+        const { residual } = residualsOf(grid);
+        const counted = countedOf(grid, residual);
+        let replicated = 0;
+        for (let i = 0; i < counted.length; i += 1) replicated += counted[i];
+        // The margins are computed from the replica, so the replica has to be the
+        // detector or they are margins of something else.
+        expect(replicated, `noise ${noise} ${w}x${h}: the replica disagrees with detectBlemishes`).toBe(grid.count);
+        rows.push({ noise, w, h, m: marginsOf(grid, residual, counted) });
+      }
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_MARGIN) {
+      process.stdout.write("\ndecision margin on the realistic fixture family (a* units)\n");
+      process.stdout.write("noise  frame        counted  tied    peak gap   floor gap   noise scale   peak/noise\n");
+      for (const { noise, w, h, m } of rows) {
+        process.stdout.write(
+          `${String(noise).padStart(5)}  ${`${w}x${h}`.padEnd(12)}${String(m.counted).padStart(7)}` +
+          `${String(m.tiedPeaks).padStart(6)}  ${sig(m.peakGap).padStart(10)}  ${sig(m.floorGap).padStart(10)}` +
+          `  ${sig(m.noiseScale).padStart(11)}  ${sig(m.peakGap / m.noiseScale).padStart(10)}\n`
+        );
+      }
+      process.stdout.write(
+        `PIN EXPECTED_MARGINS ${JSON.stringify(rows.map(({ noise, w, m }) => [noise, w, m.counted, m.tiedPeaks, m.peakGap, m.floorGap]))}\n`
+      );
+    }
+
+    // The guard. Every realistic frame is decided by the image.
+    for (const { noise, w, h, m } of rows) {
+      expect(m.counted, `noise ${noise} ${w}x${h}: nothing was counted, so nothing is guarded`).toBeGreaterThan(0);
+      expect(
+        m.tiedPeaks,
+        `noise ${noise} ${w}x${h}: ${m.tiedPeaks} of ${m.counted} counts are settled by scan order, not by the image`
+      ).toBe(0);
+      expect(
+        m.peakGap / m.noiseScale,
+        `noise ${noise} ${w}x${h}: the smallest suppression margin is ${sig(m.peakGap)} a*, only ${sig(m.peakGap / m.noiseScale)}x the detector's own rounding error`
+      ).toBeGreaterThan(MARGIN_RATIO);
+      expect(
+        m.floorGap / m.noiseScale,
+        `noise ${noise} ${w}x${h}: the smallest floor margin is ${sig(m.floorGap)} a*, only ${sig(m.floorGap / m.noiseScale)}x the detector's own rounding error`
+      ).toBeGreaterThan(MARGIN_RATIO);
+      expect(decided(m), `noise ${noise} ${w}x${h}: the count is not decided by the image`).toBe(true);
+    }
+
+    const expected = EXPECTED_MARGINS;
+    expect(rows.length).toBe(expected.length);
+    rows.forEach((row, i) => {
+      const [noise, w, counted, tied, peakGap, floorGap] = expected[i];
+      expect(row.noise).toBe(noise);
+      expect(row.w).toBe(w);
+      expect(row.m.counted, `noise ${row.noise} ${row.w} counted`).toBe(counted);
+      expect(row.m.tiedPeaks, `noise ${row.noise} ${row.w} tied`).toBe(tied);
+      expect(row.m.peakGap, `noise ${row.noise} ${row.w} peak gap`).toBe(peakGap);
+      expect(row.m.floorGap, `noise ${row.noise} ${row.w} floor gap`).toBe(floorGap);
+    });
+  });
+
+  it("fails the same predicate on the noiseless fixture, which is what makes it a guard", async () => {
+    // The non-vacuity case. The predicate above passes on twelve realistic frames; here
+    // is the same face with the noise turned off, and it fails — at every frame size,
+    // on the tie census, with a suppression margin of EXACTLY zero. If a change ever
+    // makes this case pass, the predicate has stopped discriminating and the case above
+    // is worth nothing.
+    const mod = await load("skin-perturbable", (source) => source);
+    const rows: Array<{ w: number; h: number; m: Margins }> = [];
+    for (const [w, h] of COMMITTED) {
+      const grid = capture(mod, w, h, 0);
+      const { residual } = residualsOf(grid);
+      const counted = countedOf(grid, residual);
+      let replicated = 0;
+      for (let i = 0; i < counted.length; i += 1) replicated += counted[i];
+      expect(replicated, `flat ${w}x${h}: the replica disagrees with detectBlemishes`).toBe(grid.count);
+      rows.push({ w, h, m: marginsOf(grid, residual, counted) });
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_MARGIN) {
+      process.stdout.write("\ndecision margin with noiseAmplitude 0 (a* units)\n");
+      process.stdout.write("frame        counted  tied    peak gap   floor gap  decided\n");
+      for (const { w, h, m } of rows) {
+        process.stdout.write(
+          `${`${w}x${h}`.padEnd(12)}${String(m.counted).padStart(7)}${String(m.tiedPeaks).padStart(6)}` +
+          `  ${sig(m.peakGap).padStart(10)}  ${sig(m.floorGap).padStart(10)}  ${String(decided(m)).padStart(7)}\n`
+        );
+      }
+      process.stdout.write(
+        `PIN EXPECTED_FLAT_MARGINS ${JSON.stringify(rows.map(({ w, m }) => [w, m.counted, m.tiedPeaks, m.peakGap, m.floorGap]))}\n`
+      );
+    }
+
+    for (const { w, h, m } of rows) {
+      expect(m.counted, `flat ${w}x${h}: nothing was counted`).toBeGreaterThan(0);
+      // The finding, as an assertion: on a noiseless face the count is settled by the
+      // `j < i` tie-break rather than decided by the image.
+      expect(m.peakGap, `flat ${w}x${h}: the noiseless fixture has a suppression margin`).toBe(0);
+      expect(m.tiedPeaks, `flat ${w}x${h}: no counted cell is tied with a neighbour`).toBeGreaterThan(0);
+      expect(decided(m), `flat ${w}x${h}: the predicate accepted a scan-order count`).toBe(false);
+    }
+
+    const expected = EXPECTED_FLAT_MARGINS;
+    expect(rows.length).toBe(expected.length);
+    rows.forEach((row, i) => {
+      const [w, counted, tied, peakGap, floorGap] = expected[i];
+      expect(row.w).toBe(w);
+      expect(row.m.counted, `flat ${row.w} counted`).toBe(counted);
+      expect(row.m.tiedPeaks, `flat ${row.w} tied`).toBe(tied);
+      expect(row.m.peakGap, `flat ${row.w} peak gap`).toBe(peakGap);
+      expect(row.m.floorGap, `flat ${row.w} floor gap`).toBe(floorGap);
+    });
+  });
+});

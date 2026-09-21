@@ -374,8 +374,17 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
     (!useBudget || sku.price <= survey.budget) &&
     (!useAvoid || survey.avoid.every((avoid) => sku.freeOf.includes(avoid)));
 
-  const rank = (list: Sku[]) =>
-    [...list].sort((a, b) => scoreSku(b, survey, concerns) - scoreSku(a, survey, concerns) || a.price - b.price);
+  // Score in tenths, so the price tie-break can actually run. Every weight in
+  // `scoreSku` is a multiple of 0.1 and so is the exact score, but the additions are
+  // not, and the order they arrive in depends on which concerns each SKU declares: for
+  // a 지성 / 토너 survey with 모공·건조·트러블, tn1 and tn2 both score 14.1 and come out
+  // as 14.1 and 14.099999999999998. That difference of 1.78e-15 is truthy, so `||` never
+  // reached `a.price - b.price` and the 19,000원 toner outranked the equally-scored
+  // 18,000원 one. Rounding to tenths is exact rather than tolerant: the smallest real
+  // gap between two scores is 0.1, fourteen orders of magnitude above the error.
+  const tenths = (sku: Sku) => Math.round(scoreSku(sku, survey, concerns) * 10);
+
+  const rank = (list: Sku[]) => [...list].sort((a, b) => tenths(b) - tenths(a) || a.price - b.price);
 
   let relaxed: RecoResult["relaxed"] = null;
   let pool = inCategory.filter((sku) => passes(sku, true, true));

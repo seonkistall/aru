@@ -145,3 +145,64 @@ describe("recommend()", () => {
     }
   });
 });
+
+describe("an exact score tie is broken by price, not by accumulation order", () => {
+  // scoreSku adds 3, 2, 1.2, 1.5 and 2 — every weight a multiple of 0.1, so the exact
+  // score is one too. The ADDITIONS are not exact, and the order they arrive in depends
+  // on which concerns each SKU declares, so two SKUs that tie mathematically can end up
+  // as two different doubles. `rank` used the raw difference as its first sort key, and
+  // `||` treats 1.78e-15 as a real ordering, so the price key never ran.
+  const tieSurvey: Survey = {
+    type: "지성",
+    concerns: ["모공", "건조", "트러블"],
+    budget: 29000,
+    avoid: [],
+    category: "토너",
+  };
+
+  it("is a real hazard: the same score reached in two orders is two different doubles", () => {
+    // The two accumulation orders scoreSku actually walks for tn1 and tn2 under
+    // tieSurvey. Written out rather than described, so this documents the mechanism
+    // instead of asserting the platform has floats.
+    const asTn1 = 3 + 2 + 1.2 + 1.2 + 2 + 1.2 + 1.5 + 2;
+    const asTn2 = 3 + 2 + 1.2 + 2 + 1.2 + 1.2 + 1.5 + 2;
+    expect(asTn1).not.toBe(asTn2);
+    expect(asTn1 - asTn2).toBeCloseTo(1.7763568394002505e-15, 20);
+    // And why rounding to tenths is exact rather than merely tolerant.
+    expect(Math.round(asTn1 * 10)).toBe(Math.round(asTn2 * 10));
+  });
+
+  it("puts the cheaper of two equally-scored toners first", () => {
+    const { picks } = recommend(tieSurvey, null);
+    // Both score 14.1. Before the fix this read tn1 19,000원 ahead of tn2 18,000원.
+    expect(picks.map((pick) => `${pick.sku.id} ${pick.sku.price}`)).toEqual([
+      "tn2 18000",
+      "tn1 19000",
+      "tn3 16000",
+    ]);
+  });
+
+  it("carries the corrected pick into the routine hero, which is where a user sees it", () => {
+    // The top pick is attached to both hydrate steps (`attach`), so a tie decided by
+    // accumulation order does not stay inside the pick list.
+    const { picks, routine } = recommend(tieSurvey, null);
+    const amHydrate = routine.am.find((step) => step.id === "am-hydrate");
+    const pmHydrate = routine.pm.find((step) => step.id === "pm-hydrate");
+    expect(amHydrate?.heroSku?.id).toBe("tn2");
+    expect(pmHydrate?.heroSku?.id).toBe("tn2");
+    expect(amHydrate?.heroSku?.id).toBe(picks[0].sku.id);
+  });
+
+  it("does not reorder picks whose scores genuinely differ", () => {
+    // The fix must not become "cheapest first". baseSurvey's picks come out in the same
+    // order before and after it — verified against the pre-fix module, not assumed — and
+    // the 16,000원 tn3 stays last, behind the 19,000원 tn1 that outscores it.
+    const { picks } = recommend(baseSurvey, null);
+    expect(picks.length).toBeGreaterThan(1);
+    expect(picks.map((pick) => `${pick.sku.id} ${pick.sku.price}`)).toEqual([
+      "tn2 18000",
+      "tn1 19000",
+      "tn3 16000",
+    ]);
+  });
+});

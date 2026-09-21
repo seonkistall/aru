@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 ## What this is for
 
@@ -454,22 +454,13 @@ partly done and stays here.
   sees 256 integer channel values, so use an exact 256-entry table and the error is
   zero." False. `lib/skin.ts:1026-1028` averages a stride window (`r = sr / n`) and then
   applies a gray-world gain, so the input is continuous in [0,255].
-- [AI] **The blemish detector has no guard on its own decision margin, and the obvious
-  one is vacuous.** Cycle 22 tried to assert that a realistic (noisy) frame's
-  `blemishCount` does not move under a 1e-16 perturbation of a\*. It does not — measured
-  at five frame sizes — but **seven source-line breaks of `lib/skin.ts` were tried
-  against an assertion of it and none made it fail**, so it ships as a printed
-  measurement in `tests/blemish-tie-break.test.ts` and not as a case. The reason is
-  structural: a uniform nudge cancels in `astar[i] - background`, and what actually
-  moves the noiseless fixture is that the addition ROUNDS differently at different
-  magnitudes; quantising the residual absorbs the nudge, and quantising the channel
-  averages into plateaus leaves the ties exactly tied. A real guard has to measure the
-  margin between competing cells directly — the smallest gap between a surviving cell
-  and its suppression-window neighbours, and between a residual and
-  `BLEMISH.minResidual` — and assert it is far above float noise. That is what would
-  have caught the noiseless fixture's zero margin years before a lookup table did.
-  `tests/blemish-perturbation-tolerance.test.ts` already replicates the classifier and
-  is the natural home. Noted 2026-09-20.
+  **2026-09-21, cycle 23: the acceptance instrument now exists.** The decision margin of
+  every counted cell is measured and asserted in
+  `tests/blemish-perturbation-tolerance.test.ts` (§7 of
+  `docs/blemish-perturbation-tolerance.md`), so a candidate table can be checked against
+  the margin it has to clear rather than against the certified radius alone. What this item
+  waits on has not changed: the noiseless fixture's zero margin, which is now an assertion
+  rather than a finding, and the decision recorded in the item below it.
 - [AI] **ARU's sRGB breakpoint is the rounded one, in both languages, and moving it is a
   decision rather than a fix.** Found 2026-09-20 (cycle 22) while deciding where to
   align the transfer table, from `colour-science/colour`'s own source — another
@@ -487,6 +478,32 @@ partly done and stays here.
   must not be written down as verified against the standard, and if it moves it has to
   move in BOTH files in one change or it reintroduces exactly the split cycle 18 closed.
   Measurements and the fetch's sha256: `docs/srgb-transfer-table.md` §1.
+- [AI] **Should `detectBlemishes` notice that a frame is plateau-dominated, instead of
+  reporting a count settled by scan order?** Opened 2026-09-21 (cycle 23), from the guard
+  that measured it. On the noiseless fixture one to three of the five counted cells are
+  tied with a suppression neighbour EXACTLY, so `j < i` and not the image decides them,
+  and the decision margin is zero at every frame size. The tie-break itself is not the
+  problem and should not be "fixed": `scikit-image`'s `peak_local_max` resolves an
+  intensity tie the same way (stable argsort over row-major coordinates, then a greedy
+  `_ensure_spacing`), read from its own source at v0.24.0/v0.25.2. What that reference has
+  and ARU does not is a degenerate-input branch — `_get_peak_mask`'s
+  `# no peak for a trivial image`, which reports NO peaks when every masked cell is a local
+  maximum. It is not transplantable as it stands: it fires only on an entirely flat field,
+  and ARU's noiseless fixture is plateau-dominated but not flat, so a copy of it would not
+  fire there. The open question is what `blemishCount` should do on a degenerate frame —
+  report it, refuse it, or carry a confidence — and it is the same question as "should
+  `tests/blemish-density-scale.test.ts`'s cross-resolution agreement hold at all", which
+  the `srgbLinear` item above is still waiting on. Answering one answers both. Evidence and
+  the fetch sha256s: `docs/blemish-perturbation-tolerance.md` §7.5.
+- [AI] **The decision-margin guard is blind to the residual arithmetic, and the blind spot
+  is measured.** Noted 2026-09-21 (cycle 23). `tests/blemish-perturbation-tolerance.test.ts`
+  measures margins from a replica that recomputes the residual from the a\* grid it
+  captured, so a change `lib/skin.ts` makes downstream of a\* is invisible to it: quantising
+  `residual[i]` to 3 decimals at the source leaves both margin cases green. It is caught
+  today by three assertions in two other files, which is why nothing was patched — but the
+  guard's stated scope is the a\*-production path only, and a cycle that widens it should
+  add a second hook rather than assume the margins cover the whole classifier.
+  `docs/blemish-perturbation-tolerance.md` §7.4.
 - [AI] **`/scan` has no pixel-level mobile-layout coverage, and that is how the camera
   quality checklist clipped its labels in all five locales unnoticed.**
   `tests/e2e/mobile-layout.spec.ts` asserts overflow on `/` and `/studio` only, and
@@ -820,6 +837,194 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
+  has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:
+  five of six source-line breaks fail it, two of them on the new assertions, and the
+  noiseless fixture fails the same predicate with a suppression margin of EXACTLY zero at
+  every frame size. Also: `/checkin`'s seven answer pills shipped at 35.5px in all five
+  locales, and an exact score tie in `recommend` was being decided by floating-point
+  accumulation order, so the 19,000원 toner outranked the equally-scored 18,000원 one.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npm run smoke` green with the
+  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`, 44 E2E
+  passed), vitest **577 passed in 87 files**, `npx tsc --noEmit | grep -c "error TS"`
+  **13**, `npm run lint` **0 errors, 2 warnings** both in `lib/care.ts`,
+  `python3 ml/selftest.py` **Ran 85 tests ... OK**.
+
+  **ML: the margin guard the backlog item asked for, and proof that it bites.**
+  `certifiedRadius` already had the ingredient and had never been pointed at it — it takes
+  the minimum over EVERY cell, divides by the amplification factors 2 and 4, combines a
+  counted cell's margins with `min` and an uncounted cell's with `max`, was only ever
+  computed on the NOISY family, and was pinned to exact values rather than asserted to be
+  above anything. So it cannot tell a suppression tie from a floor graze. What landed
+  measures the raw, undivided distances over the cells that actually survived: the smallest
+  `residual[i] - max(residual over i's 5x5 window)`, the smallest
+  `residual[i] - BLEMISH.minResidual`, and a census of how many counted cells are tied
+  with a neighbour exactly. The noise floor it is compared against is computed, not
+  recalled: the background is four reads of a summed-area table over `gw*gh` cells, so
+  `gw*gh * EPSILON * max|a*|` bounds one residual's rounding error.
+
+  ```
+  decision margin on the realistic fixture family (a* units)
+  noise  frame        counted  tied    peak gap   floor gap   noise scale   peak/noise
+      4  400x480           5     0    4.185e-5    3.461e+0    3.435e-11    1.218e+6
+      4  720x960           5     0    3.396e-4    7.276e+0    3.803e-11    8.930e+6
+      4  1080x1440         5     0    1.307e-3    7.321e+0    3.794e-11    3.446e+7
+      4  1440x1920         5     0    1.654e-4    7.050e+0    3.796e-11    4.357e+6
+      9  400x480           6     0    7.144e-4    3.518e+0    3.447e-11    2.072e+7
+      9  720x960           5     0    1.835e-3    7.294e+0    3.813e-11    4.813e+7
+      9  1080x1440         5     0    9.327e-3    7.331e+0    3.798e-11    2.456e+8
+      9  1440x1920         5     0    1.050e-3    7.048e+0    3.801e-11    2.762e+7
+     14  400x480           7     0    5.928e-4    3.556e+0    3.463e-11    1.712e+7
+     14  720x960           5     0    8.147e-3    7.333e+0    3.820e-11    2.133e+8
+     14  1080x1440         5     0    1.205e-2    7.353e+0    3.799e-11    3.172e+8
+     14  1440x1920         5     0    3.769e-3    7.035e+0    3.808e-11    9.899e+7
+
+  decision margin with noiseAmplitude 0 (a* units)
+  frame        counted  tied    peak gap   floor gap  decided
+  400x480           5     1           0    3.431e+0    false
+  720x960           5     1           0    7.249e+0    false
+  1080x1440         5     3           0    7.304e+0    false
+  1440x1920         5     3           0    7.057e+0    false
+  ```
+
+  Both cases run the SAME predicate, which is what stops either passing by being weak.
+  Cycle 22's zero-margin finding is now a property asserted of the fixture rather than a
+  mystery about a lookup table: one to three of the noiseless frame's five counts are
+  settled by `j < i`, so `tests/blemish-density-scale.test.ts`'s cross-resolution
+  agreement holds for one bit pattern and a 1e-16 nudge moves it.
+
+  **`MARGIN_RATIO` is 1e4 and not 1e6, and the reason is in the table.** The tightest row
+  — noise 4 at 400x480 — clears its noise bound by **1.218e6**, so a threshold of 1e6
+  would be cleared by 1.22x, which is a coin flip dressed as a guard. At 1e4 that row
+  clears by 122x and the noiseless fixture still fails with a margin of exactly zero.
+
+  **Six source-line breaks of `lib/skin.ts`, never of the test; five fail.** `lib/skin.ts`
+  was restored byte-identical to HEAD afterwards and the restoration verified with
+  `git diff`. Rounding the stride-window channel averages to integers collapses the
+  smallest suppression margin from 4.185e-5 a\* to **1.066e-14** — four orders of magnitude
+  BELOW the detector's own rounding error — while leaving the count unchanged, so nothing
+  else in the suite notices: `noise 4 720x960: the smallest suppression margin is
+  1.066e-14 a*, only 2.798e-4x the detector's own rounding error: expected
+  0.0002798453713286699 to be greater than 10000`. Quantising those averages to steps of 8
+  fails the census: `noise 4 400x480: 3 of 67 counts are settled by scan order, not by the
+  image: expected 3 to be +0`. Those two are the ones that matter, because they fail on the
+  NEW assertions; rounding a\* to 3 decimals, point-sampling the stride window and
+  dithering a\* by cell index also fail, but on the pinned table, which any pin catches.
+
+  **The sixth did not bite, and that is a limitation rather than a footnote.** Quantising
+  `residual[i]` to 3 decimals inside `lib/skin.ts` leaves both margin cases green, because
+  the harness's replica recomputes the residual from the captured a\* grid — so anything
+  the detector does downstream of a\* is invisible to these margins. The guard covers the
+  a\*-production path, which is where a transfer-curve approximation lands and is what it
+  was built for, and not the residual arithmetic. That break IS caught, by three
+  assertions in two other files (`counts across resolutions: 2, 3, 2, 2, 2`,
+  `the shipped build is supposed to agree: 2, 3, 2, 2, 2`, and
+  `expected [ 413, 422, 415, 421 ] to deeply equal [ 415, 421, 414, 418 ]`), which is why
+  the blind spot is recorded rather than patched over with more harness.
+  `docs/blemish-perturbation-tolerance.md` §7.
+
+  **Research: ARU's plateau tie-break is the conventional one, and what it lacks is the
+  degenerate-input branch.** No paper and no standard is reachable from this network, so
+  nothing is attributed to one. What `raw.githubusercontent.com` served is
+  `scikit-image`'s own source: `skimage/feature/peak.py` at **v0.24.0**
+  (`http=200 bytes=14427`, sha256
+  `8d65f9a973a128a86c0d7a2689166bfa9768471e071c0fcb43f73e2863d3d85b`) and at **v0.25.2**
+  (`http=200 bytes=14478`, `_get_peak_mask` byte-identical), **v0.22.0**
+  (`http=200 bytes=14970`, the same function differing only in line wrapping), plus
+  `skimage/_shared/coord.py` at v0.24.0 (`http=200 bytes=4337`, sha256
+  `5d44f698e581e6f8b11c789489b91d638a363805964b8967c2e50bdcea65edbd`).
+  `api.github.com` now refuses anything outside this session's own repositories
+  (`http=403`), and `peak.py` on `main` is a 404 — the tagged paths are what resolve.
+
+  `peak_local_max` resolves an intensity tie the same way ARU does:
+  `np.argsort(-intensities, kind="stable")` over `np.nonzero(mask)` coordinates, then a
+  greedy `_ensure_spacing` walk, and a stable sort over row-major coordinates means the
+  earlier index wins among equals — that is `residual[j] === residual[i] && j < i`. So
+  `lib/skin.ts:1091` is not an idiosyncrasy to be fixed; cycle 22 found a property of the
+  input, not of the rule. What ARU has no equivalent of is `_get_peak_mask`'s
+  `# no peak for a trivial image` branch: when every cell in the mask is a local maximum it
+  reports **no peaks at all** rather than letting index order manufacture them. Said
+  plainly because the distance matters — that branch fires only when the field is ENTIRELY
+  flat, and ARU's noiseless fixture is plateau-dominated but not entirely flat, so a
+  transplanted copy would not fire there. It is not a drop-in fix and is not proposed as
+  one. It is on the backlog as the question it actually raises.
+
+  **UI/UX: `/checkin`'s answer controls were 35.5px high in every locale, and it was
+  measured in chromium rather than computed.** `pill()` (`app/checkin/page.tsx`) styles
+  every control a user answers with — 만족도 (3), 트러블 (2), 재구매 (2), seven buttons per
+  card — and set `fontSize: 13` with `padding: "7px 11px"` and no minimum size, against
+  `--tap-min: 44px`. `app/checkin/page.tsx` was the only consumer page in the tree with
+  **zero** references to `var(--tap-min)`, and `tests/mobile-layout-contract.test.ts`'s
+  file list is where it was missed. On the real page at 360x800: **32 of 45 controls under
+  the contract across five locales**, every pill 35.5px high, and the short answers narrow
+  as well as short — zh `好`/`有`/`否` at 37px, ar `لا` at **31.4px**, en `No` at 40.8px,
+  which is why the fix takes both dimensions (following `app/studio/page.tsx:163`) and not
+  just the height that `app/survey/page.tsx`'s twin chip carries. Re-measured the same way:
+  **0 of 45**, and `doc scrollWidth=360 clientWidth=360 overflowing=0` in all five, because
+  raising them widened the rows and that half was checked rather than assumed.
+
+  Why an earlier audit called `/checkin` clean: the pills only render once a confirmed
+  product use is at least two weeks old (`roundFor`), so against an empty
+  `gyeol_purchases` the page shows two empty-state links and the controls never render.
+  This is the landing page of every re-engagement mail
+  (`app/api/reengage/run/route.ts`), i.e. the primary controls of the one surface the
+  product has for bringing a user back. Five E2E cases, one per locale, seed the due use
+  the way `tests/e2e/checkin-schedule.regression-7.spec.ts` does and assert the pixels;
+  reverting `pill()` fails all five (`Error: ko: controls under 44px`, and the same in en,
+  ja, zh, ar — `5 failed, 1 passed`). `docs/checkin-tap-target-measurement.md`.
+
+  **Bug fix: an exact score tie in `recommend` was decided by floating-point accumulation
+  order, not by price.** `rank` (`lib/recommend.ts`) sorted on
+  `scoreSku(b) - scoreSku(a) || a.price - b.price`, i.e. "on an equal score the cheaper
+  product wins". Every weight in `scoreSku` is a multiple of 0.1 and so is the exact score,
+  but the ADDITIONS are not, and the order they arrive in depends on which concerns each
+  SKU declares. For a 지성 / 토너 survey with 모공·건조·트러블, tn1 and tn2 both score 14.1:
+
+  ```
+  tn1 order 3,2,1.2,1.2,2,1.2,1.5,2 => 14.1
+  tn2 order 3,2,1.2,2,1.2,1.2,1.5,2 => 14.099999999999998
+  diff = 1.7763568394002505e-15   equal = false   round(x*10): 141 vs 141
+  picks before: tn1 19000 | tn2 18000 | tn3 16000
+  picks after : tn2 18000 | tn1 19000 | tn3 16000
+  ```
+
+  That difference of 1.78e-15 is truthy, so `||` never reached the price key and the
+  19,000원 toner outranked the equally-scored 18,000원 one — on the top card of `/report`
+  and on the hero product attached to both hydrate steps. The fix compares the score in
+  tenths, which is exact rather than tolerant: the smallest real gap between two scores is
+  0.1, fourteen orders of magnitude above the error.
+
+  **Scope measured, not estimated**, by importing the pre-fix module alongside the fixed
+  one and comparing pick lists over every 3-concern survey (5 skin types x 8 categories x
+  56 concern triples): `surveys=2240 pick lists changed=19 of which the top pick got
+  cheaper=17`. One of the 19 changes the pick SET and not only the order
+  (지성 세럼 [모공/잡티/유분]: `sr1|sr2|sr4` became `sr1|sr2|sr3`), because `diversify`
+  reorders around the tone/brand filter once a different SKU leads. Four cases in
+  `tests/recommend.test.ts`, including a control that the fix did not become "cheapest
+  first" — `baseSurvey`'s order is identical before and after, verified against the pre-fix
+  module, and keeps the 19,000원 tn1 ahead of the 16,000원 tn3. Reverting the comparator
+  fails two of them (`expected [ 'tn1 19000', 'tn2 18000', …(1) ] to deeply equal
+  [ 'tn2 18000', 'tn1 19000', …(1) ]` and `expected 'tn1' to be 'tn2'`).
+
+  **One hunt candidate checked and rejected, since the standard here is to record them.**
+  A reported defect in `attach` — that it skips a routine hero when `picks.find(...)`
+  returns an already-`seen` SKU, leaving two routine cards product-free — does not hold.
+  Run against the real module with `category: "클렌저"`: `picks: cl3,cl1,cl2`,
+  `am: am-cleanse=cl3 am-hydrate=NONE am-protect=NONE`. `am-hydrate` is empty because no
+  pick is a 토너 (every pick is in `survey.category`), not because of the `seen` set, and
+  `attach(am)` and `attach(pm)` keep separate `seen` sets so `pm-cleanse=cl3` too. Nothing
+  was changed on the strength of it.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`, 49 E2E passed — the 44
+  baseline plus the five new locale cases), vitest **583 passed in 87 files** (+6 cases),
+  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npm run lint` **0 errors, 2
+  warnings** the same two in `lib/care.ts`, `python3 ml/selftest.py`
+  **Ran 85 tests ... OK**. `lib/skin.ts`, `public/models/visible-attributes/manifest.json`
+  and `fallbackVersion` are untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent
+  kind was invented and neither stream was merged.
 
 - 2026-09-20 (cycle 22) — Branch `autopilot/2026-09-20-1839`. **The `srgbLinear` lookup
   table was built, measured at 42.0-61.2% off `detectBlemishes`, and taken back out —
@@ -1273,251 +1478,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   response 403` for all three merchant hosts, and the proxy's own
   `recentRelayFailures` names each one with `gateway answered 403 to CONNECT`. Still
   blocked, same reason.
-
-- 2026-09-20 (cycle 20) — Branch `autopilot/2026-09-20-0639`. **A guard on `|b*|` could
-  not have been right, because what diverges is the ratio and not b\*. The window cycle
-  19 pinned as divergent is a 0.04-of-one-8-bit-unit shell around the neutral axis — and
-  the axis is inside it, so 242 of 256 greys read the wrong SIGN while a capture crossing
-  zero steps over the window without once landing in it. The guard is `b* == 0` in all
-  three implementations and the `ita` parity group is `exact`.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
-  grep -c "error TS"` **13**, vitest **558 passed in 85 files**, `python3
-  ml/selftest.py` **Ran 83 tests ... OK**, `npx eslint .` **2 warnings** both in
-  `lib/care.ts`.
-
-  **Item 1 of the brief: how reachable the window actually is. Two answers, pointing at
-  different fixes.** On a skin-coloured region it is a knife edge. The blue-channel gain
-  that takes each committed fixture through `b* = 0`, and the width of the interval
-  around it where `|b*| < 0.01`, by bisection on the shipped `rgbToLab`:
-
-  ```
-  fixture              b* at gain 1   crossing gain   |b*|<0.01 window
-  synthetic-face cheek       10.7383        1.136741           2.561e-4
-  swatch-1                    8.2152        1.079614           1.945e-4
-  swatch-3                   17.4931        1.235578           2.714e-4
-  swatch-6                   14.8922        1.573947           7.784e-4
-  ```
-
-  Over the 8-bit cube uniformly at n = **2,000,000**, `|b*| < 0.01` holds on **300
-  triples (0.0150%)** and `|b*| < 1e-6` on **0**. In 8-bit units the window is a shell
-  **0.031 to 0.043** of one level thick. And the shipped path confirms it: **121 blue
-  gains from 1.000 to 1.600 in 0.005 steps** through `analyzeSkin` on the committed
-  synthetic face step **88.5 → 89.6 → −89.2 → −88.4** across the crossing, the largest
-  `|toneIta|` in the whole sweep is **89.6**, and **not one of the 121 captures produced
-  a reading the old guard would have clamped**.
-
-  **Which corrects cycle 19's own reachability argument**, and that correction is in
-  `docs/tone-ita-verification.md` and `docs/redness-formula-decision.md` rather than only
-  here. It read §3's cool cast — ITA 61.8 to −87.6 on a real fixture — as evidence that a
-  capture reaches the window. It is evidence that a capture **crosses** it. Passing
-  through a 2.6e-4-wide interval is not landing in it.
-
-  **What made it reachable is the neutral axis, and nobody was looking there.** ARU
-  carries the sRGB→XYZ matrix to four decimals, so for `r = g = b` the z row sums to
-  `1.089 / 1.08883 = 1.00016` of the y row and `b* = 200 * (f(y) − f(z))` comes out small
-  and NEGATIVE, growing with level. So a grey does not approach the window, it sits
-  inside it, and 8-bit quantisation puts real pixel values exactly on the axis:
-
-  ```
-  greys inside |b*|<0.01: 242/256, inside |b*|<1e-6: 1/256
-
-  grey       L*             b*     shipped ITA   rejected wide   true limit
-    32  12.25003   -0.002534755     89.996153           -90.0         90.0
-    96  40.73055   -0.005090190     89.968537           -90.0         90.0
-   119  50.03444   -0.005924988    -80.238169            90.0        -90.0
-   128  53.58501   -0.006243566    -89.900215            90.0        -90.0
-   240  94.79625   -0.009941274    -89.987285            90.0        -90.0
-  ```
-
-  On **all 241 non-black greys inside the old window the ±90 fallback returned the sign
-  the limit does not have** — it answers `sign(L* − 50)` where the limit is
-  `sign((L* − 50) / b*)`, and b\* is negative there, so the two are opposites everywhere.
-  **The registry's narrower guard held the correct column**, which settles cycle 19's
-  "neither is obviously the right one" on a measurement. The path is `ml/ita.py` rather
-  than the browser: `tone_from_image_path` is called from `ml/external_manifest.py:374`
-  and `ml/prepare_crop_dataset.py:48`, both through PIL's `convert("RGB")`, and on an
-  L-mode file that yields `r = g = b` exactly. Which datasets ship greyscale was NOT
-  audited and the doc says so.
-
-  **Item 2: the decision, and the two options that were refused on measurement rather
-  than on taste.** *Sign-awareness alone* leaves a second defect in the same guard: a
-  window on b\* asserts a vertical angle however small `|L* − 50|` is, so at L\* 50.001
-  and b\* 0.005 it published **90** (`very_light`) where the angle is **11.31** (`tan`) —
-  and a sign-aware ±90 publishes 90 there too. Not a constructed input either: grey 119
-  lands at L\* **50.03444** on the real axis, angle **−80.238169** against the rejected
-  90. Pinned as a break, which fails 4 assertions including `expected 90 to be close to
-  11.309932474020215, received difference is 78.69006752597979`. *An "undetermined"
-  band* — the option cycle 19 hinted at — is refused because the condition it would fire
-  on does not exist: the angle is **well conditioned** for small b\* whenever
-  `|L* − 50|` is not also small (every grey above reads within 0.04° of vertical bar 119),
-  and the one genuinely ill-conditioned input is `0/0`, an achromatic mid-grey, which is
-  not a face and which the scan already refuses on `n >= 40` / `meanL > 1` / ROI quality.
-  *Dropping the guard entirely* is unsafe in Python, and the reason is asymmetric between
-  the languages rather than a matter of style:
-
-  ```
-  20.0/0.0     -> ZeroDivisionError: float division by zero
-  20.0/-0.0    -> ZeroDivisionError: float division by zero
-  0.0/0.0      -> ZeroDivisionError: float division by zero
-  20.0/1e-320  = inf
-  20.0/5e-324  = inf
-  math.atan(inf) = 1.5707963267948966 -> degrees 90.0
-  ```
-
-  V8 divides `+0` to `Infinity`, `-0` to `-Infinity` and `0/0` to `NaN`; CPython raises
-  on all three. Denormals are fine in both. So **`b* == 0` is the only input that needs a
-  branch, and it needs one in both or they part company on `-0`** — which is why the
-  shipped guard is `bstar === 0` rather than `Math.abs(bstar) < eps`, and why `-0` is a
-  case in the test and not a row in the table (`JSON.stringify(-0)` is `"0"`). At
-  `b* == 0` the value is a convention and is documented as one; `L* > 50 ? 90 : -90` is
-  kept because a number matters more than which number — `toneBandFromIta` maps a NaN to
-  `"unknown"` and a tone-unknown row blocks promotion.
-
-  **Item 3: what it costs downstream. Nothing, and that is only true because the third
-  option was refused.** `ml/subgroups.py`, `coarse_tone_band`, `resolve_tone_band` and
-  `promotion_check` are untouched. Had `coarse_tone_band` gained an "undetermined" state,
-  `aggregate_by_cell`'s per-cell arithmetic and `worst_group`'s `min_n` floor would both
-  have needed a meaning for a sample with no band and the gate a rule for whether such a
-  sample blocks, is skipped, or folds into `unknown`.
-
-  **`fallbackVersion` is not bumped, and the justification is the byte-identity rather
-  than an assertion.** Twenty readings — five capture conditions (neutral wall, warm wood
-  wall, warm cast, cool cast, and a strong `[0.8, 1.0, 1.3]` cool cast) at each of the
-  four frame sizes — were run through `analyzeSkin` on this branch and on main
-  `eb527e9`, printing every field of `SkinRawFeatures` plus all three levels and all
-  three confidences: **all 20 rows byte-for-byte identical**, as is the 121-step sweep.
-  A bump would therefore partition samples carrying identical values, and it would do
-  real damage rather than none — `coverage_warnings` is where a mixed-generation run is
-  meant to surface, so a spurious boundary would make every run spanning today report a
-  mix that does not exist. `oil`, `redness` and `pores` did not move: all three levels
-  and all three confidences are in that identical comparison. `ATTR_THRESHOLDS`,
-  `inputSchemaVersion` and `public/models/visible-attributes/manifest.json` untouched —
-  guardrail 8's `status` and `promotionGate` byte-identical. `NEXT_PUBLIC_FUNNEL_FLUSH`
-  untouched. No consent kind or flow invented.
-
-  **Second item, and it is outside "Now" on purpose.** Everything left in "Now" that the
-  loop can do alone is blocked — the deep-link needs an allowlisted host, the blemish
-  constants and `roughness_ratio` need faces, the funnel flush needs the PIPA answer, the
-  cost item needs a phone — and the brief excluded the rest. So the pick is the item from
-  "Next" that makes this cycle's decision actually binding: **`SampleMeta.toneBand` was
-  declared, documented as "derived on-device from the ITA already measured during the
-  scan", and written by nothing.** Deleted. `resolve_tone_band` reads a recorded band
-  BEFORE `toneIta`, so a band stored by one generation of `itaDegrees` would keep
-  outranking the current definition of the stratifier — the same drift, one level up from
-  the formula. That preference order is right for an external manifest, where the band
-  comes from a Fitzpatrick or Monk column and there is no ITA to recompute from, and it
-  stays.
-
-  **Eight new cases and two rewritten, and thirteen breaks.** New: six in
-  `tests/ita-guard-decision.test.ts`, one in `tests/subgroup-contract.test.ts`, one in
-  `ml/selftest.py` — which is the +7 vitest and +1 Python in the counts below. Rewritten
-  rather than added, because cycle 19's versions asserted the divergence this cycle
-  removed: the `ita` case in `tests/index-parity.test.ts` and the `ita` case in
-  `ml/selftest.py`. Every break alters the SOURCE line the case protects, never the test,
-  and is reverted from a file copy:
-
-  ```
-  app guard bstar === 0 -> |b*| < 0.01   4 fail; itaDegrees(70, 0.005): expected 90 to
-    (the rejected wide guard back)       be 89.98567605542014; grey 1: the shipped angle
-                                         carries the limit's sign: expected -1 to be 1
-  app guard made SIGN-AWARE at 0.01     4 fail; expected 90 to be close to
-    instead of narrowed                  11.309932474020215, received difference is
-                                         78.69006752597979
-  app fallback pivot > 50 -> >= 50      2 fail; itaDegrees(50, 0): expected 90 to be -90
-  app rgbToLab z 1.08883 -> 1.089       4 fail; 8-bit greys inside the rejected wide
-                                         guard: expected 256 to be 242
-  python registry guard -> 1e-6         1 fail; 90.0 != 89.9999999971352 : b* a thousand
-                                         times smaller again: ita(70, 1e-09)
-  python registry guard -> 0.01         2 fail; 90.0 != 89.98567605542014; grey 1: the
-                                         shipped angle must carry the limit's sign
-  python registry pivot > 50 -> >= 50   1 fail; 90.0 != -90 : b* exactly zero AT the
-                                         pivot: ita(50, 0)
-  ml/ita.py guard -> 0.01               1 fail; 0.014323944579857084 not <=
-                                         3.9968028886505635e-14 : ml/ita.py must agree
-                                         with the committed column
-  python registry guard REMOVED         1 error; ZeroDivisionError: float division by
-                                         zero
-  parity table ita exact -> divergent   both languages; 'divergent' != 'exact'
-  SampleMeta declares toneBand again    1 fail; SampleMeta must not declare a stored
-                                         tone band
-  resolve_tone_band drops toneIta       1 fail; resolve_tone_band must read the
-    from its ITA key TUPLE               "toneIta" the app writes
-  resolve_tone_band reads toneIta       1 fail; expected 647 to be less than 126
-    BEFORE a recorded band
-  ```
-
-  **The twelfth is the one that earned its place, and it did not fail the first time.**
-  Deleting `"toneIta"` from `resolve_tone_band`'s key tuple left
-  `tests/subgroup-contract.test.ts` **green**, because the docstring immediately above
-  that line also contains the string `"toneIta"` and the assertion was a `toContain` over
-  the whole function. It now matches the key TUPLE. Same failure mode as cycle 19's
-  redness epsilon and cycle 18's copied `minResidual`: an assertion that goes on passing
-  after the thing it measures has moved, found only because the guardrail requires
-  breaking every new case.
-
-  **Rotation, per step 8.** "Recent cycles" holds cycles 20, 19 and 18; cycle 17's
-  **243-line** entry moved to `docs/autopilot-changelog.md` and is present there exactly
-  once, byte-identical, as the tail of the file. Two items ticked `[x]` and moved under
-  the headings they were filed beneath: the `ita` guard item to "Closed backlog items ->
-  Now" and `SampleMeta.toneBand` to "-> Next", each body rewritten as its outcome.
-  `wc -l`: `docs/AUTOPILOT.md` **1362 -> 1297**, `docs/autopilot-changelog.md`
-  **3299 -> 3591**. `comm -23` against a sorted snapshot of the pre-change pair reports
-  **27 differing lines**, every one accounted for — **22** from the `ita` item's old body
-  (its 4-line table included) and **5** from the `toneBand` item's, and **0** from
-  anywhere else. Nothing from the moved entry appears in that list.
-
-  **Verification before the push**, all four re-run on the final tree: vitest **565
-  passed in 86 files** (558 + 7), `python3 ml/selftest.py` **Ran 84 tests ... OK**
-  (83 + 1), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .`
-  **2 warnings** both in `lib/care.ts` unchanged, `npm run smoke` green —
-  `Smoke test passed.`, with its own vitest 565, `ml/selftest.py` 84, and **44 mobile
-  E2E specs passed** behind the `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override the protocol
-  records.
-
-
-  **Supervisor, same day — the cycle found the case the reviewer missed, and the
-  reviewer's reachability conclusion was wrong.** Going in, the review had derived two
-  things independently: that `Math.atan` handles `b* = 0` on its own in V8 (`(l-50)/0` is
-  ±Infinity, `atan(±Infinity)` is ±90) so the fallback is unnecessary for its stated
-  purpose, and that inside its own window the guard *creates* the 180-degree error rather
-  than preventing one — at L\* 70, b\* −0.005 plain `atan` gives −89.986 and the guard
-  gives +90. Both hold and the cycle's fix follows them.
-
-  It had also concluded the defect was **latent rather than live**, by sweeping a blue
-  cast across a skin-coloured region and finding the closest sampled approach to be
-  `|b*| = 0.44`, 44x the window. **That is true of skin and false of the case that
-  decides it.** The cycle swept the neutral axis instead and found it sits *inside* the
-  window. Recomputed from scratch in review: the z row sums to
-  `(0.0193 + 0.1192 + 0.9505) / 1.08883 = 1.00015613` of the y row, so
-  **242 of 256 greys** fall inside `|b*| < 0.01` and exactly **1** inside `1e-6`; the old
-  guard was 180 degrees off on every grey from 32 up. One fixture family is not a
-  reachability argument when the quantity under test is a distance to the neutral axis
-  and the fixture is, by construction, not neutral. Recorded in
-  `docs/ita-guard-decision.md`.
-
-  **The obvious-looking simplification was avoided, and it is a trap.** The review flagged
-  `atan2` before reading the branch: `atan2(l-50, b)` needs no branch at all but resolves
-  the quadrant, so at L\* 70, b\* −0.005 it returns +90.014 where ITA's convention
-  (`arctan((L*-50)/b*)` on (−90, 90]) requires −89.986 — 180 degrees, the same class of
-  error the cycle exists to remove. `grep -rn atan2 lib/ ml/ tests/` returns nothing.
-
-  **Checked rather than accepted.** No published axis moved: `analyzeSkin` on this branch
-  and on main `eb527e9` agrees at four frame sizes on `blemishCount`, `blemishDensity`,
-  `shine`, `relRedness`, `cov`, `toneIta`, `toneLstar`, all three levels and `confidence`.
-  The `fallbackVersion` reasoning is argued rather than asserted — the semantics moved
-  only within 0.043 of an 8-bit unit of the neutral axis, where no cheek centroid lands,
-  so a bump would partition byte-identical samples — and `toneIta` is computed from
-  `dominantTone` over cheek pixels, which is never neutral, so the argument holds. All
-  three guards are pinned: widening the TypeScript one back to `|b*| < 0.01` fails 4 cases
-  (`itaDegrees(70, 0.005): expected 90 to be 89.98567605542014`), and widening either
-  Python one fails `ml/selftest.py`.
-
-  One reviewer error worth recording, since the standard here is to record them: the first
-  attempt at breaking `ml/skin_indices.py` reported the guard as *unpinned*, because the
-  regex replaced the first `bstar == 0` in the file — which is in the docstring, not the
-  code. Re-run against line 150 it fails as it should. A break that does not break is a
-  false negative, and it looks exactly like a coverage gap.
-
-  Rotation: 27 differing lines, all from the two items this cycle touched.
