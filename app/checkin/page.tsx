@@ -174,6 +174,15 @@ function Toggle({ value, onPick, yes, no }: { value: boolean | null; onPick: (va
 
 function pill(on: boolean): React.CSSProperties {
   return {
+    // The 44px contract, both ways. Without it these are 35.5px high in every locale,
+    // and the single-glyph answers are narrow too (zh 好 37px, ar لا 31.4px). Same shape
+    // as app/studio/page.tsx's toggle and app/survey/page.tsx's chipStyle, which is
+    // where the 44px minimum was already applied to this exact control.
+    minHeight: "var(--tap-min)",
+    minWidth: "var(--tap-min)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
     fontSize: 13,
     padding: "7px 11px",
     borderRadius: 8,

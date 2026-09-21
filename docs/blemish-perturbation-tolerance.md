@@ -257,3 +257,166 @@ The fifth is the one the file exists to rule out, and it fires. The sixth is the
 verdict in §5 held as an assertion rather than as a sentence: of the four candidate
 tables, exactly one moves a published count, and if it ever stopped doing so the file
 would say so instead of the document quietly going stale.
+
+## 7. The decision margin, and the guard the tolerance work could not produce
+
+Added 2026-09-21 (cycle 23). Everything in §0–§6 asks how large an error the count can
+absorb. This section asks the question one level down, which turns out to be the one
+that catches things: **how much daylight is there under each count in the first place?**
+
+### 7.1 Why the obvious guard was vacuous
+
+Cycle 22 tried to assert that a realistic frame's `blemishCount` does not move under a
+1e-16 perturbation of a\*. It does not move — but **seven source-line breaks of
+`lib/skin.ts` were tried against that assertion and none made it fail**, so it shipped as
+a printed measurement in `tests/blemish-tie-break.test.ts` rather than as a case. The
+reason is structural: a uniform nudge cancels in `astar[i] - background`, so the
+assertion is true of almost any detector, broken or not.
+
+`certifiedRadius` (§2) contained the ingredient for a real guard and was not pointed at
+it. It takes the minimum over EVERY valid cell, divides the two margins by the
+amplification factors 2 and 4, and combines a counted cell's margins with `min` and an
+uncounted cell's with `max` — the right input to a question about an approximation, and
+the wrong one to a question about the count. It cannot tell a suppression tie from a
+floor graze, it was only ever computed on the noisy fixture family, and it was pinned to
+exact values rather than asserted to be **above** anything.
+
+### 7.2 What is measured instead
+
+Over the cells that actually survived, the raw distances, undivided:
+
+- `peakGap` — the smallest `residual[i] - max(residual over i's suppression window)`.
+  Zero exactly when a counted cell is tied with a neighbour and won on `j < i`.
+- `floorGap` — the smallest `residual[i] - BLEMISH.minResidual`.
+- `tiedPeaks` — how many counted cells have `peakGap === 0`. The census nobody took.
+
+`noiseScale` is computed, not recalled: the local background is four reads of a
+summed-area table over `gw*gh` cells, so `gw*gh * EPSILON * max|a*|` bounds the rounding
+error one residual can carry, with room to spare.
+
+### 7.3 The measurement
+
+`ARU_PRINT_BLEMISH_MARGIN=1 npx vitest run tests/blemish-perturbation-tolerance.test.ts`:
+
+```
+decision margin on the realistic fixture family (a* units)
+noise  frame        counted  tied    peak gap   floor gap   noise scale   peak/noise
+    4  400x480           5     0    4.185e-5    3.461e+0    3.435e-11    1.218e+6
+    4  720x960           5     0    3.396e-4    7.276e+0    3.803e-11    8.930e+6
+    4  1080x1440         5     0    1.307e-3    7.321e+0    3.794e-11    3.446e+7
+    4  1440x1920         5     0    1.654e-4    7.050e+0    3.796e-11    4.357e+6
+    9  400x480           6     0    7.144e-4    3.518e+0    3.447e-11    2.072e+7
+    9  720x960           5     0    1.835e-3    7.294e+0    3.813e-11    4.813e+7
+    9  1080x1440         5     0    9.327e-3    7.331e+0    3.798e-11    2.456e+8
+    9  1440x1920         5     0    1.050e-3    7.048e+0    3.801e-11    2.762e+7
+   14  400x480           7     0    5.928e-4    3.556e+0    3.463e-11    1.712e+7
+   14  720x960           5     0    8.147e-3    7.333e+0    3.820e-11    2.133e+8
+   14  1080x1440         5     0    1.205e-2    7.353e+0    3.799e-11    3.172e+8
+   14  1440x1920         5     0    3.769e-3    7.035e+0    3.808e-11    9.899e+7
+
+decision margin with noiseAmplitude 0 (a* units)
+frame        counted  tied    peak gap   floor gap  decided
+400x480           5     1           0    3.431e+0    false
+720x960           5     1           0    7.249e+0    false
+1080x1440         5     3           0    7.304e+0    false
+1440x1920         5     3           0    7.057e+0    false
+```
+
+Two things fall out of that pair of tables.
+
+**The noiseless fixture's suppression margin is exactly zero, at every frame size.** One
+tied count at the two smaller sizes, three at the two larger. That is the whole of cycle
+22's blocked lookup table, stated as a property of the fixture rather than as a mystery
+about the table: `tests/blemish-density-scale.test.ts` asserts agreement across
+resolutions on a frame where one to three of its five counts are settled by scan order,
+so the assertion holds for one bit pattern and a 1e-16 nudge moves it.
+
+**The realistic frames clear their own noise by 1.2e6 to 3.2e8.** `MARGIN_RATIO` is set
+to **1e4** and not to 1e6 for a reason that is in the table: the tightest row, noise 4 at
+400x480, has a margin of 4.185e-5 a\* against a noise bound of 3.435e-11, a ratio of
+1.218e6. A threshold of 1e6 would be "cleared" by 1.22x, which is a coin flip dressed as
+a guard. At 1e4 the tightest row clears by 122x and the noiseless fixture still fails
+with a margin of exactly zero, which is the comparison the guard exists to make.
+
+### 7.4 Proving it bites: six source-line breaks, five of which fail it
+
+Each break is one line of `lib/skin.ts`, never of the test. `lib/skin.ts` was restored to
+byte-identical with HEAD afterwards and the restoration verified with `git diff`.
+
+| break in `lib/skin.ts` | outcome | first assertion message |
+|---|---|---|
+| round the stride-window channel averages to integers | **FAILS** | `noise 4 720x960: the smallest suppression margin is 1.066e-14 a*, only 2.798e-4x the detector's own rounding error: expected 0.0002798453713286699 to be greater than 10000` |
+| quantise the channel averages to steps of 8 | **FAILS** | `noise 4 400x480: 3 of 67 counts are settled by scan order, not by the image: expected 3 to be +0` |
+| round the per-cell a\* to 3 decimals | **FAILS** | `noise 4 400 peak gap: expected 0.000041322314050518116 to be 0.000041849469386789906` |
+| point-sample the stride window instead of averaging it | **FAILS** | `noise 4 400 counted: expected 8 to be 5` |
+| dither a\* by cell index (the "fix" that hides a tie) | **FAILS** | `noise 4 400 peak gap: expected 0.0000418481966590889 to be 0.000041849469386789906` |
+| quantise the residual to 3 decimals | **PASSES — did not bite** | — |
+
+The first two are the ones that matter, because they fail on the **new** assertions: the
+ratio against the noise bound, and the tie census. Rounding the channel averages to
+integers collapses the smallest suppression margin from 4.185e-5 a\* to **1.066e-14** —
+four orders of magnitude BELOW the detector's own rounding error — while leaving the
+count unchanged, so nothing else in the suite notices. That is precisely the failure mode
+the guard was added for. The other three fail on the pinned table, which any pin would
+have caught.
+
+**And the sixth is a real limitation, stated rather than hidden.** Quantising
+`residual[i]` to 3 decimals inside `lib/skin.ts` leaves both margin cases green. The
+cause is the harness: the replica recomputes the residual from the captured a\* grid, so
+anything `lib/skin.ts` does downstream of a\* is invisible to these margins. The guard
+covers the a\*-production path — which is where an approximation to the transfer curve
+lands, i.e. the thing it was built for — and not the residual arithmetic. That break is
+caught elsewhere, by three assertions in two other files:
+
+```
+tests/blemish-tie-break.test.ts     AssertionError: counts across resolutions: 2, 3, 2, 2, 2: expected 2 to be 1
+tests/blemish-density-scale.test.ts AssertionError: the shipped build is supposed to agree: 2, 3, 2, 2, 2: expected 2 to be 1
+tests/blemish-perturbation-tolerance.test.ts
+                                    AssertionError: expected [ 413, 422, 415, 421 ] to deeply equal [ 415, 421, 414, 418 ]
+                                    AssertionError: 400x480 lift: expected 0.9995971288583281 to be close to 1
+```
+
+### 7.5 How a reference implementation handles the same plateau
+
+Read 2026-09-21 from another project's source, which is what this network can reach — not
+from a paper and not from a standard. `scikit-image`'s `peak_local_max`, fetched from
+`raw.githubusercontent.com`:
+
+```
+skimage/feature/peak.py @ v0.24.0   http=200 bytes=14427
+  sha256 8d65f9a973a128a86c0d7a2689166bfa9768471e071c0fcb43f73e2863d3d85b
+skimage/feature/peak.py @ v0.25.2   http=200 bytes=14478  (_get_peak_mask byte-identical to v0.24.0)
+skimage/feature/peak.py @ v0.22.0   http=200 bytes=14970  (_get_peak_mask differs only in line wrapping)
+skimage/_shared/coord.py @ v0.24.0  http=200 bytes=4337
+  sha256 5d44f698e581e6f8b11c789489b91d638a363805964b8967c2e50bdcea65edbd
+```
+
+Two findings, and the first one is the reassuring one.
+
+**ARU's tie convention is the conventional one.** `_get_high_intensity_peaks` sorts
+candidates with `np.argsort(-intensities, kind="stable")` over `np.nonzero(mask)`
+coordinates, then `_ensure_spacing` walks that order greedily and rejects anything within
+`min_distance` of an already-accepted peak. A stable sort over row-major coordinates means
+that among equal intensities the earlier index wins — which is exactly
+`residual[j] === residual[i] && j < i`. So `lib/skin.ts:1091` is not an idiosyncrasy to
+be fixed; what cycle 22 found is a property of the input, not of the rule.
+
+**What ARU lacks is a degenerate-input branch.** `_get_peak_mask` carries one:
+
+```python
+    out = image == image_max
+
+    # no peak for a trivial image
+    image_is_trivial = np.all(out) if mask is None else np.all(out[mask])
+    if image_is_trivial:
+        out[:] = False
+```
+
+When every cell in the mask is a local maximum, it reports **no peaks at all** rather
+than letting index order manufacture them. Stated plainly, because the distance matters:
+that branch fires only when the field is ENTIRELY flat, and ARU's noiseless fixture is
+plateau-dominated but not entirely flat, so a transplanted copy of it would not fire
+there. It is not a drop-in fix and is not proposed as one. What it supports is the
+principle the margin guard implements: a plateau-dominated field is a degenerate input
+that a peak detector should NOTICE, and reporting a count from one without saying so is
+the part ARU was missing.
