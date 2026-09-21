@@ -125,8 +125,19 @@ export default function Studio() {
         <textarea id="studio-headline" aria-label={t("헤드라인")} value={headline} onChange={(e) => setHeadline(e.target.value)} rows={2} style={textareaStyle} />
 
         {reads.map((read, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
-            <input aria-label={t("항목 {n} 이름", { n: i + 1 })} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, width: 96 }} />
+          // The name field used to be a fixed `width: 96`, which is 94px of content box.
+          // That is wider than the Korean labels it was sized for and NARROWER than the
+          // translations the same field is prefilled with: measured at 360px, "모공/결"
+          // needs 65.0px but its en form "Pores/texture" needs 108.7px and its ar form
+          // "المسام/الملمس" needs 117.2px, so two of five locales cut the field's own
+          // prefilled value. Widening it inside one line is not available — at 320px the
+          // en value "Fairly comfortable" already needs 137.3px against a 119px box, so
+          // taking width from the value makes the narrower viewport worse. The name takes
+          // its own line instead (`flex-basis: 100%` + a wrapping row), which leaves the
+          // value and the emphasis toggle the full row below and gives both fields margin
+          // that a translation or a font fallback cannot eat.
+          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input aria-label={t("항목 {n} 이름", { n: i + 1 })} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, flex: "1 1 100%", minWidth: 0 }} />
             <input aria-label={t("항목 {n} 값", { n: i + 1 })} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
             <button onClick={() => setRead(i, { calm: !read.calm })} aria-pressed={read.calm} style={toggleBtn(read.calm)}>{read.calm ? t("차분") : t("강조")}</button>
           </div>
