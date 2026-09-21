@@ -216,3 +216,71 @@ test("the live camera screen does not clip or shrink its controls in any locale"
     await context.close();
   }
 });
+
+/**
+ * The picks step's commerce row, measured in a browser rather than asserted from source.
+ *
+ * The `/report` case above clicks straight to the ROUTINE tab, so step 2 — the one
+ * carrying `placement=report_summary`, the out-click the repository's whole revenue
+ * arithmetic rests on — had never been laid out by any test. The source contract
+ * (`tests/mobile-layout-contract.test.ts`) checks that `reportCommerceAction` exists and
+ * is not `position: fixed`; it cannot see a collapsed flex box, which is the lesson
+ * cycle 24 wrote down about `infoLinkBtn` and the same one again.
+ *
+ * Two assertions per control, and the second is not redundant. A width floor alone
+ * passes a box that is wide enough to tap and still cuts its label mid-word; a clipping
+ * check alone passes a box that shows its whole label at 20px wide. The defect this was
+ * written against fails both.
+ */
+test("the report's commerce row keeps both CTAs tappable and legible", async ({ browser }) => {
+  test.setTimeout(180_000);
+  for (const lang of languages) {
+    const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
+    await context.addInitScript(
+      ([nextLang, value]) => {
+        localStorage.setItem("aru.lang", nextLang as string);
+        sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
+      },
+      [lang, survey] as const,
+    );
+    const page = await context.newPage();
+    await page.goto("/report");
+    await page.evaluate(() => document.fonts.ready);
+    // Step 2 by position, not by label: the tab's text is localised five ways and the
+    // point of this case is that every locale reaches the same row.
+    await page.getByRole("tab").nth(1).click();
+
+    // Bound to `report_summary`, not to `/api/out`: the same step also carries three
+    // `report_product` links inside the product cards, which lay out at 288px and are
+    // not in the collapsing row. A `first()` over `/api/out` picks one of those and the
+    // case passes while the defect is on screen — checked, not assumed.
+    const row = page.locator('main section', {
+      has: page.locator('a[href*="placement=report_summary"]'),
+    }).last();
+    const buy = row.locator('a[href*="placement=report_summary"]');
+    const care = row.locator('a[href="/care"]');
+    await expect(buy, `${lang}: the report_summary out-link is not on the picks step`).toBeVisible();
+    await expect(care, `${lang}: the /care hand-off is not in the commerce row`).toBeVisible();
+
+    for (const [name, locator] of [["out-link", buy], ["care link", care]] as const) {
+      const box = await locator.boundingBox();
+      expect(box, `${lang} ${name}: no box`).not.toBeNull();
+      const metrics = await locator.evaluate((element) => ({
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        text: element.textContent?.trim().slice(0, 40) ?? "",
+      }));
+      expect(
+        box!.width,
+        `${lang} ${name} "${metrics.text}" is ${box!.width.toFixed(1)}px wide against --tap-min: 44px`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        metrics.scrollWidth,
+        `${lang} ${name} "${metrics.text}" is clipped: content ${metrics.scrollWidth}px in a ${metrics.clientWidth}px box`,
+      ).toBeLessThanOrEqual(metrics.clientWidth + 1);
+      await expectTapHeight(locator);
+      await expectInsideViewport(page, locator);
+    }
+    await context.close();
+  }
+});
