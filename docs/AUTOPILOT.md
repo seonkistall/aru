@@ -1066,6 +1066,58 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `next.config.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` was not set, no consent kind was invented and
   neither stream was merged, no dataset licence tier moved, and no face-image path changed.
 
+  **Supervisor review.** The share decision is the part worth reading, and this review's
+  own pre-analysis of it was worse than the branch's.
+
+  *A reviewer error, and it is the substantive kind.* Before the branch arrived this
+  review worked the same item and recommended **A** — mood link when the card came from a
+  scan — on the argument that it "never claims a reading the user did not make" and that
+  it reuses a decision `/scan` already shipped. **That argument is wrong**, and
+  `docs/share-return-path-decision.md` §3A says why: `/studio` is the editing surface, its
+  `reads` come from free-text `<input>`s whose whole purpose is rewriting
+  (`app/studio/page.tsx:140-141`), so a user can edit "유분 적음" to anything while the
+  link still encodes the scan's level. It does not claim a reading they never took; it
+  claims one they **edited away from**, in front of a stranger. Two more things this
+  review missed and the branch did not: the card has FOUR rows against the mood link's
+  THREE, so 전반 has no level at all, and a preset-prefilled session has no levels in any
+  form. **Option E did not occur to this review** and is better than A — send
+  `moodShareUrl(levels)` only while every value still matches its prefill, bare origin
+  otherwise — because it takes B's floor and A's ceiling and makes the contradiction
+  unrepresentable rather than merely unlikely. The branch's recommendation stands; this
+  review's is withdrawn.
+
+  What this review did establish and the branch confirms independently: the levels ARE
+  in hand at prefill (`lib/skin.ts:13`, `Bucket` carries `level: SkinLevel`) and are
+  simply dropped by the mapping, and `fromScan` already records preset-vs-real. Those
+  narrow the question; they do not decide it.
+
+  *Right call on scope.* `shareUrl` stayed OPEN — `grep -c` finds it in
+  `docs/AUTOPILOT.md` and NOT in the changelog — so the decision was written up without
+  the item being closed on the owner's behalf. `app/studio/page.tsx` changed for an
+  unrelated locale-clipping defect, not for this.
+
+  *The ML claim holds and its guard is narrow.* On main, `ml/run_pipeline.py` wrote
+  `model_version` and `input_schema_version` into the CSV (lines 338-339, declared at
+  277-278) but the `decoded` projection that `subgroups.coverage()` actually consumes did
+  not carry them — so a pooling check would have had nothing to read. Removing those two
+  projection lines again fails exactly one test, named for the defect:
+  `FAIL: test_the_pipeline_projection_carries_the_fields_coverage_reads`, 1 of 130. One
+  narrow break, one identifying failure.
+
+  *The pilot fix bites on both halves.* Restoring the bare uncapped
+  `localStorage.setItem(KEY, ...)` fails 3 of 7 with both symptoms:
+  `expected [Function] to not throw an error but 'QuotaExceededError: quota' was thrown`
+  and `expected [ …(501) ] to have a length of 500 but got 501`. The write-order argument
+  is correct and load-bearing: the scope is written before the note because `/scan` reads
+  `getCurrentPilotSession()` on every consent toggle, so a lost scope makes every
+  subsequent consent event unscoped — which is what participant-grouped cross-validation
+  needs.
+
+  *Rotation, against a pre-review snapshot of main.* 1669 → 1647 and 4966 → 5260, and
+  `comm -23` finds **18 lines missing**, all 18 from the two backlog items this cycle
+  closed (`savePilotNote`, and the feature-generation pooling rule), both present in the
+  changelog. "Recent cycles" holds 26/25/24.
+
 - 2026-09-21 (cycle 25) — Branch `autopilot/2026-09-21-1239`. **The decision-margin
   guard's blind spot is closed with the second hook cycle 23 asked for, and the break it
   recorded as "did not bite" now bites. The noise bound every margin is reported as a
