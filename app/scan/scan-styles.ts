@@ -92,9 +92,19 @@ export const stepBtn: CSSProperties = {
   cursor: "pointer",
 };
 
+// The only way into the "사진과 데이터 사용" sheet, and it sits on the consent panel —
+// so it is the control that explains what happens to a user's face before they agree
+// to anything. It shipped at 290.0x26.8px, against `--tap-min: 44px`, measured in
+// chromium at 360px on 2026-09-21. `ghostLink` in this same file already carries the
+// minimum; this one was missed because nothing had ever reached `phase === "ready"` in
+// a browser. Centred rather than block-with-padding so the extra height is tappable
+// across the whole row instead of leaving the text sitting at the top of it.
 export const infoLinkBtn: CSSProperties = {
-  display: "block",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   width: "100%",
+  minHeight: "var(--tap-min)",
   background: "transparent",
   border: "none",
   marginTop: 8,

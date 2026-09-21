@@ -85,9 +85,19 @@ describe("re-engagement re-subscription schedule", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(dueColumn).toHaveBeenCalledTimes(2);
-    expect(dueColumn).toHaveBeenNthCalledWith(1, "consented_at");
-    expect(dueColumn).toHaveBeenNthCalledWith(2, "consented_at");
+    // ISSUE-008 is that the due date must come from `consented_at` and never from
+    // `created_at`, so that is what is asserted — by naming every .lte() column rather
+    // than by counting the calls. The count moved from 2 to 3 on 2026-09-21 when the
+    // week-4 pass gained a spacing predicate (it used to select contacts the week-2
+    // pass had just mailed, in the same sweep: tests/reengage-double-send.test.ts).
+    // Listing the columns keeps this regression pinned exactly as tightly — a
+    // `created_at` filter still fails it — while saying which third filter is expected,
+    // so a FOURTH one, or a swap, still fails here too.
+    expect(dueColumn.mock.calls.flat()).toEqual([
+      "consented_at",
+      "consented_at",
+      "week2_sent_at",
+    ]);
   });
 
   it("backfills the consent timestamp before making it the schedule source", () => {

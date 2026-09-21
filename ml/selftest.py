@@ -40,6 +40,7 @@ import ita  # noqa: E402
 import licensing  # noqa: E402
 import model_contract  # noqa: E402
 import ordinal_metrics  # noqa: E402
+import qwk_noise  # noqa: E402
 import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
@@ -1531,6 +1532,308 @@ class BeatsHeuristic(unittest.TestCase):
         self.assertIn("model_contract.min_qwk_gain_over_heuristic()", trainer)
         self.assertIn("heuristic_baseline.score(", trainer)
         self.assertIn("heuristic_baseline.covered_axes()", trainer)
+
+
+def _paired_rows(n, model_noise, heur_noise, shared, seed, levels=3):
+    """(truth, model_level, heuristic_level) rows on one axis.
+
+    `shared` in [0, 1] is how much of each scorer's error draw comes from ONE per-row
+    difficulty draw that both scorers see: 0 makes their errors conditionally
+    independent given the truth, 1 makes a row that fools one fool the other. That
+    knob is the whole point — whether resampling the two confusion matrices separately
+    over-states the band depends on it and on nothing else.
+    """
+    import random as _random
+
+    rng = _random.Random(seed)
+    rows = []
+    for _ in range(n):
+        truth = rng.randrange(levels)
+        difficulty = rng.random()
+        model_draw = shared * difficulty + (1 - shared) * rng.random()
+        heur_draw = shared * difficulty + (1 - shared) * rng.random()
+        model = truth if model_draw > model_noise else rng.randrange(levels)
+        heuristic = truth if heur_draw > heur_noise else rng.randrange(levels)
+        rows.append((truth, model, heuristic))
+    return rows
+
+
+def _confusions(rows, levels=3):
+    model = [[0] * levels for _ in range(levels)]
+    heuristic = [[0] * levels for _ in range(levels)]
+    for truth, model_level, heuristic_level in rows:
+        model[truth][model_level] += 1
+        heuristic[truth][heuristic_level] += 1
+    return model, heuristic
+
+
+class QwkNoiseBand(unittest.TestCase):
+    """The band on a qwk gain: the thing minQwkGainOverHeuristic = 0.0 lacks."""
+
+    def test_quantile_is_the_linear_convention_and_not_an_index_into_the_sample(self):
+        """scipy's percentile bootstrap calls numpy's default `linear` method.
+
+        Pinned against values computed by hand from that definition — virtual index
+        q*(n-1), linear interpolation between neighbours — because an off-by-one index
+        convention changes every bound this module prints and changes nothing that
+        looks wrong.
+        """
+        sample = [0.0, 1.0, 2.0, 3.0, 4.0]  # n = 5, so the virtual index is 4q
+        self.assertAlmostEqual(qwk_noise.quantile(sample, 0.0), 0.0)
+        self.assertAlmostEqual(qwk_noise.quantile(sample, 1.0), 4.0)
+        self.assertAlmostEqual(qwk_noise.quantile(sample, 0.5), 2.0)
+        self.assertAlmostEqual(qwk_noise.quantile(sample, 0.025), 0.1)
+        self.assertAlmostEqual(qwk_noise.quantile(sample, 0.975), 3.9)
+        # n=4: index 3q, so 0.25 lands three quarters of the way into the first gap.
+        self.assertAlmostEqual(qwk_noise.quantile([10.0, 20.0, 30.0, 40.0], 0.25), 17.5)
+        self.assertEqual(qwk_noise.quantile([7.5], 0.3), 7.5)
+        with self.assertRaises(ValueError):
+            qwk_noise.quantile([1.0, 2.0], 1.5)
+        with self.assertRaises(ValueError):
+            qwk_noise.quantile([], 0.5)
+
+    def test_a_resample_draws_the_same_number_of_rows_with_replacement(self):
+        import random as _random
+
+        matrix = [[40, 9, 1], [8, 55, 7], [2, 11, 37]]
+        total = sum(sum(row) for row in matrix)
+        rng = _random.Random(3)
+        differed = 0
+        for _ in range(200):
+            sampled = qwk_noise.resample_confusion(matrix, rng)
+            self.assertEqual(len(sampled), len(matrix))
+            self.assertEqual(sum(sum(row) for row in sampled), total)
+            if sampled != matrix:
+                differed += 1
+        # Sampling WITHOUT replacement would reproduce the input every single time,
+        # and every band would collapse to a point. This is what catches that.
+        self.assertGreater(differed, 190, "resampling is not varying the matrix")
+
+    def test_two_identical_scorers_get_a_band_straddling_zero(self):
+        matrix = [[30, 8, 2], [6, 40, 9], [1, 9, 35]]
+        band = qwk_noise.gain_band_from_confusions(matrix, matrix, resamples=400, seed=1)
+        self.assertAlmostEqual(band["point"], 0.0)
+        self.assertLess(band["lo"], 0.0)
+        self.assertGreater(band["hi"], 0.0)
+        self.assertIs(qwk_noise.clears_band(band, 0.0), False)
+
+    def test_a_gain_smaller_than_the_band_is_not_distinguishable_from_zero(self):
+        """The case the backlog item names: a model that wins by a hair on one split."""
+        rows = _paired_rows(300, model_noise=0.48, heur_noise=0.50, shared=1.0, seed=2026)
+        model, heuristic = _confusions(rows)
+        band = qwk_noise.gain_band_from_confusions(model, heuristic, resamples=600, seed=7)
+        self.assertGreater(band["point"], 0.0, "fixture must have a positive raw gain")
+        self.assertLess(band["lo"], 0.0)
+        self.assertIs(qwk_noise.clears_band(band, 0.0), False)
+
+    def test_a_clearly_better_model_does_clear_its_band(self):
+        """A band that never clears would be a guard that fails everything."""
+        rows = _paired_rows(300, model_noise=0.10, heur_noise=0.60, shared=1.0, seed=2026)
+        model, heuristic = _confusions(rows)
+        band = qwk_noise.gain_band_from_confusions(model, heuristic, resamples=600, seed=7)
+        self.assertIs(qwk_noise.clears_band(band, 0.0), True)
+        self.assertGreater(band["lo"], 0.0)
+
+    def test_the_band_is_reproducible_and_the_seed_is_doing_something(self):
+        model, heuristic = _confusions(
+            _paired_rows(200, 0.30, 0.55, shared=0.5, seed=11)
+        )
+        first = qwk_noise.gain_band_from_confusions(model, heuristic, resamples=300, seed=5)
+        again = qwk_noise.gain_band_from_confusions(model, heuristic, resamples=300, seed=5)
+        other = qwk_noise.gain_band_from_confusions(model, heuristic, resamples=300, seed=6)
+        self.assertEqual((first["lo"], first["hi"]), (again["lo"], again["hi"]))
+        self.assertNotEqual((first["lo"], first["hi"]), (other["lo"], other["hi"]))
+
+    def test_the_interval_is_two_sided_at_the_requested_confidence(self):
+        """`confidence` must split the excluded mass between BOTH tails.
+
+        Added after a break that nothing caught: changing alpha from (1-c)/2 to (1-c)
+        left all 120 tests green, because every other case reads a 95% band where the
+        two conventions still both produce a plausible-looking interval. At c=0.5 they
+        do not — the two-sided reading gives the 25th and 75th percentiles, the
+        one-sided reading gives the median twice and a band of width zero.
+        """
+        model, heuristic = _confusions(_paired_rows(250, 0.30, 0.55, 1.0, seed=31))
+        half = qwk_noise.gain_band_from_confusions(
+            model, heuristic, resamples=400, confidence=0.5, seed=5
+        )
+        wide = qwk_noise.gain_band_from_confusions(
+            model, heuristic, resamples=400, confidence=0.95, seed=5
+        )
+        self.assertGreater(
+            half["hi"] - half["lo"], 0.0,
+            "a 50% interval collapsed to a point: alpha is not being halved",
+        )
+        # Narrower confidence must pull BOTH ends in, not just one.
+        self.assertGreater(half["lo"], wide["lo"])
+        self.assertLess(half["hi"], wide["hi"])
+
+    def test_the_unpaired_band_is_not_narrower_than_the_paired_one(self):
+        """The approximation the trainer is stuck with, bounded rather than assumed.
+
+        `run_epoch` keeps a confusion matrix and no per-row predictions, so the gate can
+        only resample the two matrices separately — which treats two scorers run on the
+        SAME rows as independent. That is only safe if it does not UNDER-state the
+        spread. On rows where both scorers fail together, which is the realistic case
+        for a model and a threshold rule reading the same photograph, it over-states it.
+        """
+        rows = _paired_rows(300, 0.35, 0.50, shared=1.0, seed=404)
+        model, heuristic = _confusions(rows)
+        paired = qwk_noise.gain_band_paired(rows, 3, resamples=600, seed=17)
+        unpaired = qwk_noise.gain_band_from_confusions(model, heuristic, resamples=600, seed=17)
+        paired_width = paired["hi"] - paired["lo"]
+        unpaired_width = unpaired["hi"] - unpaired["lo"]
+        self.assertGreater(
+            unpaired_width, paired_width,
+            f"unpaired {unpaired_width:.4f} is narrower than paired {paired_width:.4f}",
+        )
+        # Both describe the same comparison, so their point estimates must agree
+        # exactly — they are read off the same counts.
+        self.assertAlmostEqual(paired["point"], unpaired["point"])
+
+    def test_a_band_needs_rows_and_says_so_instead_of_raising(self):
+        empty = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        matrix = [[30, 8, 2], [6, 40, 9], [1, 9, 35]]
+        band = qwk_noise.gain_band_from_confusions(matrix, empty, resamples=50, seed=1)
+        self.assertIsNone(band["lo"])
+        self.assertIsNone(qwk_noise.clears_band(band, 0.0))
+        with self.assertRaises(ValueError):
+            qwk_noise.gain_band_from_confusions(matrix, matrix, resamples=1)
+        with self.assertRaises(ValueError):
+            qwk_noise.gain_band_from_confusions(matrix, matrix, confidence=1.0)
+
+    def test_a_level_outside_the_axis_is_rejected_by_the_paired_form(self):
+        with self.assertRaises(ValueError):
+            qwk_noise.gain_band_paired([(0, 1, 3)], 3, resamples=10)
+        with self.assertRaises(ValueError):
+            qwk_noise.gain_band_paired([(0, True, 1)], 3, resamples=10)
+
+
+class NoiseBandInTheGate(unittest.TestCase):
+    """The band reaches the gate report, and it does not decide anything there."""
+
+    DIMS = {"tone": {
+        "light": {"accuracy": 0.90, "ordinal_mae": 0.1, "n": 40},
+        "tan": {"accuracy": 0.88, "ordinal_mae": 0.1, "n": 40},
+    }}
+
+    def gate(self, rows):
+        model_matrix, heuristic_matrix = _confusions(rows)
+        model = ordinal_metrics.metrics_from_confusion({"oil": model_matrix})["oil"]
+        heuristic = ordinal_metrics.metrics_from_confusion({"oil": heuristic_matrix})["oil"]
+        overall = {"oil": {
+            "n": len(rows), "accuracy": model["accuracy"],
+            "qwk": model["qwk"], "pearson": 0.75,
+        }}
+        baseline = {"oil": {
+            "qwk": heuristic["qwk"], "scoredRows": len(rows),
+            "confusion": heuristic_matrix,
+        }}
+        return subgroups.promotion_check(
+            overall, self.DIMS, ("oil",), 20, 0.1, 0.4, 0.4,
+            baseline=baseline, min_qwk_gain=0.0, baseline_axes=("oil",),
+            model_confusion={"oil": model_matrix},
+        )
+
+    def test_a_hair_thin_gain_still_promotes_but_the_report_says_it_is_noise(self):
+        """Non-negotiable: the published rule is `gain > 0.0` and this does not move it.
+
+        Changing that rule means editing promotionGate in the shipped manifest, which is
+        the owner's decision. What this adds is that the report no longer calls a gain
+        inside its own sampling error a win without saying so.
+        """
+        gate = self.gate(_paired_rows(300, 0.48, 0.50, shared=1.0, seed=2026))
+        entry = gate["beatsHeuristic"]["oil"]
+        self.assertTrue(entry["beats"])
+        self.assertIs(entry["clearsNoiseBand"], False)
+        self.assertTrue(gate["promotable"], gate["blockers"])
+        self.assertEqual(gate["blockers"], [])
+        self.assertIn("does not clear its own", " ".join(gate["warnings"]))
+        self.assertLess(entry["gainNoiseBand"]["lo"], 0.0)
+
+    def test_a_real_win_carries_no_warning(self):
+        gate = self.gate(_paired_rows(300, 0.10, 0.60, shared=1.0, seed=2026))
+        entry = gate["beatsHeuristic"]["oil"]
+        self.assertIs(entry["clearsNoiseBand"], True)
+        self.assertEqual(gate["warnings"], [])
+        self.assertTrue(gate["promotable"], gate["blockers"])
+
+    def test_without_a_confusion_matrix_there_is_no_band_and_no_crash(self):
+        """Every existing caller passes metrics only. None of them may start failing."""
+        gate = subgroups.promotion_check(
+            {"oil": {"n": 100, "accuracy": 0.9, "qwk": 0.70, "pearson": 0.75}},
+            self.DIMS, ("oil",), 20, 0.1, 0.4, 0.4,
+            baseline={"oil": {"qwk": 0.60, "scoredRows": 100}},
+            min_qwk_gain=0.0, baseline_axes=("oil",),
+        )
+        self.assertTrue(gate["promotable"], gate["blockers"])
+        self.assertNotIn("gainNoiseBand", gate["beatsHeuristic"]["oil"])
+        self.assertEqual(gate["warnings"], [])
+
+    def test_a_mis_shaped_matrix_is_ignored_rather_than_banded(self):
+        """A 4x4 model matrix against a 3x3 heuristic is not this comparison."""
+        rows = _paired_rows(200, 0.30, 0.55, shared=1.0, seed=9)
+        model_matrix, heuristic_matrix = _confusions(rows)
+        four = [row + [0] for row in model_matrix] + [[0, 0, 0, 0]]
+        self.assertIsNone(subgroups._gain_noise_band(four, heuristic_matrix))
+        self.assertIsNone(subgroups._gain_noise_band(None, heuristic_matrix))
+        self.assertIsNotNone(subgroups._gain_noise_band(model_matrix, heuristic_matrix))
+
+    def test_the_heuristic_baseline_hands_over_the_matrix_the_band_needs(self):
+        """A band re-derived from a second matrix would not be a band on THIS split."""
+        class Row:
+            def __init__(self, label, shine):
+                self.labels = {"oil": label}
+                self.meta = {"shine": shine}
+
+        rows = [Row(0, 0.01), Row(1, 0.10), Row(2, 0.30), Row(1, 0.09), Row(0, 0.02)]
+        report = heuristic_baseline.score(rows, ("oil",), {"oil": 3})
+        matrix = report["oil"]["confusion"]
+        self.assertEqual(len(matrix), 3)
+        self.assertEqual(sum(sum(r) for r in matrix), report["oil"]["scoredRows"])
+        self.assertEqual(
+            ordinal_metrics.metrics_from_confusion({"oil": matrix})["oil"]["qwk"],
+            report["oil"]["qwk"],
+        )
+
+
+class PromotedCheckpointIsWhatTheGateScores(unittest.TestCase):
+    """The defect PR #69 fixed had no guard, so reintroducing it was free.
+
+    The trainer saves the BEST checkpoint by mean validation accuracy and separately
+    kept `last_val_confusion`, which is always the FINAL epoch's. Feeding that to the
+    gate scored weights nobody was going to ship. The fix re-runs validation after the
+    best checkpoint is reloaded. These assertions are on the trainer's source text
+    because the trainer imports torch at module scope and this file cannot.
+    """
+
+    SOURCE = (Path(__file__).resolve().parent / "train_visible_attributes.py").read_text()
+
+    def test_the_gate_reads_a_validation_pass_taken_after_the_checkpoint_is_reloaded(self):
+        reload_at = self.SOURCE.index('model.load_state_dict(checkpoint["model"])')
+        rescore_at = self.SOURCE.index("_, promoted_val_confusion, _ = run_epoch(")
+        scored_at = self.SOURCE.index(
+            "final_val_metrics = metrics_from_confusion(promoted_val_confusion)"
+        )
+        gate_at = self.SOURCE.index("gate = promotion_check(")
+        self.assertLess(
+            reload_at, rescore_at,
+            "the promoted checkpoint is scored BEFORE it is loaded, so the gate reads "
+            "whatever weights happened to be in memory",
+        )
+        self.assertLess(rescore_at, scored_at)
+        self.assertLess(scored_at, gate_at)
+
+    def test_the_last_epochs_confusion_never_reaches_the_gate(self):
+        self.assertNotIn(
+            "final_val_metrics = metrics_from_confusion(last_val_confusion)", self.SOURCE
+        )
+        # Kept and reported under its own name, so the two are never confusable again.
+        self.assertIn('"last_epoch_val_confusion": last_val_confusion,', self.SOURCE)
+        self.assertIn('"final_val_confusion": promoted_val_confusion,', self.SOURCE)
+
+    def test_the_band_is_computed_on_the_promoted_checkpoints_confusion(self):
+        self.assertIn("model_confusion=promoted_val_confusion,", self.SOURCE)
 
 
 if __name__ == "__main__":

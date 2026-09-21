@@ -296,25 +296,6 @@ partly done and stays here.
   phase's share of a budget here. What it cannot is a phone number, and no device
   multiplier was invented — that half is the physical-device QA blocker already recorded
   below. Stays `[~]` for exactly that reason and for no other.
-- [AI] **The promotion gate is fed two different models' numbers in one call.**
-  Verified by the supervisor at main `b2ec030`, `ml/train_visible_attributes.py:805-845`,
-  independently of PR #69 which reports the same area. The training loop saves
-  `best_path` whenever `mean_val > best`, so the best checkpoint can be any epoch, and
-  separately keeps `last_val_confusion = val_confusion` every epoch, so that variable
-  always holds the FINAL epoch's. After the loop the best checkpoint is loaded, so
-  `evaluate_by_cell` produces `subgroup_metrics` from the best checkpoint — but
-  `final_val_metrics = metrics_from_confusion(last_val_confusion)` is the last epoch's,
-  from a model no longer in memory. `promotion_check` then receives both.
-
-  So the qwk/pearson floor and the heuristic comparison read one model's numbers while
-  the worst-group gap and the per-axis sample floor read another's, and `metrics.json`
-  records the pair as though they described one artifact. They agree only when the best
-  epoch happens to be the last, which is the case best-checkpoint tracking exists to not
-  assume. No live impact yet — zero consented crops, so no run has produced a
-  `metrics.json` — which also means it must be fixed before the first one does, i.e.
-  before anyone would notice it was wrong. PR #69 fixes it as part of a larger branch
-  and is waiting on an owner decision; if that branch is not wanted whole, this split is
-  a handful of lines and is a cycle item on its own. Noted 2026-09-17.
 - [~] [AI] **`roughness_ratio` and `roughnessRatio` disagree at the guard, and it is the
   `shine_ratio` epsilon defect again.** Measured 2026-09-19 (cycle 17). Python is
   `region_highfreq / max(reference_highfreq, 1e-6)`; the app is
@@ -504,17 +485,6 @@ partly done and stays here.
   guard's stated scope is the a\*-production path only, and a cycle that widens it should
   add a second hook rather than assume the margins cover the whole classifier.
   `docs/blemish-perturbation-tolerance.md` §7.4.
-- [AI] **`/scan` has no pixel-level mobile-layout coverage, and that is how the camera
-  quality checklist clipped its labels in all five locales unnoticed.**
-  `tests/e2e/mobile-layout.spec.ts` asserts overflow on `/` and `/studio` only, and
-  visits `/scan` solely for the camera-denied tap-target case, because reaching
-  `phase === "ready"` needs a fake media stream that suite does not set up. So the
-  clipping fixed in cycle 22 was caught by hand in a browser and is pinned by a SOURCE
-  contract (`tests/mobile-layout-contract.test.ts`), which cannot see a pixel. A fake
-  `getUserMedia` returning a canvas stream would let the spec reach the live-camera
-  screen and assert `scrollWidth <= clientWidth` on every check, which is the assertion
-  that would have caught it. Noted 2026-09-20; the measurement both ways is in
-  `docs/scan-quality-checklist-layout.md`.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -537,11 +507,42 @@ partly done and stays here.
   still costs a published reading on a sixth of the seeds or more — but if anyone
   wants the ORIGINAL numbers back, the construction that produced them is gone and
   only a new measurement can settle it. Noted 2026-09-18.
-- [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
+- [~] [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
   model that beats the heuristic by 0.001 on one validation split passes, and that
   gain may be noise. Estimate the band: bootstrap the validation rows, report a CI on
   the qwk difference, and require the gain to clear it. That is the honest version of
   a margin, and the reason no positive number was invented for it.
+  **2026-09-21, cycle 24: the band is measured and reported, and the third clause is
+  the owner's.** `ml/qwk_noise.py` puts a percentile bootstrap on the qwk difference —
+  scipy's convention, read from scipy's own source and then verified numerically
+  against the installed scipy (`worst |mine - np.percentile| = 5.551e-17`; against
+  `scipy.stats.bootstrap` the bounds agree to 6.0e-4 and 2.7e-4, which is the
+  Monte-Carlo spread). Every run's `metrics.json` now carries `gainNoiseBand` and
+  `clearsNoiseBand` per covered axis, and `promotion_check` returns a `warnings` list
+  separate from `blockers`.
+  **The number the item asked for: at the gate's own `minTrainingCrops: 300` the 95%
+  band on the gain is about ±0.15 qwk.** Two scorers identical in expectation produced
+  raw gains up to **+0.0869** over twelve trials at that size, and every one of them
+  passes `gain > 0.0`. So the concern was not theoretical. The instrument is not merely
+  wide either: across 72 trials at six row counts a model with no real edge cleared its
+  band **0 times**.
+  Stays `[~]` for one reason and it is not a technical one. "Require the gain to clear
+  it" is a new promotion rule, and writing one means editing `promotionGate` in the
+  shipped manifest — hard guardrail 8, the owner's call. The published rule is still
+  `gain > 0.0` and this cycle did not touch it; what changed is that a gain inside its
+  own sampling error no longer reads as a win with nothing said. A fixed positive
+  constant would be the wrong shape anyway, since the band depends on the split's size.
+  Measurements, the fetch sha256s and the ten source-line breaks: `docs/qwk-noise-band.md`.
+- [AI] **`recordCareIntent` throws away the same write signal `recordCheckin` just
+  stopped throwing away.** `lib/store.ts:recordCareIntent` calls `lsPush` and discards
+  its boolean, returning a fully-populated `CareIntent` whether or not localStorage
+  accepted it — the defect fixed on the check-in path in cycle 24, one function below
+  it. Left alone deliberately rather than swept up: its only caller is
+  `app/care/page.tsx:78`, which does `void recordCareIntent({...})` and shows the user
+  nothing, so unlike the check-in card it never tells anyone their data was saved. The
+  consequence is a silently short care-intent log on a full or blocked store, which is
+  a measurement problem and not a lie to a user. Fixing it is the same one line plus a
+  decision about whether `/care` should surface anything. Noted 2026-09-21 (cycle 24).
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -842,6 +843,224 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-21 (cycle 24) — Branch `autopilot/2026-09-21-0639`. **The promotion gate's
+  0.0 margin now has the number it was missing: at the gate's own `minTrainingCrops: 300`
+  the 95% band on a qwk gain is about ±0.15, and two scorers identical in expectation
+  produced raw gains up to +0.0869 — every one of which passes `gain > 0.0`. Also: the
+  first test that ever reached `/scan`'s live camera screen found the privacy-sheet link
+  at 290.0x26.8px, the re-engagement cron would have sent the 2주 and 4주 mails to the
+  same person minutes apart on its first real run, and `/checkin` told users their
+  feedback was saved when the write had been refused.**
+
+  **Baselines on arrival, counted rather than recalled.** `npm ci` was run first because
+  `node_modules` was absent, and it failed once on `ECONNRESET` mid-download
+  (`npm error network aborted`) leaving a partial tree; the retry succeeded on its first
+  attempt. All five then matched the brief: `npm run smoke` green with the chromium
+  override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **595
+  passed in 87 files**, `npx tsc --noEmit | grep -c "error TS"` **13**,
+  `python3 ml/selftest.py` **Ran 103 tests ... OK**, `npm run lint` 0 errors / 2
+  warnings in `lib/care.ts`.
+
+  **Two stale doc items closed, one of which was not where the brief said it was.** The
+  brief reported a stale PR #69 entry in BLOCKERS as well as the stale backlog item.
+  There is no PR #69 entry in BLOCKERS on main — `grep -n "#69" docs/AUTOPILOT.md` finds
+  three hits, two of them inside the backlog item itself and one in cycle 20's archived
+  entry. The "waiting on an owner decision" sentence the brief meant is the backlog
+  item's own last line, and it moved to the changelog with it. Said plainly rather than
+  silently doing nothing about a listed instruction.
+
+  **Research: ARU's bootstrap convention is scipy's, read from scipy and then checked
+  against scipy.** A percentile bootstrap has one detail that is easy to get wrong in a
+  way nothing looks wrong about — which quantiles the two bounds are — so it was not
+  invented. `scipy/stats/_resampling.py` at **v1.14.1** (`http=200 bytes=98486`, sha256
+  `cfa7d1e20adced3fe3b30f9cb29801487ce37fa603349ffa34b8fd582712123a`) and at **v1.17.1**
+  (`http=200 bytes=106090`, sha256
+  `4ef9a44edbaa2a51f83b55df26b58fe65f1936298a06559f91dd716104b2abf1`) both take
+  `alpha = (1 - confidence_level)/2` and read the `alpha` and `1-alpha` quantiles under
+  numpy's default `linear` method. Another project's source, not a paper and not a
+  standard: `en.wikipedia.org` is still `http=000` from here and nothing is attributed
+  to a textbook. `pypi.org` answered, so the convention was then verified numerically
+  rather than only read — `worst |mine - np.percentile| = 5.551e-17` over 63 (n, q)
+  pairs, and against `scipy.stats.bootstrap(method="percentile")` on 300 paired rows the
+  bounds agree to **6.0e-4 and 2.7e-4**, which is the Monte-Carlo spread measured
+  separately (sd 3.8e-3 at 2000 resamples) rather than a difference in what is computed.
+  numpy and scipy were installed into the container for this and nothing in the
+  repository depends on them; `ml/qwk_noise.py` is stdlib-only like the rest of `ml/`.
+
+  **ML: the honest version of the 0.0 margin, and a measured claim that had to be
+  withdrawn.** `ml/qwk_noise.py` bootstraps the qwk difference between the model and the
+  shipped heuristic; `heuristic_baseline.score` now returns the confusion matrix it
+  scored, so both sides come from the rows the comparison was actually made on; the band
+  is computed on `promoted_val_confusion` and reported per axis as `gainNoiseBand` /
+  `clearsNoiseBand`, with a new `warnings` list on `promotion_check` that is separate
+  from `blockers`.
+
+  ```
+  rows  trials  median width  half-width  max |point|  clears 0.0
+    60      12        0.6543      0.3272       0.2385       0/12
+   150      12        0.4061      0.2030       0.1654       0/12
+   300      12        0.3011      0.1506       0.0869       0/12
+   600      12        0.2062      0.1031       0.0625       0/12
+  1200      12        0.1442      0.0721       0.0520       0/12
+  3000      12        0.0900      0.0450       0.0341       0/12
+  ```
+
+  Model and heuristic equally good by construction, so every `|point|` above is pure
+  noise. At 300 rows it reaches **0.0869** and the published rule `gain > 0.0` passes all
+  twelve. The instrument is not simply wide: across all 72 trials a model with no real
+  edge cleared its band **0 times**, and a modest real edge at the same size clears it
+  (`+0.1974`, band `[+0.0715, +0.3254]`).
+
+  **It does not block, and that is guardrail 8 rather than caution.** "Require the gain
+  to clear it" is a new promotion rule and writing one means editing `promotionGate` in
+  the shipped manifest. `status`, `promotionGate` and `minQwkGainOverHeuristic: 0.0` are
+  untouched. What changed is that a gain inside its own sampling error no longer reads as
+  a win with nothing said.
+
+  **The claim that had to be withdrawn.** `ml/qwk_noise.py`'s first draft said resampling
+  the two confusion matrices separately is conservative, because the trainer keeps no
+  per-row predictions and so cannot pair them. Measured over 36 trials it is only true in
+  the regime that matters: with the two scorers failing on the same rows the unpaired band
+  is **1.104-1.269x** the paired one (12 trials, mean 1.195), but with their errors
+  conditionally independent given the truth it is **0.952-1.103x** — the same width inside
+  Monte-Carlo spread, not conservative at all. The docstring now says that, and
+  `gain_band_paired` ships ready for the day per-row predictions exist.
+
+  **Ten source-line breaks, never of a test; nine bit, and the tenth is why there are
+  121 tests and not 120.** Every file's sha256 was compared before and after and all five
+  matched. Quantising nothing and asserting nothing would have been easy to miss:
+  changing `alpha` from `(1-c)/2` to `(1-c)` — a one-sided interval sold as two-sided —
+  left **all 120 tests green**, because every case read a 95% band where both conventions
+  still produce a plausible interval. The case that separates them asks for a **50%**
+  band, where the two-sided reading gives the 25th and 75th percentiles and the one-sided
+  reading gives the median twice: `0.0 not greater than 0.0 : a 50% interval collapsed to
+  a point: alpha is not being halved`. With it, that break fails 1 of 121. The other nine
+  fail 1, 7, 3, 1, 1, 1, 1, 2 and 1 — narrow enough that the failure names what broke,
+  except break 2 (making resampling a no-op), which collapses every band to a point and
+  should fail everything that reads one. `docs/qwk-noise-band.md`.
+
+  **The PR #69 fix is verified and now guarded.** Confirmed on main rather than assumed:
+  `ml/train_visible_attributes.py:858` reads
+  `final_val_metrics = metrics_from_confusion(promoted_val_confusion)` from a validation
+  pass taken after the best checkpoint is reloaded, and the last epoch's is kept under its
+  own name at line 926. Nothing asserted any of it, so reintroducing the defect was free —
+  which is how it existed in the first place. Three assertions now read the trainer's
+  source for the ORDER reload → re-score → gate, so moving the re-score above the reload
+  fails even with every string still present: `34871 not less than 34619 : the promoted
+  checkpoint is scored BEFORE it is loaded, so the gate reads whatever weights happened to
+  be in memory`.
+
+  **UI/UX: the live camera screen was measured in a browser for the first time, and it
+  was not clean.** Everything in `tests/e2e/mobile-layout.spec.ts` visited `/scan` only in
+  the camera-DENIED state, because reaching `phase === "ready"` needs a real MediaStream —
+  so the one screen a scanning user looks at had no pixel-level coverage at all, and cycle
+  22's clipping was caught by hand and pinned by a SOURCE contract that cannot see a
+  laid-out box. `getUserMedia` is now shimmed to a canvas `captureStream()`: a real stream
+  with a live track, so `openCamera` resolves on its first attempt, `watchCameraStream`
+  finds tracks to listen on, and the page reaches `ready` the way it does on a phone. The
+  landmarker is not mocked and in fact loads here.
+
+  What it found at 360x800 in all five locales: `infoLinkBtn` (`app/scan/scan-styles.ts`)
+  at **290.0x26.8px** against `--tap-min: 44px`. That is the only way into the "사진과
+  데이터 사용" sheet, on the panel where the user consents to AI analysis and research
+  storage — the control that explains what happens to their face, sitting at 61% of the
+  minimum. `ghostLink`, two exports below it in the same file, already carried the
+  minimum and is pinned by the contract test; this one was missed because nothing had ever
+  reached `ready` in a browser. Reverting the fix fails the spec with exactly one offender
+  named: `ko: controls under 44px ... ["사진과 데이터 사용 자세히 보기 290.0x26.8"]`.
+
+  **Two things checked and corrected rather than shipped.** The spec's first run flagged
+  three 18x18px checkboxes as well. They are not a defect — each sits inside a 52px
+  `<label>`, which is the box a finger lands on — so the rule measures the label where one
+  wraps the control, and the product was not changed for them. And the source contract
+  added alongside used `/export const infoLinkBtn:[\s\S]*?minHeight: "var\(--tap-min\)"/`,
+  which **passed against a reverted `infoLinkBtn`**: the lazy match ran past the end of the
+  declaration and found `ghostLink`'s own `minHeight` fifty lines down. It is bounded to
+  the object literal with `[^}]*` now, and re-verified by the same revert:
+  `expected 'import type { CSSProperties } from "r…' to match /export const infoLinkBtn:
+  CSSProperti…/`. A guard that cannot fail is worse than no guard.
+
+  **Bug fix 1: the re-engagement cron would have mailed 2주 and 4주 to the same person in
+  one sweep.** `app/api/reengage/run/route.ts` loops `[2, 4]` and the two passes were
+  independent — the week-4 query filtered on `week4_sent_at is null` and `consented_at`
+  alone, never on whether week 2 had gone out. A contact consented four or more weeks ago
+  with neither column set matched BOTH queries, and the week-2 send inside the loop sets
+  only `week2_sent_at`, a column the week-4 query does not look at. This is the default
+  path, not a corner case: `lib/reengage.ts` is a documented no-op until the owner sets
+  `RESEND_API_KEY` while `/api/reengage/subscribe` has been storing consenting contacts the
+  whole time, so the first cron tick after the secrets are set sweeps everyone who has been
+  waiting since consent and sends each of them both mails minutes apart. Two different
+  `reengageIdempotencyKey(email, week)` values, so Resend's idempotency does not collapse
+  them. The fix is one predicate — the four-week mail follows two weeks behind the two-week
+  one — and it leans on a NULL comparison not being true, so "week two has not gone out"
+  holds week four back as well. `tests/reengage-double-send.test.ts` fakes Supabase at the
+  query-builder level and models that NULL rule explicitly; reverting the predicate fails
+  3 of 5, including `expected [ { …(2) }, { …(2) } ] to deeply equal [ { …(2) } ]` with
+  both mails addressed to `waiting@example.com`. The two that still pass are the controls.
+
+  **Bug fix 2: `/checkin` told the user their feedback was saved when the write was
+  refused.** `lsPush` (`lib/store.ts`) swallows a `setItem` throw and returns false on
+  purpose — its own comment says a blocked or full store "must not reject into the caller's
+  click handler". `recordProductUse` honours that; `recordCheckin` discarded it and
+  returned a fully-populated `Checkin`, so `save()` called `onDone()` unconditionally and
+  the card rendered "남겨주신 피드백을 저장했어요." over an empty store. Safari private mode
+  and a quota-full device both make `setItem` throw. `/checkin` is the landing page of
+  every re-engagement mail (`app/api/reengage/run/route.ts`), so the user answers three
+  questions, is told it was saved, finds the card un-answered next visit, and the mail
+  keeps asking. `recordCheckin` now returns `Checkin | null` like its sibling and the card
+  shows the error row `app/components/product-card.tsx` already uses — reusing the exact
+  string, which exists in all four dictionaries, so no i18n key was added and no locale
+  falls back. Reverting the one line fails 1 of 3:
+  `expected { sku_id: 'sr1', week: 2, …(5) } to be null`.
+
+  **The fix broke an existing test, and the test was restated rather than relaxed.**
+  `tests/reengage-resubscribe.regression-8.test.ts` pinned ISSUE-008 — the cron's due
+  date must come from `consented_at`, never `created_at` — by asserting the runner makes
+  exactly **2** `.lte()` calls, both on `consented_at`. The spacing predicate makes it 3,
+  so the full run came back `expected "vi.fn()" to be called 2 times, but got 3 times`.
+  The guarded behaviour did not change; the arity did. The assertion now names every
+  `.lte()` column — `["consented_at", "consented_at", "week2_sent_at"]` — which is at
+  least as tight (a fourth filter or a swap still fails it) and was re-verified by
+  reintroducing ISSUE-008 itself: `expected [ 'created_at', 'created_at', …(1) ] to
+  deeply equal [ Array(3) ]`. Recorded because the first full smoke of this cycle was
+  RED on it, not green.
+
+  **One candidate found and deliberately not fixed**, recorded as a backlog item rather
+  than swept up: `recordCareIntent` discards the same signal one function below
+  `recordCheckin`. Its only caller does `void recordCareIntent({...})` and shows the user
+  nothing, so it is a short log rather than a lie to a user, and fixing it carries a
+  question about what `/care` should surface.
+
+  **Rotation, proved rather than asserted.** Measured across the rotation step alone:
+  `docs/AUTOPILOT.md` **1535 -> 1506**, `docs/autopilot-changelog.md` **4396 -> 4694**.
+  (This paragraph was written after that measurement, so the committed file is a little
+  longer than 1506; `wc -l` on the commit is the authority and the delta above is the
+  rotation's, not the whole cycle's.) "Recent cycles" holds 24/23/22; cycle 21 moved
+  verbatim to the bottom of the changelog, and both `[x]` items moved under their
+  original "### Now" heading with the original text preserved as a blockquote.
+  Normalising both files' non-blank lines (strip leading whitespace and `>`, strip
+  trailing whitespace, `sort -u`) and running `comm -23 before after` leaves exactly
+  **1** line:
+
+  ```
+  - [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
+  ```
+
+  which is that item gaining its `[~]` — the one line this cycle edited rather than
+  moved. 5026 unique lines before, 5271 after.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest **603 passed in
+  89 files** (595 in 87 plus 8 cases in 2 new files), `npx tsc --noEmit | grep -c
+  "error TS"` **13** unchanged, `npm run lint` **0 errors, 2 warnings** — the same two,
+  `'_reads'` and `'_result'` at `lib/care.ts:72` — `python3 ml/selftest.py` **Ran 121
+  tests ... OK** (103 plus 18), mobile E2E **50 passed**. The arriving E2E case count was
+  not separately recorded this cycle (the baseline smoke output was tailed past that
+  line and the brief gave only `Smoke test passed.`), so 50 is stated as measured and the
+  delta is not. `lib/skin.ts` is untouched;
+  `public/models/visible-attributes/manifest.json` is untouched, `status` and
+  `promotionGate` included; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent kind was
+  invented and neither stream was merged; no dataset licence tier moved.
 
 - 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
   has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:
@@ -1303,233 +1522,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   actually clean, **577 passed in 87 files**. Same class as cycle 20's docstring regex —
   a check that fails for a reason that is not the code's, and it looks exactly like a
   defect.
-
-- 2026-09-20 (cycle 21) — Branch `autopilot/2026-09-20-1239`. **The registry's 24
-  borrowed numbers were never checked against the work they came from; all 24 hold. And
-  that check is what settled the `melanin_index` fork the backlog had been holding open:
-  the benchmark ARU cites computes the melanin index from L\* too, so the index is
-  DERIVED and the app should not grow a field to carry it. `FEATURE_KEY` keeps the six
-  indices the app carries and `DERIVED_FROM` carries the one it does not.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** `npm run smoke` green with the chromium override
-  (`Smoke test passed.`), `npx tsc --noEmit | grep -c "error TS"` **13**, `npm run lint`
-  **0 errors, 2 warnings** both in `lib/care.ts`, `python3 ml/selftest.py` **Ran 84 tests
-  ... OK**. Vitest was **565 passed in 86 files** per the brief.
-
-  **Research: `raw.githubusercontent.com` answers, so the source could be read, and it
-  was the right thing to read.** `ml/skin_indices.py` opens with a 20-line benchmark
-  summary that the whole transfer-class design rests on, and nothing had ever checked it.
-  Its named source is hpicsk/regional-ccm, whose `srt_submission/parameters.tex` carries
-  the header `%%% AUTO-GENERATED by src/build_parameters.py. %%% Source: results/*.json`
-  — so every macro in it is a number the analysis produced rather than one an author
-  typed. **24 of 24 matched**, subjects through ANOVA eta-squared, with the full table in
-  `docs/melanin-index-verification.md`. Two characterisations were checked as well as the
-  figures: a\* 0.725 and b\* 0.713 sit below the source's own `ICC_GOOD_MIN = 0.75`, so
-  "only moderate" holds, and 0.1165 / 0.0006 = **194.17**, so "roughly 200x" holds.
-  Fetched with `http=200` and sha256 recorded; `doi.org` and `www.ncbi.nlm.nih.gov`
-  returned `http=000` on the same probe, so this is the authors' code and generated
-  parameters, not either paper, and the doc says so in those words.
-
-  **ML: the fork was a decision and the source decided it.** `FEATURE_KEY`'s contract is
-  "the feature key `lib/skin.ts` writes into every exported sample". It declared
-  `melanin_index` to be `toneLstar`, and at L\* = 70 the index is **15.490195998574317**
-  while the declared column holds **70** — a nonlinear transform named as if it were the
-  value. The backlog's two options were: add an app-side melanin field, or give the
-  registry a second kind of entry. `src/clinical.py:compute_melanin_index` computes the
-  same `100*log10(100/L*)` from a CIELAB L\* reading with the same `1.0` floor, so it is
-  a derived quantity and an app-side field would be an export column with no producer and
-  no reader — `melanin_index()` has no caller in this repository outside `ml/selftest.py`,
-  which is exactly why nobody had noticed. `DERIVED_FROM` now names the INPUT column; an
-  index in neither map or in both fails `ml/selftest.py`, a derived index equal to its
-  source fails it too, and a derived index whose source is not a real `SkinRawFeatures`
-  field fails `tests/skin-index-contract.test.ts`.
-
-  The source's ONE deviation is left in place deliberately and measured rather than
-  waved at: it clips L\* to `[1.0, 100.0]` and ARU clips only the bottom, so above
-  L\* = 100 the source returns 0.0 and ARU a negative number. Over **all 16,777,216**
-  8-bit sRGB triples through `ml/ita.py:rgb_to_lab` the maximum L\* is **100.0 exactly**,
-  at `rgb=(255, 255, 255)`. Copying the upper clip would make pure white and a physically
-  impossible L\* report as the same skin, which is worse than a negative number only a
-  caller that is already wrong can reach.
-
-  **Bug fix: `efficacyClean()` is Korean-only by design and the multilingual gate that
-  covers for it had holes in three of the four languages.** `reasonClean` runs
-  `efficacyClean` first and then `BANNED_BY_LANG[lang]`, and that file's own header says
-  it mirrors `lib/recommend.ts BANNED`. It did not. Measured, not assumed — nine
-  sentences of the kind a model writes when told to sell a product in one line passed
-  the gate:
-
-  ```
-  en 효능/효과: A gentle formula with a visible brightening effect.
-  en 효능/효과: Proven efficacy on enlarged pores.
-  zh 효능/효과: 对油性肌肤效果明显。
-  zh 효능/효과: 温和有效，适合日常使用。
-  ar 개선: يساعد على تحسين ملمس البشرة.
-  ar 효능/효과: فعالية عالية للبشرة الدهنية.
-  ar 효능/효과: منتج فعال لتقليل اللمعان.
-  en 피부과: Dermatologist recommended for sensitive skin.
-  zh 피부과: 皮肤科医生推荐。
-  ```
-
-  Three concepts had no equivalent somewhere: **효능/효과** was absent from `en` and
-  `ar` and present in `zh` only as the compounds 功效/疗效 and never as plain 效果,
-  **개선** was absent from `ar` entirely, and **피부과** was absent from `en`, `zh` and
-  `ja`. `ar` had no test case in `tests/claim-filter.test.ts` at all, which is how a
-  whole missing concept survived. All nine are now cases. Two additions are deliberately
-  blunt and the header says so: English `effect` catches "a cooling effect", and Arabic
-  `تأثير`/`فعال` catch neutral uses — a false positive costs one pre-approved template
-  fallback, which is the asymmetry the filter already declared it was built on.
-  `efficacyClean()` itself is untouched and still runs first on every candidate, so the
-  Korean spellings were blocked in every locale the whole time; what leaked was
-  non-Korean wording in the non-Korean locales.
-
-  **UI/UX: the share card and the report described the same level with two different
-  words, and the duplication is what let them.** `lib/share-link.ts` keeps its own copy
-  of the three axes' level labels; `pores[1]` read **"결 약간"** against `SKIN_LABELS`'
-  **"결 약간 보임"**. So a sender whose report said one thing shared a link whose mood
-  line said the other — on `/`, the page a first-time visitor lands on from a friend, and
-  the only organic acquisition path the product has. Fixed to match. The copy is NOT
-  replaced by an import, on purpose: `app/components/mood-from-link.tsx` is the only
-  consumer and it renders on that landing, so importing `lib/skin.ts` would put the whole
-  ~1,300-line analysis runtime into the bundle of the one page whose load time is the
-  viral loop's first impression. Instead `MOOD_LABELS` is exported for one reason and the
-  reason is in the comment: `tests/share-link.test.ts` imports both tables and compares
-  them element by element, which a test may do and a page may not.
-
-  **A second research finding, corrected in the repository rather than only recorded.**
-  Three files describe the same five ITA edges and credited them to two different papers:
-  `ml/subgroups.py` and `lib/tone-bands.ts` said "the Chardon convention", while
-  `ml/skin_indices.py` said "Del Bino & Bernerd cutpoints". The source separates them the
-  ordinary way — `src/clinical.py` attributes the arctan FORMULA to Chardon et al. (1991)
-  and Del Bino et al. (2006), and the six-category CUTPOINTS −30/10/28/41/55 to Del Bino
-  & Bernerd (2013) — and ARU uses those cutpoints. The two files now say so. **This does
-  not close the open backlog item**, which asks for a primary source and is not satisfied
-  by another project's source file; the repository merely stopped contradicting itself,
-  and `docs/tone-ita-verification.md` says that in those words. The two duplicate copies
-  of that item in "Next" are merged into one, which is the other thing that kept it from
-  being read.
-
-  **Also recorded and not acted on:** the source guards ITA at `|b*| < 1e-6` with a signed
-  epsilon, so an exact zero collapses to `+90` whatever L\* is, against ARU's cycle-20
-  `b* == 0 → L* > 50 ? 90 : -90`. Not changed to match. Cycle 20 measured that a window
-  guard puts 242 of 256 8-bit greys inside it and returns the wrong sign for 241; the
-  source's window is the narrow one (1 of 256) and ARU's `== 0` is narrower still. At
-  exactly zero the value is a convention either way. Written down in
-  `docs/melanin-index-verification.md` §5 so a future cycle comparing the two does not
-  read the difference as a defect.
-
-  **Thirteen breaks, every one at the SOURCE line and never at the test.** Four on the
-  registry split, four on the claim filter, one on the share labels, and the guards that
-  already existed were left alone:
-
-  ```
-  melanin_index put back in FEATURE_KEY     2 fail; melanin_index is declared both
-    (and left in DERIVED_FROM)                carried and derived; toneLstar is already
-                                              some other index's own value
-  melanin_index() made the identity         1 fail; 30.0 == 30.0 within 6 places :
-    (`return lstar`)                          melanin_index equals its source toneLstar
-                                              at L*=30.0; if that holds everywhere it
-                                              belongs in FEATURE_KEY
-  melanin_index moved back to FEATURE_KEY   1 fail; expected 'FEATURE_KEY = {\n
-    and out of DERIVED_FROM                   "relative_rednes…' not to contain
-                                              'melanin_index'
-  a 2nd DERIVED_FROM entry whose source     1 fail; toneLightness missing from
-    is not a SkinRawFeatures field            SkinRawFeatures
-  en effect|efficac|proven removed          1 fail; expected true to be false
-  ar تحسين|تحسن|يحسن removed                 1 fail; expected true to be false
-  zh 效果|有效|见效 removed                    1 fail; expected true to be false
-  dermatolog|皮肤科|皮膚科 removed             1 fail; expected true to be false
-  share pores[1] drifted back to "결 약간"    2 fail; expected [ '결 매끈', '결 약간',
-                                              '결 뚜렷' ] to deeply equal [ '결 매끈',
-                                              '결 약간 보임', '결 뚜렷' ]; expected
-                                              '유분 적음 · 붉은기 낮음 · 결 약간' to
-                                              contain '결 약간 보임'
-  ```
-
-  The first break is the one worth keeping: it fires TWO different assertions from two
-  different tests, because "carried and derived at once" and "that column is already
-  another index's value" are separate ways the split can be violated and neither implies
-  the other.
-
-  **Nothing that moves a reading moved.** `lib/share-link.ts` gained one exported alias
-  (`MOOD_LABELS`) and one corrected string constant; `lib/skin.ts` is untouched. No index
-  formula, threshold, or `fallbackVersion` was touched, and `public/models/visible-
-  attributes/manifest.json` is byte-identical — `status` and `promotionGate` included.
-  `NEXT_PUBLIC_FUNNEL_FLUSH` untouched. No consent kind or flow invented. PR #69's area
-  (`ml/train_visible_attributes.py`) not touched.
-
-  **Six new vitest cases and one new Python case**, which is the 565 → 571 and 84 → 85
-  below. Verification: `npm run smoke` **`Smoke test passed.`** — inside it
-  `npx vitest run` **571 passed in 86 files**, the mobile E2E suite **44 passed (3.0m)**
-  with the chromium override, and `python3 ml/selftest.py` **Ran 85 tests ... OK**.
-  Separately, `npm run lint` **0 errors, 2 warnings** (the same two, `lib/care.ts`) and
-  `npx tsc --noEmit` **13 errors** (the baseline, unchanged).
-  Rotation: `docs/AUTOPILOT.md` 1342 → 1304 lines, `docs/autopilot-changelog.md`
-  3591 → 3823, and the moved cycle-18 block is byte-identical — `diff` of the 202-line
-  block against the changelog's last 202 lines is empty.
-
-  **Supervisor review.** Everything load-bearing was re-derived independently before the
-  worker reported, and the two things that decided the cycle were derived against it.
-
-  *The melanin_index declaration was worse than the backlog said, and the fix closes it.*
-  The backlog called the declaration wrong. Measured on main, it was **unpinned**: the
-  declaration was swapped at its source line to a different, wrong field (`toneIta`, an
-  angle in degrees), patching only inside the `FEATURE_KEY` block so no docstring was
-  hit, and **565 vitest and 84 Python tests all stayed green**. The check meant to catch
-  it (`tests/skin-index-contract.test.ts:196`) asserted only that the name appears as a
-  `number` field on `SkinRawFeatures` — a name-only check, blind to a transform — and it
-  had already been the vector for `shine_ratio` (cycles 16/19) and `relative_redness`
-  (cycle 19). Re-run on this branch, both breaks fail as they should: restoring
-  `melanin_index` to `FEATURE_KEY` fails `ml/selftest.py`
-  (`melanin_index is declared both carried and derived`) **and** vitest; pointing
-  `DERIVED_FROM` at a wrong-but-existing column (`cov`) fails vitest. The cycle also
-  caught something this review did not: the old slice ran to `#: Feature keys added`,
-  so with a second map between them it would have swallowed `DERIVED_FROM`'s entries and
-  passed them through the `SkinRawFeatures` check as though they were carried. It now
-  slices at each map's own closing brace.
-
-  *The 24 figures were re-fetched, not taken on trust.* All three cited files were
-  re-fetched independently and all three sha256 match byte for byte:
-  `src/clinical.py` **008796658a2af68d…** (16,843 bytes), `parameters.tex`
-  **b7ced068d7dbcdf…** (10,528), `README.md` **ced5768ac11f057…** (6,406). Against the
-  fetched source: `compute_melanin_index` is `100 × log10(100 / L*)`,
-  `MI_L_STAR_FLOOR = 1.0`, and line 361 is `np.clip(L_star, MI_L_STAR_FLOOR, 100.0)` —
-  so the "one deviation is the upper end" claim is exact. The attribution split holds
-  too: line 67 credits the six-category CUTPOINTS to Del Bino & Bernerd (2013) and line
-  388 the FORMULA to Chardon et al. (1991), and the source's
-  `ITA_BIN_EDGES = (-30.0, 10.0, 28.0, 41.0, 55.0)` are ARU's `ITA_BANDS` edges with
-  Brown and Dark merged, which is the only difference the docstring claims.
-
-  *The two new app-side guards bite at their source lines.* Reverting `pores[1]` to
-  `결 약간` fails `tests/share-link.test.ts` on two cases; dropping `effect` from the
-  English pattern fails `tests/claim-filter.test.ts`. `reasonClean` was checked for the
-  obvious hazard in widening the pattern — `app/api/reason/route.ts:77` returns
-  `item.fallback` WITHOUT re-filtering it, so a blunt pattern costs a template fallback
-  and cannot loop. Checked separately: the new `결 약간 보임` is present in all four
-  dictionaries, so the label change does not leak Korean.
-
-  *Rotation, checked against a pre-review snapshot of main.* 1342 → 1304 and 3591 →
-  3823 as claimed. `sort -u` over the non-blank lines of both files then `comm -23`
-  against main's 4,164: **25 lines missing**, and all 25 belong to the two backlog items
-  this cycle worked. All **14** non-blank lines of the closed `melanin_index` item are
-  preserved verbatim in the changelog blockquote. The ITA-band item did NOT close — its
-  primary source is still unreachable — and the near-duplicate it absorbed was real:
-  main carried the same claim twice, at `docs/AUTOPILOT.md` lines 495 and 530.
-
-  *Nothing published moved.* The manifest is untouched, `fallbackVersion` is still
-  `roi-calibrated-2026-09-18`, `lib/tone-bands.ts` and `ml/subgroups.py` are
-  comment-only, and no band edge changed.
-
-  *One thing this review found that the cycle did not*, recorded on the backlog item
-  itself: the `srgbLinear` LUT wins in situ (31.6–42.2% off `analyzeSkin`, 35/36 then
-  36/36 paired reps) but the item's stated acceptance criterion is not sufficient —
-  `toneSpread` moves at all four frame sizes while `blemishCount` and `blemishDensity`
-  do not, and the item's **1.9e-6** error figure is the detector's domain rather than
-  `srgbLinear`'s, which is **9.138e-5** at the sRGB knee.
-
-  *One re-verification, so a five-day-old block is not quoted as current.* The commerce
-  deep-link item's egress block was re-run today: `curl: (56) CONNECT tunnel failed,
-  response 403` for all three merchant hosts, and the proxy's own
-  `recentRelayFailures` names each one with `gateway answered 403 to CONNECT`. Still
-  blocked, same reason.

@@ -78,10 +78,15 @@ export async function getProductUses(): Promise<ProductUse[]> {
     .reverse();
 }
 
-export async function recordCheckin(checkin: Omit<Checkin, "id" | "ts">): Promise<Checkin> {
+// Returns null when the write was refused, the same as recordProductUse. The earlier
+// version threw lsPush's boolean away and handed back a fully-populated Checkin, so a
+// caller could not tell a stored answer from a dropped one — and /checkin's card then
+// told the user "남겨주신 피드백을 저장했어요." over an empty store. lsPush returns
+// false rather than throwing on purpose (a blocked or full localStorage must not
+// reject into a click handler), which only works if the caller reads it.
+export async function recordCheckin(checkin: Omit<Checkin, "id" | "ts">): Promise<Checkin | null> {
   const rec: Checkin = { ...checkin, id: uid(), ts: Date.now() };
-  lsPush(CHECKINS_KEY, rec);
-  return rec;
+  return lsPush(CHECKINS_KEY, rec) ? rec : null;
 }
 
 export async function getCheckins(): Promise<Checkin[]> {

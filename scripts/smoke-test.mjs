@@ -24,6 +24,7 @@ const mlFiles = [
   "ml/model_contract.py",
   "ml/skin_indices.py",
   "ml/ordinal_metrics.py",
+  "ml/qwk_noise.py",
   "ml/heuristic_baseline.py",
   "ml/selftest.py",
 ];

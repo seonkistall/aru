@@ -389,7 +389,7 @@ export default function Scan() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={startCamera} style={{ ...primaryBtn, width: "100%" }}>{t("카메라로 살펴보기")}</button>
+                  <button data-testid="scan-start" onClick={startCamera} style={{ ...primaryBtn, width: "100%" }}>{t("카메라로 살펴보기")}</button>
                   <a href="/survey" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "100%", minHeight: "var(--tap-min)", textAlign: "center", marginTop: 11, fontSize: 13, color: "rgba(255,255,255,.85)", textDecoration: "underline" }}>
                     {t("카메라 없이 설문으로 시작하기")}
                   </a>

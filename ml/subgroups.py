@@ -44,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ordinal_metrics  # noqa: E402
+import qwk_noise  # noqa: E402
 
 #: Del Bino & Bernerd ITA bands, ordered light to dark, with Brown and Dark merged
 #: into brown_dark (ml/selftest.py pins that merge as the only difference).
@@ -508,13 +509,32 @@ def _usable_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value)
 
 
+def _gain_noise_band(model_matrix: object, heuristic_matrix: object) -> dict | None:
+    """The bootstrap band on this axis's qwk gain, or None when it cannot be computed.
+
+    Both matrices have to be present and the same shape: a band computed from a matrix
+    of a different level count is not a band on this comparison. Returns None rather
+    than raising, because a missing matrix must not turn a gate run into a crash.
+    """
+    if not isinstance(model_matrix, list) or not isinstance(heuristic_matrix, list):
+        return None
+    if not model_matrix or len(model_matrix) != len(heuristic_matrix):
+        return None
+    for matrix in (model_matrix, heuristic_matrix):
+        if any(not isinstance(row, list) or len(row) != len(matrix) for row in matrix):
+            return None
+    return qwk_noise.gain_band_from_confusions(model_matrix, heuristic_matrix)
+
+
 def beats_heuristic_check(
     overall: dict,
     axes: tuple[str, ...],
     baseline: dict | None,
     min_qwk_gain: float,
     baseline_axes: tuple[str, ...] = (),
-) -> tuple[dict, list[str]]:
+    *,
+    model_confusion: dict | None = None,
+) -> tuple[dict, list[str], list[str]]:
     """Does the model actually beat the rule it would replace? Per axis, on qwk.
 
     Every other rule in this gate asks whether the model is good in absolute terms.
@@ -535,8 +555,10 @@ def beats_heuristic_check(
     """
     report: dict[str, dict] = {}
     blockers: list[str] = []
+    warnings: list[str] = []
     covered = set(baseline_axes)
     baseline = baseline or {}
+    model_confusion = model_confusion or {}
 
     for axis in axes:
         if axis not in covered:
@@ -601,6 +623,25 @@ def beats_heuristic_check(
         gain = model_qwk - base_qwk
         entry["gain"] = gain
         entry["beats"] = gain > min_qwk_gain
+
+        # How much of that gain is the split's own sampling noise? REPORTED, never
+        # decisive: the rule the manifest publishes is `gain > minQwkGainOverHeuristic`
+        # and this does not change it. It exists because that constant is 0.0 and the
+        # manifest's own note says it is 0.0 only because nothing estimated the noise.
+        band = _gain_noise_band(model_confusion.get(axis), base.get("confusion"))
+        if band is not None:
+            entry["gainNoiseBand"] = band
+            clears = qwk_noise.clears_band(band, min_qwk_gain)
+            entry["clearsNoiseBand"] = clears
+            if entry["beats"] and clears is False:
+                warnings.append(
+                    f"[{axis}] the qwk gain of {gain:+.3f} over the shipped heuristic does not "
+                    f"clear its own {band['confidence']:.0%} bootstrap band "
+                    f"[{band['lo']:+.3f}, {band['hi']:+.3f}] on {scored_rows} rows, so it is "
+                    f"not distinguishable from {min_qwk_gain:.3f}. Not a blocker: the published "
+                    f"gate asks only for a positive gain."
+                )
+
         report[axis] = entry
         if not entry["beats"]:
             blockers.append(
@@ -609,7 +650,7 @@ def beats_heuristic_check(
                 f"{scored_rows} rows). Replacing the heuristic would not improve this axis."
             )
 
-    return report, blockers
+    return report, blockers, warnings
 
 
 def promotion_check(
@@ -624,6 +665,7 @@ def promotion_check(
     baseline: dict | None = None,
     min_qwk_gain: float = 0.0,
     baseline_axes: tuple[str, ...] = (),
+    model_confusion: dict | None = None,
 ) -> dict:
     """Can this model replace the heuristic? Subgroup gaps decide, not the mean.
 
@@ -650,8 +692,9 @@ def promotion_check(
     ordinal, reasons = ordinal_check(overall, axes, min_qwk, min_pearson)
     # Whether the model is any good and whether it should REPLACE the shipped rule are
     # different questions. ordinal_check answers the first; this answers the second.
-    beats, beat_blockers = beats_heuristic_check(
-        overall, axes, baseline, min_qwk_gain, baseline_axes
+    beats, beat_blockers, beat_warnings = beats_heuristic_check(
+        overall, axes, baseline, min_qwk_gain, baseline_axes,
+        model_confusion=model_confusion,
     )
     reasons = reasons + beat_blockers
     results = {}
@@ -689,4 +732,7 @@ def promotion_check(
         "dimensions": results,
         "promotable": not reasons,
         "blockers": reasons,
+        # Reported, never decisive. A warning here means a rule the manifest DOES NOT
+        # publish would have caught something; promotability is `blockers` alone.
+        "warnings": beat_warnings,
     }

@@ -868,6 +868,9 @@ def main() -> None:
         baseline=baseline_metrics,
         min_qwk_gain=args.min_qwk_gain,
         baseline_axes=heuristic_baseline.covered_axes(),
+        # The promoted checkpoint's own confusion, so the gate can put a bootstrap band
+        # on each axis's qwk gain. Reported next to the gain; it decides nothing.
+        model_confusion=promoted_val_confusion,
     )
 
     calibration_path = out_dir / "tone_calibration.json"

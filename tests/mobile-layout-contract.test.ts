@@ -61,6 +61,18 @@ describe("mobile journey layout contract", () => {
     expect(scanStyles).toMatch(
       /export const ghostLink:[\s\S]*?display: "inline-flex"[\s\S]*?minHeight: "var\(--tap-min\)"/,
     );
+    // `infoLinkBtn` sits two exports below `ghostLink` and never got the same
+    // treatment: 290.0x26.8px in chromium at 360px, measured 2026-09-21 by the first
+    // test that ever reached the live-camera screen. It opens the sheet explaining what
+    // happens to the user's photo, from the panel where they consent to it.
+    // Bounded to the object literal with [^}]*, not [\s\S]*?. The first version of
+    // this line used the lazy any-character form and passed against a REVERTED
+    // infoLinkBtn, because it ran past the end of the declaration and matched
+    // ghostLink's own minHeight fifty lines further down. A guard that cannot fail is
+    // worse than no guard, so it is pinned to the literal it claims to read.
+    expect(scanStyles).toMatch(
+      /export const infoLinkBtn: CSSProperties = \{[^}]*minHeight: "var\(--tap-min\)"/,
+    );
   });
 
   it("keeps every reminder opt-in control at least 44px high", () => {
