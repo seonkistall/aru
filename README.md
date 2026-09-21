@@ -49,6 +49,15 @@ recommendation flow can also be completed with the questionnaire alone.
 - Why `/checkin`'s answer controls are 44px both ways, measured in a browser at 360px:
   [docs/checkin-tap-target-measurement.md](docs/checkin-tap-target-measurement.md)
   (32 of 45 controls were under the contract in five locales; every pill was 35.5px high)
+- Why a run that pools two generations of the feature extractor warns instead of blocking:
+  [docs/feature-generation-pooling.md](docs/feature-generation-pooling.md)
+  (scikit-learn warns on a provenance mismatch and raises on a structural one, read from
+  its own source; `coverage_warnings` names and counts the pooled generations, and the
+  published promotion rule is untouched)
+- What a card shared from `/studio` should link back to, and why no cycle picked:
+  [docs/share-return-path-decision.md](docs/share-return-path-decision.md)
+  (five options with what each costs; `shareUrl` is still unused because `/studio` holds
+  edited copy rather than the levels `moodShareUrl` needs — an owner decision)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
   (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest

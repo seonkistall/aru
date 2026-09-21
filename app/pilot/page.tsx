@@ -36,6 +36,7 @@ export default function PilotPage() {
   const [excludedReason, setExcludedReason] = useState("");
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<ReturnType<typeof getPilotNotes>>([]);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     // localStorage is client-only; reading it during the first render caused
@@ -63,7 +64,7 @@ export default function PilotPage() {
   function save() {
     if (!validParticipant) return;
 
-    savePilotNote({
+    const saved = savePilotNote({
       participant: participantId,
       participantId,
       round,
@@ -84,6 +85,17 @@ export default function PilotPage() {
       notes,
     });
 
+    // Surfaced here and deliberately not on /scan or /care, which is the same test cycle
+    // 25 applied to recordCareIntent: report a refused write only where the operator
+    // would otherwise be misled. They would be — the form clears and the roster
+    // re-reads, so a dropped note looks like a note that was never typed. The typed
+    // fields are kept so the note can be retried or copied out.
+    if (!saved) {
+      setSaveError("Note not stored: this browser refused the write (storage full or site data blocked). Nothing below was cleared — export the roster or free space, then save again.");
+      return;
+    }
+
+    setSaveError("");
     setStatus(scanCompleted ? "scanned" : consentAi || consentCrop ? "consented" : "planned");
     setNotes("");
     setExcludedReason("");
@@ -183,6 +195,7 @@ export default function PilotPage() {
           <button onClick={save} disabled={!validParticipant} style={{ ...primaryBtn, opacity: validParticipant ? 1 : 0.55 }}>
             Save session and set active participant
           </button>
+          {saveError && <p role="status" style={errorText}>{saveError}</p>}
         </section>
 
         <section style={sectionStyle}>

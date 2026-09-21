@@ -39,6 +39,12 @@ export type PilotSession = {
 
 const KEY = DEVICE_DATA_KEY.pilotNotes;
 const SESSION_KEY = DEVICE_DATA_KEY.pilotSession;
+// Same shape and the same reason as the 200 in lib/consent.ts and the 500 in
+// lib/labels.ts: a device-local research log must not grow without a bound. A note is a
+// small flat object, so 500 of them is well under a browser's quota — the cap is here so
+// the store cannot be the thing that fills, and exportPilotNotes() is the way out before
+// it bites.
+const MAX_PILOT_NOTES = 500;
 // Exactly P001-P030. The old 0[0-9][1-9] left the tens digit unconstrained and
 // also matched P031-P099, inflating the pilot participant count on ops typos.
 const PARTICIPANT_RE = /^P(00[1-9]|0[12][0-9]|030)$/;
@@ -87,9 +93,14 @@ export function getCurrentPilotSession(): PilotSession | null {
   }
 }
 
-export function setCurrentPilotSession(session: PilotSession) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export function setCurrentPilotSession(session: PilotSession): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function clearCurrentPilotSession() {
@@ -133,7 +144,14 @@ export function summarizePilotNotes() {
   };
 }
 
-export function savePilotNote(note: Omit<PilotNote, "id" | "ts">): PilotNote {
+/**
+ * Append a pilot note and establish the participant scope. Returns the stored note, or
+ * null when the device store refused it (quota, blocked site data, SSR) — the same
+ * signal shape as recordConsentEvent and saveCropSample, so the caller can tell the
+ * operator rather than silently dropping a roster row.
+ */
+export function savePilotNote(note: Omit<PilotNote, "id" | "ts">): PilotNote | null {
+  if (typeof window === "undefined") return null;
   const session = createPilotSession({
     participant: note.participant,
     round: note.round,
@@ -148,9 +166,16 @@ export function savePilotNote(note: Omit<PilotNote, "id" | "ts">): PilotNote {
   rec.deviceId = note.deviceId || session.deviceId;
   rec.reviewerId = note.reviewerId || session.reviewerId;
   rec.status = note.status || (note.scanCompleted ? "scanned" : note.consentAi || note.consentCrop ? "consented" : "planned");
-  const all = getPilotNotes();
-  all.push(rec);
-  localStorage.setItem(KEY, JSON.stringify(all));
+  // The participant scope is written BEFORE the note, and that order is the point of
+  // this function rather than an accident of it. /scan reads getCurrentPilotSession()
+  // on every consent toggle and passes participantId/sessionId into recordConsentEvent,
+  // so an unestablished scope means every consent event for this participant lands
+  // unscoped — and participant scope is what the participant-grouped cross-validation
+  // needs. The scope is one small object under its own key; the note goes into the array
+  // that grows. Writing the small one first means a full store costs the note, not the
+  // scope. Both writes are guarded: this ran from /pilot's click handler with no
+  // try/catch at all, so a QuotaExceededError escaped into React and setCurrentPilotSession
+  // never ran.
   setCurrentPilotSession({
     participantId: rec.participantId,
     sessionId: rec.sessionId,
@@ -159,7 +184,14 @@ export function savePilotNote(note: Omit<PilotNote, "id" | "ts">): PilotNote {
     reviewerId: rec.reviewerId,
     startedAt: rec.ts,
   });
-  return rec;
+  const all = getPilotNotes();
+  all.push(rec);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all.slice(-MAX_PILOT_NOTES)));
+    return rec;
+  } catch {
+    return null;
+  }
 }
 
 export function exportPilotNotes() {
