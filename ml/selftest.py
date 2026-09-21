@@ -124,6 +124,100 @@ class ToneAndAge(unittest.TestCase):
         self.assertEqual(len({subgroups.tone_band_from_ita(r) for r in radians}), 1)
 
 
+class FeatureGenerations(unittest.TestCase):
+    """Pooling two generations of the feature extractor into one run is now reported.
+
+    The backlog item this closes: `fallbackVersion` moved to roi-calibrated-2026-09-16
+    and then to -09-18, each time because a feature's semantics changed, and the string
+    was carried per row by ml/prepare_crop_dataset.py and ml/run_pipeline.py while NO ml
+    script filtered, grouped or warned on it. A pre-09-16 and a post-09-16 tone reading
+    landed in the same subgroup cell and the same threshold fit with nothing said.
+
+    Warning rather than blocking is scikit-learn's own line between a provenance
+    mismatch and a structural one, read from its source at v1.5.2 and v1.7.1 — see
+    docs/feature-generation-pooling.md. The published promotion rule is untouched:
+    coverage_warnings has never been a gate.
+    """
+
+    NEW = {"model_version": "roi-calibrated-2026-09-18", "input_schema_version": "2026-06-30.visible-face-crop.v1"}
+    OLD = {"model_version": "roi-calibrated-2026-09-16", "input_schema_version": "2026-06-30.visible-face-crop.v1"}
+
+    @staticmethod
+    def _rows(*specs):
+        return [{"toneIta": "50", "age": 28, "participant_id": f"P{i:03d}", **spec} for i, spec in enumerate(specs)]
+
+    @staticmethod
+    def _generation_warnings(rows):
+        return [w for w in subgroups.coverage_warnings(subgroups.coverage(rows)) if "generation" in w]
+
+    def test_reads_both_camel_and_snake_spellings_of_the_row(self):
+        # prepare_crop_dataset writes snake_case rows; a manifest row read straight from
+        # the app writes camelCase. Both name the same generation and must not split it.
+        snake = subgroups.feature_generation(self.NEW)
+        camel = subgroups.feature_generation(
+            {"modelVersion": self.NEW["model_version"], "inputSchemaVersion": self.NEW["input_schema_version"]}
+        )
+        self.assertEqual(snake, camel)
+        self.assertIn("roi-calibrated-2026-09-18", snake)
+
+    def test_a_row_with_no_version_is_its_own_named_generation(self):
+        self.assertEqual(subgroups.feature_generation({"toneIta": "50"}), subgroups.UNSTAMPED)
+
+    def test_one_generation_warns_about_nothing(self):
+        self.assertEqual(self._generation_warnings(self._rows(self.NEW, self.NEW, self.NEW)), [])
+
+    def test_external_rows_that_carry_no_version_at_all_warn_about_nothing(self):
+        # A run made entirely of external-dataset rows has no mixing to report, and must
+        # not be told it does.
+        self.assertEqual(self._generation_warnings(self._rows({}, {}, {})), [])
+
+    def test_two_generations_in_one_run_are_named_and_counted(self):
+        warnings = self._generation_warnings(self._rows(self.NEW, self.NEW, self.OLD))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("2 feature generations pooled in one run", warnings[0])
+        self.assertIn("roi-calibrated-2026-09-18", warnings[0])
+        self.assertIn("roi-calibrated-2026-09-16", warnings[0])
+        # Counted, so the reader can see whether it is a stray row or half the dataset.
+        self.assertIn("(2)", warnings[0])
+        self.assertIn("(1)", warnings[0])
+
+    def test_a_schema_change_alone_is_a_different_generation(self):
+        # inputSchemaVersion has never actually moved (its own backlog item), so this is
+        # the case nothing would catch if only model_version were read.
+        other_schema = {**self.NEW, "input_schema_version": "2026-10-01.visible-face-crop.v2"}
+        warnings = self._generation_warnings(self._rows(self.NEW, other_schema))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("2 feature generations", warnings[0])
+
+    def test_unstamped_rows_beside_stamped_ones_are_reported_separately(self):
+        warnings = self._generation_warnings(self._rows(self.NEW, self.NEW, self.NEW, {}))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("carry no feature generation", warnings[0])
+        self.assertIn("1 rows (25%)", warnings[0])
+
+    def test_the_counts_are_carried_into_the_report_every_run_writes(self):
+        cov = subgroups.coverage(self._rows(self.NEW, self.OLD, {}))
+        self.assertEqual(
+            cov.as_dict()["featureGenerations"],
+            {
+                subgroups.feature_generation(self.NEW): 1,
+                subgroups.feature_generation(self.OLD): 1,
+                subgroups.UNSTAMPED: 1,
+            },
+        )
+
+    def test_the_pipeline_projection_carries_the_fields_coverage_reads(self):
+        # run_pipeline builds a narrow projection of each row and passes THAT to
+        # coverage(), not the CSV row. Pinned on source because the defect is a field
+        # that is absent: every assertion above would still pass with the projection
+        # unchanged, and the warning would never fire on a real run.
+        source = (Path(__file__).resolve().parent / "run_pipeline.py").read_text(encoding="utf-8")
+        projection = source[source.index("decoded.append({"):]
+        projection = projection[: projection.index("})")]
+        for key in ("model_version", "input_schema_version"):
+            self.assertIn(key, projection, f"run_pipeline's coverage projection dropped {key}")
+
+
 class Folds(unittest.TestCase):
     def _rows(self):
         return [

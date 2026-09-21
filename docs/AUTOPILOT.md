@@ -537,17 +537,15 @@ partly done and stays here.
   and it is one argument away from being a one-line change — but `moodShareUrl` needs the
   mood levels, `/studio` holds edited copy rather than reads, and deciding what a studio
   card should link to is a product call rather than a plumbing one. Not guessed.
-- [AI] **`savePilotNote` is the only store in the repo with no `window` guard, no cap and
-  no try/catch.** Found 2026-09-21 (cycle 25). `lib/pilot.ts:151` does a bare
-  `localStorage.setItem(KEY, JSON.stringify(all))` where `labels.ts`, `consent.ts`,
-  `crops.ts`, `store.ts`, `scan-history.ts` and `funnel.ts` all guard and cap. On a full or
-  blocked store the `QuotaExceededError` escapes into `/pilot`'s click handler, the note is
-  lost, and `setCurrentPilotSession` at line 154 never runs — so the participant scope is
-  never established and consent events recorded afterwards land unscoped, which is what the
-  participant-grouped cross-validation needs. **Research-mode only**: `/pilot` is in
-  `proxy.ts`'s matcher and 404s in production unless `INTERNAL_TOOLS_USER` /
-  `INTERNAL_TOOLS_PASSWORD` are set, which is why it did not win the bug-fix track over a
-  defect every user hits. Same shape as the cycle 24 and cycle 25 store fixes.
+  **2026-09-21, cycle 26: the decision is written up and still nobody's but the owner's.**
+  `docs/share-return-path-decision.md` states the five options with what each costs, and
+  rejects one of them on evidence: the values are free-text inputs and the two shipped presets
+  already contain strings with no mood axis in `MOOD_LABELS`, so reverse-mapping the edited
+  card yields nothing the moment anyone types. The recommendation is option E (mood link while
+  the card still says what the scan said, bare origin once it does not) with option B as the
+  fallback, and what would change it is a measurement of how many `/studio` sessions are
+  preset-only — which needs the funnel flush and is therefore behind the PIPA blocker. No code
+  was changed on this item, deliberately.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -595,6 +593,16 @@ partly done and stays here.
   (a face-region illuminant estimate) for both, which is the argument for not patching
   the residual floor on its own. The test case now records the two counts exactly
   rather than asserting a property that is false. Noted 2026-09-16.
+- [AI] **`/checkin`'s "See my report" link is 43.0px high in `ja` and 45.0px in the other
+  four locales.** Measured 2026-09-21 (cycle 26) in Chromium at 360x800 while sweeping every
+  public route for tap targets: `マイレポートを見る` comes back 155.0x43.0 against ko 115.1x45.0,
+  en 128.3x45.0, zh 120.0x45.0 and ar 113.5x45.0. That is 1px under `--tap-min: 44px`, on the
+  empty-state links of the surface every re-engagement mail lands on. It is not covered by
+  `tests/e2e/checkin-touch-target.regression-1.spec.ts`, which measures the home link, nor by
+  the answer-controls case beside it, which seeds a confirmed purchase so the card renders and
+  the empty state never appears. Left open rather than nudged because 1px in one locale is a
+  line-box question (which font falls back, and at what line-height) and the fix should come
+  from whatever makes the height locale-independent, not from a magic number. Noted 2026-09-21.
 - [AI] Four i18n keys are carried by `en.ts` and `ar.ts` and by neither `ja.ts` nor
   `zh.ts`, and they are dead in all four: `"피부 영역을 가이드 안에 맞춰주세요."` and the
   three beside it are retake-guidance sentences that no code emits — the live loop in
@@ -666,13 +674,16 @@ partly done and stays here.
   reintroduces the split just closed. `docs/analysis-performance-roadmap.md` had an open
   item whose literal wording would have re-added frame-mean gray-world; it now points
   here. Noted 2026-09-16.
-- [AI] The "do not pool feature generations" rule is documentation and nothing else.
-  `fallbackVersion` moved to `roi-calibrated-2026-09-16` and the string is carried per
-  row (`ml/prepare_crop_dataset.py`, `ml/run_pipeline.py`), but no ML script filters,
-  groups or warns on it, and `ml/calibrate.py` has no version handling at all. So a
-  pre-09-16 and a post-09-16 tone reading still land in the same subgroup cell and the
-  same threshold fit. Cheapest useful version: a `coverage_warnings` entry when one run
-  mixes generations. Noted 2026-09-16.
+- [AI] **`ml/calibrate.py` still has no feature-generation handling, and it is the half of
+  the pooling item that a warning did not close.** Cycle 26 gave every run that computes
+  subgroup coverage a report when it pools two generations, but threshold fitting does not go
+  through `coverage()`: `ml/calibrate.py` reads a CSV directly and has no version handling at
+  all, so a pre-09-16 and a post-09-16 reading still land in the same threshold fit with
+  nothing said. The same two clauses on the same two fields would do it. What stays out of
+  scope for a cycle is what to DO about a mixed run — split it, filter it, refuse it — which is
+  the same question `VISIBLE_MODEL_CONTRACT.inputSchemaVersion` is waiting on, and it is about
+  what happens to already-collected samples. Noted 2026-09-21 (cycle 26);
+  `docs/feature-generation-pooling.md` §5.
 - [AI] `toneSpread` is background-coupled at about 2% through the same frame-mean gains
   the tone path just stopped using — 0.052372 behind a blue wall, 0.053504 behind warm
   wood, on a face held byte-for-byte identical. It is a ratio, so this is second-order
@@ -849,6 +860,211 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-21 (cycle 26) — Branch `autopilot/2026-09-21-1839`. **The "do not pool feature
+  generations" rule stopped being documentation: a run that mixes two generations of the
+  feature extractor now says so, and the check would never have fired even once it existed
+  because `run_pipeline` hands `coverage()` a projection that had dropped both version fields.
+  Whether that is a warning or a blocker was decided from scikit-learn's own source rather
+  than from taste. And `/studio` — the product's only image-share surface — has been cutting
+  its own prefilled text in three of five locales, at every width.**
+
+  **Baselines, measured here on a clean tree before any edit, and they match the supervisor's
+  to the number.** `npm ci` first (`node_modules` was absent). `npm run smoke` green with the
+  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **608
+  passed in 90 files**, mobile E2E **52 passed (4.1m)**, `python3 ml/selftest.py` **Ran 121
+  tests ... OK**, `npm run lint` **0 errors, 2 warnings** (the same `'_reads'` / `'_result'` at
+  `lib/care.ts:72`), `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research: warn or block, answered from an implementation rather than from recall.** The ML
+  item below had to put a mixed-generation run somewhere, and the two places are not
+  equivalent: `coverage_warnings` is read by a human and gates nothing, while
+  `promotion_check`'s `blockers` stop a promotion — and writing a new promotion rule means
+  editing the shipped manifest, which is hard guardrail 8 and the owner's call. scikit-learn
+  draws exactly this line and draws it explicitly. Read from its own source — another
+  project's implementation, not a paper and not a standard, since `scikit-learn.org` and
+  `en.wikipedia.org` both refuse this network:
+
+  ```
+  sklearn/exceptions.py       @ 1.5.2  http=200 bytes=6058   sha256 635e992922c815c6b95cf11d84bd0f06d5bd1d58e4adeb335e2864d17ae61618
+  sklearn/exceptions.py       @ 1.7.1  http=200 bytes=7703   sha256 09a6854b80d56ea86a52276203e70cbd33fa0d1eaa205984533ba2312e470de7
+  sklearn/base.py             @ 1.5.2  http=200 bytes=53095  sha256 cd62bc6b3f5a6f16466c7eaa0ec91a83a83c91b93610d67e39c55fda85530c89
+  sklearn/base.py             @ 1.7.1  http=200 bytes=47777  sha256 a2ad39c5ff6491d04c35738e942860def0e80d6800aeb1690cfd68bf46be8d91
+  sklearn/utils/validation.py @ 1.7.1  http=200 bytes=108488 sha256 ae3c972e645e2d0ba00459e8f82ac540f0a670f474cc293875a95f4d63f0ccc2
+  ```
+
+  A **provenance** mismatch warns and continues: `BaseEstimator.__setstate__` (`base.py:372` in
+  1.5.2, `:438` in 1.7.1, the same nine lines in both) calls `warnings.warn` — not `raise` — on
+  `InconsistentVersionWarning`, a `UserWarning` subclass whose message says "This might lead to
+  breaking code or invalid results. Use at your own risk." A **structural** mismatch raises:
+  `_check_feature_names` (`validation.py:2697`) ends its comparison branch with
+  `raise ValueError`, enumerating the unseen and missing names. And an **unstamped** artifact is
+  given a name of its own rather than merged into the current one —
+  `state.pop("_sklearn_version", "pre-0.18")` reads a version-less pickle as a *different*
+  version and warns, not as one that matches.
+
+  Pooling two extractor generations is the first kind: every index is present and well-formed,
+  and nothing in the rows records how far apart two generations are. So it is named, counted,
+  and left to the reader. `docs/feature-generation-pooling.md` §2.
+
+  **ML: the backlog item closed, plus the reason it would not have worked.** Every clause of
+  the 2026-09-16 item was re-checked against main rather than taken on trust and all of them
+  still held: `model_version` and `input_schema_version` are written at
+  `ml/prepare_crop_dataset.py:117-118` and `ml/run_pipeline.py:338-339` and listed in the CSV
+  header at `:277-278`, and grepping the whole of `ml/` for either name returns those five
+  write sites and **nothing that reads them back**. The item's own dates are its argument:
+  `fallbackVersion` is `roi-calibrated-2026-09-18` today and was `-09-16` when the item was
+  filed, and it moves when a feature's semantics change.
+
+  `subgroups.feature_generation(row)` resolves a row's generation (snake_case and camelCase
+  spellings of both fields, so one generation cannot split into two on spelling);
+  `Coverage.generations` counts them; `coverage_warnings` emits one line naming and counting
+  the pooled generations and a second for rows carrying no stamp beside stamped ones. Every
+  run that already wrote `subgroup_warnings` gets it for free — `run_pipeline`,
+  `train_visible_attributes` (3 call sites), `evaluate_dataset`, `external_manifest`.
+
+  **The part the item did not know about, and it is worth more than the fix.** With the
+  counting in place the warning would still never have fired on a real run.
+  `run_pipeline.py:363` builds a narrow projection of each row (`decoded`) and passes *that* to
+  `coverage()`, not the CSV row — and the projection carried `participant_id`, `session_id`,
+  `device_id`, `toneIta`, `age_band` and `id`, neither version field. The generation of every
+  row was invisible at exactly the place the check runs. The two fields are version strings,
+  not identifiers, and the projection already carried three of the latter, so nothing about a
+  person was widened.
+
+  **Five source-line breaks, never of a test, and each one narrow enough to name what it
+  protects.** Baseline `Ran 130 tests ... OK`; `ml/subgroups.py` restored byte-identical
+  (sha256 `270cc66838e7e9bb5d1f57bcdfe5df710179010dbe235bf041ee81a1e2f9b076` before and after).
+
+  ```
+  1  if len(stamped) > 1:  ->  > 2                 FAILED (failures=2)   AssertionError: 0 != 1
+  2  drop input_schema_version from the key list   FAILED (failures=1)   AssertionError: 0 != 1
+  3  stamped = dict(cov.generations)  (fold in     FAILED (failures=2)   Lists differ: ['3 rows (100%) carry
+     the unstamped rows)                                                 no feature generatio[112 chars]nd.'] != []
+  4  remove both fields from decoded again        FAILED (failures=1)   'model_version' not found in
+                                                                        'decoded.append({...' : run_pipeline's
+                                                                        coverage projection dropped model_version
+  5  ("model_version", "modelVersion") -> 1-tuple FAILED (failures=1)   'roi-calibrated-2026-09-18/2026-06-30.
+                                                                        visible-face-crop.v1' != '/2026-06-30.
+                                                                        visible-face-crop.v1'
+  ```
+
+  Break 3 is the one that shows the two clauses are independent: folding unstamped rows in with
+  the stamped ones leaves every "two generations" assertion green and fails only the two cases
+  about unstamped rows. Break 4 is the one that would have shipped a check that could not fire.
+
+  **UI/UX: `/studio`'s read editor cut its own prefilled text in three of five locales.** Found
+  by sweeping every public route × 5 locales for controls under 44px and for elements whose
+  `scrollWidth` exceeds their `clientWidth`, then measuring the rendered text width of each
+  field against the box it gets. The name field is a fixed `width: 96` — 94px of content box —
+  which is wider than the Korean labels it was sized for and narrower than the translations the
+  same field is prefilled with. Measured in Chromium, as needed-minus-available in px, negative
+  = clipped:
+
+  ```
+  field   locale  value                  @360    @320
+  name    en      "Pores/texture"        -14.7   -14.7
+  name    ar      "المسام/الملمس"         -23.2   -23.2
+  value   en      "Fairly comfortable"   +21.7   -18.3
+  value   ja      "落ち着いている"           +23.4   -16.6
+  ```
+
+  The name box does not depend on the viewport, so en and ar cut the label at **every** width,
+  desktop included. Widening the name inside one line is not available and that was measured
+  rather than assumed: at 320px the en value already needs 137.3px against a 119px box, so
+  taking width from the value makes the narrow viewport worse. The name takes its own line
+  instead (`flex-basis: 100%` on a wrapping row). After: every field has **85.7 to 323px** of
+  headroom at 320/360/393/430 in all five locales, the worst case being the en value at 320px.
+
+  `tests/e2e/studio-label-fit.spec.ts` asserts both halves — a width floor alone would pass a
+  field wide enough to tap that still cuts its label, and a clipping check alone would pass a
+  20px field showing all of a one-character value. Reverting the one style to `width: 96`
+  fails **5 of 10**, naming the fields: `Item 2 name="Pores/texture" sw=109 cw=94`,
+  `اسم العنصر 2="المسام/الملمس" sw=117 cw=94`, `Item 4 value="Fairly comfortable" sw=137 cw=119`,
+  `項目4の値="落ち着いている" sw=118 cw=101`. ko and zh pass at both widths, which is right —
+  they never clipped.
+
+  **Bug fix: `savePilotNote`, and the ordering is the fix rather than a detail of it.** The
+  cycle 25 finding. It was the only device store in the repo with no `window` guard, no cap and
+  no try/catch, running a bare `localStorage.setItem` from `/pilot`'s click handler. What a
+  full or blocked store cost was not only the note: the `QuotaExceededError` escaped into
+  React, so the next statement — `setCurrentPilotSession` — never ran, and `/scan` reads that
+  scope on every consent toggle to pass `participantId` / `sessionId` into
+  `recordConsentEvent`. An unestablished scope means every consent event for that participant
+  lands unscoped, and participant scope is what the participant-grouped cross-validation needs.
+  So the scope is now written **first**, from its own small key, and the note's failure cannot
+  take it down; `setCurrentPilotSession` is guarded too, since it had the same defect.
+  `savePilotNote` returns `PilotNote | null` like `recordConsentEvent` and `saveCropSample`,
+  and caps at 500 like `lib/labels.ts`.
+
+  `/pilot` now reports a refused write and **keeps the typed fields**, which is the same test
+  cycle 25 applied to `recordCareIntent` and lands on the opposite answer: there, nothing on
+  screen claimed the write had happened, so an error row would have reported a failure the user
+  did not experience. Here the form clears and the roster re-reads, so a dropped note looks
+  like a note that was never typed. Four source-line breaks, `lib/pilot.ts` restored
+  byte-identical (sha256 `5ee254d2f9dbfe0795fa7002a9e7b89ec4e3d6494ef924b91502ee3a3f27633c`):
+
+  ```
+  drop the note write's try/catch     2 failed | 5 passed   expected [Function] to not throw an error
+                                                            but 'QuotaExceededError: quota' was thrown
+  write the scope AFTER the note      1 failed | 6 passed   expected null to match object { participantId: 'P007' }
+  drop the cap                        1 failed | 6 passed   expected [ ...(501) ] to have a length of 500 but got 501
+  drop setCurrentPilotSession's       1 failed | 6 passed   QuotaExceededError: quota
+    try/catch
+  ```
+
+  **One break that did NOT bite, said plainly rather than dressed up.** Deleting the
+  `typeof window === "undefined"` guard from `savePilotNote` leaves all 7 cases green. Under
+  Node there is no `localStorage` binding at all, so the write throws a `ReferenceError` that
+  the same try/catch two lines down swallows, and the function returns null by the other route.
+  The SSR case is kept as a behavioural pin and the test file says so at the assertion; what
+  the guard actually buys — that the SSR path returns without attempting the write, the
+  convention the six sibling stores follow — is not observable from there.
+
+  **The `shareUrl` item was worked and deliberately not implemented, which is what the brief
+  asked for.** `docs/share-return-path-decision.md` lays out five options with what each costs
+  and recommends one, and the item stays open because the decision is the owner's. The reason
+  it is not a one-line change, stated from source rather than asserted: `moodShareUrl` needs
+  `{ oil, redness, pores }` as integers 0-2 and `/studio` does not have them — its state is a
+  headline string and four `{ label, value, calm }` rows filled from free-text inputs whose
+  purpose is that the user rewrites them. Option C (reverse-map the edited text through
+  `MOOD_LABELS`) is rejected on evidence rather than taste: the two shipped presets already
+  contain strings with no mood axis to map to, so the derivation yields nothing the moment
+  anyone types.
+
+  **Rotation, proved rather than asserted.** Across the cycle-23 move alone:
+  `docs/AUTOPILOT.md` **1669 -> 1621**, `docs/autopilot-changelog.md` **4966 -> 5204**; after
+  the two backlog items moved as well, **1632** and **5260**. (This paragraph and the
+  verification block below it were written after that measurement, so the committed file is
+  longer again — `wc -l` on the commit is the authority and the deltas above are the
+  rotation's, not the whole cycle's.) "Recent cycles" holds 26/25/24. Cycle 23 moved verbatim:
+  **17,054 bytes, 237 lines, sha256
+  `998fe4316e480280bfdd35cdab8d3197f9a23c6938af3e2763d95b1e7ed81b9d`** on both sides, `diff`
+  empty. Both `[x]` items moved to "Closed backlog items" under their original headings with
+  the original wording preserved as a blockquote. Normalising both files' non-blank lines
+  (strip leading whitespace and `>`, strip trailing whitespace, `sort -u`) and running
+  `comm -23 before after` leaves **nothing at all** — **5628** unique lines before, **5847**
+  after.
+
+  **One thing the rotation turned up that a reader should know.** The local `main` and
+  `origin/main` refs in this checkout are **stale at `a243b69` (cycle 21)**, four commits
+  behind the `ab23796` the brief names and the commit this branch was actually cut from. The
+  first byte-identity check was run against `main` and returned an empty file rather than an
+  error, which looks exactly like a failed extraction; it was re-run against `ab23796`. Any
+  cycle diffing "against main" in this container is diffing against cycle 21.
+
+  **Verification, on the finished tree.** `npm run smoke` green (`Smoke test passed.`),
+  vitest **615 passed in 91 files** (608 plus the 7 in the new pilot file), mobile E2E
+  **62 passed** (the 52 measured on `ab23796` at the top of this cycle, plus
+  the 10 new `/studio` locale x width cases), `python3 ml/selftest.py` **Ran 130 tests ... OK** (121 plus the 9 new
+  `FeatureGenerations` cases), `npm run lint` **0 errors, 2 warnings** — the same two — and
+  `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged.
+
+  `lib/skin.ts` is byte-identical to `ab23796`, and so are
+  `public/models/visible-attributes/manifest.json` (`status`, `promotionGate` and
+  `minQwkGainOverHeuristic` included), `ml/external_datasets.json`, `lib/consent.ts` and
+  `next.config.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` was not set, no consent kind was invented and
+  neither stream was merged, no dataset licence tier moved, and no face-image path changed.
 
 - 2026-09-21 (cycle 25) — Branch `autopilot/2026-09-21-1239`. **The decision-margin
   guard's blind spot is closed with the second hook cycle 23 asked for, and the break it
@@ -1429,241 +1645,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   the three backlog items this cycle closed — the two-model gate item, the `/scan`
   pixel-coverage item, and the `minQwkGainOverHeuristic` noise-band item — each present
   in the changelog. "Recent cycles" holds 24/23/22.
-
-- 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
-  has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:
-  five of six source-line breaks fail it, two of them on the new assertions, and the
-  noiseless fixture fails the same predicate with a suppression margin of EXACTLY zero at
-  every frame size. Also: `/checkin`'s seven answer pills shipped at 35.5px in all five
-  locales, and an exact score tie in `recommend` was being decided by floating-point
-  accumulation order, so the 19,000원 toner outranked the equally-scored 18,000원 one.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief: `npm run smoke` green with the
-  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`, 44 E2E
-  passed), vitest **577 passed in 87 files**, `npx tsc --noEmit | grep -c "error TS"`
-  **13**, `npm run lint` **0 errors, 2 warnings** both in `lib/care.ts`,
-  `python3 ml/selftest.py` **Ran 85 tests ... OK**.
-
-  **ML: the margin guard the backlog item asked for, and proof that it bites.**
-  `certifiedRadius` already had the ingredient and had never been pointed at it — it takes
-  the minimum over EVERY cell, divides by the amplification factors 2 and 4, combines a
-  counted cell's margins with `min` and an uncounted cell's with `max`, was only ever
-  computed on the NOISY family, and was pinned to exact values rather than asserted to be
-  above anything. So it cannot tell a suppression tie from a floor graze. What landed
-  measures the raw, undivided distances over the cells that actually survived: the smallest
-  `residual[i] - max(residual over i's 5x5 window)`, the smallest
-  `residual[i] - BLEMISH.minResidual`, and a census of how many counted cells are tied
-  with a neighbour exactly. The noise floor it is compared against is computed, not
-  recalled: the background is four reads of a summed-area table over `gw*gh` cells, so
-  `gw*gh * EPSILON * max|a*|` bounds one residual's rounding error.
-
-  ```
-  decision margin on the realistic fixture family (a* units)
-  noise  frame        counted  tied    peak gap   floor gap   noise scale   peak/noise
-      4  400x480           5     0    4.185e-5    3.461e+0    3.435e-11    1.218e+6
-      4  720x960           5     0    3.396e-4    7.276e+0    3.803e-11    8.930e+6
-      4  1080x1440         5     0    1.307e-3    7.321e+0    3.794e-11    3.446e+7
-      4  1440x1920         5     0    1.654e-4    7.050e+0    3.796e-11    4.357e+6
-      9  400x480           6     0    7.144e-4    3.518e+0    3.447e-11    2.072e+7
-      9  720x960           5     0    1.835e-3    7.294e+0    3.813e-11    4.813e+7
-      9  1080x1440         5     0    9.327e-3    7.331e+0    3.798e-11    2.456e+8
-      9  1440x1920         5     0    1.050e-3    7.048e+0    3.801e-11    2.762e+7
-     14  400x480           7     0    5.928e-4    3.556e+0    3.463e-11    1.712e+7
-     14  720x960           5     0    8.147e-3    7.333e+0    3.820e-11    2.133e+8
-     14  1080x1440         5     0    1.205e-2    7.353e+0    3.799e-11    3.172e+8
-     14  1440x1920         5     0    3.769e-3    7.035e+0    3.808e-11    9.899e+7
-
-  decision margin with noiseAmplitude 0 (a* units)
-  frame        counted  tied    peak gap   floor gap  decided
-  400x480           5     1           0    3.431e+0    false
-  720x960           5     1           0    7.249e+0    false
-  1080x1440         5     3           0    7.304e+0    false
-  1440x1920         5     3           0    7.057e+0    false
-  ```
-
-  Both cases run the SAME predicate, which is what stops either passing by being weak.
-  Cycle 22's zero-margin finding is now a property asserted of the fixture rather than a
-  mystery about a lookup table: one to three of the noiseless frame's five counts are
-  settled by `j < i`, so `tests/blemish-density-scale.test.ts`'s cross-resolution
-  agreement holds for one bit pattern and a 1e-16 nudge moves it.
-
-  **`MARGIN_RATIO` is 1e4 and not 1e6, and the reason is in the table.** The tightest row
-  — noise 4 at 400x480 — clears its noise bound by **1.218e6**, so a threshold of 1e6
-  would be cleared by 1.22x, which is a coin flip dressed as a guard. At 1e4 that row
-  clears by 122x and the noiseless fixture still fails with a margin of exactly zero.
-
-  **Six source-line breaks of `lib/skin.ts`, never of the test; five fail.** `lib/skin.ts`
-  was restored byte-identical to HEAD afterwards and the restoration verified with
-  `git diff`. Rounding the stride-window channel averages to integers collapses the
-  smallest suppression margin from 4.185e-5 a\* to **1.066e-14** — four orders of magnitude
-  BELOW the detector's own rounding error — while leaving the count unchanged, so nothing
-  else in the suite notices: `noise 4 720x960: the smallest suppression margin is
-  1.066e-14 a*, only 2.798e-4x the detector's own rounding error: expected
-  0.0002798453713286699 to be greater than 10000`. Quantising those averages to steps of 8
-  fails the census: `noise 4 400x480: 3 of 67 counts are settled by scan order, not by the
-  image: expected 3 to be +0`. Those two are the ones that matter, because they fail on the
-  NEW assertions; rounding a\* to 3 decimals, point-sampling the stride window and
-  dithering a\* by cell index also fail, but on the pinned table, which any pin catches.
-
-  **The sixth did not bite, and that is a limitation rather than a footnote.** Quantising
-  `residual[i]` to 3 decimals inside `lib/skin.ts` leaves both margin cases green, because
-  the harness's replica recomputes the residual from the captured a\* grid — so anything
-  the detector does downstream of a\* is invisible to these margins. The guard covers the
-  a\*-production path, which is where a transfer-curve approximation lands and is what it
-  was built for, and not the residual arithmetic. That break IS caught, by three
-  assertions in two other files (`counts across resolutions: 2, 3, 2, 2, 2`,
-  `the shipped build is supposed to agree: 2, 3, 2, 2, 2`, and
-  `expected [ 413, 422, 415, 421 ] to deeply equal [ 415, 421, 414, 418 ]`), which is why
-  the blind spot is recorded rather than patched over with more harness.
-  `docs/blemish-perturbation-tolerance.md` §7.
-
-  **Research: ARU's plateau tie-break is the conventional one, and what it lacks is the
-  degenerate-input branch.** No paper and no standard is reachable from this network, so
-  nothing is attributed to one. What `raw.githubusercontent.com` served is
-  `scikit-image`'s own source: `skimage/feature/peak.py` at **v0.24.0**
-  (`http=200 bytes=14427`, sha256
-  `8d65f9a973a128a86c0d7a2689166bfa9768471e071c0fcb43f73e2863d3d85b`) and at **v0.25.2**
-  (`http=200 bytes=14478`, `_get_peak_mask` byte-identical), **v0.22.0**
-  (`http=200 bytes=14970`, the same function differing only in line wrapping), plus
-  `skimage/_shared/coord.py` at v0.24.0 (`http=200 bytes=4337`, sha256
-  `5d44f698e581e6f8b11c789489b91d638a363805964b8967c2e50bdcea65edbd`).
-  `api.github.com` now refuses anything outside this session's own repositories
-  (`http=403`), and `peak.py` on `main` is a 404 — the tagged paths are what resolve.
-
-  `peak_local_max` resolves an intensity tie the same way ARU does:
-  `np.argsort(-intensities, kind="stable")` over `np.nonzero(mask)` coordinates, then a
-  greedy `_ensure_spacing` walk, and a stable sort over row-major coordinates means the
-  earlier index wins among equals — that is `residual[j] === residual[i] && j < i`. So
-  `lib/skin.ts:1091` is not an idiosyncrasy to be fixed; cycle 22 found a property of the
-  input, not of the rule. What ARU has no equivalent of is `_get_peak_mask`'s
-  `# no peak for a trivial image` branch: when every cell in the mask is a local maximum it
-  reports **no peaks at all** rather than letting index order manufacture them. Said
-  plainly because the distance matters — that branch fires only when the field is ENTIRELY
-  flat, and ARU's noiseless fixture is plateau-dominated but not entirely flat, so a
-  transplanted copy would not fire there. It is not a drop-in fix and is not proposed as
-  one. It is on the backlog as the question it actually raises.
-
-  **UI/UX: `/checkin`'s answer controls were 35.5px high in every locale, and it was
-  measured in chromium rather than computed.** `pill()` (`app/checkin/page.tsx`) styles
-  every control a user answers with — 만족도 (3), 트러블 (2), 재구매 (2), seven buttons per
-  card — and set `fontSize: 13` with `padding: "7px 11px"` and no minimum size, against
-  `--tap-min: 44px`. `app/checkin/page.tsx` was the only consumer page in the tree with
-  **zero** references to `var(--tap-min)`, and `tests/mobile-layout-contract.test.ts`'s
-  file list is where it was missed. On the real page at 360x800: **32 of 45 controls under
-  the contract across five locales**, every pill 35.5px high, and the short answers narrow
-  as well as short — zh `好`/`有`/`否` at 37px, ar `لا` at **31.4px**, en `No` at 40.8px,
-  which is why the fix takes both dimensions (following `app/studio/page.tsx:163`) and not
-  just the height that `app/survey/page.tsx`'s twin chip carries. Re-measured the same way:
-  **0 of 45**, and `doc scrollWidth=360 clientWidth=360 overflowing=0` in all five, because
-  raising them widened the rows and that half was checked rather than assumed.
-
-  Why an earlier audit called `/checkin` clean: the pills only render once a confirmed
-  product use is at least two weeks old (`roundFor`), so against an empty
-  `gyeol_purchases` the page shows two empty-state links and the controls never render.
-  This is the landing page of every re-engagement mail
-  (`app/api/reengage/run/route.ts`), i.e. the primary controls of the one surface the
-  product has for bringing a user back. Five E2E cases, one per locale, seed the due use
-  the way `tests/e2e/checkin-schedule.regression-7.spec.ts` does and assert the pixels;
-  reverting `pill()` fails all five (`Error: ko: controls under 44px`, and the same in en,
-  ja, zh, ar — `5 failed, 1 passed`). `docs/checkin-tap-target-measurement.md`.
-
-  **Bug fix: an exact score tie in `recommend` was decided by floating-point accumulation
-  order, not by price.** `rank` (`lib/recommend.ts`) sorted on
-  `scoreSku(b) - scoreSku(a) || a.price - b.price`, i.e. "on an equal score the cheaper
-  product wins". Every weight in `scoreSku` is a multiple of 0.1 and so is the exact score,
-  but the ADDITIONS are not, and the order they arrive in depends on which concerns each
-  SKU declares. For a 지성 / 토너 survey with 모공·건조·트러블, tn1 and tn2 both score 14.1:
-
-  ```
-  tn1 order 3,2,1.2,1.2,2,1.2,1.5,2 => 14.1
-  tn2 order 3,2,1.2,2,1.2,1.2,1.5,2 => 14.099999999999998
-  diff = 1.7763568394002505e-15   equal = false   round(x*10): 141 vs 141
-  picks before: tn1 19000 | tn2 18000 | tn3 16000
-  picks after : tn2 18000 | tn1 19000 | tn3 16000
-  ```
-
-  That difference of 1.78e-15 is truthy, so `||` never reached the price key and the
-  19,000원 toner outranked the equally-scored 18,000원 one — on the top card of `/report`
-  and on the hero product attached to both hydrate steps. The fix compares the score in
-  tenths, which is exact rather than tolerant: the smallest real gap between two scores is
-  0.1, fourteen orders of magnitude above the error.
-
-  **Scope measured, not estimated**, by importing the pre-fix module alongside the fixed
-  one and comparing pick lists over every 3-concern survey (5 skin types x 8 categories x
-  56 concern triples): `surveys=2240 pick lists changed=19 of which the top pick got
-  cheaper=17`. One of the 19 changes the pick SET and not only the order
-  (지성 세럼 [모공/잡티/유분]: `sr1|sr2|sr4` became `sr1|sr2|sr3`), because `diversify`
-  reorders around the tone/brand filter once a different SKU leads. Four cases in
-  `tests/recommend.test.ts`, including a control that the fix did not become "cheapest
-  first" — `baseSurvey`'s order is identical before and after, verified against the pre-fix
-  module, and keeps the 19,000원 tn1 ahead of the 16,000원 tn3. Reverting the comparator
-  fails two of them (`expected [ 'tn1 19000', 'tn2 18000', …(1) ] to deeply equal
-  [ 'tn2 18000', 'tn1 19000', …(1) ]` and `expected 'tn1' to be 'tn2'`).
-
-  **One hunt candidate checked and rejected, since the standard here is to record them.**
-  A reported defect in `attach` — that it skips a routine hero when `picks.find(...)`
-  returns an already-`seen` SKU, leaving two routine cards product-free — does not hold.
-  Run against the real module with `category: "클렌저"`: `picks: cl3,cl1,cl2`,
-  `am: am-cleanse=cl3 am-hydrate=NONE am-protect=NONE`. `am-hydrate` is empty because no
-  pick is a 토너 (every pick is in `survey.category`), not because of the `seen` set, and
-  `attach(am)` and `attach(pm)` keep separate `seen` sets so `pm-cleanse=cl3` too. Nothing
-  was changed on the strength of it.
-
-  **Verification.** `npm run smoke` green (`Smoke test passed.`, 49 E2E passed — the 44
-  baseline plus the five new locale cases), vitest **583 passed in 87 files** (+6 cases),
-  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npm run lint` **0 errors, 2
-  warnings** the same two in `lib/care.ts`, `python3 ml/selftest.py`
-  **Ran 85 tests ... OK**. `lib/skin.ts`, `public/models/visible-attributes/manifest.json`
-  and `fallbackVersion` are untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent
-  kind was invented and neither stream was merged.
-
-  **Supervisor review.** The margins were instrumented and measured here first, from a
-  separate copy of `lib/skin.ts` with counters added at the two decision points, before
-  the worker reported.
-
-  *The pinned numbers reproduce under different instrumentation.* On the noisy fixture
-  at 400x480 this review measured a smallest nonzero suppression gap of **7.144e-4**
-  against the branch's pinned **0.0007143695914120229** — the same quantity, arrived at
-  by counting inside the detector's own loop rather than by replicating it, agreeing to
-  the four significant figures this review printed. The separation the guard rests on is
-  real and it is not marginal: exact ties on the noiseless fixture at every frame size
-  against **none** on any realistic one, and the smallest nonzero gap moving from ~1e-15
-  (2-8 ULPs) to 5.8e-5..1.1e-3. Any threshold in the eleven orders between separates
-  them, which is why `MARGIN_RATIO = 1e4` does not need defending as a delicate constant.
-
-  *The guard bites, and it is the only thing in the file that catches its own line.*
-  Removing the tie-break at `lib/skin.ts:1091` — `residual[j] === residual[i] && j < i`,
-  the exact line the guard exists to protect — fails **1 test of 10**, and it is the new
-  non-vacuity case: `flat 400x480: the replica disagrees with detectBlemishes: expected
-  5 to be 8`. Nine pass. Set against cycle 22's seven breaks that caught nothing, that is
-  the difference between a guard and a green line.
-
-  *One reviewer misstep, recorded.* The first break tried here — quantising the residual
-  to two decimals — failed **7 of 10** and proved nothing: it moves counts everywhere, so
-  every pre-existing tolerance case fails too and the new guard's contribution is
-  invisible inside the noise. A break has to be narrow enough that what fails identifies
-  what is protected.
-
-  *The bug fix is real and its guard bites.* Reverting `rank` to the raw float comparison
-  fails 2 cases with the exact symptom described: `expected [ 'tn1 19000', 'tn2 18000' ]
-  to deeply equal [ 'tn2 18000', 'tn1 19000' ]` — the 19,000원 toner ranked above the
-  equally-scored 18,000원 one, because a 1.78e-15 difference in addition order is truthy
-  and `||` never reached the price tie-break. Worth noting that this and the blemish
-  finding are the same defect class in two places: an exact float comparison deciding a
-  user-visible outcome.
-
-  *One thing to state so the next reader does not over-read the guard.* It asserts BOTH
-  margins, and only one of them was ever near the edge. Measured here across both
-  fixture families, the gap to `BLEMISH.minResidual` is healthy everywhere — the
-  branch's own pinned `floorGap` runs 3.43..7.35 on the realistic rows and 3.43..7.30 on
-  the noiseless ones, against a threshold of 1.6. Nothing sits near it on either family.
-  The fragility was entirely in the neighbour comparison. Asserting the floor too is
-  cheap insurance and correct; it is not a second near-miss.
-
-  *Rotation, checked against a pre-review snapshot of main.* 1523 → 1480 and 4029 →
-  4301. `sort -u` over both files' non-blank lines then `comm -23` against main's finds
-  **17 lines missing**: 16 are the decision-margin backlog item this cycle closed, which
-  is in the changelog at line 32 marked `[x]` and struck through with the original
-  preserved verbatim as a blockquote, and the 17th is `Last updated: 2026-09-20`, now
-  `2026-09-21`. "Recent cycles" holds 23/22/21.

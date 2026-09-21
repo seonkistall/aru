@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
 
@@ -184,6 +184,47 @@ def resolve_age_band(row: dict) -> str:
     return UNKNOWN
 
 
+#: Row fields that say which generation of the feature extractor produced a row, most
+#: specific first. Both are written per row by ml/prepare_crop_dataset.py and
+#: ml/run_pipeline.py from the app's VISIBLE_MODEL_CONTRACT (lib/skin.ts), and until now
+#: nothing in ml/ read either of them back.
+FEATURE_GENERATION_KEYS: tuple[tuple[str, ...], ...] = (
+    ("model_version", "modelVersion"),
+    ("input_schema_version", "inputSchemaVersion"),
+)
+
+#: The generation of a row that carries no version stamp at all. Named rather than
+#: folded into the stamped rows, which is the convention scikit-learn follows for the
+#: same problem: BaseEstimator.__setstate__ reads an unstamped pickle's version as the
+#: sentinel "pre-0.18" and then warns, rather than reading it as "matches mine".
+UNSTAMPED = "unstamped"
+
+
+def feature_generation(row: dict) -> str:
+    """Which generation of the feature extractor produced this row.
+
+    The index values in a row are only comparable to index values computed the same way.
+    `fallbackVersion` in lib/skin.ts has already moved twice (roi-calibrated-2026-09-16,
+    then -09-18), each time because a feature's semantics changed, and a row records the
+    string it was captured under. Pooling two generations into one threshold fit or one
+    subgroup cell compares numbers that do not mean the same thing.
+
+    Returns UNSTAMPED when the row carries neither field. Rows from external datasets
+    never carry them, so a run made entirely of those reports one generation and warns
+    about nothing, which is correct: there is no mixing to report.
+    """
+    parts: list[str] = []
+    for aliases in FEATURE_GENERATION_KEYS:
+        value = ""
+        for key in aliases:
+            candidate = str(row.get(key) or "").strip()
+            if candidate:
+                value = candidate
+                break
+        parts.append(value)
+    return "/".join(parts) if any(parts) else UNSTAMPED
+
+
 def subgroup_key(row: dict) -> str:
     """Stable "<tone>/<age>" cell id used by every report and split."""
     return f"{resolve_tone_band(row)}/{resolve_age_band(row)}"
@@ -223,6 +264,9 @@ class Coverage:
     unknown_tone: int
     unknown_age: int
     total: int
+    #: Rows per feature-extractor generation. More than one key means this run pools
+    #: index values that were not computed the same way.
+    generations: dict[str, int] = field(default_factory=dict)
 
     def thin_cells(self, minimum: int) -> list[str]:
         """Cells present but below the evaluation floor, worst first."""
@@ -240,6 +284,7 @@ class Coverage:
             "groupsPerCell": self.groups_per_cell,
             "unknownTone": self.unknown_tone,
             "unknownAge": self.unknown_age,
+            "featureGenerations": self.generations,
         }
 
 
@@ -248,9 +293,11 @@ def coverage(rows: list[dict]) -> Coverage:
     tone: Counter = Counter()
     age: Counter = Counter()
     groups: defaultdict = defaultdict(set)
+    generations: Counter = Counter()
     unknown_tone = 0
     unknown_age = 0
     for row in rows:
+        generations[feature_generation(row)] += 1
         t = resolve_tone_band(row)
         a = resolve_age_band(row)
         cell = f"{t}/{a}"
@@ -268,6 +315,7 @@ def coverage(rows: list[dict]) -> Coverage:
         unknown_tone=unknown_tone,
         unknown_age=unknown_age,
         total=len(rows),
+        generations=dict(generations),
     )
 
 
@@ -297,6 +345,34 @@ def coverage_warnings(cov: Coverage, min_cell: int = 20, min_groups_per_cell: in
     missing_age = [band for band in AGE_BANDS if not cov.age.get(band)]
     if missing_age:
         out.append(f"Age bands with zero samples: {', '.join(missing_age)}.")
+    # Feature generations. This is a WARNING and not a blocker, and that follows a
+    # precedent rather than a preference: scikit-learn draws the line between a
+    # provenance mismatch and a structural one. An estimator unpickled under a different
+    # sklearn version gets warnings.warn(InconsistentVersionWarning(...)) and the work
+    # continues — "This might lead to breaking code or invalid results. Use at your own
+    # risk." — because nothing in the artifact says how much the two versions differ.
+    # A feature-name mismatch at predict time, which is checkably wrong, raises
+    # ValueError instead. Pooling two extractor generations is the first kind: every
+    # index is present and well-formed, and how far apart the generations are is not
+    # recorded anywhere. So it is named, counted, and left to the reader.
+    # Read from sklearn's own source at v1.5.2 and v1.7.1; see docs/feature-generation-pooling.md.
+    stamped = {name: n for name, n in cov.generations.items() if name != UNSTAMPED}
+    if len(stamped) > 1:
+        listed = ", ".join(f"{name} ({n})" for name, n in sorted(stamped.items(), key=lambda kv: (-kv[1], kv[0]))[:4])
+        out.append(
+            f"{len(stamped)} feature generations pooled in one run: {listed}"
+            f"{' ...' if len(stamped) > 4 else ''}. Index values computed by different "
+            "extractor generations are not comparable; splitting or filtering is a decision, "
+            "not a default."
+        )
+    unstamped = cov.generations.get(UNSTAMPED, 0)
+    if unstamped and stamped:
+        pct = 100 * unstamped / cov.total
+        out.append(
+            f"{unstamped} rows ({pct:.0f}%) carry no feature generation, beside {len(stamped)} "
+            "stamped generation(s); they cannot be placed in one, so pooling them is the same "
+            "comparison made blind."
+        )
     thin = cov.thin_cells(min_cell)
     if thin:
         out.append(f"{len(thin)} cells below {min_cell} samples: {', '.join(thin[:6])}{' ...' if len(thin) > 6 else ''}.")

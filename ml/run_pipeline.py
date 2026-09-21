@@ -366,6 +366,13 @@ def decode_crops(rows: list[dict[str, Any]], out_dir: Path) -> dict[str, Any]:
                 "device_id": meta.get("deviceId", ""),
                 "toneIta": features.get("toneIta", ""),
                 "age_band": subgroups.resolve_age_band(meta),
+                # The CSV row above has carried these two since they were added and
+                # nothing read them back, so subgroups.coverage() — which runs on this
+                # projection, not on the CSV row — could not see that a run pooled two
+                # feature generations. Version strings, not identifiers: this adds
+                # nothing to what the projection already carries about a person.
+                "model_version": meta.get("modelVersion", ""),
+                "input_schema_version": meta.get("inputSchemaVersion", ""),
                 "id": image_id,
             })
     coverage = subgroups.coverage(decoded)
