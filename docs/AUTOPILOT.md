@@ -1078,6 +1078,76 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   the time, which is the most likely cause and is not established. It is recorded because
   it happened, not diagnosed, and the gate above is the run that counts.
 
+  **Supervisor review.** The CSP finding is the most consequential defect any cycle has
+  turned up, so it was reproduced here rather than read.
+
+  *The share surface really was dead, in a real browser.* Served the app's own header
+  shape (`default-src 'self'; img-src 'self' data: blob:; connect-src 'self'`,
+  `next.config.ts:18`) from a local server and ran both fetches in Chromium:
+
+  ```
+  fetch(data:...)  -> THREW TypeError: Failed to fetch
+  fetch(blob:...)  -> THREW TypeError: Failed to fetch
+  ```
+
+  Both halves of the claim hold, including the exact error text and the part a reader
+  would most want to check — that `createObjectURL` + `fetch` is no escape, because
+  `blob:` is refused by the same directive. `img-src` allowing `data: blob:` is a
+  different directive and does not help a `fetch()`. So `shareCardImage` threw on its
+  second line for every user on every browser, before `navigator.canShare` was reached,
+  which also made the download fallback unreachable and meant `share_clicked` never
+  fired for this surface. The share loop is the only organic acquisition path the
+  product has, and it had never worked.
+
+  *The replacement decoder is byte-exact.* Transcribed `dataUrlToBlob` and ran it
+  against a known PNG: 70 bytes in, 70 bytes out, `got.equals(want)` **true**, leading
+  bytes `89504e470d0a1a0a` — a valid PNG signature. The no-parameter case its comment
+  calls out behaves as claimed: `data:image/png,hello%20world` decodes with type
+  `image/png` rather than a truncated type.
+
+  *The 24px CTA reproduces, and the after-numbers match to three decimals.* Rebuilt the
+  commerce row's flex structure independently — two `flex: 1` anchors and a `width: 100%`
+  disclosure — and measured at 360x800 in Chromium:
+
+  ```
+  flexWrap: nowrap   buy=38x168      care=38x168
+  flexWrap: wrap     buy=126.61x68   care=157.39x68
+  ```
+
+  The entry's after-fix figures at 360 are **126.6 / 157.4**. The before-figure differs —
+  **38px here against the entry's 24px** — and the reason is that this reconstruction is
+  not the component: its label string is shorter than the shipped one, and the entry's
+  own `sw=48 cw=24` shows the real anchor clipping where this one merely narrowed. The
+  mechanism, the direction and the magnitude are confirmed; the exact before-pixel is the
+  entry's measurement of the real page and not this one's.
+
+  *The `recordCareIntent` item was the one to get wrong, and the branch did not.* This
+  cycle's brief flagged it: the fix is right but the justification must not claim a
+  user-visible lie, because there is none. Checked before the branch arrived —
+  `grep -nE "저장|saved|기록했" app/care/page.tsx` returns two hits, a code comment and
+  advice copy telling the USER to save their own product names, against
+  `app/checkin/page.tsx:146`'s `role="status"` "남겨주신 피드백을 저장했어요." over an
+  empty store. The branch says exactly this in the code comment, unprompted, and explains
+  why the failure is deliberately not surfaced: `openCareLink` cannot await before
+  `window.open` without popup blockers killing the link.
+
+  *The blind-spot guard closes what cycle 23 left open.* Quantising `residual[i]` to
+  three decimals at its source line — the precise change the backlog item said the old
+  margin guard could not see — now fails `the residual the detector actually classifies >
+  is the field the margins are measured on, cell for cell, at every frame and noise
+  level`, among 3 of 12.
+
+  *One thing verified here that a previous cycle asserted.* Cycle 24's "the noise band
+  does not change the gate" was merged on a reading of the code; it is now proved by
+  execution. With `qwk_noise.clears_band` forced to return `False` for every axis — the
+  worst possible verdict — on a model that beats the heuristic: `beats: True`,
+  `clearsNoiseBand: False`, **`BLOCKERS: []`**, one warning. `ml/subgroups.py` appends to
+  `blockers` only under `if not entry["beats"]`. The claim holds.
+
+  *Rotation, against a pre-review snapshot of main.* 1588 → 1599 and 4694 → 4966, and
+  `comm -23` finds **19 lines missing**, all 19 from the two backlog items this cycle
+  closed — both present in the changelog. "Recent cycles" holds 25/24/23.
+
 - 2026-09-21 (cycle 24) — Branch `autopilot/2026-09-21-0639`. **The promotion gate's
   0.0 margin now has the number it was missing: at the gate's own `minTrainingCrops: 300`
   the 95% band on a qwk gain is about ±0.15, and two scorers identical in expectation
