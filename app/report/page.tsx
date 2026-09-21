@@ -515,7 +515,13 @@ const routineTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", 
 const routineBody: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 };
 const routineProduct: React.CSSProperties = { fontSize: 12.5, color: "var(--ink)", fontWeight: 800, marginTop: 6 };
 const trustChip: React.CSSProperties = { border: "1px solid var(--line)", borderRadius: 999, padding: "4px 8px", color: "var(--ink-soft)", fontSize: 11.5, fontWeight: 700 };
-const reportCommerceAction: React.CSSProperties = { display: "flex", alignItems: "stretch", gap: 10, marginTop: 18, padding: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 };
+// `flexWrap: "wrap"` is load-bearing, not cosmetic. The row holds two `flex: 1` CTAs
+// (flex-basis 0) and a CommerceDisclosure that asks for `width: 100%` at
+// flex-basis auto. Without wrapping, the disclosure alone claims the whole line,
+// free space goes negative, flex-grow never applies, and both CTAs collapse to
+// their horizontal padding — 24px, label cut mid-word, in every locale and at every
+// width. The disclosure's own `marginTop: 4` only makes sense on a row of its own.
+const reportCommerceAction: React.CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10, marginTop: 18, padding: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 };
 const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const privacyLink: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 12, color: "var(--text-muted)", fontSize: 13, textDecoration: "underline" };

@@ -536,6 +536,55 @@ Ticked `[x]` and moved here; the section each was under is kept.
   > rather than carried by it, which means `FEATURE_KEY` needs a second kind of entry.
   > Noted 2026-09-19.
 
+- [x] [AI] ~~**The decision-margin guard is blind to the residual arithmetic, and the blind
+  spot is measured.**~~ Closed 2026-09-21 (cycle 25) the way the item asked — a SECOND hook,
+  not a widened first one. `__observeResidual` is injected after the residual loop and
+  before the classification loop, so the field the detector actually classifies is read out
+  and held against the replica at every valid cell. The break this item names (quantise
+  `residual[i]` to 3 decimals in `lib/skin.ts`) now **fails**, first assertion: `the
+  detector's own residual differs from this file's replica at 11789 of 11789 valid cells
+  (worst |d| = 5.000e-4)`. And because that break was already visible elsewhere, a second
+  one was needed to show the hook adds coverage rather than duplicating it: clamping only
+  residuals far below the `minResidual` floor changes no count anywhere, so every count pin
+  stays green, and across five blemish/skin test files — **45 tests — 2 fail, both in this
+  file**. `docs/blemish-perturbation-tolerance.md` §7.6. Original note follows.
+
+  > **The decision-margin guard is blind to the residual arithmetic, and the blind spot
+  > is measured.** Noted 2026-09-21 (cycle 23). `tests/blemish-perturbation-tolerance.test.ts`
+  > measures margins from a replica that recomputes the residual from the a\* grid it
+  > captured, so a change `lib/skin.ts` makes downstream of a\* is invisible to it: quantising
+  > `residual[i]` to 3 decimals at the source leaves both margin cases green. It is caught
+  > today by three assertions in two other files, which is why nothing was patched — but the
+  > guard's stated scope is the a\*-production path only, and a cycle that widens it should
+  > add a second hook rather than assume the margins cover the whole classifier.
+  > `docs/blemish-perturbation-tolerance.md` §7.4.
+
+- [x] [AI] ~~**`recordCareIntent` throws away the same write signal `recordCheckin` just
+  stopped throwing away.**~~ Closed 2026-09-21 (cycle 25), including the UI question the
+  item left open — and the answer to that question is **no**. Checked before fixing, as
+  the item asked: `recordCareIntent` has exactly one caller, `app/care/page.tsx:78`, it is
+  a bare `void`, and nothing on screen claims the intent was stored, so unlike cycle 24's
+  check-in card this was never a lie to a user. `openCareLink` opens the merchant link
+  whether or not the log write landed, so the user's actual action succeeds either way and
+  an error row would report a failure that did not happen to them. The fix is therefore the
+  signal alone — `Promise<CareIntent | null>`, matching both siblings — and
+  `tests/care-intent-write-signal.test.ts` pins the decision as well as the signal: its
+  third case asserts the ORDER (`window.open` after the record, never gated on it) and that
+  nothing between them sets a failure state, so a later cycle cannot "finish" this by adding
+  UI that misreports. Original note follows.
+
+  > **`recordCareIntent` throws away the same write signal `recordCheckin` just
+  > stopped throwing away.** `lib/store.ts:recordCareIntent` calls `lsPush` and discards
+  > its boolean, returning a fully-populated `CareIntent` whether or not localStorage
+  > accepted it — the defect fixed on the check-in path in cycle 24, one function below
+  > it. Left alone deliberately rather than swept up: its only caller is
+  > `app/care/page.tsx:78`, which does `void recordCareIntent({...})` and shows the user
+  > nothing, so unlike the check-in card it never tells anyone their data was saved. The
+  > consequence is a silently short care-intent log on a full or blocked store, which is
+  > a measurement problem and not a lie to a user. Fixing it is the same one line plus a
+  > decision about whether `/care` should surface anything. Noted 2026-09-21 (cycle 24).
+
+
 ### Next
 
 - [x] [AI] ~~`SampleMeta.toneBand` is declared, documented as derived on-device, and
@@ -4692,6 +4741,7 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   response 403` for all three merchant hosts, and the proxy's own
   `recentRelayFailures` names each one with `gateway answered 403 to CONNECT`. Still
   blocked, same reason.
+
 - 2026-09-20 (cycle 22) — Branch `autopilot/2026-09-20-1839`. **The `srgbLinear` lookup
   table was built, measured at 42.0-61.2% off `detectBlemishes`, and taken back out —
   and what stopped it was not the table. It moved `blemishCount` on one committed
@@ -4914,3 +4964,240 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   actually clean, **577 passed in 87 files**. Same class as cycle 20's docstring regex —
   a check that fails for a reason that is not the code's, and it looks exactly like a
   defect.
+- 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
+  has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:
+  five of six source-line breaks fail it, two of them on the new assertions, and the
+  noiseless fixture fails the same predicate with a suppression margin of EXACTLY zero at
+  every frame size. Also: `/checkin`'s seven answer pills shipped at 35.5px in all five
+  locales, and an exact score tie in `recommend` was being decided by floating-point
+  accumulation order, so the 19,000원 toner outranked the equally-scored 18,000원 one.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief: `npm run smoke` green with the
+  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`, 44 E2E
+  passed), vitest **577 passed in 87 files**, `npx tsc --noEmit | grep -c "error TS"`
+  **13**, `npm run lint` **0 errors, 2 warnings** both in `lib/care.ts`,
+  `python3 ml/selftest.py` **Ran 85 tests ... OK**.
+
+  **ML: the margin guard the backlog item asked for, and proof that it bites.**
+  `certifiedRadius` already had the ingredient and had never been pointed at it — it takes
+  the minimum over EVERY cell, divides by the amplification factors 2 and 4, combines a
+  counted cell's margins with `min` and an uncounted cell's with `max`, was only ever
+  computed on the NOISY family, and was pinned to exact values rather than asserted to be
+  above anything. So it cannot tell a suppression tie from a floor graze. What landed
+  measures the raw, undivided distances over the cells that actually survived: the smallest
+  `residual[i] - max(residual over i's 5x5 window)`, the smallest
+  `residual[i] - BLEMISH.minResidual`, and a census of how many counted cells are tied
+  with a neighbour exactly. The noise floor it is compared against is computed, not
+  recalled: the background is four reads of a summed-area table over `gw*gh` cells, so
+  `gw*gh * EPSILON * max|a*|` bounds one residual's rounding error.
+
+  ```
+  decision margin on the realistic fixture family (a* units)
+  noise  frame        counted  tied    peak gap   floor gap   noise scale   peak/noise
+      4  400x480           5     0    4.185e-5    3.461e+0    3.435e-11    1.218e+6
+      4  720x960           5     0    3.396e-4    7.276e+0    3.803e-11    8.930e+6
+      4  1080x1440         5     0    1.307e-3    7.321e+0    3.794e-11    3.446e+7
+      4  1440x1920         5     0    1.654e-4    7.050e+0    3.796e-11    4.357e+6
+      9  400x480           6     0    7.144e-4    3.518e+0    3.447e-11    2.072e+7
+      9  720x960           5     0    1.835e-3    7.294e+0    3.813e-11    4.813e+7
+      9  1080x1440         5     0    9.327e-3    7.331e+0    3.798e-11    2.456e+8
+      9  1440x1920         5     0    1.050e-3    7.048e+0    3.801e-11    2.762e+7
+     14  400x480           7     0    5.928e-4    3.556e+0    3.463e-11    1.712e+7
+     14  720x960           5     0    8.147e-3    7.333e+0    3.820e-11    2.133e+8
+     14  1080x1440         5     0    1.205e-2    7.353e+0    3.799e-11    3.172e+8
+     14  1440x1920         5     0    3.769e-3    7.035e+0    3.808e-11    9.899e+7
+
+  decision margin with noiseAmplitude 0 (a* units)
+  frame        counted  tied    peak gap   floor gap  decided
+  400x480           5     1           0    3.431e+0    false
+  720x960           5     1           0    7.249e+0    false
+  1080x1440         5     3           0    7.304e+0    false
+  1440x1920         5     3           0    7.057e+0    false
+  ```
+
+  Both cases run the SAME predicate, which is what stops either passing by being weak.
+  Cycle 22's zero-margin finding is now a property asserted of the fixture rather than a
+  mystery about a lookup table: one to three of the noiseless frame's five counts are
+  settled by `j < i`, so `tests/blemish-density-scale.test.ts`'s cross-resolution
+  agreement holds for one bit pattern and a 1e-16 nudge moves it.
+
+  **`MARGIN_RATIO` is 1e4 and not 1e6, and the reason is in the table.** The tightest row
+  — noise 4 at 400x480 — clears its noise bound by **1.218e6**, so a threshold of 1e6
+  would be cleared by 1.22x, which is a coin flip dressed as a guard. At 1e4 that row
+  clears by 122x and the noiseless fixture still fails with a margin of exactly zero.
+
+  **Six source-line breaks of `lib/skin.ts`, never of the test; five fail.** `lib/skin.ts`
+  was restored byte-identical to HEAD afterwards and the restoration verified with
+  `git diff`. Rounding the stride-window channel averages to integers collapses the
+  smallest suppression margin from 4.185e-5 a\* to **1.066e-14** — four orders of magnitude
+  BELOW the detector's own rounding error — while leaving the count unchanged, so nothing
+  else in the suite notices: `noise 4 720x960: the smallest suppression margin is
+  1.066e-14 a*, only 2.798e-4x the detector's own rounding error: expected
+  0.0002798453713286699 to be greater than 10000`. Quantising those averages to steps of 8
+  fails the census: `noise 4 400x480: 3 of 67 counts are settled by scan order, not by the
+  image: expected 3 to be +0`. Those two are the ones that matter, because they fail on the
+  NEW assertions; rounding a\* to 3 decimals, point-sampling the stride window and
+  dithering a\* by cell index also fail, but on the pinned table, which any pin catches.
+
+  **The sixth did not bite, and that is a limitation rather than a footnote.** Quantising
+  `residual[i]` to 3 decimals inside `lib/skin.ts` leaves both margin cases green, because
+  the harness's replica recomputes the residual from the captured a\* grid — so anything
+  the detector does downstream of a\* is invisible to these margins. The guard covers the
+  a\*-production path, which is where a transfer-curve approximation lands and is what it
+  was built for, and not the residual arithmetic. That break IS caught, by three
+  assertions in two other files (`counts across resolutions: 2, 3, 2, 2, 2`,
+  `the shipped build is supposed to agree: 2, 3, 2, 2, 2`, and
+  `expected [ 413, 422, 415, 421 ] to deeply equal [ 415, 421, 414, 418 ]`), which is why
+  the blind spot is recorded rather than patched over with more harness.
+  `docs/blemish-perturbation-tolerance.md` §7.
+
+  **Research: ARU's plateau tie-break is the conventional one, and what it lacks is the
+  degenerate-input branch.** No paper and no standard is reachable from this network, so
+  nothing is attributed to one. What `raw.githubusercontent.com` served is
+  `scikit-image`'s own source: `skimage/feature/peak.py` at **v0.24.0**
+  (`http=200 bytes=14427`, sha256
+  `8d65f9a973a128a86c0d7a2689166bfa9768471e071c0fcb43f73e2863d3d85b`) and at **v0.25.2**
+  (`http=200 bytes=14478`, `_get_peak_mask` byte-identical), **v0.22.0**
+  (`http=200 bytes=14970`, the same function differing only in line wrapping), plus
+  `skimage/_shared/coord.py` at v0.24.0 (`http=200 bytes=4337`, sha256
+  `5d44f698e581e6f8b11c789489b91d638a363805964b8967c2e50bdcea65edbd`).
+  `api.github.com` now refuses anything outside this session's own repositories
+  (`http=403`), and `peak.py` on `main` is a 404 — the tagged paths are what resolve.
+
+  `peak_local_max` resolves an intensity tie the same way ARU does:
+  `np.argsort(-intensities, kind="stable")` over `np.nonzero(mask)` coordinates, then a
+  greedy `_ensure_spacing` walk, and a stable sort over row-major coordinates means the
+  earlier index wins among equals — that is `residual[j] === residual[i] && j < i`. So
+  `lib/skin.ts:1091` is not an idiosyncrasy to be fixed; cycle 22 found a property of the
+  input, not of the rule. What ARU has no equivalent of is `_get_peak_mask`'s
+  `# no peak for a trivial image` branch: when every cell in the mask is a local maximum it
+  reports **no peaks at all** rather than letting index order manufacture them. Said
+  plainly because the distance matters — that branch fires only when the field is ENTIRELY
+  flat, and ARU's noiseless fixture is plateau-dominated but not entirely flat, so a
+  transplanted copy would not fire there. It is not a drop-in fix and is not proposed as
+  one. It is on the backlog as the question it actually raises.
+
+  **UI/UX: `/checkin`'s answer controls were 35.5px high in every locale, and it was
+  measured in chromium rather than computed.** `pill()` (`app/checkin/page.tsx`) styles
+  every control a user answers with — 만족도 (3), 트러블 (2), 재구매 (2), seven buttons per
+  card — and set `fontSize: 13` with `padding: "7px 11px"` and no minimum size, against
+  `--tap-min: 44px`. `app/checkin/page.tsx` was the only consumer page in the tree with
+  **zero** references to `var(--tap-min)`, and `tests/mobile-layout-contract.test.ts`'s
+  file list is where it was missed. On the real page at 360x800: **32 of 45 controls under
+  the contract across five locales**, every pill 35.5px high, and the short answers narrow
+  as well as short — zh `好`/`有`/`否` at 37px, ar `لا` at **31.4px**, en `No` at 40.8px,
+  which is why the fix takes both dimensions (following `app/studio/page.tsx:163`) and not
+  just the height that `app/survey/page.tsx`'s twin chip carries. Re-measured the same way:
+  **0 of 45**, and `doc scrollWidth=360 clientWidth=360 overflowing=0` in all five, because
+  raising them widened the rows and that half was checked rather than assumed.
+
+  Why an earlier audit called `/checkin` clean: the pills only render once a confirmed
+  product use is at least two weeks old (`roundFor`), so against an empty
+  `gyeol_purchases` the page shows two empty-state links and the controls never render.
+  This is the landing page of every re-engagement mail
+  (`app/api/reengage/run/route.ts`), i.e. the primary controls of the one surface the
+  product has for bringing a user back. Five E2E cases, one per locale, seed the due use
+  the way `tests/e2e/checkin-schedule.regression-7.spec.ts` does and assert the pixels;
+  reverting `pill()` fails all five (`Error: ko: controls under 44px`, and the same in en,
+  ja, zh, ar — `5 failed, 1 passed`). `docs/checkin-tap-target-measurement.md`.
+
+  **Bug fix: an exact score tie in `recommend` was decided by floating-point accumulation
+  order, not by price.** `rank` (`lib/recommend.ts`) sorted on
+  `scoreSku(b) - scoreSku(a) || a.price - b.price`, i.e. "on an equal score the cheaper
+  product wins". Every weight in `scoreSku` is a multiple of 0.1 and so is the exact score,
+  but the ADDITIONS are not, and the order they arrive in depends on which concerns each
+  SKU declares. For a 지성 / 토너 survey with 모공·건조·트러블, tn1 and tn2 both score 14.1:
+
+  ```
+  tn1 order 3,2,1.2,1.2,2,1.2,1.5,2 => 14.1
+  tn2 order 3,2,1.2,2,1.2,1.2,1.5,2 => 14.099999999999998
+  diff = 1.7763568394002505e-15   equal = false   round(x*10): 141 vs 141
+  picks before: tn1 19000 | tn2 18000 | tn3 16000
+  picks after : tn2 18000 | tn1 19000 | tn3 16000
+  ```
+
+  That difference of 1.78e-15 is truthy, so `||` never reached the price key and the
+  19,000원 toner outranked the equally-scored 18,000원 one — on the top card of `/report`
+  and on the hero product attached to both hydrate steps. The fix compares the score in
+  tenths, which is exact rather than tolerant: the smallest real gap between two scores is
+  0.1, fourteen orders of magnitude above the error.
+
+  **Scope measured, not estimated**, by importing the pre-fix module alongside the fixed
+  one and comparing pick lists over every 3-concern survey (5 skin types x 8 categories x
+  56 concern triples): `surveys=2240 pick lists changed=19 of which the top pick got
+  cheaper=17`. One of the 19 changes the pick SET and not only the order
+  (지성 세럼 [모공/잡티/유분]: `sr1|sr2|sr4` became `sr1|sr2|sr3`), because `diversify`
+  reorders around the tone/brand filter once a different SKU leads. Four cases in
+  `tests/recommend.test.ts`, including a control that the fix did not become "cheapest
+  first" — `baseSurvey`'s order is identical before and after, verified against the pre-fix
+  module, and keeps the 19,000원 tn1 ahead of the 16,000원 tn3. Reverting the comparator
+  fails two of them (`expected [ 'tn1 19000', 'tn2 18000', …(1) ] to deeply equal
+  [ 'tn2 18000', 'tn1 19000', …(1) ]` and `expected 'tn1' to be 'tn2'`).
+
+  **One hunt candidate checked and rejected, since the standard here is to record them.**
+  A reported defect in `attach` — that it skips a routine hero when `picks.find(...)`
+  returns an already-`seen` SKU, leaving two routine cards product-free — does not hold.
+  Run against the real module with `category: "클렌저"`: `picks: cl3,cl1,cl2`,
+  `am: am-cleanse=cl3 am-hydrate=NONE am-protect=NONE`. `am-hydrate` is empty because no
+  pick is a 토너 (every pick is in `survey.category`), not because of the `seen` set, and
+  `attach(am)` and `attach(pm)` keep separate `seen` sets so `pm-cleanse=cl3` too. Nothing
+  was changed on the strength of it.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`, 49 E2E passed — the 44
+  baseline plus the five new locale cases), vitest **583 passed in 87 files** (+6 cases),
+  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npm run lint` **0 errors, 2
+  warnings** the same two in `lib/care.ts`, `python3 ml/selftest.py`
+  **Ran 85 tests ... OK**. `lib/skin.ts`, `public/models/visible-attributes/manifest.json`
+  and `fallbackVersion` are untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent
+  kind was invented and neither stream was merged.
+
+  **Supervisor review.** The margins were instrumented and measured here first, from a
+  separate copy of `lib/skin.ts` with counters added at the two decision points, before
+  the worker reported.
+
+  *The pinned numbers reproduce under different instrumentation.* On the noisy fixture
+  at 400x480 this review measured a smallest nonzero suppression gap of **7.144e-4**
+  against the branch's pinned **0.0007143695914120229** — the same quantity, arrived at
+  by counting inside the detector's own loop rather than by replicating it, agreeing to
+  the four significant figures this review printed. The separation the guard rests on is
+  real and it is not marginal: exact ties on the noiseless fixture at every frame size
+  against **none** on any realistic one, and the smallest nonzero gap moving from ~1e-15
+  (2-8 ULPs) to 5.8e-5..1.1e-3. Any threshold in the eleven orders between separates
+  them, which is why `MARGIN_RATIO = 1e4` does not need defending as a delicate constant.
+
+  *The guard bites, and it is the only thing in the file that catches its own line.*
+  Removing the tie-break at `lib/skin.ts:1091` — `residual[j] === residual[i] && j < i`,
+  the exact line the guard exists to protect — fails **1 test of 10**, and it is the new
+  non-vacuity case: `flat 400x480: the replica disagrees with detectBlemishes: expected
+  5 to be 8`. Nine pass. Set against cycle 22's seven breaks that caught nothing, that is
+  the difference between a guard and a green line.
+
+  *One reviewer misstep, recorded.* The first break tried here — quantising the residual
+  to two decimals — failed **7 of 10** and proved nothing: it moves counts everywhere, so
+  every pre-existing tolerance case fails too and the new guard's contribution is
+  invisible inside the noise. A break has to be narrow enough that what fails identifies
+  what is protected.
+
+  *The bug fix is real and its guard bites.* Reverting `rank` to the raw float comparison
+  fails 2 cases with the exact symptom described: `expected [ 'tn1 19000', 'tn2 18000' ]
+  to deeply equal [ 'tn2 18000', 'tn1 19000' ]` — the 19,000원 toner ranked above the
+  equally-scored 18,000원 one, because a 1.78e-15 difference in addition order is truthy
+  and `||` never reached the price tie-break. Worth noting that this and the blemish
+  finding are the same defect class in two places: an exact float comparison deciding a
+  user-visible outcome.
+
+  *One thing to state so the next reader does not over-read the guard.* It asserts BOTH
+  margins, and only one of them was ever near the edge. Measured here across both
+  fixture families, the gap to `BLEMISH.minResidual` is healthy everywhere — the
+  branch's own pinned `floorGap` runs 3.43..7.35 on the realistic rows and 3.43..7.30 on
+  the noiseless ones, against a threshold of 1.6. Nothing sits near it on either family.
+  The fragility was entirely in the neighbour comparison. Asserting the floor too is
+  cheap insurance and correct; it is not a second near-miss.
+
+  *Rotation, checked against a pre-review snapshot of main.* 1523 → 1480 and 4029 →
+  4301. `sort -u` over both files' non-blank lines then `comm -23` against main's finds
+  **17 lines missing**: 16 are the decision-margin backlog item this cycle closed, which
+  is in the changelog at line 32 marked `[x]` and struck through with the original
+  preserved verbatim as a blockquote, and the 17th is `Last updated: 2026-09-20`, now
+  `2026-09-21`. "Recent cycles" holds 23/22/21.

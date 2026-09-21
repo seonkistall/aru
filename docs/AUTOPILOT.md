@@ -518,15 +518,6 @@ partly done and stays here.
   `tests/blemish-density-scale.test.ts`'s cross-resolution agreement hold at all", which
   the `srgbLinear` item above is still waiting on. Answering one answers both. Evidence and
   the fetch sha256s: `docs/blemish-perturbation-tolerance.md` §7.5.
-- [AI] **The decision-margin guard is blind to the residual arithmetic, and the blind spot
-  is measured.** Noted 2026-09-21 (cycle 23). `tests/blemish-perturbation-tolerance.test.ts`
-  measures margins from a replica that recomputes the residual from the a\* grid it
-  captured, so a change `lib/skin.ts` makes downstream of a\* is invisible to it: quantising
-  `residual[i]` to 3 decimals at the source leaves both margin cases green. It is caught
-  today by three assertions in two other files, which is why nothing was patched — but the
-  guard's stated scope is the a\*-production path only, and a cycle that widens it should
-  add a second hook rather than assume the margins cover the whole classifier.
-  `docs/blemish-perturbation-tolerance.md` §7.4.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -575,16 +566,30 @@ partly done and stays here.
   own sampling error no longer reads as a win with nothing said. A fixed positive
   constant would be the wrong shape anyway, since the band depends on the split's size.
   Measurements, the fetch sha256s and the ten source-line breaks: `docs/qwk-noise-band.md`.
-- [AI] **`recordCareIntent` throws away the same write signal `recordCheckin` just
-  stopped throwing away.** `lib/store.ts:recordCareIntent` calls `lsPush` and discards
-  its boolean, returning a fully-populated `CareIntent` whether or not localStorage
-  accepted it — the defect fixed on the check-in path in cycle 24, one function below
-  it. Left alone deliberately rather than swept up: its only caller is
-  `app/care/page.tsx:78`, which does `void recordCareIntent({...})` and shows the user
-  nothing, so unlike the check-in card it never tells anyone their data was saved. The
-  consequence is a silently short care-intent log on a full or blocked store, which is
-  a measurement problem and not a lie to a user. Fixing it is the same one line plus a
-  decision about whether `/care` should surface anything. Noted 2026-09-21 (cycle 24).
+- [AI] **`shareUrl` is a dead parameter, so no shared card carries a way back to ARU.**
+  Found 2026-09-21 (cycle 25) while fixing the share path above it, and deliberately not
+  folded into that fix. `shareCardImage` (`app/components/share-card.tsx`) accepts
+  `opts.shareUrl` and adds `text` + `url` to the `navigator.share` payload only when it is
+  set — under a comment that says "Include the deep link so the shared post carries a way
+  back to aru (viral loop)". The single call site, `app/studio/page.tsx`, does not pass it,
+  and no other code, test or doc mentions it. `lib/share-link.ts:moodShareUrl` exists for
+  exactly this and is used only by `/scan`'s clipboard path. So even now that the studio
+  share works, it sends a bare PNG with no return path, and `share_landed` /
+  `viralActivation` can never be driven from that surface. This is revenue-upstream item 3
+  and it is one argument away from being a one-line change — but `moodShareUrl` needs the
+  mood levels, `/studio` holds edited copy rather than reads, and deciding what a studio
+  card should link to is a product call rather than a plumbing one. Not guessed.
+- [AI] **`savePilotNote` is the only store in the repo with no `window` guard, no cap and
+  no try/catch.** Found 2026-09-21 (cycle 25). `lib/pilot.ts:151` does a bare
+  `localStorage.setItem(KEY, JSON.stringify(all))` where `labels.ts`, `consent.ts`,
+  `crops.ts`, `store.ts`, `scan-history.ts` and `funnel.ts` all guard and cap. On a full or
+  blocked store the `QuotaExceededError` escapes into `/pilot`'s click handler, the note is
+  lost, and `setCurrentPilotSession` at line 154 never runs — so the participant scope is
+  never established and consent events recorded afterwards land unscoped, which is what the
+  participant-grouped cross-validation needs. **Research-mode only**: `/pilot` is in
+  `proxy.ts`'s matcher and 404s in production unless `INTERNAL_TOOLS_USER` /
+  `INTERNAL_TOOLS_PASSWORD` are set, which is why it did not win the bug-fix track over a
+  defect every user hits. Same shape as the cycle 24 and cycle 25 store fixes.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -880,6 +885,7 @@ up rather than rediscover them.
   both places. Verified by drifting one copy to 0.80: 42 of 2013 sweep values disagree
   and 2 of the 4 cases fail.
 
+
 ## Recent cycles
 
 The last three cycles in full, which is what stops a cycle redoing last night's work.
@@ -931,6 +937,304 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   as a scan->buyer rate without saying so — which is where the whole 3x comes from —
   and five claims stronger than their evidence, including "cannot reach $10,000/month"
   in a document whose own table shows architecture A reaching it at 500,000 scans.
+- 2026-09-21 (cycle 25) — Branch `autopilot/2026-09-21-1239`. **The decision-margin
+  guard's blind spot is closed with the second hook cycle 23 asked for, and the break it
+  recorded as "did not bite" now bites. The noise bound every margin is reported as a
+  multiple of turns out to be a real upper bound with 226-816x of headroom, and ARU's
+  summed-area table is 4.4-7.1x less accurate than the reference construction in a place
+  where that cannot matter. And `/report`'s commerce row — the one carrying
+  `placement=report_summary`, the single link the revenue arithmetic rests on — has been
+  rendering both its CTAs as 24px slivers with the label cut mid-word, in every locale, at
+  every width, desktop included.**
+
+  **Baselines.** `npm ci` first (`node_modules` was absent). The arriving `npm run smoke`
+  came back green with the chromium override (`Smoke test passed.`, `Ran 121 tests ... OK`),
+  but it is **not quoted as a clean-tree baseline**: it was started before any edit and
+  finished after the first test-file edit had landed, so its vitest leg may have read a
+  modified tree. The supervisor's own main-branch measurements stand as the baseline and
+  this cycle compared against those. `npx tsc --noEmit | grep -c "error TS"` **13**,
+  unchanged, measured here.
+
+  **Research: what a reference summed-area table does differently, and why it was asked.**
+  The question came out of the ML work rather than being picked to fill a slot: every margin
+  in `tests/blemish-perturbation-tolerance.test.ts` is reported as a multiple of
+  `noiseScale = gw*gh * EPSILON * max|a*|`, and that bound was asserted in a comment and
+  verified by nobody. scikit-image's `integral_image`, read from its own source on
+  `raw.githubusercontent.com` — another project's implementation, not a paper and not a
+  standard — says two things that bear on ARU:
+
+  ```
+  skimage/transform/integral.py @ v0.24.0  http=200 bytes=5096
+  skimage/transform/integral.py @ v0.25.2  http=200 bytes=5096  (byte-identical to v0.24.0)
+    sha256 ed187d23b0b47dbb8457b67d451f9aa19e39237bf322c81a92fab5a1802927d6
+  ```
+
+  It promotes float inputs to at least float64 "for better accuracy and to avoid potential
+  overflow" — ARU's `sumTable` is already a `Float64Array`, so that precaution is taken. And
+  it builds the table as a **separable `cumsum` along each axis**, where `lib/skin.ts` uses
+  the one-pass inclusion-exclusion recurrence, which **subtracts a partial sum at every
+  cell**. A cumsum never does, so the two are not obviously equally accurate and ARU's is the
+  one with a mechanism to be worse. That made it a measurement rather than a reassurance.
+
+  **ML: the guard now reads the field the detector actually classifies.** `__perturbAStar`
+  is injected before the summed-area tables, so every residual this file reasoned about was
+  `residualsOf`'s reconstruction from the captured a\* grid. Anything `lib/skin.ts` did
+  downstream of a\* moved what the detector classifies without moving a single number in the
+  margin tables — cycle 23 measured that and wrote it down as §7.4's sixth break, the one
+  that did not bite. `__observeResidual` is a **second** hook, injected after the residual
+  loop and before the classification loop, against the anchor `let count = 0; let validCells
+  = 0;`. It is a second hook and not a widened first one because the two read different
+  arrays at different points, and a replica that had quietly stopped being the detector is
+  precisely the failure being guarded. Three things are asserted, in order: the two residual
+  fields agree **exactly at every valid cell**; classifying the detector's own residual
+  reproduces the count `detectBlemishes` returned; and the pinned margins hold when
+  re-measured on the detector's own field, which is an independent surface because editing
+  `residualsOf` to track a moved `lib/skin.ts` would satisfy the first and still fail here.
+
+  **Two source-line breaks, never of a test, and the second is the one that earns the
+  hook.** Break A is the exact break §7.4 recorded as passing — `residual[i] =
+  Math.round((astar[i] - background) * 1000) / 1000` — and it now fails, 3 of 11 in this
+  file, first assertion:
+
+  ```
+  noise 4 400x480: the detector's own residual differs from this file's replica at 11789 of
+  11789 valid cells (worst |d| = 5.000e-4). Every decision margin in this file is measured
+  on the replica, so a change downstream of a* moves what the detector classifies without
+  moving a single number above it: expected 11789 to be +0
+  ```
+
+  But break A was already visible to two other assertions in this same file and to two other
+  files, so on its own it does not show the hook adds coverage. Break B does: `residual[i] =
+  Math.max(-1e-9, astar[i] - background)` clamps only residuals far below the `minResidual:
+  1.6` floor, so no cell can change classification and every count pin in the tree stays
+  green. Across `blemish-perturbation-tolerance`, `blemish-tie-break`,
+  `blemish-density-scale`, `skin-index-contract` and `scan-cost-benchmark` — **45 tests, 2
+  failed, both in this file**, one of them the new case. `lib/skin.ts` was restored
+  byte-identical after each break: sha256
+  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08` before and after, and
+  `git diff lib/skin.ts` empty. It is untouched on this branch.
+
+  **And the bound the whole guard rests on is now measured rather than asserted.** Both
+  constructions were compared against an exact accumulation in a non-overlapping expansion,
+  rounded once. The reference was itself checked before it was used: it returns `1` for
+  `[1e16, 1, -1e16]` and `2` for `[1, 1e100, 1, -1e100]` where naive summation returns `0`
+  for both, it is order-independent over 10,000 values, and on those same values it agrees
+  with Python's correctly-rounded `math.fsum` to the last bit (`1790845758.191924` from both,
+  against `1790845758.191915` and `1790845758.1919322` for naive summation in the two
+  directions).
+
+  Three findings. **The bound holds, with room**: ARU's worst background error is
+  **4.230e-14 to 1.513e-13** a\* against a bound of **3.424e-11 to 3.820e-11**, so it uses
+  0.12%-0.44% of it — 226x to 816x of headroom — and `noiseScale` means what it says. That is
+  now an assertion, not a comment. **The cancellation argument is confirmed and does not
+  matter**: the cumsum construction is **4.4x to 7.1x more accurate** on all sixteen frames,
+  exactly as a construction with no subtraction in it should be, but ARU's error is
+  **6.9e8 to 1.8e11 times smaller** than the smallest suppression gap, so switching would buy
+  a factor of five on a quantity ten orders of magnitude below the decision it feeds. **No
+  change was proposed and none was made** — the number is recorded so the next cycle has it
+  instead of the argument. And the noiseless fixture is the worst case here too, at roughly
+  2x the noisy frames. `docs/blemish-perturbation-tolerance.md` §7.6-7.7.
+
+  **UI/UX: `/report`'s commerce row rendered both CTAs as 24px slivers, and it is the one
+  row the revenue arithmetic depends on.** `reportCommerceAction` is a `display: flex` row
+  with no `flexWrap`. It holds two `flex: 1` CTAs (so `flex-basis: 0`) and, since
+  2026-09-15, a third child: `<CommerceDisclosure style={{ width: "100%" }} />` at
+  `flex-basis: auto`. The disclosure alone claims the whole line, free space goes negative,
+  `flex-grow` never applies, and both anchors collapse to their horizontal padding. Measured
+  in Chromium at 360x800, not reasoned from the CSS:
+
+  ```
+  /api/out?...placement=report_product   288.0px   (three of these, inside the product cards — fine)
+  /api/out?...placement=report_summary    24.0px   sw=48 cw=24   "올리브영에서 제품 보기"
+  /care                                   24.0px   sw=30 cw=24   "제품과 상담 정보 보기"
+  /privacy                               320.0px
+  ```
+
+  So the `report_summary` out-click — the link `lib/commerce.ts` and the revenue table are
+  built around — has been a 24px tap target, 55% under `--tap-min: 44px`, with its label cut
+  mid-word, in all five locales. It is not a narrow-viewport problem: the disclosure's basis
+  claims the whole line at any width, so free space is negative everywhere. Measured before
+  and after the fix, same probe, ko:
+
+  ```
+  width   before (buy / care)        after (buy / care)
+   320    24.0 / 24.0   sw=48,30     109.2 / 134.8   no clipping
+   360    24.0 / 24.0   sw=48,30     126.6 / 157.4   no clipping
+   393    24.0 / 24.0   sw=48,30     141.0 / 176.0   no clipping
+   430    24.0 / 24.0   sw=48,30     157.0 / 197.0   no clipping
+   768    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
+  1280    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
+  ```
+
+  The fix is one property, `flexWrap: "wrap"`, which is what the disclosure's own
+  `marginTop: 4` always implied; at 360px all five locales read **126.6px** and **157.4px**
+  with no clipping.
+
+  **The trap in the guard, caught before it was committed.** The obvious selector,
+  `main a[href^="/api/out"]).first()`, **passes against the broken build**: the same step
+  carries three `report_product` links at 288px and `first()` picks one of those. The spec
+  binds to `placement=report_summary` inside the section that contains it, and asserts both
+  a width floor and `scrollWidth <= clientWidth` — a width check alone would pass a box wide
+  enough to tap that still cuts its label, and a clipping check alone would pass a 20px box
+  showing its whole label. This is cycle 24's `infoLinkBtn` regex lesson in a different
+  shape: the first version of the guard measured the wrong element and looked green.
+
+  **Bug fix: the `/studio` share button could never succeed, because the app's own CSP
+  refuses the fetch it makes.** `shareCardImage` rasterized the card to a
+  `data:image/png;base64,...` URL and then did `await (await fetch(dataUrl)).blob()` to build
+  the `File`. `next.config.ts` emits `connect-src 'self'`; that directive governs `fetch()`
+  and permits neither `data:` nor `blob:`. So the line threw `TypeError: Failed to fetch`
+  for every user on every browser — no flag, no platform condition — and the user got
+  "공유에 실패했어요. PNG 저장을 이용해 주세요." every time. Two consequences beyond the
+  message: the throw happens **before** the `navigator.canShare` branch, so the deliberate
+  download fallback at the end of the same function was unreachable too; and `onShare` never
+  fired, so `recordFunnelEvent("share_clicked", { surface: "studio" })` has **never** fired,
+  and any reading of the share funnel that includes `/studio` is wrong. That is
+  revenue-upstream items 2 and 3 at once.
+
+  Three E2E specs already visit `/studio` and none of them clicks the button, which is how a
+  total failure of the product's only image-share path went unseen. `tests/e2e/studio-share.spec.ts`
+  clicks it under the **real** header — the CSP is not stubbed, only `navigator.share`, because
+  a headless Chromium has no share sheet — and asserts the File actually reaches the sheet
+  (`name`, `type`, `size > 1000`), that no CSP refusal appears in the console, and that the
+  failure row is absent. Against the unfixed build it fails on the user-visible symptom:
+  `the share path reported failure to the user: expected 0, received 1`. The fix decodes the
+  data URL in process (`atob` → `Uint8Array` → `Blob`); the CSP was **not** widened, which
+  would be the wrong direction for a hardened header, and `createObjectURL` + `fetch` was
+  measured and rejected because `blob:` is refused by the same directive.
+
+  **Bug fix 2: `recordCareIntent`, and the UI half of the question answered "no".** The
+  backlog item cycle 24 left open. Checked before fixing, as it asked: the function has
+  exactly one caller, it is a bare `void`, and nothing on screen claims the intent was
+  stored — so unlike cycle 24's check-in card this was never a lie to a user, and the
+  consequence is a silently short care-intent log that nothing could detect. It now returns
+  `CareIntent | null` like both siblings. `/care` deliberately surfaces **nothing**:
+  `openCareLink` opens the merchant link whether or not the log write landed, so an error
+  row would report a failure the user did not experience.
+  `tests/care-intent-write-signal.test.ts` pins that decision as well as the signal — its
+  third case asserts the ORDER (`window.open` after the record, never gated on it), so a
+  reordering that leaves every statement present still fails.
+
+  **Two findings recorded rather than swept up**, both now backlog items: `shareUrl` is a
+  dead parameter, so even a working studio share sends a bare PNG with no way back to ARU
+  (revenue-upstream item 3, but what a studio card should link to is a product call); and
+  `lib/pilot.ts:savePilotNote` is the only store in the repo with no guard, no cap and no
+  try/catch, which is research-mode only since `/pilot` 404s in production.
+
+
+  **Rotation, proved rather than asserted.** Measured across the rotation step alone:
+  `docs/AUTOPILOT.md` **1809 -> 1541**, `docs/autopilot-changelog.md` **4694 -> 4966**.
+  (This paragraph and the verification block below it were written after that measurement,
+  so the committed file is longer than 1541 — `wc -l` on the commit is the authority and
+  the delta above is the rotation's, not the whole cycle's.)
+  "Recent cycles" holds 25/24/23; cycle 22 moved verbatim to the bottom of the changelog
+  (14,317 bytes, text unchanged), and both `[x]` items moved to "Closed backlog items"
+  under their original "### Now" heading with the original wording preserved as a
+  blockquote. Normalising both files' non-blank lines (strip leading whitespace and `>`,
+  strip trailing whitespace, `sort -u`) and running `comm -23 before after` leaves
+  **nothing at all** — **5527** unique lines before and **5527** after.
+
+  One thing the rotation script got wrong and it was repaired rather than left: its first
+  pass swept every top-level `[x]` in the file, which took the already-actioned
+  `confidenceLabel` entry out of "Supervisor findings not yet actioned" — a section that is
+  not the backlog and an item this cycle did not tick. It was put back verbatim and the
+  changelog copy removed; `grep -c` confirms one copy in `docs/AUTOPILOT.md` and zero in the
+  changelog.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest ****608 passed in 90 files** (603 plus 2 in the ML file and 3 in the new care-intent file)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged, and it was **15** at first:
+  the new `tests/care-intent-write-signal.test.ts` fixture inferred `merchant: string`
+  against `MerchantId`, caught here and fixed by typing the fixture
+  `Omit<CareIntent, "id" | "ts">` rather than by casting, so a field that drifts out of
+  `CareIntent` is still a compile error. `npm run lint` **0 errors, 2 warnings** — the same
+  two, `'_reads'` and `'_result'` at `lib/care.ts:72`. `python3 ml/selftest.py` **Ran 121
+  tests ... OK**, unchanged — nothing in `ml/` was touched. Mobile E2E ****52 passed (4.8m)** — 50 on main, plus one new spec on each of the two fixes**.
+
+  `lib/skin.ts` is byte-identical to main (sha256
+  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08`), and so are
+  `public/models/visible-attributes/manifest.json` (`status` and `promotionGate` included),
+  `ml/external_datasets.json`, `lib/consent.ts` and `next.config.ts` — the CSP was diagnosed
+  and **not widened**, which is the point of that fix. `NEXT_PUBLIC_FUNNEL_FLUSH` was not
+  set, no consent kind was invented and neither stream was merged, no dataset licence tier
+  moved, and no face image path changed.
+
+  **One run that is not quoted as evidence.** A full `npx vitest run` mid-cycle reported
+  `1 failed | 604 passed`; the immediate re-run of the same tree reported `605 passed in 89
+  files`, and the failure's identity was lost because that command was piped through
+  `tail -8`. Two investigation subagents were running commands against this working tree at
+  the time, which is the most likely cause and is not established. It is recorded because
+  it happened, not diagnosed, and the gate above is the run that counts.
+
+  **Supervisor review.** The CSP finding is the most consequential defect any cycle has
+  turned up, so it was reproduced here rather than read.
+
+  *The share surface really was dead, in a real browser.* Served the app's own header
+  shape (`default-src 'self'; img-src 'self' data: blob:; connect-src 'self'`,
+  `next.config.ts:18`) from a local server and ran both fetches in Chromium:
+
+  ```
+  fetch(data:...)  -> THREW TypeError: Failed to fetch
+  fetch(blob:...)  -> THREW TypeError: Failed to fetch
+  ```
+
+  Both halves of the claim hold, including the exact error text and the part a reader
+  would most want to check — that `createObjectURL` + `fetch` is no escape, because
+  `blob:` is refused by the same directive. `img-src` allowing `data: blob:` is a
+  different directive and does not help a `fetch()`. So `shareCardImage` threw on its
+  second line for every user on every browser, before `navigator.canShare` was reached,
+  which also made the download fallback unreachable and meant `share_clicked` never
+  fired for this surface. The share loop is the only organic acquisition path the
+  product has, and it had never worked.
+
+  *The replacement decoder is byte-exact.* Transcribed `dataUrlToBlob` and ran it
+  against a known PNG: 70 bytes in, 70 bytes out, `got.equals(want)` **true**, leading
+  bytes `89504e470d0a1a0a` — a valid PNG signature. The no-parameter case its comment
+  calls out behaves as claimed: `data:image/png,hello%20world` decodes with type
+  `image/png` rather than a truncated type.
+
+  *The 24px CTA reproduces, and the after-numbers match to three decimals.* Rebuilt the
+  commerce row's flex structure independently — two `flex: 1` anchors and a `width: 100%`
+  disclosure — and measured at 360x800 in Chromium:
+
+  ```
+  flexWrap: nowrap   buy=38x168      care=38x168
+  flexWrap: wrap     buy=126.61x68   care=157.39x68
+  ```
+
+  The entry's after-fix figures at 360 are **126.6 / 157.4**. The before-figure differs —
+  **38px here against the entry's 24px** — and the reason is that this reconstruction is
+  not the component: its label string is shorter than the shipped one, and the entry's
+  own `sw=48 cw=24` shows the real anchor clipping where this one merely narrowed. The
+  mechanism, the direction and the magnitude are confirmed; the exact before-pixel is the
+  entry's measurement of the real page and not this one's.
+
+  *The `recordCareIntent` item was the one to get wrong, and the branch did not.* This
+  cycle's brief flagged it: the fix is right but the justification must not claim a
+  user-visible lie, because there is none. Checked before the branch arrived —
+  `grep -nE "저장|saved|기록했" app/care/page.tsx` returns two hits, a code comment and
+  advice copy telling the USER to save their own product names, against
+  `app/checkin/page.tsx:146`'s `role="status"` "남겨주신 피드백을 저장했어요." over an
+  empty store. The branch says exactly this in the code comment, unprompted, and explains
+  why the failure is deliberately not surfaced: `openCareLink` cannot await before
+  `window.open` without popup blockers killing the link.
+
+  *The blind-spot guard closes what cycle 23 left open.* Quantising `residual[i]` to
+  three decimals at its source line — the precise change the backlog item said the old
+  margin guard could not see — now fails `the residual the detector actually classifies >
+  is the field the margins are measured on, cell for cell, at every frame and noise
+  level`, among 3 of 12.
+
+  *One thing verified here that a previous cycle asserted.* Cycle 24's "the noise band
+  does not change the gate" was merged on a reading of the code; it is now proved by
+  execution. With `qwk_noise.clears_band` forced to return `False` for every axis — the
+  worst possible verdict — on a model that beats the heuristic: `beats: True`,
+  `clearsNoiseBand: False`, **`BLOCKERS: []`**, one warning. `ml/subgroups.py` appends to
+  `blockers` only under `if not entry["beats"]`. The claim holds.
+
+  *Rotation, against a pre-review snapshot of main.* 1588 → 1599 and 4694 → 4966, and
+  `comm -23` finds **19 lines missing**, all 19 from the two backlog items this cycle
+  closed — both present in the changelog. "Recent cycles" holds 25/24/23.
+
 - 2026-09-21 (cycle 24) — Branch `autopilot/2026-09-21-0639`. **The promotion gate's
   0.0 margin now has the number it was missing: at the gate's own `minTrainingCrops: 300`
   the 95% band on a qwk gain is about ±0.15, and two scorers identical in expectation
@@ -1212,241 +1516,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   the three backlog items this cycle closed — the two-model gate item, the `/scan`
   pixel-coverage item, and the `minQwkGainOverHeuristic` noise-band item — each present
   in the changelog. "Recent cycles" holds 24/23/22.
-
-- 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
-  has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:
-  five of six source-line breaks fail it, two of them on the new assertions, and the
-  noiseless fixture fails the same predicate with a suppression margin of EXACTLY zero at
-  every frame size. Also: `/checkin`'s seven answer pills shipped at 35.5px in all five
-  locales, and an exact score tie in `recommend` was being decided by floating-point
-  accumulation order, so the 19,000원 toner outranked the equally-scored 18,000원 one.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief: `npm run smoke` green with the
-  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`, 44 E2E
-  passed), vitest **577 passed in 87 files**, `npx tsc --noEmit | grep -c "error TS"`
-  **13**, `npm run lint` **0 errors, 2 warnings** both in `lib/care.ts`,
-  `python3 ml/selftest.py` **Ran 85 tests ... OK**.
-
-  **ML: the margin guard the backlog item asked for, and proof that it bites.**
-  `certifiedRadius` already had the ingredient and had never been pointed at it — it takes
-  the minimum over EVERY cell, divides by the amplification factors 2 and 4, combines a
-  counted cell's margins with `min` and an uncounted cell's with `max`, was only ever
-  computed on the NOISY family, and was pinned to exact values rather than asserted to be
-  above anything. So it cannot tell a suppression tie from a floor graze. What landed
-  measures the raw, undivided distances over the cells that actually survived: the smallest
-  `residual[i] - max(residual over i's 5x5 window)`, the smallest
-  `residual[i] - BLEMISH.minResidual`, and a census of how many counted cells are tied
-  with a neighbour exactly. The noise floor it is compared against is computed, not
-  recalled: the background is four reads of a summed-area table over `gw*gh` cells, so
-  `gw*gh * EPSILON * max|a*|` bounds one residual's rounding error.
-
-  ```
-  decision margin on the realistic fixture family (a* units)
-  noise  frame        counted  tied    peak gap   floor gap   noise scale   peak/noise
-      4  400x480           5     0    4.185e-5    3.461e+0    3.435e-11    1.218e+6
-      4  720x960           5     0    3.396e-4    7.276e+0    3.803e-11    8.930e+6
-      4  1080x1440         5     0    1.307e-3    7.321e+0    3.794e-11    3.446e+7
-      4  1440x1920         5     0    1.654e-4    7.050e+0    3.796e-11    4.357e+6
-      9  400x480           6     0    7.144e-4    3.518e+0    3.447e-11    2.072e+7
-      9  720x960           5     0    1.835e-3    7.294e+0    3.813e-11    4.813e+7
-      9  1080x1440         5     0    9.327e-3    7.331e+0    3.798e-11    2.456e+8
-      9  1440x1920         5     0    1.050e-3    7.048e+0    3.801e-11    2.762e+7
-     14  400x480           7     0    5.928e-4    3.556e+0    3.463e-11    1.712e+7
-     14  720x960           5     0    8.147e-3    7.333e+0    3.820e-11    2.133e+8
-     14  1080x1440         5     0    1.205e-2    7.353e+0    3.799e-11    3.172e+8
-     14  1440x1920         5     0    3.769e-3    7.035e+0    3.808e-11    9.899e+7
-
-  decision margin with noiseAmplitude 0 (a* units)
-  frame        counted  tied    peak gap   floor gap  decided
-  400x480           5     1           0    3.431e+0    false
-  720x960           5     1           0    7.249e+0    false
-  1080x1440         5     3           0    7.304e+0    false
-  1440x1920         5     3           0    7.057e+0    false
-  ```
-
-  Both cases run the SAME predicate, which is what stops either passing by being weak.
-  Cycle 22's zero-margin finding is now a property asserted of the fixture rather than a
-  mystery about a lookup table: one to three of the noiseless frame's five counts are
-  settled by `j < i`, so `tests/blemish-density-scale.test.ts`'s cross-resolution
-  agreement holds for one bit pattern and a 1e-16 nudge moves it.
-
-  **`MARGIN_RATIO` is 1e4 and not 1e6, and the reason is in the table.** The tightest row
-  — noise 4 at 400x480 — clears its noise bound by **1.218e6**, so a threshold of 1e6
-  would be cleared by 1.22x, which is a coin flip dressed as a guard. At 1e4 that row
-  clears by 122x and the noiseless fixture still fails with a margin of exactly zero.
-
-  **Six source-line breaks of `lib/skin.ts`, never of the test; five fail.** `lib/skin.ts`
-  was restored byte-identical to HEAD afterwards and the restoration verified with
-  `git diff`. Rounding the stride-window channel averages to integers collapses the
-  smallest suppression margin from 4.185e-5 a\* to **1.066e-14** — four orders of magnitude
-  BELOW the detector's own rounding error — while leaving the count unchanged, so nothing
-  else in the suite notices: `noise 4 720x960: the smallest suppression margin is
-  1.066e-14 a*, only 2.798e-4x the detector's own rounding error: expected
-  0.0002798453713286699 to be greater than 10000`. Quantising those averages to steps of 8
-  fails the census: `noise 4 400x480: 3 of 67 counts are settled by scan order, not by the
-  image: expected 3 to be +0`. Those two are the ones that matter, because they fail on the
-  NEW assertions; rounding a\* to 3 decimals, point-sampling the stride window and
-  dithering a\* by cell index also fail, but on the pinned table, which any pin catches.
-
-  **The sixth did not bite, and that is a limitation rather than a footnote.** Quantising
-  `residual[i]` to 3 decimals inside `lib/skin.ts` leaves both margin cases green, because
-  the harness's replica recomputes the residual from the captured a\* grid — so anything
-  the detector does downstream of a\* is invisible to these margins. The guard covers the
-  a\*-production path, which is where a transfer-curve approximation lands and is what it
-  was built for, and not the residual arithmetic. That break IS caught, by three
-  assertions in two other files (`counts across resolutions: 2, 3, 2, 2, 2`,
-  `the shipped build is supposed to agree: 2, 3, 2, 2, 2`, and
-  `expected [ 413, 422, 415, 421 ] to deeply equal [ 415, 421, 414, 418 ]`), which is why
-  the blind spot is recorded rather than patched over with more harness.
-  `docs/blemish-perturbation-tolerance.md` §7.
-
-  **Research: ARU's plateau tie-break is the conventional one, and what it lacks is the
-  degenerate-input branch.** No paper and no standard is reachable from this network, so
-  nothing is attributed to one. What `raw.githubusercontent.com` served is
-  `scikit-image`'s own source: `skimage/feature/peak.py` at **v0.24.0**
-  (`http=200 bytes=14427`, sha256
-  `8d65f9a973a128a86c0d7a2689166bfa9768471e071c0fcb43f73e2863d3d85b`) and at **v0.25.2**
-  (`http=200 bytes=14478`, `_get_peak_mask` byte-identical), **v0.22.0**
-  (`http=200 bytes=14970`, the same function differing only in line wrapping), plus
-  `skimage/_shared/coord.py` at v0.24.0 (`http=200 bytes=4337`, sha256
-  `5d44f698e581e6f8b11c789489b91d638a363805964b8967c2e50bdcea65edbd`).
-  `api.github.com` now refuses anything outside this session's own repositories
-  (`http=403`), and `peak.py` on `main` is a 404 — the tagged paths are what resolve.
-
-  `peak_local_max` resolves an intensity tie the same way ARU does:
-  `np.argsort(-intensities, kind="stable")` over `np.nonzero(mask)` coordinates, then a
-  greedy `_ensure_spacing` walk, and a stable sort over row-major coordinates means the
-  earlier index wins among equals — that is `residual[j] === residual[i] && j < i`. So
-  `lib/skin.ts:1091` is not an idiosyncrasy to be fixed; cycle 22 found a property of the
-  input, not of the rule. What ARU has no equivalent of is `_get_peak_mask`'s
-  `# no peak for a trivial image` branch: when every cell in the mask is a local maximum it
-  reports **no peaks at all** rather than letting index order manufacture them. Said
-  plainly because the distance matters — that branch fires only when the field is ENTIRELY
-  flat, and ARU's noiseless fixture is plateau-dominated but not entirely flat, so a
-  transplanted copy would not fire there. It is not a drop-in fix and is not proposed as
-  one. It is on the backlog as the question it actually raises.
-
-  **UI/UX: `/checkin`'s answer controls were 35.5px high in every locale, and it was
-  measured in chromium rather than computed.** `pill()` (`app/checkin/page.tsx`) styles
-  every control a user answers with — 만족도 (3), 트러블 (2), 재구매 (2), seven buttons per
-  card — and set `fontSize: 13` with `padding: "7px 11px"` and no minimum size, against
-  `--tap-min: 44px`. `app/checkin/page.tsx` was the only consumer page in the tree with
-  **zero** references to `var(--tap-min)`, and `tests/mobile-layout-contract.test.ts`'s
-  file list is where it was missed. On the real page at 360x800: **32 of 45 controls under
-  the contract across five locales**, every pill 35.5px high, and the short answers narrow
-  as well as short — zh `好`/`有`/`否` at 37px, ar `لا` at **31.4px**, en `No` at 40.8px,
-  which is why the fix takes both dimensions (following `app/studio/page.tsx:163`) and not
-  just the height that `app/survey/page.tsx`'s twin chip carries. Re-measured the same way:
-  **0 of 45**, and `doc scrollWidth=360 clientWidth=360 overflowing=0` in all five, because
-  raising them widened the rows and that half was checked rather than assumed.
-
-  Why an earlier audit called `/checkin` clean: the pills only render once a confirmed
-  product use is at least two weeks old (`roundFor`), so against an empty
-  `gyeol_purchases` the page shows two empty-state links and the controls never render.
-  This is the landing page of every re-engagement mail
-  (`app/api/reengage/run/route.ts`), i.e. the primary controls of the one surface the
-  product has for bringing a user back. Five E2E cases, one per locale, seed the due use
-  the way `tests/e2e/checkin-schedule.regression-7.spec.ts` does and assert the pixels;
-  reverting `pill()` fails all five (`Error: ko: controls under 44px`, and the same in en,
-  ja, zh, ar — `5 failed, 1 passed`). `docs/checkin-tap-target-measurement.md`.
-
-  **Bug fix: an exact score tie in `recommend` was decided by floating-point accumulation
-  order, not by price.** `rank` (`lib/recommend.ts`) sorted on
-  `scoreSku(b) - scoreSku(a) || a.price - b.price`, i.e. "on an equal score the cheaper
-  product wins". Every weight in `scoreSku` is a multiple of 0.1 and so is the exact score,
-  but the ADDITIONS are not, and the order they arrive in depends on which concerns each
-  SKU declares. For a 지성 / 토너 survey with 모공·건조·트러블, tn1 and tn2 both score 14.1:
-
-  ```
-  tn1 order 3,2,1.2,1.2,2,1.2,1.5,2 => 14.1
-  tn2 order 3,2,1.2,2,1.2,1.2,1.5,2 => 14.099999999999998
-  diff = 1.7763568394002505e-15   equal = false   round(x*10): 141 vs 141
-  picks before: tn1 19000 | tn2 18000 | tn3 16000
-  picks after : tn2 18000 | tn1 19000 | tn3 16000
-  ```
-
-  That difference of 1.78e-15 is truthy, so `||` never reached the price key and the
-  19,000원 toner outranked the equally-scored 18,000원 one — on the top card of `/report`
-  and on the hero product attached to both hydrate steps. The fix compares the score in
-  tenths, which is exact rather than tolerant: the smallest real gap between two scores is
-  0.1, fourteen orders of magnitude above the error.
-
-  **Scope measured, not estimated**, by importing the pre-fix module alongside the fixed
-  one and comparing pick lists over every 3-concern survey (5 skin types x 8 categories x
-  56 concern triples): `surveys=2240 pick lists changed=19 of which the top pick got
-  cheaper=17`. One of the 19 changes the pick SET and not only the order
-  (지성 세럼 [모공/잡티/유분]: `sr1|sr2|sr4` became `sr1|sr2|sr3`), because `diversify`
-  reorders around the tone/brand filter once a different SKU leads. Four cases in
-  `tests/recommend.test.ts`, including a control that the fix did not become "cheapest
-  first" — `baseSurvey`'s order is identical before and after, verified against the pre-fix
-  module, and keeps the 19,000원 tn1 ahead of the 16,000원 tn3. Reverting the comparator
-  fails two of them (`expected [ 'tn1 19000', 'tn2 18000', …(1) ] to deeply equal
-  [ 'tn2 18000', 'tn1 19000', …(1) ]` and `expected 'tn1' to be 'tn2'`).
-
-  **One hunt candidate checked and rejected, since the standard here is to record them.**
-  A reported defect in `attach` — that it skips a routine hero when `picks.find(...)`
-  returns an already-`seen` SKU, leaving two routine cards product-free — does not hold.
-  Run against the real module with `category: "클렌저"`: `picks: cl3,cl1,cl2`,
-  `am: am-cleanse=cl3 am-hydrate=NONE am-protect=NONE`. `am-hydrate` is empty because no
-  pick is a 토너 (every pick is in `survey.category`), not because of the `seen` set, and
-  `attach(am)` and `attach(pm)` keep separate `seen` sets so `pm-cleanse=cl3` too. Nothing
-  was changed on the strength of it.
-
-  **Verification.** `npm run smoke` green (`Smoke test passed.`, 49 E2E passed — the 44
-  baseline plus the five new locale cases), vitest **583 passed in 87 files** (+6 cases),
-  `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npm run lint` **0 errors, 2
-  warnings** the same two in `lib/care.ts`, `python3 ml/selftest.py`
-  **Ran 85 tests ... OK**. `lib/skin.ts`, `public/models/visible-attributes/manifest.json`
-  and `fallbackVersion` are untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent
-  kind was invented and neither stream was merged.
-
-  **Supervisor review.** The margins were instrumented and measured here first, from a
-  separate copy of `lib/skin.ts` with counters added at the two decision points, before
-  the worker reported.
-
-  *The pinned numbers reproduce under different instrumentation.* On the noisy fixture
-  at 400x480 this review measured a smallest nonzero suppression gap of **7.144e-4**
-  against the branch's pinned **0.0007143695914120229** — the same quantity, arrived at
-  by counting inside the detector's own loop rather than by replicating it, agreeing to
-  the four significant figures this review printed. The separation the guard rests on is
-  real and it is not marginal: exact ties on the noiseless fixture at every frame size
-  against **none** on any realistic one, and the smallest nonzero gap moving from ~1e-15
-  (2-8 ULPs) to 5.8e-5..1.1e-3. Any threshold in the eleven orders between separates
-  them, which is why `MARGIN_RATIO = 1e4` does not need defending as a delicate constant.
-
-  *The guard bites, and it is the only thing in the file that catches its own line.*
-  Removing the tie-break at `lib/skin.ts:1091` — `residual[j] === residual[i] && j < i`,
-  the exact line the guard exists to protect — fails **1 test of 10**, and it is the new
-  non-vacuity case: `flat 400x480: the replica disagrees with detectBlemishes: expected
-  5 to be 8`. Nine pass. Set against cycle 22's seven breaks that caught nothing, that is
-  the difference between a guard and a green line.
-
-  *One reviewer misstep, recorded.* The first break tried here — quantising the residual
-  to two decimals — failed **7 of 10** and proved nothing: it moves counts everywhere, so
-  every pre-existing tolerance case fails too and the new guard's contribution is
-  invisible inside the noise. A break has to be narrow enough that what fails identifies
-  what is protected.
-
-  *The bug fix is real and its guard bites.* Reverting `rank` to the raw float comparison
-  fails 2 cases with the exact symptom described: `expected [ 'tn1 19000', 'tn2 18000' ]
-  to deeply equal [ 'tn2 18000', 'tn1 19000' ]` — the 19,000원 toner ranked above the
-  equally-scored 18,000원 one, because a 1.78e-15 difference in addition order is truthy
-  and `||` never reached the price tie-break. Worth noting that this and the blemish
-  finding are the same defect class in two places: an exact float comparison deciding a
-  user-visible outcome.
-
-  *One thing to state so the next reader does not over-read the guard.* It asserts BOTH
-  margins, and only one of them was ever near the edge. Measured here across both
-  fixture families, the gap to `BLEMISH.minResidual` is healthy everywhere — the
-  branch's own pinned `floorGap` runs 3.43..7.35 on the realistic rows and 3.43..7.30 on
-  the noiseless ones, against a threshold of 1.6. Nothing sits near it on either family.
-  The fragility was entirely in the neighbour comparison. Asserting the floor too is
-  cheap insurance and correct; it is not a second near-miss.
-
-  *Rotation, checked against a pre-review snapshot of main.* 1523 → 1480 and 4029 →
-  4301. `sort -u` over both files' non-blank lines then `comm -23` against main's finds
-  **17 lines missing**: 16 are the decision-margin backlog item this cycle closed, which
-  is in the changelog at line 32 marked `[x]` and struck through with the original
-  preserved verbatim as a blockquote, and the 17th is `Last updated: 2026-09-20`, now
-  `2026-09-21`. "Recent cycles" holds 23/22/21.
