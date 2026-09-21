@@ -1026,6 +1026,56 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   and `fallbackVersion` are untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent
   kind was invented and neither stream was merged.
 
+  **Supervisor review.** The margins were instrumented and measured here first, from a
+  separate copy of `lib/skin.ts` with counters added at the two decision points, before
+  the worker reported.
+
+  *The pinned numbers reproduce under different instrumentation.* On the noisy fixture
+  at 400x480 this review measured a smallest nonzero suppression gap of **7.144e-4**
+  against the branch's pinned **0.0007143695914120229** — the same quantity, arrived at
+  by counting inside the detector's own loop rather than by replicating it, agreeing to
+  the four significant figures this review printed. The separation the guard rests on is
+  real and it is not marginal: exact ties on the noiseless fixture at every frame size
+  against **none** on any realistic one, and the smallest nonzero gap moving from ~1e-15
+  (2-8 ULPs) to 5.8e-5..1.1e-3. Any threshold in the eleven orders between separates
+  them, which is why `MARGIN_RATIO = 1e4` does not need defending as a delicate constant.
+
+  *The guard bites, and it is the only thing in the file that catches its own line.*
+  Removing the tie-break at `lib/skin.ts:1091` — `residual[j] === residual[i] && j < i`,
+  the exact line the guard exists to protect — fails **1 test of 10**, and it is the new
+  non-vacuity case: `flat 400x480: the replica disagrees with detectBlemishes: expected
+  5 to be 8`. Nine pass. Set against cycle 22's seven breaks that caught nothing, that is
+  the difference between a guard and a green line.
+
+  *One reviewer misstep, recorded.* The first break tried here — quantising the residual
+  to two decimals — failed **7 of 10** and proved nothing: it moves counts everywhere, so
+  every pre-existing tolerance case fails too and the new guard's contribution is
+  invisible inside the noise. A break has to be narrow enough that what fails identifies
+  what is protected.
+
+  *The bug fix is real and its guard bites.* Reverting `rank` to the raw float comparison
+  fails 2 cases with the exact symptom described: `expected [ 'tn1 19000', 'tn2 18000' ]
+  to deeply equal [ 'tn2 18000', 'tn1 19000' ]` — the 19,000원 toner ranked above the
+  equally-scored 18,000원 one, because a 1.78e-15 difference in addition order is truthy
+  and `||` never reached the price tie-break. Worth noting that this and the blemish
+  finding are the same defect class in two places: an exact float comparison deciding a
+  user-visible outcome.
+
+  *One thing to state so the next reader does not over-read the guard.* It asserts BOTH
+  margins, and only one of them was ever near the edge. Measured here across both
+  fixture families, the gap to `BLEMISH.minResidual` is healthy everywhere — the
+  branch's own pinned `floorGap` runs 3.43..7.35 on the realistic rows and 3.43..7.30 on
+  the noiseless ones, against a threshold of 1.6. Nothing sits near it on either family.
+  The fragility was entirely in the neighbour comparison. Asserting the floor too is
+  cheap insurance and correct; it is not a second near-miss.
+
+  *Rotation, checked against a pre-review snapshot of main.* 1523 → 1480 and 4029 →
+  4301. `sort -u` over both files' non-blank lines then `comm -23` against main's finds
+  **17 lines missing**: 16 are the decision-margin backlog item this cycle closed, which
+  is in the changelog at line 32 marked `[x]` and struck through with the original
+  preserved verbatim as a blockquote, and the 17th is `Last updated: 2026-09-20`, now
+  `2026-09-21`. "Recent cycles" holds 23/22/21.
+
 - 2026-09-20 (cycle 22) — Branch `autopilot/2026-09-20-1839`. **The `srgbLinear` lookup
   table was built, measured at 42.0-61.2% off `detectBlemishes`, and taken back out —
   and what stopped it was not the table. It moved `blemishCount` on one committed
