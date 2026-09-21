@@ -252,7 +252,7 @@ export function QualityPanel({ quality, requireSteady, zonesReady }: { quality: 
        auto-fit at a 96px floor gives three columns of 103.3px at that width, which
        fits every label in every locale on one line, and six across when there is room
        for six. The cells may wrap now rather than clip. */
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 5, marginTop: 10 }}>
+    <div data-quality-checklist style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 5, marginTop: 10 }}>
       {checks.map(([label, ok]) => (
         <div key={label} style={{ background: ok ? "#eef5f0" : "var(--surface)", color: ok ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 2px", textAlign: "center", fontSize: 11, fontWeight: ok ? 700 : 500 }}>
           {ok ? "✓ " : ""}{t(label)}

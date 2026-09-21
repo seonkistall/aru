@@ -524,7 +524,7 @@ git diff --check
 - ESLint and the TypeScript/Next.js production build
 - Vitest: 80 files, 518 tests
 - Playwright Chromium mobile E2E: 44 tests in 12 files
-- `ml/selftest.py`: 77 tests, standard library only (no torch install needed)
+- `ml/selftest.py`: 121 tests, standard library only (no torch install needed)
 - Home and core callouts across locales
 - 9 core routes × 5 locales × 4 viewports (320/360/393/768px) — a
   180-combination text-fit matrix

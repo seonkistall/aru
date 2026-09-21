@@ -112,6 +112,7 @@ export function CheckinCard({ productUse, done, onDone }: { productUse: ProductU
   const [sat, setSat] = useState<number | null>(null);
   const [trouble, setTrouble] = useState<boolean | null>(null);
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   // Survives `done`, which the parent also sets from storage on mount. A user who
   // said 할래요 in this session gets the buy link; one returning to an already-answered
   // card does not, because the answer is all that was stored and re-offering a
@@ -130,11 +131,25 @@ export function CheckinCard({ productUse, done, onDone }: { productUse: ProductU
     if (!ready || !due || saving) return;
     setSaving(true);
     const week = round === 4 ? 4 : 2;
-    await recordCheckin({ sku_id: productUse.sku_id, week, satisfaction: sat, trouble, repurchase });
+    const saved = await recordCheckin({ sku_id: productUse.sku_id, week, satisfaction: sat, trouble, repurchase });
+    if (!saved) {
+      setSaveFailed(true);
+      // Release the guard too. `onDone()` is what unmounts the button, and it is not
+      // reached on this path, so leaving `saving` true would make a failed save
+      // permanent — the user could never retry the thing the message asks them to.
+      setSaving(false);
+      return;
+    }
+    setSaveFailed(false);
     if (repurchase) {
       // The product asked "재구매 할래요?", the answer was yes, and until now that
       // answer went into localStorage and nowhere else. Skincare is consumable, so
       // this is the moment a retained user is worth more than a new one.
+      //
+      // AFTER the save-failure return, deliberately: cycle 24 made `recordCheckin`
+      // able to fail, and an intent event for a check-in that was never stored would
+      // count demand the product did not actually record — and would offer a buy link
+      // for an answer the user is about to be told was not saved.
       recordFunnelEvent("repurchase_intent", { week, satisfaction: sat });
       setJustSaidRepurchase(true);
     }
@@ -164,6 +179,11 @@ export function CheckinCard({ productUse, done, onDone }: { productUse: ProductU
           <Row label="트러블"><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
           <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
           <button onClick={save} disabled={!ready || saving} style={saveBtn(ready && !saving)}>{t("기록하기")}</button>
+          {saveFailed && (
+            <p role="status" style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 7 }}>
+              {t("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.")}
+            </p>
+          )}
         </>
       )}
     </div>
