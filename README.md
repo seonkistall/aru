@@ -43,7 +43,12 @@ recommendation flow can also be completed with the questionnaire alone.
 - How far `a*` can move before `blemishCount` does, and what that rules out:
   [docs/blemish-perturbation-tolerance.md](docs/blemish-perturbation-tolerance.md)
   (below 1.046e-5 a\* units nothing can change the count; a 256-entry lookup table for
-  the transfer curve is off by 0.470 and moves it from 6 to 7, so the curve stays)
+  the transfer curve is off by 0.470 and moves it from 6 to 7, so the curve stays. §7:
+  the margin each count is actually decided by — 1.2e6 to 3.2e8 times the detector's own
+  rounding error on a realistic frame, and exactly zero on a noiseless one)
+- Why `/checkin`'s answer controls are 44px both ways, measured in a browser at 360px:
+  [docs/checkin-tap-target-measurement.md](docs/checkin-tap-target-measurement.md)
+  (32 of 45 controls were under the contract in five locales; every pill was 35.5px high)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
   (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest
@@ -169,7 +174,7 @@ unsubscribe → cleanup 30 days after unsubscribe or the 4-week send`
 | `/care` | Morning/evening routine, usage start, retailers | Retailer clicks separated from usage start |
 | `/reco` | Candidate comparison and follow-up exploration | No unverified price/stock/review display |
 | `/studio` | Share-card editing, Web Share | Safely prefilled when a real scan result exists |
-| `/checkin` | 2- and 4-week post-usage check-in | Safe guidance when no local/subscription state exists |
+| `/checkin` | 2- and 4-week post-usage check-in | Safe guidance when no local/subscription state exists; answer pills keep 44px touch targets in all five locales |
 | `/privacy` | Data purpose, transmission, retention, deletion | Used as the public production URL |
 | `/unsubscribe` | Signed email unsubscribe | Rejects missing/tampered/expired tokens |
 | `/pilot`, `/ops`, `/eval` | Research participation, ops, evaluation | 404 in production unless explicitly enabled |

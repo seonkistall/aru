@@ -29,6 +29,30 @@ Ticked `[x]` and moved here; the section each was under is kept.
 
 ### Now
 
+- [x] [AI] ~~The blemish detector has no guard on its own decision margin, and the obvious
+  one is vacuous~~ — closed 2026-09-21 (cycle 23), with the margin measured directly the
+  way the item said it had to be. **Five of six source-line breaks of `lib/skin.ts` fail
+  the new guard, two of them on the new assertions, and the noiseless fixture fails the
+  same predicate with a suppression margin of exactly zero at every frame size.** The
+  original text, for the record:
+
+  > - [AI] **The blemish detector has no guard on its own decision margin, and the obvious
+  >   one is vacuous.** Cycle 22 tried to assert that a realistic (noisy) frame's
+  >   `blemishCount` does not move under a 1e-16 perturbation of a\*. It does not — measured
+  >   at five frame sizes — but **seven source-line breaks of `lib/skin.ts` were tried
+  >   against an assertion of it and none made it fail**, so it ships as a printed
+  >   measurement in `tests/blemish-tie-break.test.ts` and not as a case. The reason is
+  >   structural: a uniform nudge cancels in `astar[i] - background`, and what actually
+  >   moves the noiseless fixture is that the addition ROUNDS differently at different
+  >   magnitudes; quantising the residual absorbs the nudge, and quantising the channel
+  >   averages into plateaus leaves the ties exactly tied. A real guard has to measure the
+  >   margin between competing cells directly — the smallest gap between a surviving cell
+  >   and its suppression-window neighbours, and between a residual and
+  >   `BLEMISH.minResidual` — and assert it is far above float noise. That is what would
+  >   have caught the noiseless fixture's zero margin years before a lookup table did.
+  >   `tests/blemish-perturbation-tolerance.test.ts` already replicates the classifier and
+  >   is the natural home. Noted 2026-09-20.
+
 - [x] [AI] ~~The `ita` guard is in two places and the disagreement is 180 degrees, not a
   rounding difference~~ — decided 2026-09-20 (cycle 20), on the measurement the item
   asked for rather than on the hypothesis it floated. **The guard is `b* == 0` in all
@@ -4027,3 +4051,251 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   new group fails `ml/selftest.py` with 2 errors, and moving `itaDegrees`' guard from
   0.01 to 0.5 fails with `itaDegrees(70, 0.02): expected 90 to be 89.94270423958551`.
   Rotation: 33 differing lines, all from the two items this cycle touched.
+
+- 2026-09-20 (cycle 20) — Branch `autopilot/2026-09-20-0639`. **A guard on `|b*|` could
+  not have been right, because what diverges is the ratio and not b\*. The window cycle
+  19 pinned as divergent is a 0.04-of-one-8-bit-unit shell around the neutral axis — and
+  the axis is inside it, so 242 of 256 greys read the wrong SIGN while a capture crossing
+  zero steps over the window without once landing in it. The guard is `b* == 0` in all
+  three implementations and the `ita` parity group is `exact`.**
+
+  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
+  `node_modules` was absent.** All four matched the brief exactly: `npx tsc --noEmit |
+  grep -c "error TS"` **13**, vitest **558 passed in 85 files**, `python3
+  ml/selftest.py` **Ran 83 tests ... OK**, `npx eslint .` **2 warnings** both in
+  `lib/care.ts`.
+
+  **Item 1 of the brief: how reachable the window actually is. Two answers, pointing at
+  different fixes.** On a skin-coloured region it is a knife edge. The blue-channel gain
+  that takes each committed fixture through `b* = 0`, and the width of the interval
+  around it where `|b*| < 0.01`, by bisection on the shipped `rgbToLab`:
+
+  ```
+  fixture              b* at gain 1   crossing gain   |b*|<0.01 window
+  synthetic-face cheek       10.7383        1.136741           2.561e-4
+  swatch-1                    8.2152        1.079614           1.945e-4
+  swatch-3                   17.4931        1.235578           2.714e-4
+  swatch-6                   14.8922        1.573947           7.784e-4
+  ```
+
+  Over the 8-bit cube uniformly at n = **2,000,000**, `|b*| < 0.01` holds on **300
+  triples (0.0150%)** and `|b*| < 1e-6` on **0**. In 8-bit units the window is a shell
+  **0.031 to 0.043** of one level thick. And the shipped path confirms it: **121 blue
+  gains from 1.000 to 1.600 in 0.005 steps** through `analyzeSkin` on the committed
+  synthetic face step **88.5 → 89.6 → −89.2 → −88.4** across the crossing, the largest
+  `|toneIta|` in the whole sweep is **89.6**, and **not one of the 121 captures produced
+  a reading the old guard would have clamped**.
+
+  **Which corrects cycle 19's own reachability argument**, and that correction is in
+  `docs/tone-ita-verification.md` and `docs/redness-formula-decision.md` rather than only
+  here. It read §3's cool cast — ITA 61.8 to −87.6 on a real fixture — as evidence that a
+  capture reaches the window. It is evidence that a capture **crosses** it. Passing
+  through a 2.6e-4-wide interval is not landing in it.
+
+  **What made it reachable is the neutral axis, and nobody was looking there.** ARU
+  carries the sRGB→XYZ matrix to four decimals, so for `r = g = b` the z row sums to
+  `1.089 / 1.08883 = 1.00016` of the y row and `b* = 200 * (f(y) − f(z))` comes out small
+  and NEGATIVE, growing with level. So a grey does not approach the window, it sits
+  inside it, and 8-bit quantisation puts real pixel values exactly on the axis:
+
+  ```
+  greys inside |b*|<0.01: 242/256, inside |b*|<1e-6: 1/256
+
+  grey       L*             b*     shipped ITA   rejected wide   true limit
+    32  12.25003   -0.002534755     89.996153           -90.0         90.0
+    96  40.73055   -0.005090190     89.968537           -90.0         90.0
+   119  50.03444   -0.005924988    -80.238169            90.0        -90.0
+   128  53.58501   -0.006243566    -89.900215            90.0        -90.0
+   240  94.79625   -0.009941274    -89.987285            90.0        -90.0
+  ```
+
+  On **all 241 non-black greys inside the old window the ±90 fallback returned the sign
+  the limit does not have** — it answers `sign(L* − 50)` where the limit is
+  `sign((L* − 50) / b*)`, and b\* is negative there, so the two are opposites everywhere.
+  **The registry's narrower guard held the correct column**, which settles cycle 19's
+  "neither is obviously the right one" on a measurement. The path is `ml/ita.py` rather
+  than the browser: `tone_from_image_path` is called from `ml/external_manifest.py:374`
+  and `ml/prepare_crop_dataset.py:48`, both through PIL's `convert("RGB")`, and on an
+  L-mode file that yields `r = g = b` exactly. Which datasets ship greyscale was NOT
+  audited and the doc says so.
+
+  **Item 2: the decision, and the two options that were refused on measurement rather
+  than on taste.** *Sign-awareness alone* leaves a second defect in the same guard: a
+  window on b\* asserts a vertical angle however small `|L* − 50|` is, so at L\* 50.001
+  and b\* 0.005 it published **90** (`very_light`) where the angle is **11.31** (`tan`) —
+  and a sign-aware ±90 publishes 90 there too. Not a constructed input either: grey 119
+  lands at L\* **50.03444** on the real axis, angle **−80.238169** against the rejected
+  90. Pinned as a break, which fails 4 assertions including `expected 90 to be close to
+  11.309932474020215, received difference is 78.69006752597979`. *An "undetermined"
+  band* — the option cycle 19 hinted at — is refused because the condition it would fire
+  on does not exist: the angle is **well conditioned** for small b\* whenever
+  `|L* − 50|` is not also small (every grey above reads within 0.04° of vertical bar 119),
+  and the one genuinely ill-conditioned input is `0/0`, an achromatic mid-grey, which is
+  not a face and which the scan already refuses on `n >= 40` / `meanL > 1` / ROI quality.
+  *Dropping the guard entirely* is unsafe in Python, and the reason is asymmetric between
+  the languages rather than a matter of style:
+
+  ```
+  20.0/0.0     -> ZeroDivisionError: float division by zero
+  20.0/-0.0    -> ZeroDivisionError: float division by zero
+  0.0/0.0      -> ZeroDivisionError: float division by zero
+  20.0/1e-320  = inf
+  20.0/5e-324  = inf
+  math.atan(inf) = 1.5707963267948966 -> degrees 90.0
+  ```
+
+  V8 divides `+0` to `Infinity`, `-0` to `-Infinity` and `0/0` to `NaN`; CPython raises
+  on all three. Denormals are fine in both. So **`b* == 0` is the only input that needs a
+  branch, and it needs one in both or they part company on `-0`** — which is why the
+  shipped guard is `bstar === 0` rather than `Math.abs(bstar) < eps`, and why `-0` is a
+  case in the test and not a row in the table (`JSON.stringify(-0)` is `"0"`). At
+  `b* == 0` the value is a convention and is documented as one; `L* > 50 ? 90 : -90` is
+  kept because a number matters more than which number — `toneBandFromIta` maps a NaN to
+  `"unknown"` and a tone-unknown row blocks promotion.
+
+  **Item 3: what it costs downstream. Nothing, and that is only true because the third
+  option was refused.** `ml/subgroups.py`, `coarse_tone_band`, `resolve_tone_band` and
+  `promotion_check` are untouched. Had `coarse_tone_band` gained an "undetermined" state,
+  `aggregate_by_cell`'s per-cell arithmetic and `worst_group`'s `min_n` floor would both
+  have needed a meaning for a sample with no band and the gate a rule for whether such a
+  sample blocks, is skipped, or folds into `unknown`.
+
+  **`fallbackVersion` is not bumped, and the justification is the byte-identity rather
+  than an assertion.** Twenty readings — five capture conditions (neutral wall, warm wood
+  wall, warm cast, cool cast, and a strong `[0.8, 1.0, 1.3]` cool cast) at each of the
+  four frame sizes — were run through `analyzeSkin` on this branch and on main
+  `eb527e9`, printing every field of `SkinRawFeatures` plus all three levels and all
+  three confidences: **all 20 rows byte-for-byte identical**, as is the 121-step sweep.
+  A bump would therefore partition samples carrying identical values, and it would do
+  real damage rather than none — `coverage_warnings` is where a mixed-generation run is
+  meant to surface, so a spurious boundary would make every run spanning today report a
+  mix that does not exist. `oil`, `redness` and `pores` did not move: all three levels
+  and all three confidences are in that identical comparison. `ATTR_THRESHOLDS`,
+  `inputSchemaVersion` and `public/models/visible-attributes/manifest.json` untouched —
+  guardrail 8's `status` and `promotionGate` byte-identical. `NEXT_PUBLIC_FUNNEL_FLUSH`
+  untouched. No consent kind or flow invented.
+
+  **Second item, and it is outside "Now" on purpose.** Everything left in "Now" that the
+  loop can do alone is blocked — the deep-link needs an allowlisted host, the blemish
+  constants and `roughness_ratio` need faces, the funnel flush needs the PIPA answer, the
+  cost item needs a phone — and the brief excluded the rest. So the pick is the item from
+  "Next" that makes this cycle's decision actually binding: **`SampleMeta.toneBand` was
+  declared, documented as "derived on-device from the ITA already measured during the
+  scan", and written by nothing.** Deleted. `resolve_tone_band` reads a recorded band
+  BEFORE `toneIta`, so a band stored by one generation of `itaDegrees` would keep
+  outranking the current definition of the stratifier — the same drift, one level up from
+  the formula. That preference order is right for an external manifest, where the band
+  comes from a Fitzpatrick or Monk column and there is no ITA to recompute from, and it
+  stays.
+
+  **Eight new cases and two rewritten, and thirteen breaks.** New: six in
+  `tests/ita-guard-decision.test.ts`, one in `tests/subgroup-contract.test.ts`, one in
+  `ml/selftest.py` — which is the +7 vitest and +1 Python in the counts below. Rewritten
+  rather than added, because cycle 19's versions asserted the divergence this cycle
+  removed: the `ita` case in `tests/index-parity.test.ts` and the `ita` case in
+  `ml/selftest.py`. Every break alters the SOURCE line the case protects, never the test,
+  and is reverted from a file copy:
+
+  ```
+  app guard bstar === 0 -> |b*| < 0.01   4 fail; itaDegrees(70, 0.005): expected 90 to
+    (the rejected wide guard back)       be 89.98567605542014; grey 1: the shipped angle
+                                         carries the limit's sign: expected -1 to be 1
+  app guard made SIGN-AWARE at 0.01     4 fail; expected 90 to be close to
+    instead of narrowed                  11.309932474020215, received difference is
+                                         78.69006752597979
+  app fallback pivot > 50 -> >= 50      2 fail; itaDegrees(50, 0): expected 90 to be -90
+  app rgbToLab z 1.08883 -> 1.089       4 fail; 8-bit greys inside the rejected wide
+                                         guard: expected 256 to be 242
+  python registry guard -> 1e-6         1 fail; 90.0 != 89.9999999971352 : b* a thousand
+                                         times smaller again: ita(70, 1e-09)
+  python registry guard -> 0.01         2 fail; 90.0 != 89.98567605542014; grey 1: the
+                                         shipped angle must carry the limit's sign
+  python registry pivot > 50 -> >= 50   1 fail; 90.0 != -90 : b* exactly zero AT the
+                                         pivot: ita(50, 0)
+  ml/ita.py guard -> 0.01               1 fail; 0.014323944579857084 not <=
+                                         3.9968028886505635e-14 : ml/ita.py must agree
+                                         with the committed column
+  python registry guard REMOVED         1 error; ZeroDivisionError: float division by
+                                         zero
+  parity table ita exact -> divergent   both languages; 'divergent' != 'exact'
+  SampleMeta declares toneBand again    1 fail; SampleMeta must not declare a stored
+                                         tone band
+  resolve_tone_band drops toneIta       1 fail; resolve_tone_band must read the
+    from its ITA key TUPLE               "toneIta" the app writes
+  resolve_tone_band reads toneIta       1 fail; expected 647 to be less than 126
+    BEFORE a recorded band
+  ```
+
+  **The twelfth is the one that earned its place, and it did not fail the first time.**
+  Deleting `"toneIta"` from `resolve_tone_band`'s key tuple left
+  `tests/subgroup-contract.test.ts` **green**, because the docstring immediately above
+  that line also contains the string `"toneIta"` and the assertion was a `toContain` over
+  the whole function. It now matches the key TUPLE. Same failure mode as cycle 19's
+  redness epsilon and cycle 18's copied `minResidual`: an assertion that goes on passing
+  after the thing it measures has moved, found only because the guardrail requires
+  breaking every new case.
+
+  **Rotation, per step 8.** "Recent cycles" holds cycles 20, 19 and 18; cycle 17's
+  **243-line** entry moved to `docs/autopilot-changelog.md` and is present there exactly
+  once, byte-identical, as the tail of the file. Two items ticked `[x]` and moved under
+  the headings they were filed beneath: the `ita` guard item to "Closed backlog items ->
+  Now" and `SampleMeta.toneBand` to "-> Next", each body rewritten as its outcome.
+  `wc -l`: `docs/AUTOPILOT.md` **1362 -> 1297**, `docs/autopilot-changelog.md`
+  **3299 -> 3591**. `comm -23` against a sorted snapshot of the pre-change pair reports
+  **27 differing lines**, every one accounted for — **22** from the `ita` item's old body
+  (its 4-line table included) and **5** from the `toneBand` item's, and **0** from
+  anywhere else. Nothing from the moved entry appears in that list.
+
+  **Verification before the push**, all four re-run on the final tree: vitest **565
+  passed in 86 files** (558 + 7), `python3 ml/selftest.py` **Ran 84 tests ... OK**
+  (83 + 1), `npx tsc --noEmit | grep -c "error TS"` **13** unchanged, `npx eslint .`
+  **2 warnings** both in `lib/care.ts` unchanged, `npm run smoke` green —
+  `Smoke test passed.`, with its own vitest 565, `ml/selftest.py` 84, and **44 mobile
+  E2E specs passed** behind the `PLAYWRIGHT_CHROMIUM_EXECUTABLE` override the protocol
+  records.
+
+
+  **Supervisor, same day — the cycle found the case the reviewer missed, and the
+  reviewer's reachability conclusion was wrong.** Going in, the review had derived two
+  things independently: that `Math.atan` handles `b* = 0` on its own in V8 (`(l-50)/0` is
+  ±Infinity, `atan(±Infinity)` is ±90) so the fallback is unnecessary for its stated
+  purpose, and that inside its own window the guard *creates* the 180-degree error rather
+  than preventing one — at L\* 70, b\* −0.005 plain `atan` gives −89.986 and the guard
+  gives +90. Both hold and the cycle's fix follows them.
+
+  It had also concluded the defect was **latent rather than live**, by sweeping a blue
+  cast across a skin-coloured region and finding the closest sampled approach to be
+  `|b*| = 0.44`, 44x the window. **That is true of skin and false of the case that
+  decides it.** The cycle swept the neutral axis instead and found it sits *inside* the
+  window. Recomputed from scratch in review: the z row sums to
+  `(0.0193 + 0.1192 + 0.9505) / 1.08883 = 1.00015613` of the y row, so
+  **242 of 256 greys** fall inside `|b*| < 0.01` and exactly **1** inside `1e-6`; the old
+  guard was 180 degrees off on every grey from 32 up. One fixture family is not a
+  reachability argument when the quantity under test is a distance to the neutral axis
+  and the fixture is, by construction, not neutral. Recorded in
+  `docs/ita-guard-decision.md`.
+
+  **The obvious-looking simplification was avoided, and it is a trap.** The review flagged
+  `atan2` before reading the branch: `atan2(l-50, b)` needs no branch at all but resolves
+  the quadrant, so at L\* 70, b\* −0.005 it returns +90.014 where ITA's convention
+  (`arctan((L*-50)/b*)` on (−90, 90]) requires −89.986 — 180 degrees, the same class of
+  error the cycle exists to remove. `grep -rn atan2 lib/ ml/ tests/` returns nothing.
+
+  **Checked rather than accepted.** No published axis moved: `analyzeSkin` on this branch
+  and on main `eb527e9` agrees at four frame sizes on `blemishCount`, `blemishDensity`,
+  `shine`, `relRedness`, `cov`, `toneIta`, `toneLstar`, all three levels and `confidence`.
+  The `fallbackVersion` reasoning is argued rather than asserted — the semantics moved
+  only within 0.043 of an 8-bit unit of the neutral axis, where no cheek centroid lands,
+  so a bump would partition byte-identical samples — and `toneIta` is computed from
+  `dominantTone` over cheek pixels, which is never neutral, so the argument holds. All
+  three guards are pinned: widening the TypeScript one back to `|b*| < 0.01` fails 4 cases
+  (`itaDegrees(70, 0.005): expected 90 to be 89.98567605542014`), and widening either
+  Python one fails `ml/selftest.py`.
+
+  One reviewer error worth recording, since the standard here is to record them: the first
+  attempt at breaking `ml/skin_indices.py` reported the guard as *unpinned*, because the
+  regex replaced the first `bstar == 0` in the file — which is in the docstring, not the
+  code. Re-run against line 150 it fails as it should. A break that does not break is a
+  false negative, and it looks exactly like a coverage gap.
+
+  Rotation: 27 differing lines, all from the two items this cycle touched.
