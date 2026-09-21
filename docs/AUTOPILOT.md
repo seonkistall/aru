@@ -1062,6 +1062,70 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `promotionGate` included; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set; no consent kind was
   invented and neither stream was merged; no dataset licence tier moved.
 
+  **Supervisor review.** The finding this cycle turns on was derived here before the
+  worker reported, and the worker found it independently and went further.
+
+  *PR #69's fix was live and unguarded, and that is now closed.* PR #69 merged between
+  cycles, resolving an owner blocker open since 2026-09-15. Guardrail 8 was checked
+  first: `status` is still `pending-training-data`, `promotionGate` gained only a
+  BLOCKER (`minQwkGainOverHeuristic: 0.0`, strictly-greater), `lib/skin.ts` gained an
+  `export` with no logic change. Then the fix itself was broken at its source line —
+  `metrics_from_confusion(promoted_val_confusion)` reverted to `last_val_confusion`,
+  restoring exactly the defect #69 was written to fix — and on main **all 103 Python
+  tests stayed green**. Not a structural limit: torch is absent so `ml/selftest.py`
+  reads the trainer as SOURCE TEXT and asserts on it, a technique already used five
+  times (lines 1061, 1154, 1255, 1299, 1530), one of them added by #69 itself for its
+  heuristic wiring. It guarded the wiring and not the checkpoint fix.
+
+  Re-run on this branch, the same break now **fails**, and so does a second one this
+  review only thought of because the branch's guard is stronger than the one this
+  review would have written — moving the re-score above the checkpoint reload, which
+  leaves every asserted string present and still fails on the ORDER assertion:
+
+  ```
+  BREAK reverted to last_val_confusion      Ran 121 tests   FAILED (failures=1, errors=1)
+  BREAK rescore moved before the reload     Ran 121 tests   FAILED (failures=1)
+  ```
+
+  *The headline band reproduces from an independently written bootstrap.* Not by
+  running `ml/qwk_noise.py`, and not with scipy (absent here): qwk written from the
+  definition, the percentile convention taken from scipy's own source, the resampling
+  written from scratch, stdlib only, on a 300-row fixture of this review's own
+  construction. Against `gain_band_paired` on the same rows, 4000 resamples, seed
+  12345:
+
+  ```
+  independent stdlib bootstrap   lo=-0.156817 hi=+0.126445 point=-0.014784 width=0.2833
+  ml/qwk_noise.gain_band_paired  lo=-0.156817 hi=+0.126445 point=-0.014784 width=0.2833
+  delta lo=1.11e-16  hi=1.94e-16  point=2.22e-16
+  ```
+
+  A width of **0.2833 at 300 rows** — a half-width of ±0.14 — independently confirms
+  the entry's ±0.15. The two scipy sources cited in `docs/qwk-noise-band.md` were also
+  re-fetched here and both sha256 match byte for byte (`cfa7d1e2…` 98,486 bytes,
+  `4ef9a44e…` 106,090 bytes).
+
+  *Both defect guards bite at their source lines.* Making `recordCheckin` swallow the
+  failed write again fails 1 of 3 (`expected { sku_id: 'sr1', week: 2, … } to be null`);
+  dropping the week-2 predicate from the week-4 query fails 3, with the double-send
+  symptom itself (`expected [ 2 items ] to deeply equal [ 1 item ]`).
+
+  *A reviewer error, and the branch is right about it.* This cycle's brief told the
+  worker that the PR #69 entry in BLOCKERS was stale and should move. **There is no
+  such entry and there never was** — checked on main after reading the branch's
+  correction: `## Blockers` contains no `#69`, and the only mentions anywhere in the
+  file are inside two backlog items' prose and one changelog line. PR #69 was one of
+  the three owner decisions this supervisor has been listing in its reports to the
+  owner, which is not the same thing as an entry in this file, and the brief conflated
+  them. The worker checked rather than complying, which is the right response to an
+  instruction that does not match the tree.
+
+  *Rotation, against a pre-review snapshot of main.* 1535 → 1524 and 4396 → 4694.
+  `comm -23` over both files' sorted non-blank lines finds **30 missing**, all 30 from
+  the three backlog items this cycle closed — the two-model gate item, the `/scan`
+  pixel-coverage item, and the `minQwkGainOverHeuristic` noise-band item — each present
+  in the changelog. "Recent cycles" holds 24/23/22.
+
 - 2026-09-21 (cycle 23) — Branch `autopilot/2026-09-21-0039`. **The blemish detector now
   has a guard on its own decision margin, and unlike cycle 22's attempt this one bites:
   five of six source-line breaks fail it, two of them on the new assertions, and the
