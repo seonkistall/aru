@@ -476,15 +476,6 @@ partly done and stays here.
   `tests/blemish-density-scale.test.ts`'s cross-resolution agreement hold at all", which
   the `srgbLinear` item above is still waiting on. Answering one answers both. Evidence and
   the fetch sha256s: `docs/blemish-perturbation-tolerance.md` §7.5.
-- [AI] **The decision-margin guard is blind to the residual arithmetic, and the blind spot
-  is measured.** Noted 2026-09-21 (cycle 23). `tests/blemish-perturbation-tolerance.test.ts`
-  measures margins from a replica that recomputes the residual from the a\* grid it
-  captured, so a change `lib/skin.ts` makes downstream of a\* is invisible to it: quantising
-  `residual[i]` to 3 decimals at the source leaves both margin cases green. It is caught
-  today by three assertions in two other files, which is why nothing was patched — but the
-  guard's stated scope is the a\*-production path only, and a cycle that widens it should
-  add a second hook rather than assume the margins cover the whole classifier.
-  `docs/blemish-perturbation-tolerance.md` §7.4.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -533,16 +524,30 @@ partly done and stays here.
   own sampling error no longer reads as a win with nothing said. A fixed positive
   constant would be the wrong shape anyway, since the band depends on the split's size.
   Measurements, the fetch sha256s and the ten source-line breaks: `docs/qwk-noise-band.md`.
-- [AI] **`recordCareIntent` throws away the same write signal `recordCheckin` just
-  stopped throwing away.** `lib/store.ts:recordCareIntent` calls `lsPush` and discards
-  its boolean, returning a fully-populated `CareIntent` whether or not localStorage
-  accepted it — the defect fixed on the check-in path in cycle 24, one function below
-  it. Left alone deliberately rather than swept up: its only caller is
-  `app/care/page.tsx:78`, which does `void recordCareIntent({...})` and shows the user
-  nothing, so unlike the check-in card it never tells anyone their data was saved. The
-  consequence is a silently short care-intent log on a full or blocked store, which is
-  a measurement problem and not a lie to a user. Fixing it is the same one line plus a
-  decision about whether `/care` should surface anything. Noted 2026-09-21 (cycle 24).
+- [AI] **`shareUrl` is a dead parameter, so no shared card carries a way back to ARU.**
+  Found 2026-09-21 (cycle 25) while fixing the share path above it, and deliberately not
+  folded into that fix. `shareCardImage` (`app/components/share-card.tsx`) accepts
+  `opts.shareUrl` and adds `text` + `url` to the `navigator.share` payload only when it is
+  set — under a comment that says "Include the deep link so the shared post carries a way
+  back to aru (viral loop)". The single call site, `app/studio/page.tsx`, does not pass it,
+  and no other code, test or doc mentions it. `lib/share-link.ts:moodShareUrl` exists for
+  exactly this and is used only by `/scan`'s clipboard path. So even now that the studio
+  share works, it sends a bare PNG with no return path, and `share_landed` /
+  `viralActivation` can never be driven from that surface. This is revenue-upstream item 3
+  and it is one argument away from being a one-line change — but `moodShareUrl` needs the
+  mood levels, `/studio` holds edited copy rather than reads, and deciding what a studio
+  card should link to is a product call rather than a plumbing one. Not guessed.
+- [AI] **`savePilotNote` is the only store in the repo with no `window` guard, no cap and
+  no try/catch.** Found 2026-09-21 (cycle 25). `lib/pilot.ts:151` does a bare
+  `localStorage.setItem(KEY, JSON.stringify(all))` where `labels.ts`, `consent.ts`,
+  `crops.ts`, `store.ts`, `scan-history.ts` and `funnel.ts` all guard and cap. On a full or
+  blocked store the `QuotaExceededError` escapes into `/pilot`'s click handler, the note is
+  lost, and `setCurrentPilotSession` at line 154 never runs — so the participant scope is
+  never established and consent events recorded afterwards land unscoped, which is what the
+  participant-grouped cross-validation needs. **Research-mode only**: `/pilot` is in
+  `proxy.ts`'s matcher and 404s in production unless `INTERNAL_TOOLS_USER` /
+  `INTERNAL_TOOLS_PASSWORD` are set, which is why it did not win the bug-fix track over a
+  defect every user hits. Same shape as the cycle 24 and cycle 25 store fixes.
 - [AI] The ordinal floor is 0.40/0.40 and provisional — it was chosen from synthetic
   predictors because no labelled ARU validation set exists yet
   (`docs/ordinal-metric-verification.md`). The first real training run should report
@@ -838,11 +843,240 @@ up rather than rediscover them.
   both places. Verified by drifting one copy to 0.80: 42 of 2013 sweep values disagree
   and 2 of the 4 cases fail.
 
+
 ## Recent cycles
 
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-21 (cycle 25) — Branch `autopilot/2026-09-21-1239`. **The decision-margin
+  guard's blind spot is closed with the second hook cycle 23 asked for, and the break it
+  recorded as "did not bite" now bites. The noise bound every margin is reported as a
+  multiple of turns out to be a real upper bound with 226-816x of headroom, and ARU's
+  summed-area table is 4.4-7.1x less accurate than the reference construction in a place
+  where that cannot matter. And `/report`'s commerce row — the one carrying
+  `placement=report_summary`, the single link the revenue arithmetic rests on — has been
+  rendering both its CTAs as 24px slivers with the label cut mid-word, in every locale, at
+  every width, desktop included.**
+
+  **Baselines.** `npm ci` first (`node_modules` was absent). The arriving `npm run smoke`
+  came back green with the chromium override (`Smoke test passed.`, `Ran 121 tests ... OK`),
+  but it is **not quoted as a clean-tree baseline**: it was started before any edit and
+  finished after the first test-file edit had landed, so its vitest leg may have read a
+  modified tree. The supervisor's own main-branch measurements stand as the baseline and
+  this cycle compared against those. `npx tsc --noEmit | grep -c "error TS"` **13**,
+  unchanged, measured here.
+
+  **Research: what a reference summed-area table does differently, and why it was asked.**
+  The question came out of the ML work rather than being picked to fill a slot: every margin
+  in `tests/blemish-perturbation-tolerance.test.ts` is reported as a multiple of
+  `noiseScale = gw*gh * EPSILON * max|a*|`, and that bound was asserted in a comment and
+  verified by nobody. scikit-image's `integral_image`, read from its own source on
+  `raw.githubusercontent.com` — another project's implementation, not a paper and not a
+  standard — says two things that bear on ARU:
+
+  ```
+  skimage/transform/integral.py @ v0.24.0  http=200 bytes=5096
+  skimage/transform/integral.py @ v0.25.2  http=200 bytes=5096  (byte-identical to v0.24.0)
+    sha256 ed187d23b0b47dbb8457b67d451f9aa19e39237bf322c81a92fab5a1802927d6
+  ```
+
+  It promotes float inputs to at least float64 "for better accuracy and to avoid potential
+  overflow" — ARU's `sumTable` is already a `Float64Array`, so that precaution is taken. And
+  it builds the table as a **separable `cumsum` along each axis**, where `lib/skin.ts` uses
+  the one-pass inclusion-exclusion recurrence, which **subtracts a partial sum at every
+  cell**. A cumsum never does, so the two are not obviously equally accurate and ARU's is the
+  one with a mechanism to be worse. That made it a measurement rather than a reassurance.
+
+  **ML: the guard now reads the field the detector actually classifies.** `__perturbAStar`
+  is injected before the summed-area tables, so every residual this file reasoned about was
+  `residualsOf`'s reconstruction from the captured a\* grid. Anything `lib/skin.ts` did
+  downstream of a\* moved what the detector classifies without moving a single number in the
+  margin tables — cycle 23 measured that and wrote it down as §7.4's sixth break, the one
+  that did not bite. `__observeResidual` is a **second** hook, injected after the residual
+  loop and before the classification loop, against the anchor `let count = 0; let validCells
+  = 0;`. It is a second hook and not a widened first one because the two read different
+  arrays at different points, and a replica that had quietly stopped being the detector is
+  precisely the failure being guarded. Three things are asserted, in order: the two residual
+  fields agree **exactly at every valid cell**; classifying the detector's own residual
+  reproduces the count `detectBlemishes` returned; and the pinned margins hold when
+  re-measured on the detector's own field, which is an independent surface because editing
+  `residualsOf` to track a moved `lib/skin.ts` would satisfy the first and still fail here.
+
+  **Two source-line breaks, never of a test, and the second is the one that earns the
+  hook.** Break A is the exact break §7.4 recorded as passing — `residual[i] =
+  Math.round((astar[i] - background) * 1000) / 1000` — and it now fails, 3 of 11 in this
+  file, first assertion:
+
+  ```
+  noise 4 400x480: the detector's own residual differs from this file's replica at 11789 of
+  11789 valid cells (worst |d| = 5.000e-4). Every decision margin in this file is measured
+  on the replica, so a change downstream of a* moves what the detector classifies without
+  moving a single number above it: expected 11789 to be +0
+  ```
+
+  But break A was already visible to two other assertions in this same file and to two other
+  files, so on its own it does not show the hook adds coverage. Break B does: `residual[i] =
+  Math.max(-1e-9, astar[i] - background)` clamps only residuals far below the `minResidual:
+  1.6` floor, so no cell can change classification and every count pin in the tree stays
+  green. Across `blemish-perturbation-tolerance`, `blemish-tie-break`,
+  `blemish-density-scale`, `skin-index-contract` and `scan-cost-benchmark` — **45 tests, 2
+  failed, both in this file**, one of them the new case. `lib/skin.ts` was restored
+  byte-identical after each break: sha256
+  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08` before and after, and
+  `git diff lib/skin.ts` empty. It is untouched on this branch.
+
+  **And the bound the whole guard rests on is now measured rather than asserted.** Both
+  constructions were compared against an exact accumulation in a non-overlapping expansion,
+  rounded once. The reference was itself checked before it was used: it returns `1` for
+  `[1e16, 1, -1e16]` and `2` for `[1, 1e100, 1, -1e100]` where naive summation returns `0`
+  for both, it is order-independent over 10,000 values, and on those same values it agrees
+  with Python's correctly-rounded `math.fsum` to the last bit (`1790845758.191924` from both,
+  against `1790845758.191915` and `1790845758.1919322` for naive summation in the two
+  directions).
+
+  Three findings. **The bound holds, with room**: ARU's worst background error is
+  **4.230e-14 to 1.513e-13** a\* against a bound of **3.424e-11 to 3.820e-11**, so it uses
+  0.12%-0.44% of it — 226x to 816x of headroom — and `noiseScale` means what it says. That is
+  now an assertion, not a comment. **The cancellation argument is confirmed and does not
+  matter**: the cumsum construction is **4.4x to 7.1x more accurate** on all sixteen frames,
+  exactly as a construction with no subtraction in it should be, but ARU's error is
+  **6.9e8 to 1.8e11 times smaller** than the smallest suppression gap, so switching would buy
+  a factor of five on a quantity ten orders of magnitude below the decision it feeds. **No
+  change was proposed and none was made** — the number is recorded so the next cycle has it
+  instead of the argument. And the noiseless fixture is the worst case here too, at roughly
+  2x the noisy frames. `docs/blemish-perturbation-tolerance.md` §7.6-7.7.
+
+  **UI/UX: `/report`'s commerce row rendered both CTAs as 24px slivers, and it is the one
+  row the revenue arithmetic depends on.** `reportCommerceAction` is a `display: flex` row
+  with no `flexWrap`. It holds two `flex: 1` CTAs (so `flex-basis: 0`) and, since
+  2026-09-15, a third child: `<CommerceDisclosure style={{ width: "100%" }} />` at
+  `flex-basis: auto`. The disclosure alone claims the whole line, free space goes negative,
+  `flex-grow` never applies, and both anchors collapse to their horizontal padding. Measured
+  in Chromium at 360x800, not reasoned from the CSS:
+
+  ```
+  /api/out?...placement=report_product   288.0px   (three of these, inside the product cards — fine)
+  /api/out?...placement=report_summary    24.0px   sw=48 cw=24   "올리브영에서 제품 보기"
+  /care                                   24.0px   sw=30 cw=24   "제품과 상담 정보 보기"
+  /privacy                               320.0px
+  ```
+
+  So the `report_summary` out-click — the link `lib/commerce.ts` and the revenue table are
+  built around — has been a 24px tap target, 55% under `--tap-min: 44px`, with its label cut
+  mid-word, in all five locales. It is not a narrow-viewport problem: the disclosure's basis
+  claims the whole line at any width, so free space is negative everywhere. Measured before
+  and after the fix, same probe, ko:
+
+  ```
+  width   before (buy / care)        after (buy / care)
+   320    24.0 / 24.0   sw=48,30     109.2 / 134.8   no clipping
+   360    24.0 / 24.0   sw=48,30     126.6 / 157.4   no clipping
+   393    24.0 / 24.0   sw=48,30     141.0 / 176.0   no clipping
+   430    24.0 / 24.0   sw=48,30     157.0 / 197.0   no clipping
+   768    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
+  1280    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
+  ```
+
+  The fix is one property, `flexWrap: "wrap"`, which is what the disclosure's own
+  `marginTop: 4` always implied; at 360px all five locales read **126.6px** and **157.4px**
+  with no clipping.
+
+  **The trap in the guard, caught before it was committed.** The obvious selector,
+  `main a[href^="/api/out"]).first()`, **passes against the broken build**: the same step
+  carries three `report_product` links at 288px and `first()` picks one of those. The spec
+  binds to `placement=report_summary` inside the section that contains it, and asserts both
+  a width floor and `scrollWidth <= clientWidth` — a width check alone would pass a box wide
+  enough to tap that still cuts its label, and a clipping check alone would pass a 20px box
+  showing its whole label. This is cycle 24's `infoLinkBtn` regex lesson in a different
+  shape: the first version of the guard measured the wrong element and looked green.
+
+  **Bug fix: the `/studio` share button could never succeed, because the app's own CSP
+  refuses the fetch it makes.** `shareCardImage` rasterized the card to a
+  `data:image/png;base64,...` URL and then did `await (await fetch(dataUrl)).blob()` to build
+  the `File`. `next.config.ts` emits `connect-src 'self'`; that directive governs `fetch()`
+  and permits neither `data:` nor `blob:`. So the line threw `TypeError: Failed to fetch`
+  for every user on every browser — no flag, no platform condition — and the user got
+  "공유에 실패했어요. PNG 저장을 이용해 주세요." every time. Two consequences beyond the
+  message: the throw happens **before** the `navigator.canShare` branch, so the deliberate
+  download fallback at the end of the same function was unreachable too; and `onShare` never
+  fired, so `recordFunnelEvent("share_clicked", { surface: "studio" })` has **never** fired,
+  and any reading of the share funnel that includes `/studio` is wrong. That is
+  revenue-upstream items 2 and 3 at once.
+
+  Three E2E specs already visit `/studio` and none of them clicks the button, which is how a
+  total failure of the product's only image-share path went unseen. `tests/e2e/studio-share.spec.ts`
+  clicks it under the **real** header — the CSP is not stubbed, only `navigator.share`, because
+  a headless Chromium has no share sheet — and asserts the File actually reaches the sheet
+  (`name`, `type`, `size > 1000`), that no CSP refusal appears in the console, and that the
+  failure row is absent. Against the unfixed build it fails on the user-visible symptom:
+  `the share path reported failure to the user: expected 0, received 1`. The fix decodes the
+  data URL in process (`atob` → `Uint8Array` → `Blob`); the CSP was **not** widened, which
+  would be the wrong direction for a hardened header, and `createObjectURL` + `fetch` was
+  measured and rejected because `blob:` is refused by the same directive.
+
+  **Bug fix 2: `recordCareIntent`, and the UI half of the question answered "no".** The
+  backlog item cycle 24 left open. Checked before fixing, as it asked: the function has
+  exactly one caller, it is a bare `void`, and nothing on screen claims the intent was
+  stored — so unlike cycle 24's check-in card this was never a lie to a user, and the
+  consequence is a silently short care-intent log that nothing could detect. It now returns
+  `CareIntent | null` like both siblings. `/care` deliberately surfaces **nothing**:
+  `openCareLink` opens the merchant link whether or not the log write landed, so an error
+  row would report a failure the user did not experience.
+  `tests/care-intent-write-signal.test.ts` pins that decision as well as the signal — its
+  third case asserts the ORDER (`window.open` after the record, never gated on it), so a
+  reordering that leaves every statement present still fails.
+
+  **Two findings recorded rather than swept up**, both now backlog items: `shareUrl` is a
+  dead parameter, so even a working studio share sends a bare PNG with no way back to ARU
+  (revenue-upstream item 3, but what a studio card should link to is a product call); and
+  `lib/pilot.ts:savePilotNote` is the only store in the repo with no guard, no cap and no
+  try/catch, which is research-mode only since `/pilot` 404s in production.
+
+
+  **Rotation, proved rather than asserted.** Measured across the rotation step alone:
+  `docs/AUTOPILOT.md` **1809 -> 1541**, `docs/autopilot-changelog.md` **4694 -> 4966**.
+  (This paragraph and the verification block below it were written after that measurement,
+  so the committed file is longer than 1541 — `wc -l` on the commit is the authority and
+  the delta above is the rotation's, not the whole cycle's.)
+  "Recent cycles" holds 25/24/23; cycle 22 moved verbatim to the bottom of the changelog
+  (14,317 bytes, text unchanged), and both `[x]` items moved to "Closed backlog items"
+  under their original "### Now" heading with the original wording preserved as a
+  blockquote. Normalising both files' non-blank lines (strip leading whitespace and `>`,
+  strip trailing whitespace, `sort -u`) and running `comm -23 before after` leaves
+  **nothing at all** — **5527** unique lines before and **5527** after.
+
+  One thing the rotation script got wrong and it was repaired rather than left: its first
+  pass swept every top-level `[x]` in the file, which took the already-actioned
+  `confidenceLabel` entry out of "Supervisor findings not yet actioned" — a section that is
+  not the backlog and an item this cycle did not tick. It was put back verbatim and the
+  changelog copy removed; `grep -c` confirms one copy in `docs/AUTOPILOT.md` and zero in the
+  changelog.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest ****608 passed in 90 files** (603 plus 2 in the ML file and 3 in the new care-intent file)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged, and it was **15** at first:
+  the new `tests/care-intent-write-signal.test.ts` fixture inferred `merchant: string`
+  against `MerchantId`, caught here and fixed by typing the fixture
+  `Omit<CareIntent, "id" | "ts">` rather than by casting, so a field that drifts out of
+  `CareIntent` is still a compile error. `npm run lint` **0 errors, 2 warnings** — the same
+  two, `'_reads'` and `'_result'` at `lib/care.ts:72`. `python3 ml/selftest.py` **Ran 121
+  tests ... OK**, unchanged — nothing in `ml/` was touched. Mobile E2E ****52 passed (4.8m)** — 50 on main, plus one new spec on each of the two fixes**.
+
+  `lib/skin.ts` is byte-identical to main (sha256
+  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08`), and so are
+  `public/models/visible-attributes/manifest.json` (`status` and `promotionGate` included),
+  `ml/external_datasets.json`, `lib/consent.ts` and `next.config.ts` — the CSP was diagnosed
+  and **not widened**, which is the point of that fix. `NEXT_PUBLIC_FUNNEL_FLUSH` was not
+  set, no consent kind was invented and neither stream was merged, no dataset licence tier
+  moved, and no face image path changed.
+
+  **One run that is not quoted as evidence.** A full `npx vitest run` mid-cycle reported
+  `1 failed | 604 passed`; the immediate re-run of the same tree reported `605 passed in 89
+  files`, and the failure's identity was lost because that command was piped through
+  `tail -8`. Two investigation subagents were running commands against this working tree at
+  the time, which is the most likely cause and is not established. It is recorded because
+  it happened, not diagnosed, and the gate above is the run that counts.
 
 - 2026-09-21 (cycle 24) — Branch `autopilot/2026-09-21-0639`. **The promotion gate's
   0.0 margin now has the number it was missing: at the gate's own `minTrainingCrops: 300`
@@ -1363,226 +1597,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   is in the changelog at line 32 marked `[x]` and struck through with the original
   preserved verbatim as a blockquote, and the 17th is `Last updated: 2026-09-20`, now
   `2026-09-21`. "Recent cycles" holds 23/22/21.
-
-- 2026-09-20 (cycle 22) — Branch `autopilot/2026-09-20-1839`. **The `srgbLinear` lookup
-  table was built, measured at 42.0-61.2% off `detectBlemishes`, and taken back out —
-  and what stopped it was not the table. It moved `blemishCount` on one committed
-  fixture, and so does a nudge of 1e-16, because that fixture is noiseless and
-  `detectBlemishes` settles plateau ties on an exact float equality. `lib/skin.ts` is
-  byte-identical to main; the finding got a guard instead.**
-
-  **Baselines on arrival, counted rather than recalled, `npm ci` run first because
-  `node_modules` was absent.** All four matched the brief: `npm run smoke` green with
-  the chromium override (`Smoke test passed.`), `npx tsc --noEmit | grep -c "error TS"`
-  **13**, `npm run lint` **0 errors, 2 warnings** both in `lib/care.ts`, vitest **571
-  passed in 86 files**, `python3 ml/selftest.py` **Ran 85 tests ... OK**.
-
-  **Research: ARU's sRGB breakpoint is the rounded one, and that decided where the
-  table's knee goes.** No primary source is reachable — `webstore.iec.ch`,
-  `www.itu.int`, `www.w3.org` and `en.wikipedia.org` all returned `http=000` on the
-  same probe — so IEC 61966-2-1 was not read and nothing is attributed to it. What
-  `raw.githubusercontent.com` served is `colour-science/colour`'s own source
-  (`http=200 bytes=4308`, sha256 `520ba88acb642628ee2d99f3d4802ea1e0725f946ece49f725b581fdcfb9f973`,
-  re-fetched in-session and matching byte for byte). Its multiplicative constants —
-  12.92, 0.055, 1.055, 2.4 — are `lib/skin.ts:srgbLinear` and `ml/ita.py:36` character
-  for character. Its BREAKPOINT is not a literal: it branches on
-  `eotf_inverse_sRGB(0.0031308)`, that is `12.92 * 0.0031308 = 0.040449936`, against
-  ARU's **0.04045**. The gap is 6.4e-8 in `c`, **1.632e-5 of one 8-bit level**, it
-  leaves ARU's own curve discontinuous by **2.3295e-9** at its knee, and **0 of 256**
-  integer channels fall inside it. So the table was aligned to ARU's breakpoint and not
-  to the reference's: aligning it to the "more correct" one would have silently changed
-  the shipped curve and split `lib/skin.ts` from `ml/ita.py`, which is exactly the
-  divergence cycle 18 closed. On the backlog now, as a decision for both languages at
-  once. `docs/srgb-transfer-table.md` §1.
-
-  **ML: the item's own acceptance criterion was met by 19x and the change still could
-  not ship.** Three numbers the item did not have. The **1.9e-6** in it is the
-  FIXTURE's error, not the function's: over the whole domain `detectBlemishes` can
-  reach — `lum` in [40, 230], `r > b`, each channel then scaled by a gain
-  `frameChannelGains` clamps to [0.6, 1.6] — a 4096-entry linear table's worst
-  `|delta a*|` is **1.783e-4** against the certified radius **1.046e-5** re-derived the
-  same session, i.e. **17x over**, while on the fixture's 132-220 channels it reads
-  1.9e-6 and looks safe. Knee alignment alone is worth **13.7x** (1.783e-4 to 1.297e-5,
-  same size, same interpolation). And interpolation order beats table size: a 512-cell
-  per-cell QUADRATIC over the power branch is **5.485e-7** — a **19.08x** margin — in
-  12,288 bytes, a third the size of the table that does not clear it.
-
-  Scoped the way the cycle-21 review asked: `labAStar` and `rgbToLab` kept `Math.pow`,
-  a second entry point took the table, both sharing one extracted a\* formula. So
-  `toneSpread` — which moved at all four frame sizes when that review replaced
-  `srgbLinear` wholesale — did not move at all, and every field `analyzeSkin` publishes
-  was byte-identical against a `Math.pow` build at four frame sizes on a light fixture
-  AND a dark one, compared with `Object.is`. Measured in situ, both builds loaded
-  fresh, 9 alternating paired reps:
-
-  ```
-  frame          pow(ms)   table(ms)   faster   reps won
-  400x480          6.664       3.588     46.2%        9/9
-  720x960          7.472       3.821     48.9%        9/9
-  1080x1440        8.242       4.568     44.6%        9/9
-  1440x1920       10.075       6.286     37.6%        9/9
-  ```
-
-  **And then smoke went red on a fixture the branch had not looked at.**
-  `tests/blemish-density-scale.test.ts` reads the five-spot face with
-  `noiseAmplitude = 0` at five resolutions and asserts every frame agrees:
-  `AssertionError: counts across resolutions: 2, 3, 3, 2, 3: expected 2 to be 1`.
-  Making the table finer does not converge on main's answer — `N=1024` gives
-  `2, 3, 2, 3, 4`, `N=2048` gives `2, 5, 4, 3, 3`, `N=4096` gives `2, 3, 2, 3, 2` —
-  which is what said the table was not the cause. Builds differing only by a constant
-  added where a\* is consumed:
-
-  ```
-  build                counts across the five realistic resolutions   (noiseAmplitude 0)
-  m-exact              3, 3, 3, 3, 3   distinct=1
-  m-table              2, 3, 3, 2, 3   distinct=2
-  m-e15  (+1e-15)      4, 3, 2, 4, 4   distinct=3
-  m-e16  (+1e-16)      2, 4, 4, 4, 3   distinct=3
-
-  the same builds at noiseAmplitude 9
-  m-exact / m-table / m-e15 / m-e16    5, 4, 2, 4, 2   distinct=3, all four identical
-  ```
-
-  **1e-16** moves it — below one ulp of a\* at these magnitudes, eleven orders of
-  magnitude under the certified radius. The mechanism is one line:
-  `detectBlemishes`'s suppression breaks plateau ties on `residual[j] === residual[i]
-  && j < i`, and a noiseless synthetic face is nothing but plateaus, so the count is
-  settled by scan order rather than by the image. On a noisy face every build agrees.
-  So the assertion holds for exactly one bit pattern, and whether `blemishCount` should
-  be resolution-invariant at all is a question about what the detector guarantees —
-  made harder by the fact that the same file's NOISY fixture does not satisfy it on
-  **main** either (`5, 4, 2, 4, 2`). That is bigger than a speed item and a cycle that
-  wants the speed is the wrong one to decide it. The table came out, the item stays
-  open with every number on it, and `lib/skin.ts` and `tests/scan-cost-benchmark.test.ts`
-  are byte-identical to main.
-
-  **What landed instead: `tests/blemish-tie-break.test.ts`.** It pins the tie-break line
-  and its comment as source and asserts that the noiseless fixture's agreement really
-  does rest on it. Five breaks in `lib/skin.ts`, never in the test: removing the
-  tie-break clause fails `the suppression tie-break moved` and reads `12, 4, 7, 4, 4`;
-  rewording its comment fails the source pin; rounding the averaged channels to integers
-  fails `the shipped build is supposed to agree: 2, 4, 3, 4, 3`; quantising the residual
-  to 3 decimals fails with `2, 3, 2, 2, 2`; quantising the channel averages to steps of
-  8 fails with `14, 8, 11, 15, 13`. **One thing is deliberately not asserted**: that a
-  noisy face is stable under the nudge. It is (printed under `ARU_PRINT_TIE_BREAK=1`),
-  but **seven source-line breaks were tried against an assertion of it and none made it
-  fail** — a uniform nudge cancels in `astar[i] - background` — so it ships as a
-  measurement. An assertion nothing can break is a green line that looks like coverage.
-  On the backlog as the margin guard that would actually bite.
-
-  **UI/UX: the live camera checklist clipped its own labels in all five locales, and it
-  was measured in a browser rather than reasoned about.** `QualityPanel`
-  (`app/scan/guide.tsx`) laid out one grid track per check, which is 47px per cell in
-  the 320px content box of a 360px phone; `overflow: hidden` zeroes a grid item's
-  automatic minimum size, so the `1fr` tracks shrank below min-content and
-  `whiteSpace: "nowrap"` had nowhere to go. In chromium at 360px on the real `/scan`
-  page, so the app's own stylesheet and fonts decided the metrics: **20 of 30 label
-  cells clipped, every locale** — ko `피부 선명도` lost 24.1px of 71.1px, en
-  `Capture area` 33.6px of 80.6px, ja `測定エリア` 22.3px of 69.3px, zh `肌肤清晰度`
-  21.5px of 68.5px, ar `منطقة القياس` 29.1px of 76.1px — and `body { overflow-x: hidden }`
-  meant nothing scrolled into view either. This is the screen that tells a user what to
-  fix before the shutter fires. `repeat(auto-fit, minmax(96px, 1fr))` and no clipping
-  gives three columns of 101px at that width; re-measured the same way, **0 of 30**.
-  Pinned in `tests/mobile-layout-contract.test.ts`, broken three ways at the source.
-  The assertion is sliced to the ONE line carrying the cell style, because the first
-  attempt matched the comment explaining the fix — the cycle-20 docstring trap, hit and
-  caught. `docs/scan-quality-checklist-layout.md`.
-
-  **Bug fix: a full page of funnel rows read as a truncated one, and `/ops` said so.**
-  `aggregateFunnelSource` (`lib/funnel-aggregate.ts`) computed
-  `truncated: totalRows > rows.length`, but `rows` is the COUNTABLE subset —
-  `toCountableRows` drops rows whose `kind` or `session_id` is not a usable string and
-  reports them separately as `unusableRows`. So any unusable row made a complete page
-  read as truncated. Reproduced against the real module before it was touched:
-
-  ```
-  raw rows PostgREST returned : 10
-  exact count for the source  : 10
-  aggregate.rows              : 8
-  aggregate.unusableRows      : 2
-  aggregate.totalRows         : 10
-  aggregate.truncated         : true   <- nothing was truncated
-  unattributedRowCount(10,..) : null
-  ```
-
-  Both consequences are the operator's only view of the table: `/ops` printed "Showing
-  the most recent 8 of 10 rows" about a page that was not short, and
-  `unattributedRowCount` returns `null` the moment any source is truncated, so it
-  stopped reporting unattributed rows at all. Both wrong in the direction of claiming
-  data is missing when it is not. Truncation is now measured against `raw.length`.
-  Two cases in `tests/funnel-aggregate.test.ts`, one for each direction so the fix
-  cannot be "never truncated"; broken at the source line, `truncated: totalRows >
-  rows.length` fails with `nothing was truncated: 3 of 3 rows were read: expected true
-  to be false`.
-
-  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest **577 passed in
-  87 files** (+6 cases, +1 file), `npx tsc --noEmit | grep -c "error TS"` **13**
-  unchanged, eslint **0 errors, 2 warnings** the same two in `lib/care.ts`,
-  `python3 ml/selftest.py` **Ran 85 tests ... OK**. `lib/skin.ts`,
-  `tests/scan-cost-benchmark.test.ts`, `public/models/visible-attributes/manifest.json`
-  and `fallbackVersion` are all untouched; `NEXT_PUBLIC_FUNNEL_FLUSH` was not set.
-
-  **Supervisor review.** The cycle's own conclusion was re-derived here before it
-  reported, and it holds on a fixture it never used.
-
-  *The 1e-16 claim reproduces on different landmarks.* Built three copies of
-  `lib/skin.ts` differing only by a constant added where a\* is consumed, and ran them
-  over the scan-cost benchmark's SPREAD landmark layout rather than
-  `tests/blemish-density-scale.test.ts`'s, at five frame sizes:
-
-  ```
-  NOISELESS (amp 0)
-    exact     5, 5, 5, 5, 5   distinct=1
-    +1e-16    5, 5, 6, 5, 6   distinct=2
-    +1e-15    5, 5, 5, 5, 5   distinct=1
-  NOISY (amp 9)
-    exact     6, 6, 5, 5, 5   distinct=2
-    +1e-16    6, 6, 5, 5, 5   distinct=2
-    +1e-15    6, 6, 5, 5, 5   distinct=2
-  ```
-
-  Different fixture, different absolute counts, same phenomenon: on the noiseless face
-  a 1e-16 nudge destroys resolution stability, and on the noisy face all three builds
-  are bit-identical. **One detail sharpens the cycle's argument rather than weakening
-  it: here +1e-15 did NOT move the counts while +1e-16 did.** The effect is not
-  monotonic in epsilon, which is what it must look like if the cause is WHICH ties
-  break rather than HOW BIG the error is. An accuracy problem would be monotonic. The
-  mechanism is one line and it reads as claimed — `lib/skin.ts:1091`,
-  `residual[j] === residual[i] && j < i`, an exact float equality on a plateau that a
-  noiseless synthetic face is made entirely of.
-
-  *The parity breach was hit here first, and the cycle's design routes around it
-  better than this review's did.* This review had built the table behind a scoped
-  `srgbLinearFast` called from `labAStar`, which keeps `toneSpread` still (confirmed:
-  no published field moved at any of four sizes, 26.3–36.3% faster, 35/36 paired reps)
-  and then fails `tests/index-parity.test.ts` exactly as the cycle records —
-  `expected 0.0031556203582971953 to be 0.003155620347972121` from a 4096-interval
-  linear table, against the cycle's `expected 0.003155620347528032 to be
-  0.003155620347972121` from its 512-cell quadratic. Same committed value, two
-  different tables, one contract. The cycle's second entry point (`labAStarTabulated`,
-  sharing an extracted `aStarFromLinear`) leaves `labAStar` on `Math.pow` and is the
-  right shape; the scoped-`srgbLinear` design this review proposed in the cycle-21
-  backlog note was not, and is superseded.
-
-  Regenerating the committed table would not have rescued it either, it would move the
-  failure to Python: `ml/selftest.py:813` compares `ml/ita.py` to the same rows on a
-  MECHANISM-DERIVED tolerance of `4 * channelScale * 2**-52` = **4.4409e-13** for a\*,
-  and the observed difference at mid grey is **1.0325e-11**, **23.2x** over it — with
-  ~1.5e-6 on the detector's own domain, seven orders out. That bound is the size of a
-  last-place disagreement between two correctly implemented `pow`/`cbrt`; a table's
-  interpolation error is not that kind of error, and widening k to swallow it would
-  turn a derived bound into a fitted one.
-
-  *The funnel defect is real on main.* Putting main's `lib/funnel-aggregate.ts` back
-  and running the new case fails with `nothing was truncated: 3 of 3 rows were read:
-  expected true to be false`, so the guard bites at its source and the bug it describes
-  is live today.
-
-  *One reviewer error, recorded because that is the standard here.* This review first
-  read the branch as RED — one failing test — and it was this review's own
-  contamination. `git checkout origin/main -- <path>` writes the INDEX as well as the
-  working tree, so the later `git checkout -- <path>` restored main's version from that
-  staged index rather than the branch's. The branch was green throughout: with the tree
-  actually clean, **577 passed in 87 files**. Same class as cycle 20's docstring regex —
-  a check that fails for a reason that is not the code's, and it looks exactly like a
-  defect.

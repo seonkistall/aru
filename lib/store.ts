@@ -93,10 +93,20 @@ export async function getCheckins(): Promise<Checkin[]> {
   return lsGet<Checkin>(CHECKINS_KEY);
 }
 
-export async function recordCareIntent(intent: Omit<CareIntent, "id" | "ts">): Promise<CareIntent> {
+// Returns null on a refused write, like both siblings above. It used to discard
+// lsPush's boolean and hand back a fully-populated CareIntent, so a blocked or full
+// localStorage produced a silently short care-intent log that nothing could detect —
+// `careIntentCount` under-reports and no caller can tell.
+//
+// Unlike /checkin, the screen deliberately does NOT surface this. `openCareLink`
+// (app/care/page.tsx) records the intent and then opens the merchant link either way;
+// the user's actual action succeeds whether or not the log write did, so an error row
+// would report a failure that did not happen to them. The signal exists for the
+// caller that needs it, and the UI question the backlog raised is answered here rather
+// than left implied.
+export async function recordCareIntent(intent: Omit<CareIntent, "id" | "ts">): Promise<CareIntent | null> {
   const rec: CareIntent = { ...intent, id: uid(), ts: Date.now() };
-  lsPush(CARE_INTENTS_KEY, rec);
-  return rec;
+  return lsPush(CARE_INTENTS_KEY, rec) ? rec : null;
 }
 
 export function getCareIntents(): CareIntent[] {

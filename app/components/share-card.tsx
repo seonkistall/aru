@@ -44,6 +44,33 @@ async function rasterize(node: HTMLElement): Promise<string> {
   return toPng(node, { pixelRatio: 3, cacheBust: true, backgroundColor: "#ffffff" });
 }
 
+// Decode the rasterized data: URL in process. This used to be
+// `await (await fetch(dataUrl)).blob()`, which the app's OWN header refuses: the CSP in
+// next.config.ts is `connect-src 'self'`, that directive governs fetch(), and it allows
+// neither `data:` nor `blob:` — so the line threw `TypeError: Failed to fetch` for every
+// user on every browser, before `navigator.canShare` was reached, which also made the
+// download fallback below unreachable and meant `share_clicked` never fired for this
+// surface. Widening connect-src would be the wrong direction for a hardened header, and
+// createObjectURL + fetch does not help: `blob:` is refused by the same directive.
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(",");
+  const header = dataUrl.slice(0, comma);
+  const body = dataUrl.slice(comma + 1);
+  const semi = header.indexOf(";");
+  // `data:image/png` with no parameters is legal, and slicing to a -1 index would
+  // silently truncate the type rather than fail — so end at the comma when there is no
+  // semicolon. The File built below names image/png explicitly either way; this keeps
+  // the helper correct for a caller that does not.
+  const type = header.slice(header.indexOf(":") + 1, semi === -1 ? undefined : semi) || "image/png";
+  // toPng always returns base64; decode anything else via the URL escape form rather
+  // than assuming, so a future rasterizer change degrades instead of corrupting.
+  if (!header.includes(";base64")) return new Blob([decodeURIComponent(body)], { type });
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
 // Rasterize the card and hand it to the OS share sheet, falling back to a PNG
 // download where Web Share with files is unavailable (most desktop browsers).
 // onShare fires right before the action so callers can log intent with their
@@ -54,8 +81,7 @@ export async function shareCardImage(
   opts?: { onShare?: (mode: ShareMode) => void; shareUrl?: string }
 ): Promise<ShareMode> {
   const dataUrl = await rasterize(node);
-  const blob = await (await fetch(dataUrl)).blob();
-  const file = new File([blob], "aru-skin-card.png", { type: "image/png" });
+  const file = new File([dataUrlToBlob(dataUrl)], "aru-skin-card.png", { type: "image/png" });
   if (navigator.canShare?.({ files: [file] })) {
     try {
       // Include the deep link so the shared post carries a way back to aru (viral

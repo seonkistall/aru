@@ -420,3 +420,142 @@ there. It is not a drop-in fix and is not proposed as one. What it supports is t
 principle the margin guard implements: a plateau-dominated field is a degenerate input
 that a peak detector should NOTICE, and reporting a count from one without saying so is
 the part ARU was missing.
+
+### 7.6 The blind spot in §7.4 is closed: the margins now read the detector's own residual
+
+Cycle 25. §7.4's sixth break — quantising `residual[i]` to 3 decimals inside
+`lib/skin.ts` — was the one that **did not bite**, and the cause was the harness rather
+than the product. `__perturbAStar` is injected before the summed-area tables, so every
+residual this file reasons about is `residualsOf`'s reconstruction from the captured a\*
+grid. Anything `lib/skin.ts` does downstream of a\* moves what the detector classifies
+without moving a single number in the margin tables.
+
+A **second hook** now reads the field the detector actually classifies.
+`__observeResidual` is injected after the residual loop and before the classification
+loop, against the anchor `let count = 0; let validCells = 0;`. It is a second hook and
+not a widening of the first because the two read different arrays at different points,
+and a replica that had silently stopped being the detector is precisely the failure being
+guarded against. The new case asserts three things, in this order:
+
+1. The detector's own residual equals `residualsOf`'s at **every valid cell, exactly**.
+2. Classifying the detector's own residual reproduces the count `detectBlemishes`
+   returned.
+3. The pinned margins (`EXPECTED_MARGINS`, `EXPECTED_FLAT_MARGINS`) hold when re-measured
+   on the detector's own field — an independent surface, since editing `residualsOf` to
+   track a moved `lib/skin.ts` would satisfy (1) and still fail here.
+
+**Break A — the one §7.4 recorded as passing.** `residual[i] = Math.round((astar[i] -
+background) * 1000) / 1000` in `lib/skin.ts`. It now **fails**, first assertion:
+
+```
+AssertionError: noise 4 400x480: the detector's own residual differs from this file's
+replica at 11789 of 11789 valid cells (worst |d| = 5.000e-4). Every decision margin in
+this file is measured on the replica, so a change downstream of a* moves what the
+detector classifies without moving a single number above it: expected 11789 to be +0
+```
+
+3 of 11 cases in this file fail; the other two are the certified-radius and lift
+assertions §7.4 already listed.
+
+**Break B — one nothing else in the tree catches.** Break A was already visible to two
+other assertions in this file and to two other files, so it does not by itself show the
+new hook adds coverage. `residual[i] = Math.max(-1e-9, astar[i] - background)` clamps
+only residuals far below the `minResidual: 1.6` floor, so no cell can change
+classification and every count pin stays green. Run across
+`blemish-perturbation-tolerance`, `blemish-tie-break`, `blemish-density-scale`,
+`skin-index-contract` and `scan-cost-benchmark` — **45 tests, 2 failed, both in this
+file**, one of them the new case:
+
+```
+AssertionError: noise 4 400x480: the detector's own residual differs from this file's
+replica at 6254 of 11789 valid cells (worst |d| = 1.588e+0): expected 6254 to be +0
+```
+
+`lib/skin.ts` was restored byte-identical after each break: sha256
+`75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08` before and after, and
+`git diff lib/skin.ts` empty.
+
+### 7.7 `noiseScale` is a real upper bound, measured — and ARU's table is the less accurate of the two constructions
+
+Every margin above is reported as a multiple of `noiseScale = gw*gh * EPSILON * max|a*|`,
+and the guard `peakGap / noiseScale > 1e4` is what turns a margin into the claim that a
+count is decided by the image. That bound was asserted in a comment and verified by
+nobody. It is now measured.
+
+**The reference, read 2026-09-21.** scikit-image's `integral_image`, from its own source
+on `raw.githubusercontent.com` — another project's implementation, not a paper and not a
+standard:
+
+```
+skimage/transform/integral.py @ v0.24.0  http=200 bytes=5096
+skimage/transform/integral.py @ v0.25.2  http=200 bytes=5096  (byte-identical to v0.24.0)
+  sha256 ed187d23b0b47dbb8457b67d451f9aa19e39237bf322c81a92fab5a1802927d6
+```
+
+Two things in it bear on ARU. It promotes float inputs to at least float64 "for better
+accuracy and to avoid potential overflow" — ARU's `sumTable` is already a `Float64Array`,
+so that precaution is already taken. And it builds the table as a **separable `cumsum`
+along each axis**, where `lib/skin.ts` uses the one-pass inclusion-exclusion recurrence
+`S = x + S[left] + S[up] - S[up-left]`. The recurrence **subtracts a partial sum at every
+cell**; a cumsum never does. So the two are not obviously equally accurate, and ARU's is
+the one with a mechanism to be worse.
+
+**Measured**, both against `exactSum` over the window itself (an exact accumulation in a
+non-overlapping expansion, rounded once, so the numbers below are the constructions' error
+and not the reference's). The reference was checked before it was used rather than
+assumed: `exactSum` returns `1` for `[1e16, 1, -1e16]` and `2` for `[1, 1e100, 1, -1e100]`
+where naive summation returns `0` for both, it is order-independent over 10,000 values
+(`exactSum(v) === exactSum(v.reverse())`), and on those same 10,000 values it agrees with
+Python's correctly-rounded `math.fsum` to the last bit — `1790845758.191924` from both,
+against `1790845758.191915` and `1790845758.1919322` for naive summation in the two
+directions. `ARU_PRINT_BLEMISH_MARGIN=1 npx vitest run
+tests/blemish-perturbation-tolerance.test.ts`:
+
+```
+frame               cells   aru (incl-excl)   skimage (cumsum)    noise bound   aru/bound   peak gap/aru
+noise 4 400x480      11789        6.030e-14         1.069e-14      3.435e-11   1.755e-3       6.940e+8
+noise 4 720x960      13227        6.523e-14         1.188e-14      3.803e-11   1.715e-3       5.206e+9
+noise 4 1080x1440    13232        8.213e-14         1.130e-14      3.794e-11   2.165e-3      1.592e+10
+noise 4 1440x1920    13230        7.905e-14         1.188e-14      3.796e-11   2.082e-3       2.092e+9
+noise 9 400x480      11789        4.230e-14         1.192e-14      3.447e-11   1.227e-3      1.689e+10
+noise 9 720x960      13227        7.622e-14         1.227e-14      3.813e-11   1.999e-3      2.408e+10
+noise 9 1080x1440    13232        5.225e-14         1.106e-14      3.798e-11   1.376e-3      1.785e+11
+noise 9 1440x1920    13230        5.573e-14         1.335e-14      3.801e-11   1.466e-3      1.884e+10
+noise 14 400x480     11789        6.950e-14         9.881e-15      3.463e-11   2.007e-3       8.530e+9
+noise 14 720x960     13227        8.180e-14         9.770e-15      3.820e-11   2.141e-3      9.960e+10
+noise 14 1080x1440   13232        7.033e-14         1.324e-14      3.799e-11   1.851e-3      1.713e+11
+noise 14 1440x1920   13230        6.645e-14         1.177e-14      3.808e-11   1.745e-3      5.672e+10
+noise 0 400x480      11789        1.513e-13         2.724e-14      3.424e-11   4.418e-3              0
+noise 0 720x960      13227        1.182e-13         2.347e-14      3.791e-11   3.118e-3              0
+noise 0 1080x1440    13232        1.050e-13         2.347e-14      3.791e-11   2.771e-3              0
+noise 0 1440x1920    13230        1.121e-13         2.347e-14      3.791e-11   2.956e-3              0
+```
+
+Three findings, and the order matters.
+
+**The bound holds, with room.** ARU's worst background error is **4.230e-14 to 1.513e-13**
+a\*, against a bound of **3.424e-11 to 3.820e-11**. It uses **0.12% to 0.44%** of the
+bound — a headroom of 226x to 816x — so `noiseScale` is an upper bound on every frame
+measured and the ratios the margin guard reports are multiples of a number that means what
+it says. That is now an assertion (`aruWorst < noiseScale`) rather than a comment.
+
+**The prediction from the cancellation argument is confirmed, and it does not matter
+here.** The cumsum construction is **4.4x to 7.1x more accurate** than the
+inclusion-exclusion one on every one of the sixteen frames, which is what a construction
+with no subtraction in it should be. But ARU's error is **6.940e+8 to 1.785e+11 times
+smaller** than the smallest suppression gap on the realistic frames, so the difference
+between the two constructions is nowhere near able to change a count. Switching
+`lib/skin.ts` to a separable cumsum would buy a factor of five on a quantity already ten
+orders of magnitude below the decision it feeds. **No change is proposed and none was
+made.** The number is recorded so the next cycle to look at this has it instead of the
+argument.
+
+**The noiseless fixture is the worst case here too**, at 1.050e-13 to 1.513e-13 against
+4.230e-14 to 8.213e-14 for the noisy frames — roughly 2x. Its `peak gap/aru` column reads
+0 because its peak gap is exactly zero, which is §7.3's finding and not a property of the
+table; those four rows are excluded from the peak-gap assertion for that reason rather
+than asserted against.
+
+The count side of `windowMean` is deliberately not measured: `countTable` accumulates 0/1
+into partial sums bounded by `gw*gh` (at most 13,232 here), every one an exactly
+representable integer in float64, so the divisor carries no error.

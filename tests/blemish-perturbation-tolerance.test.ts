@@ -54,10 +54,12 @@ import { detectBlemishes, frameChannelGains, labAStar } from "@/lib/skin";
 
 type LM = { x: number; y: number; z?: number };
 type Perturb = (astar: Float64Array, valid: Uint8Array, gw: number, gh: number) => void;
+type ObserveResidual = (residual: Float64Array, valid: Uint8Array, gw: number, gh: number) => void;
 type Hooked = {
   detectBlemishes: typeof detectBlemishes;
   labAStar: typeof labAStar;
   __perturbAStar: { fn: Perturb | null };
+  __observeResidual: { fn: ObserveResidual | null };
 };
 
 /** lib/skin.ts's BLEMISH constants, read out of the source rather than copied into it.
@@ -227,6 +229,26 @@ const HOOK_LINE = "  if (__perturbAStar.fn) __perturbAStar.fn(astar, valid, gw, 
 const DECL_ANCHOR = "export function detectBlemishes(\n";
 const HOOK_DECL =
   "export const __perturbAStar: { fn: null | ((astar: Float64Array, valid: Uint8Array, gw: number, gh: number) => void) } = { fn: null };\n\n";
+/** The SECOND hook, and the blind spot it exists to close.
+ *
+ *  `__perturbAStar` is injected before the summed-area tables, so every residual this
+ *  file reasons about is `residualsOf`'s — a REPLICA, recomputed from the a* grid the
+ *  first hook captured. Anything `lib/skin.ts` does to `residual` DOWNSTREAM of a* is
+ *  therefore invisible to the decision margins: quantising `residual[i]` to 3 decimals
+ *  at the source leaves both margin cases green, which is the sixth break in
+ *  docs/blemish-perturbation-tolerance.md §7.4 and the one that did not bite. The guard
+ *  measures the a*-production path, which is what it was built for; it does not measure
+ *  the classifier.
+ *
+ *  This hook is injected after the residual loop and before the classification loop, so
+ *  the field the detector ACTUALLY classifies on can be read out and held against the
+ *  replica. It is a second hook rather than a widening of the first because the two read
+ *  different things at different points, and a replica that silently stopped being the
+ *  detector is exactly the failure being guarded against. */
+const RESIDUAL_ANCHOR = "  let count = 0;\n  let validCells = 0;\n";
+const RESIDUAL_HOOK_LINE = "  if (__observeResidual.fn) __observeResidual.fn(residual, valid, gw, gh);\n";
+const RESIDUAL_HOOK_DECL =
+  "export const __observeResidual: { fn: null | ((residual: Float64Array, valid: Uint8Array, gw: number, gh: number) => void) } = { fn: null };\n\n";
 /** srgbLinear's own line, the one C5 in tests/scan-cost-benchmark.test.ts ablates. */
 const POW_LINE = "  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);\n";
 const SRGB_ANCHOR = "function srgbLinear(channel: number): number {\n";
@@ -250,9 +272,13 @@ function withHook(source: string): string {
   if (!source.includes(DECL_ANCHOR)) {
     throw new Error("perturbation hook: detectBlemishes moved; the harness measures nothing");
   }
+  if (!source.includes(RESIDUAL_ANCHOR)) {
+    throw new Error("residual hook: the classification loop moved; the residual guard measures nothing");
+  }
   return source
-    .replace(DECL_ANCHOR, HOOK_DECL + DECL_ANCHOR)
-    .replace(CONSUME_ANCHOR, HOOK_LINE + CONSUME_ANCHOR);
+    .replace(DECL_ANCHOR, HOOK_DECL + RESIDUAL_HOOK_DECL + DECL_ANCHOR)
+    .replace(CONSUME_ANCHOR, HOOK_LINE + CONSUME_ANCHOR)
+    .replace(RESIDUAL_ANCHOR, RESIDUAL_HOOK_LINE + RESIDUAL_ANCHOR);
 }
 
 function withLut(source: string, entries: number, interpolate: boolean): string {
@@ -327,6 +353,28 @@ function capture(mod: Hooked, w: number, h: number, noise = 9): Grid {
   mod.__perturbAStar.fn = null;
   if (!grid) throw new Error(`${w}x${h}: the hook never ran; the harness measures nothing`);
   return { ...(grid as Grid), count: read.count };
+}
+
+/** Run the hooked build once, keeping BOTH the a* grid the first hook sees and the
+ *  residual field the detector went on to classify. The a* hook fires first (before the
+ *  summed-area tables) and the residual hook second (after the residual loop), so one
+ *  run yields both halves of the comparison. */
+function captureWithResidual(mod: Hooked, w: number, h: number, noise = 9): { grid: Grid; residual: Float64Array } {
+  const { data, lms, gains } = fixture(w, h, noise);
+  let grid: Grid | null = null;
+  let residual: Float64Array | null = null;
+  mod.__perturbAStar.fn = (astar, valid, gw, gh) => {
+    grid = { astar: Float64Array.from(astar), valid: Uint8Array.from(valid), gw, gh, count: 0 };
+  };
+  mod.__observeResidual.fn = (r) => {
+    residual = Float64Array.from(r);
+  };
+  const read = mod.detectBlemishes(data, w, h, lms, gains);
+  mod.__perturbAStar.fn = null;
+  mod.__observeResidual.fn = null;
+  if (!grid) throw new Error(`${w}x${h}: the a* hook never ran; the harness measures nothing`);
+  if (!residual) throw new Error(`${w}x${h}: the residual hook never ran; the residual guard measures nothing`);
+  return { grid: { ...(grid as Grid), count: read.count }, residual };
 }
 
 /** Run the hooked build with a perturbation applied to the a* grid. */
@@ -1118,5 +1166,343 @@ describe("the margin the blemish count is decided by", () => {
       expect(row.m.peakGap, `flat ${row.w} peak gap`).toBe(peakGap);
       expect(row.m.floorGap, `flat ${row.w} floor gap`).toBe(floorGap);
     });
+  });
+});
+
+describe("the residual the detector actually classifies", () => {
+  /**
+   * The blind spot named in §7.4, closed rather than restated.
+   *
+   * Every margin above is computed from `residualsOf`, which rebuilds the residual out
+   * of the captured a* grid. That makes the margins a property of the a*-production
+   * path and of this file's own arithmetic — not of the field `detectBlemishes` hands
+   * to its classification loop. The gap is not hypothetical: quantising `residual[i]`
+   * to 3 decimals inside `lib/skin.ts` changes which cells survive and leaves both
+   * margin cases green.
+   *
+   * So this case reads the detector's own residual through `__observeResidual` and
+   * holds it against the replica at every cell, then re-measures the pinned margins on
+   * it. Three separate things have to hold, and they fail for different reasons:
+   *
+   * 1. The two residual fields agree EXACTLY at every valid cell. This is what a change
+   *    downstream of a* breaks, and nothing else in this file can see it.
+   * 2. Classifying the detector's own residual reproduces the count `detectBlemishes`
+   *    returned. Guards the classification replica itself.
+   * 3. The margins measured on the detector's own residual are the pinned margins. An
+   *    independent surface: editing `residualsOf` to match a moved `lib/skin.ts` would
+   *    satisfy (1) and still fail here.
+   */
+  it("is the field the margins are measured on, cell for cell, at every frame and noise level", async () => {
+    const mod = await load("skin-perturbable", (source) => source);
+    const rows: Array<{
+      label: string;
+      noise: number;
+      w: number;
+      diffCells: number;
+      validCells: number;
+      worst: number;
+      m: Margins;
+    }> = [];
+
+    for (const noise of [...NOISE_LEVELS, 0]) {
+      for (const [w, h] of COMMITTED) {
+        const { grid, residual: observed } = captureWithResidual(mod, w, h, noise);
+        const { residual: replica } = residualsOf(grid);
+        expect(observed.length, `noise ${noise} ${w}x${h}: the residual field changed length`).toBe(replica.length);
+
+        let diffCells = 0;
+        let validCells = 0;
+        let worst = 0;
+        for (let i = 0; i < observed.length; i += 1) {
+          if (!grid.valid[i]) continue;
+          validCells += 1;
+          if (observed[i] !== replica[i]) {
+            diffCells += 1;
+            worst = Math.max(worst, Math.abs(observed[i] - replica[i]));
+          }
+        }
+
+        const counted = countedOf(grid, observed);
+        let replicated = 0;
+        for (let i = 0; i < counted.length; i += 1) replicated += counted[i];
+
+        rows.push({
+          label: `noise ${noise} ${w}x${h}`,
+          noise,
+          w,
+          diffCells,
+          validCells,
+          worst,
+          m: marginsOf(grid, observed, counted),
+        });
+
+        // (1) The blind spot itself. Asserted before anything else, so a residual that
+        // has moved downstream of a* says so rather than surfacing as a moved margin.
+        expect(
+          diffCells,
+          `${`noise ${noise} ${w}x${h}`}: the detector's own residual differs from this file's replica at ` +
+            `${diffCells} of ${validCells} valid cells (worst |d| = ${sig(worst)}). Every decision margin in ` +
+            `this file is measured on the replica, so a change downstream of a* moves what the detector ` +
+            `classifies without moving a single number above it`
+        ).toBe(0);
+
+        // (2) The classification replica, checked against the shipped count on the
+        // detector's own residual rather than on the reconstructed one.
+        expect(
+          replicated,
+          `noise ${noise} ${w}x${h}: classifying the detector's own residual gives ${replicated}, but detectBlemishes returned ${grid.count}`
+        ).toBe(grid.count);
+      }
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_MARGIN) {
+      process.stdout.write("\nmargins measured on the detector's own residual (a* units)\n");
+      process.stdout.write("noise  frame   valid  diff   counted  tied    peak gap   floor gap\n");
+      for (const row of rows) {
+        process.stdout.write(
+          `${String(row.noise).padStart(5)}  ${String(row.w).padEnd(6)}${String(row.validCells).padStart(6)}` +
+            `${String(row.diffCells).padStart(6)}${String(row.m.counted).padStart(10)}${String(row.m.tiedPeaks).padStart(6)}` +
+            `  ${sig(row.m.peakGap).padStart(10)}  ${sig(row.m.floorGap).padStart(10)}\n`
+        );
+      }
+    }
+
+    // (3) The pinned margins, re-measured on the detector's own field. EXPECTED_MARGINS
+    // covers the three realistic noise levels and EXPECTED_FLAT_MARGINS the noiseless
+    // fixture, which is the same split the two cases above use.
+    const noisy = rows.filter((row) => row.noise !== 0);
+    expect(noisy.length, "the realistic rows and the pinned table are different lengths").toBe(EXPECTED_MARGINS.length);
+    noisy.forEach((row, i) => {
+      const [noise, w, counted, tied, peakGap, floorGap] = EXPECTED_MARGINS[i];
+      expect(row.noise, `row ${i}: noise`).toBe(noise);
+      expect(row.w, `row ${i}: frame`).toBe(w);
+      expect(row.m.counted, `${row.label} counted, on the detector's own residual`).toBe(counted);
+      expect(row.m.tiedPeaks, `${row.label} tied, on the detector's own residual`).toBe(tied);
+      expect(row.m.peakGap, `${row.label} peak gap, on the detector's own residual`).toBe(peakGap);
+      expect(row.m.floorGap, `${row.label} floor gap, on the detector's own residual`).toBe(floorGap);
+    });
+
+    const flat = rows.filter((row) => row.noise === 0);
+    expect(flat.length, "the noiseless rows and the pinned table are different lengths").toBe(EXPECTED_FLAT_MARGINS.length);
+    flat.forEach((row, i) => {
+      const [w, counted, tied, peakGap, floorGap] = EXPECTED_FLAT_MARGINS[i];
+      expect(row.w, `flat row ${i}: frame`).toBe(w);
+      expect(row.m.counted, `${row.label} counted, on the detector's own residual`).toBe(counted);
+      expect(row.m.tiedPeaks, `${row.label} tied, on the detector's own residual`).toBe(tied);
+      expect(row.m.peakGap, `${row.label} peak gap, on the detector's own residual`).toBe(peakGap);
+      expect(row.m.floorGap, `${row.label} floor gap, on the detector's own residual`).toBe(floorGap);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The summed-area table's own error, against the bound every margin is divided by.
+// ---------------------------------------------------------------------------
+
+/** Exact accumulation in a non-overlapping expansion (Shewchuk's TwoSum), summed
+ *  smallest-first at the end so the result carries exactly one rounding. Used as the
+ *  reference the two summed-area-table constructions are measured against — this is an
+ *  exact sum rounded once, not merely a compensated one. */
+function exactSum(values: number[]): number {
+  const partials: number[] = [];
+  for (const value of values) {
+    let x = value;
+    let i = 0;
+    for (const p of partials) {
+      let a = x;
+      let b = p;
+      if (Math.abs(a) < Math.abs(b)) {
+        const t = a;
+        a = b;
+        b = t;
+      }
+      const hi = a + b;
+      const lo = b - (hi - a);
+      if (lo !== 0) partials[i++] = lo;
+      x = hi;
+    }
+    partials.length = i;
+    partials.push(x);
+  }
+  let total = 0;
+  for (let i = partials.length - 1; i >= 0; i -= 1) total += partials[i];
+  return total;
+}
+
+/** The reference construction, from scikit-image's `integral_image`: a separable
+ *  cumulative sum along each axis, with float inputs promoted to at least float64. No
+ *  subtraction enters the build, unlike the inclusion-exclusion recurrence lib/skin.ts
+ *  uses. The 4-corner query is the same either way. */
+function cumsumSat(grid: Grid): Float64Array {
+  const { astar, valid, gw, gh } = grid;
+  const sw = gw + 1;
+  const table = new Float64Array(sw * (gh + 1));
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      table[(gy + 1) * sw + (gx + 1)] = valid[i] ? astar[i] : 0;
+    }
+  }
+  for (let gy = 1; gy <= gh; gy += 1) {
+    for (let gx = 2; gx <= gw; gx += 1) table[gy * sw + gx] += table[gy * sw + gx - 1];
+  }
+  for (let gx = 1; gx <= gw; gx += 1) {
+    for (let gy = 2; gy <= gh; gy += 1) table[gy * sw + gx] += table[(gy - 1) * sw + gx];
+  }
+  return table;
+}
+
+/** lib/skin.ts's own construction: one pass of the inclusion-exclusion recurrence. */
+function inclusionExclusionSat(grid: Grid): Float64Array {
+  const { astar, valid, gw, gh } = grid;
+  const sw = gw + 1;
+  const table = new Float64Array(sw * (gh + 1));
+  for (let gy = 0; gy < gh; gy += 1) {
+    for (let gx = 0; gx < gw; gx += 1) {
+      const i = gy * gw + gx;
+      const s0 = (gy + 1) * sw + (gx + 1);
+      table[s0] = (valid[i] ? astar[i] : 0) + table[s0 - 1] + table[s0 - sw] - table[s0 - sw - 1];
+    }
+  }
+  return table;
+}
+
+function windowFrom(table: Float64Array, gw: number, gh: number, gx: number, gy: number, radius: number): number {
+  const sw = gw + 1;
+  const lx = Math.max(0, gx - radius);
+  const ly = Math.max(0, gy - radius);
+  const hx = Math.min(gw - 1, gx + radius);
+  const hy = Math.min(gh - 1, gy + radius);
+  return (
+    table[(hy + 1) * sw + (hx + 1)] - table[ly * sw + (hx + 1)] - table[(hy + 1) * sw + lx] + table[ly * sw + lx]
+  );
+}
+
+describe("the summed-area table the local background is read from", () => {
+  /**
+   * Why this is measured at all.
+   *
+   * Every margin in this file is reported as a multiple of `noiseScale`, and the guard
+   * `peakGap / noiseScale > 1e4` is the assertion that a count is decided by the image
+   * rather than by arithmetic. `noiseScale` is `gw*gh * EPSILON * max|a*|` — a bound
+   * asserted in a comment and verified by nobody. If it is not actually an upper bound
+   * on the error the summed-area table puts into one background, the ratio is a
+   * multiple of the wrong number and the guard above it means less than it says.
+   *
+   * The comparison is with a reference construction rather than in the abstract.
+   * scikit-image's `integral_image`, read from its own source on 2026-09-21, builds the
+   * table as a separable `cumsum` along each axis and promotes float inputs to at least
+   * float64 "for better accuracy and to avoid potential overflow". lib/skin.ts uses the
+   * one-pass inclusion-exclusion recurrence instead, which SUBTRACTS a partial sum at
+   * every cell — the cancellation a cumsum never performs — so the two constructions
+   * are not obviously equally accurate and ARU's is the one with a reason to be worse.
+   *
+   * Both are measured against `exactSum` over the window itself: an exact accumulation
+   * rounded once, so the errors below are the constructions' and not the reference's.
+   * The count side of `windowMean` is left out on purpose — `countTable` accumulates
+   * 0/1 into partial sums bounded by gw*gh, every one of them an exactly representable
+   * integer in float64, so the divisor carries no error to measure.
+   */
+  it("keeps its error under the noise bound every margin above is divided by", async () => {
+    const mod = await load("skin-perturbable", (source) => source);
+    const rows: Array<{
+      label: string;
+      cells: number;
+      aruWorst: number;
+      cumsumWorst: number;
+      noiseScale: number;
+      peakGap: number;
+    }> = [];
+
+    for (const noise of [...NOISE_LEVELS, 0]) {
+      for (const [w, h] of COMMITTED) {
+        const grid = capture(mod, w, h, noise);
+        const { astar, valid, gw, gh } = grid;
+        const aru = inclusionExclusionSat(grid);
+        const reference = cumsumSat(grid);
+
+        let maxAbs = 0;
+        for (let i = 0; i < astar.length; i += 1) if (valid[i]) maxAbs = Math.max(maxAbs, Math.abs(astar[i]));
+        const noiseScale = gw * gh * Number.EPSILON * maxAbs;
+
+        let aruWorst = 0;
+        let cumsumWorst = 0;
+        let cells = 0;
+        for (let gy = 0; gy < gh; gy += 1) {
+          for (let gx = 0; gx < gw; gx += 1) {
+            if (!valid[gy * gw + gx]) continue;
+            const lx = Math.max(0, gx - BACKGROUND_RADIUS);
+            const ly = Math.max(0, gy - BACKGROUND_RADIUS);
+            const hx = Math.min(gw - 1, gx + BACKGROUND_RADIUS);
+            const hy = Math.min(gh - 1, gy + BACKGROUND_RADIUS);
+            const values: number[] = [];
+            for (let ny = ly; ny <= hy; ny += 1) {
+              for (let nx = lx; nx <= hx; nx += 1) {
+                const j = ny * gw + nx;
+                if (valid[j]) values.push(astar[j]);
+              }
+            }
+            if (values.length < 8) continue;
+            cells += 1;
+            const exact = exactSum(values) / values.length;
+            aruWorst = Math.max(aruWorst, Math.abs(windowFrom(aru, gw, gh, gx, gy, BACKGROUND_RADIUS) / values.length - exact));
+            cumsumWorst = Math.max(
+              cumsumWorst,
+              Math.abs(windowFrom(reference, gw, gh, gx, gy, BACKGROUND_RADIUS) / values.length - exact)
+            );
+          }
+        }
+
+        const counted = countedOf(grid, residualsOf(grid).residual);
+        rows.push({
+          label: `noise ${noise} ${w}x${h}`,
+          cells,
+          aruWorst,
+          cumsumWorst,
+          noiseScale,
+          peakGap: marginsOf(grid, residualsOf(grid).residual, counted).peakGap,
+        });
+      }
+    }
+
+    if (process.env.ARU_PRINT_BLEMISH_MARGIN) {
+      process.stdout.write("\nsummed-area table error against an exact window sum (a* units)\n");
+      process.stdout.write("frame               cells   aru (incl-excl)   skimage (cumsum)    noise bound   aru/bound   peak gap/aru\n");
+      for (const row of rows) {
+        process.stdout.write(
+          `${row.label.padEnd(20)}${String(row.cells).padStart(6)}  ${sig(row.aruWorst).padStart(15)}  ` +
+            `${sig(row.cumsumWorst).padStart(16)}  ${sig(row.noiseScale).padStart(13)}  ` +
+            `${sig(row.aruWorst / row.noiseScale).padStart(9)}  ${sig(row.peakGap / (row.aruWorst || Number.MIN_VALUE)).padStart(13)}\n`
+        );
+      }
+    }
+
+    for (const row of rows) {
+      expect(row.cells, `${row.label}: no window had 8 valid cells, so nothing was measured`).toBeGreaterThan(0);
+      // The claim the margin guard rests on: gw*gh * EPSILON * max|a*| bounds the error
+      // the table actually puts into one background.
+      expect(
+        row.aruWorst,
+        `${row.label}: the inclusion-exclusion table's worst background error is ${sig(row.aruWorst)} a*, ` +
+          `ABOVE the bound ${sig(row.noiseScale)} that every margin in this file is reported as a multiple of`
+      ).toBeLessThan(row.noiseScale);
+      // And the reference construction is measured beside it rather than assumed better,
+      // so a future cycle deciding whether to switch has the number and not a hunch.
+      expect(
+        row.cumsumWorst,
+        `${row.label}: the cumsum reference's worst background error is ${sig(row.cumsumWorst)} a*, above the same bound`
+      ).toBeLessThan(row.noiseScale);
+    }
+
+    // On every frame with a real margin, the table's error is orders of magnitude below
+    // the gap it would have to close to change a count. The noiseless fixture's peak gap
+    // is exactly zero, so it is excluded here rather than asserted against - that zero is
+    // the finding of the case above, not a property of the table.
+    for (const row of rows.filter((r) => r.peakGap > 0)) {
+      expect(
+        row.peakGap / row.aruWorst,
+        `${row.label}: the table's error ${sig(row.aruWorst)} is within 1e4 of the smallest peak gap ${sig(row.peakGap)}`
+      ).toBeGreaterThan(1e4);
+    }
   });
 });
