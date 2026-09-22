@@ -536,7 +536,7 @@ describe("cross-language index parity table", () => {
     expect(densityRows.length).toBe(DENSITY_INPUTS.length);
     const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
     expect(source).toContain("blemishDensity: blemishes.count / Math.max(blemishes.areaFace, 1e-6),");
-    expect(source).toContain("return { count, areaFace: (validCells * stride * stride) / (faceW * faceW) };");
+    expect(source).toContain("return { count, areaFace: (validCells * stride * stride) / (faceW * faceW), tiedPeaks };");
     for (const row of densityRows) {
       const areaFace = row.faceWidthPx > 0 ? row.sampledAreaPx / (row.faceWidthPx * row.faceWidthPx) : 0;
       expect(row.count / Math.max(areaFace, 1e-6), `${row.note}`).toBe(row.value);

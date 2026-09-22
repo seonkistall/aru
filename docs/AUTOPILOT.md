@@ -501,7 +501,7 @@ partly done and stays here.
   must not be written down as verified against the standard, and if it moves it has to
   move in BOTH files in one change or it reintroduces exactly the split cycle 18 closed.
   Measurements and the fetch's sha256: `docs/srgb-transfer-table.md` §1.
-- [AI] **Should `detectBlemishes` notice that a frame is plateau-dominated, instead of
+- [~] [AI] **Should `detectBlemishes` notice that a frame is plateau-dominated, instead of
   reporting a count settled by scan order?** Opened 2026-09-21 (cycle 23), from the guard
   that measured it. On the noiseless fixture one to three of the five counted cells are
   tied with a suppression neighbour EXACTLY, so `j < i` and not the image decides them,
@@ -518,6 +518,26 @@ partly done and stays here.
   `tests/blemish-density-scale.test.ts`'s cross-resolution agreement hold at all", which
   the `srgbLinear` item above is still waiting on. Answering one answers both. Evidence and
   the fetch sha256s: `docs/blemish-perturbation-tolerance.md` §7.5.
+  **2026-09-22, cycle 28: it notices now, and the half that is a product decision is still
+  open.** `detectBlemishes` returns `tiedPeaks` next to `count` and `areaFace` — how many
+  counted cells carry a neighbour with the bit-identical residual, so `j < i` and not the
+  image picked the survivor. `count` is byte-identical and nothing reads the new field yet.
+  Why it had to be INSIDE: §7.4's sixth break (quantise `residual[i]` to three decimals) is
+  invisible to the replica, which rebuilds the residual from the captured a\* grid, and both
+  margin cases stayed green under it. Counted off the residual the detector actually
+  classifies, that break now fails a case whose message names it — `noise 4 600x720: 2 of 5
+  counted cells are settled by scan order, not by the image` — with the two margin cases
+  still green, which is §7.4's own finding reproduced. Fifteen realistic frames carry zero
+  ties; the noiseless fixture reads `3/2 3/1 3/2 3/0 3/1` across
+  `tests/blemish-density-scale.test.ts`'s five sizes, so **`1080x1296` has no tie at all**
+  and "the noiseless fixture always has a tie" is false — the case pins the vector rather
+  than asserting `> 0`. The research half says what shape the answer takes: scipy's
+  `find_peaks` makes a plateau's extent a reported property (`plateau_sizes`, `left_edges`,
+  `right_edges`) and documents `(None, None)` for computing it without filtering anything,
+  so **report first, decide the filter separately**. Taking that second half — refuse, or
+  carry a confidence, on a published index — is the product call this item still holds, and
+  it is still the same question as the cross-resolution assertion.
+  `tests/blemish-plateau-census.test.ts`, `docs/blemish-perturbation-tolerance.md` §7.6-§7.7.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -644,6 +664,21 @@ partly done and stays here.
   so nothing a user sees falls back to Korean. The question is only whether the four are
   stale entries to delete or a retake path that was removed and should come back; that
   needs someone to say which, so it is not a delete a cycle should do on its own.
+- [AI] **`noteEn` is carried on every commerce link and rendered nowhere**, which is the
+  `shareUrl` shape one surface over. `CommerceLink.noteEn` (`lib/commerce.ts`) holds an
+  English sentence for each of the four merchants ("Korea's biggest beauty retailer — check
+  stock online.", and three beside it), `productSearchLinks` copies it onto `CareLink`
+  (`lib/care.ts:29`), and no code, test or doc reads it: `/care` renders `t(link.note)`.
+  Checked before writing this down rather than assumed — all four Korean `note` strings and
+  three of the four `label` strings resolve in `en`, `ja`, `zh` and `ar`, so nothing a
+  non-Korean user sees falls back to Korean and this is dead weight rather than a live
+  defect. (The fourth label is `"Global search"`, already English, which `t()` passes
+  through for `en` and leaves in English for `ja`/`zh`/`ar`.) Delete it or render it — but
+  note the audit that would have caught it: cycle 27's coverage sweep read the Korean
+  literal at each `t("…")` CALL SITE, and these literals are data in `lib/commerce.ts`
+  passed through `t(link.note)`, so a call-site sweep cannot see them. Same class:
+  `careSummary` (`lib/care.ts:72`) takes `_reads` and `_result` and reads neither, which is
+  where the two standing lint warnings come from. Noted 2026-09-22.
 - [AI] Tone and dryness have no label source. Propose the smallest consented way to
   collect one, with the PIPA consequences spelled out; do not implement it alone.
 - [~] [AI] Recommendation quality: the reasons are LLM-generated and efficacy-filtered,
@@ -928,6 +963,156 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   as a scan->buyer rate without saying so — which is where the whole 3x comes from —
   and five claims stronger than their evidence, including "cannot reach $10,000/month"
   in a document whose own table shows architecture A reaching it at 500,000 scans.
+- 2026-09-22 (cycle 28) — Branch `autopilot/2026-09-22-0639`. **`detectBlemishes` now says
+  whether the frame it just counted was decided by the image or by scan order, and the
+  census is inside the detector because that is the only place it can see what cycle 23's
+  replica could not. `/care` — the second commerce surface, reachable from the nav on every
+  page — had a disclosure whose `aria-controls` named a panel containing the disclosure
+  itself, and no browser-level coverage of any kind. And `/ops` was telling the operator
+  that zero more crops were needed for a band that crops cannot unlock.**
+
+  **Baselines, measured here on a clean tree at `87a9834` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first. `npm run smoke` green with
+  the chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest
+  **615 passed in 91 files**, its Playwright leg **67 passed (3.9m)**, `python3
+  ml/selftest.py` **Ran 137 tests ... OK**, `npm run lint` **0 errors, 2 warnings** (the
+  same `_reads` / `_result` at `lib/care.ts:72`), `npx tsc --noEmit | grep -c "error TS"`
+  **13**.
+
+  **Research (자료조사): what a mature peak detector does with a plateau — report it.** The
+  ML item below had to choose between report, refuse and carry-a-confidence, and cycle 23
+  had only half an answer: `scikit-image`'s `peak_local_max` has a degenerate-input branch
+  that fires on an entirely flat field, which ARU's plateau-dominated fixture is not.
+  `scipy.signal.find_peaks` answers the other half, read from scipy's own source on
+  `raw.githubusercontent.com` (`_peak_finding_utils.pyx` and `_peak_finding.py` @ v1.14.1,
+  sha256s in the doc). `_local_maxima_1d` defines a maximum as "one or more samples of equal
+  value that are surrounded on both sides by at least one smaller sample" and returns
+  `midpoints`, `left_edges` and `right_edges` — a plateau is ONE maximum whose extent is an
+  output, and index order picks the representative of a maximum already established, never
+  whether there is one. `find_peaks` then exposes `plateau_size` as the first condition
+  evaluated and documents the report-without-filter case in as many words: "To calculate and
+  return properties without excluding peaks, provide the open interval ``(None, None)``".
+  So the reference's answer is **report, on the same return value as the count, and leave
+  the filter to the caller**. Two limits stated rather than glossed: it is 1-D, so
+  "surrounded on both sides" has no direct analogue in a 5x5 suppression window, and its
+  plateau is a run of exactly equal samples while ARU's degenerate frame is
+  plateau-dominated rather than flat. `docs/blemish-perturbation-tolerance.md` §7.6.
+
+  **ML: the plateau census moved inside `detectBlemishes`, which is what makes it bite.**
+  `detectBlemishes` returns `tiedPeaks` next to `count` and `areaFace`: counted cells
+  carrying a neighbour with the bit-identical residual somewhere in their suppression
+  window, so `j < i` and not the image chose the survivor. One float comparison per
+  neighbour the loop already visits; `count` byte-identical; nothing reads the field yet,
+  deliberately. The argument for inside is §7.4's sixth break, which that section recorded
+  as "did not bite": quantising `residual[i]` to three decimals manufactures plateaus, and
+  the replica rebuilds the residual from the captured a\* grid so it cannot see anything
+  downstream of a\*. Applied to `lib/skin.ts` and run: `Tests 7 failed | 610 passed (617)`,
+  the new case failing first with `noise 4 600x720: 2 of 5 counted cells are settled by scan
+  order, not by the image: expected 2 to be +0`, and the two margin cases §7.4 names — "measures
+  a real margin on every realistic frame, and says how real" and "fails the same predicate on
+  the noiseless fixture" — **not** in the failure list, which reproduces §7.4's finding. The
+  other six report a moved number on the noiseless fixture or a moved pin; none of them says
+  what went wrong. `lib/skin.ts` restored byte-identical afterwards. Fifteen realistic frames
+  (three noise levels × five sizes) carry zero ties. The noiseless fixture reads
+  `3/2 3/1 3/2 3/0 3/1` — the `3, 3, 3, 3, 3` `tests/blemish-density-scale.test.ts` asserts
+  must agree, four of five carrying a tie and `1080x1296` carrying none, which is why the case
+  pins the vector instead of asserting `> 0`. `tests/blemish-plateau-census.test.ts`,
+  `docs/blemish-perturbation-tolerance.md` §7.7. The backlog item stays `[~]`: what
+  `blemishCount` should DO about a plateau-dominated frame is a product call on a published
+  index, and §7.6 only says to report before deciding the filter.
+
+  **UI/UX: `/care`'s merchant disclosure named a panel that contained it, and `/care` had no
+  browser coverage at all.** `aria-controls={merchantPanelId}` pointed at the grid the toggle
+  was itself a child of, so a screen-reader user following the relationship from "다른 판매처
+  보기" landed on a region whose contents included the button they had just left, and the
+  always-rendered region was announced as collapsed. Confirmed in Chromium at 360px in all
+  five locales before the fix (`containsToggle=true`, five of five). The fix makes the toggle
+  the panel's SIBLING — two nested grids at the same 7px gap — and the rendered geometry is
+  unchanged: every button's x, y, width and height identical collapsed and expanded, diffed
+  before against after. Breaking it at its source line (the `id` back on the outer grid)
+  fails 2 of the 3 new cases with `aria-controls="care-merchants-tn2" names a panel that
+  contains its own toggle: a disclosure cannot control a region it is inside` and `the
+  expanded panel swallowed its own toggle`, while the layout case stays green.
+  `tests/e2e/care-merchant-disclosure.regression-12.spec.ts` also gives `/care` its first
+  360px × five-locale guard on document overflow and the 44px tap contract.
+
+  **The layout sweep that found nothing, recorded so the next cycle does not redo it.**
+  `/care`, `/survey`, `/privacy` and `/checkin` measured in Chromium at 320px and 360px in
+  ko/en/ja/zh/ar — twenty-four page loads per route pair — looking for document overflow and
+  for any `button`, `a`, `input`, `select` or `textarea` under 44px or clipped outside the
+  viewport. **Nothing found.** That is a measurement and not an improvement, and it is the
+  reason this cycle's UI work is the disclosure rather than a clipping fix.
+
+  **Bug fix: `/ops` reported "Crops needed for next band: 0" for a band crops cannot
+  unlock.** `getMlReadiness`'s participant gate (`lib/ml-readiness.ts`) returns
+  `band: "calibrate"` whenever fewer than five pilot participants are linked, whatever the
+  crop count — and it returned `minCropsForNextBand: 30` with it. `app/ops/page.tsx:233`
+  renders that as `Crops needed for next band: {Math.max(0, minCropsForNextBand - crops)}`,
+  so at any crop count of 30 or more with four participants the panel printed **0**, telling
+  the operator they had finished collecting while the band was pinned on something else
+  entirely. `tests/ml-readiness.test.ts` already pinned exactly that state (300 crops, 4
+  participants, band `calibrate`) without ever looking at the number beside it. Fixed to
+  `null`, which `/ops` already handles by not rendering the line — the branch's `nextAction`
+  ("Use /pilot to link P001-P030 sessions") is what actually applies. Reverting the one line
+  fails the new case with `at 30 crops and 4 participants /ops offers a crop target the band
+  does not depend on…: expected +0 to be null`, 1 of 3 in the file. The crop-count bands are
+  untouched and the case asserts one of them still reports a real target (12 crops → 18).
+
+  **Verification, pasted from the runs that produced it.** `npm run smoke` with the chromium
+  override → `Test Files 92 passed (92)`, `Tests 618 passed (618)`, Playwright `70 passed
+  (3.7m)`, `Smoke test passed.` `npx tsc --noEmit | grep -c "error TS"` → `13`. `npm run
+  lint` → `0 errors, 2 warnings` (`lib/care.ts`). `python3 ml/selftest.py` → `Ran 137 tests
+  ... OK` — unchanged, this cycle's ML work is in TypeScript.
+
+  **Rotation.** `docs/AUTOPILOT.md` 1533 → 1378; `docs/autopilot-changelog.md` 5588 →
+  5886. Cycle 25's 297-line entry moved verbatim to the changelog bottom. **No backlog item
+  was ticked `[x]` this cycle**, so nothing moved to "Closed backlog items": the plateau item
+  went `[AI]` → `[~]` because the decision it names is still open, and one new item was filed
+  under "### Next" for the dead `noteEn` field. `wc -l` before/after and the `comm -23`
+  preservation check are in the PR body.
+
+  **Supervisor review.** Kept cheap — the account is at `seven_day / allowed_warning`
+  (resets 2026-09-22 20:00 UTC) and the worker was told to be economical, so this was too:
+  two reads before the branch, two breaks after.
+
+  *The fork this cycle had to get right, and did.* The item names three outcomes — report
+  it, refuse it, or carry a confidence — and they are not equally available to a cycle.
+  `blemishCount` is in `ml/skin_indices.py:141` `NEW_FEATURE_KEYS`, so it is an export
+  column every ML sample carries, and it is pinned per frame size at
+  `tests/scan-cost-benchmark.test.ts:347`. **Refusing or altering the count would move an
+  exported column and retroactively change what every already-collected sample means** —
+  the `fallbackVersion` class of change, needing the version treatment or an owner call.
+  Reporting alongside is additive and ordinary cycle work. This cycle took the additive
+  branch, left `count` untouched (`git diff` on
+  `tests/scan-cost-benchmark.test.ts` is **0 lines**), and says in the function's own
+  comment that what to do about a plateau-dominated frame "is an open decision, not this
+  function's to make". The item went `[AI]` → `[~]` rather than closing, which is the
+  honest marker: "notice" is answered, "what to do" is not.
+
+  *Both breaks bite, and the second is the one that matters.* Removing the census line
+  fails 1 of 2 with the pinned string named. Quantising `residual[i]` to three decimals —
+  the sixth break in §7.4, the one that did NOT bite when the census was computed from an
+  outside replica — now fails 2 of 2, and fires on the NOISY fixture as well:
+  `noise 4 600x720: 2 of 5 counted cells are settled by scan order, not by the image. On a
+  frame with real pixel noise the suppression margins are 1e6x the detector's own rounding
+  error, so an exact tie means something upstream collapsed distinct residuals.` That is
+  the proof the census is computed inside the detector rather than from a replica, which
+  is exactly what the "decision-margin guard is blind to the residual arithmetic" item
+  asked for.
+
+  *Read of the tie logic, since a census that miscounts is worse than none.* The
+  suppression loop breaks out on `residual[j] > residual[i] || (residual[j] === residual[i]
+  && j < i)`, so a cell that survives as a peak has run the full neighbour loop and
+  `onPlateau` is fully determined for it; and a surviving cell's ties can only be with
+  later-indexed neighbours, which is precisely "won on `j < i`" as the comment claims.
+
+  *Scope held for a fourth cycle.* `shareUrl` is still open in this file and absent from
+  the changelog.
+
+  *Rotation.* 1533 → 1378 and 5588 → 5886; `comm -23` finds **1 line missing**, and it is
+  the plateau item's own first line, changed by the `[AI]` → `[~] [AI]` marker. "Recent
+  cycles" holds 28/27/26.
+
 - 2026-09-22 (cycle 27) — Branch `autopilot/2026-09-22-0039`. **Threshold fitting stopped
   pooling two feature generations in silence — the half cycle 26 left open, closed the way it
   said: one shared warning, from one definition, read by both `coverage()` and `ml/calibrate.py`.
@@ -1063,260 +1248,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
   push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
   stays out of this file is one a later cycle pays for twice.
-
-- 2026-09-21 (cycle 26) — Branch `autopilot/2026-09-21-1839`. **The "do not pool feature
-  generations" rule stopped being documentation: a run that mixes two generations of the
-  feature extractor now says so, and the check would never have fired even once it existed
-  because `run_pipeline` hands `coverage()` a projection that had dropped both version fields.
-  Whether that is a warning or a blocker was decided from scikit-learn's own source rather
-  than from taste. And `/studio` — the product's only image-share surface — has been cutting
-  its own prefilled text in three of five locales, at every width.**
-
-  **Baselines, measured here on a clean tree before any edit, and they match the supervisor's
-  to the number.** `npm ci` first (`node_modules` was absent). `npm run smoke` green with the
-  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **608
-  passed in 90 files**, mobile E2E **52 passed (4.1m)**, `python3 ml/selftest.py` **Ran 121
-  tests ... OK**, `npm run lint` **0 errors, 2 warnings** (the same `'_reads'` / `'_result'` at
-  `lib/care.ts:72`), `npx tsc --noEmit | grep -c "error TS"` **13**.
-
-  **Research: warn or block, answered from an implementation rather than from recall.** The ML
-  item below had to put a mixed-generation run somewhere, and the two places are not
-  equivalent: `coverage_warnings` is read by a human and gates nothing, while
-  `promotion_check`'s `blockers` stop a promotion — and writing a new promotion rule means
-  editing the shipped manifest, which is hard guardrail 8 and the owner's call. scikit-learn
-  draws exactly this line and draws it explicitly. Read from its own source — another
-  project's implementation, not a paper and not a standard, since `scikit-learn.org` and
-  `en.wikipedia.org` both refuse this network:
-
-  ```
-  sklearn/exceptions.py       @ 1.5.2  http=200 bytes=6058   sha256 635e992922c815c6b95cf11d84bd0f06d5bd1d58e4adeb335e2864d17ae61618
-  sklearn/exceptions.py       @ 1.7.1  http=200 bytes=7703   sha256 09a6854b80d56ea86a52276203e70cbd33fa0d1eaa205984533ba2312e470de7
-  sklearn/base.py             @ 1.5.2  http=200 bytes=53095  sha256 cd62bc6b3f5a6f16466c7eaa0ec91a83a83c91b93610d67e39c55fda85530c89
-  sklearn/base.py             @ 1.7.1  http=200 bytes=47777  sha256 a2ad39c5ff6491d04c35738e942860def0e80d6800aeb1690cfd68bf46be8d91
-  sklearn/utils/validation.py @ 1.7.1  http=200 bytes=108488 sha256 ae3c972e645e2d0ba00459e8f82ac540f0a670f474cc293875a95f4d63f0ccc2
-  ```
-
-  A **provenance** mismatch warns and continues: `BaseEstimator.__setstate__` (`base.py:372` in
-  1.5.2, `:438` in 1.7.1, the same nine lines in both) calls `warnings.warn` — not `raise` — on
-  `InconsistentVersionWarning`, a `UserWarning` subclass whose message says "This might lead to
-  breaking code or invalid results. Use at your own risk." A **structural** mismatch raises:
-  `_check_feature_names` (`validation.py:2697`) ends its comparison branch with
-  `raise ValueError`, enumerating the unseen and missing names. And an **unstamped** artifact is
-  given a name of its own rather than merged into the current one —
-  `state.pop("_sklearn_version", "pre-0.18")` reads a version-less pickle as a *different*
-  version and warns, not as one that matches.
-
-  Pooling two extractor generations is the first kind: every index is present and well-formed,
-  and nothing in the rows records how far apart two generations are. So it is named, counted,
-  and left to the reader. `docs/feature-generation-pooling.md` §2.
-
-  **ML: the backlog item closed, plus the reason it would not have worked.** Every clause of
-  the 2026-09-16 item was re-checked against main rather than taken on trust and all of them
-  still held: `model_version` and `input_schema_version` are written at
-  `ml/prepare_crop_dataset.py:117-118` and `ml/run_pipeline.py:338-339` and listed in the CSV
-  header at `:277-278`, and grepping the whole of `ml/` for either name returns those five
-  write sites and **nothing that reads them back**. The item's own dates are its argument:
-  `fallbackVersion` is `roi-calibrated-2026-09-18` today and was `-09-16` when the item was
-  filed, and it moves when a feature's semantics change.
-
-  `subgroups.feature_generation(row)` resolves a row's generation (snake_case and camelCase
-  spellings of both fields, so one generation cannot split into two on spelling);
-  `Coverage.generations` counts them; `coverage_warnings` emits one line naming and counting
-  the pooled generations and a second for rows carrying no stamp beside stamped ones. Every
-  run that already wrote `subgroup_warnings` gets it for free — `run_pipeline`,
-  `train_visible_attributes` (3 call sites), `evaluate_dataset`, `external_manifest`.
-
-  **The part the item did not know about, and it is worth more than the fix.** With the
-  counting in place the warning would still never have fired on a real run.
-  `run_pipeline.py:363` builds a narrow projection of each row (`decoded`) and passes *that* to
-  `coverage()`, not the CSV row — and the projection carried `participant_id`, `session_id`,
-  `device_id`, `toneIta`, `age_band` and `id`, neither version field. The generation of every
-  row was invisible at exactly the place the check runs. The two fields are version strings,
-  not identifiers, and the projection already carried three of the latter, so nothing about a
-  person was widened.
-
-  **Five source-line breaks, never of a test, and each one narrow enough to name what it
-  protects.** Baseline `Ran 130 tests ... OK`; `ml/subgroups.py` restored byte-identical
-  (sha256 `270cc66838e7e9bb5d1f57bcdfe5df710179010dbe235bf041ee81a1e2f9b076` before and after).
-
-  ```
-  1  if len(stamped) > 1:  ->  > 2                 FAILED (failures=2)   AssertionError: 0 != 1
-  2  drop input_schema_version from the key list   FAILED (failures=1)   AssertionError: 0 != 1
-  3  stamped = dict(cov.generations)  (fold in     FAILED (failures=2)   Lists differ: ['3 rows (100%) carry
-     the unstamped rows)                                                 no feature generatio[112 chars]nd.'] != []
-  4  remove both fields from decoded again        FAILED (failures=1)   'model_version' not found in
-                                                                        'decoded.append({...' : run_pipeline's
-                                                                        coverage projection dropped model_version
-  5  ("model_version", "modelVersion") -> 1-tuple FAILED (failures=1)   'roi-calibrated-2026-09-18/2026-06-30.
-                                                                        visible-face-crop.v1' != '/2026-06-30.
-                                                                        visible-face-crop.v1'
-  ```
-
-  Break 3 is the one that shows the two clauses are independent: folding unstamped rows in with
-  the stamped ones leaves every "two generations" assertion green and fails only the two cases
-  about unstamped rows. Break 4 is the one that would have shipped a check that could not fire.
-
-  **UI/UX: `/studio`'s read editor cut its own prefilled text in three of five locales.** Found
-  by sweeping every public route × 5 locales for controls under 44px and for elements whose
-  `scrollWidth` exceeds their `clientWidth`, then measuring the rendered text width of each
-  field against the box it gets. The name field is a fixed `width: 96` — 94px of content box —
-  which is wider than the Korean labels it was sized for and narrower than the translations the
-  same field is prefilled with. Measured in Chromium, as needed-minus-available in px, negative
-  = clipped:
-
-  ```
-  field   locale  value                  @360    @320
-  name    en      "Pores/texture"        -14.7   -14.7
-  name    ar      "المسام/الملمس"         -23.2   -23.2
-  value   en      "Fairly comfortable"   +21.7   -18.3
-  value   ja      "落ち着いている"           +23.4   -16.6
-  ```
-
-  The name box does not depend on the viewport, so en and ar cut the label at **every** width,
-  desktop included. Widening the name inside one line is not available and that was measured
-  rather than assumed: at 320px the en value already needs 137.3px against a 119px box, so
-  taking width from the value makes the narrow viewport worse. The name takes its own line
-  instead (`flex-basis: 100%` on a wrapping row). After: every field has **85.7 to 323px** of
-  headroom at 320/360/393/430 in all five locales, the worst case being the en value at 320px.
-
-  `tests/e2e/studio-label-fit.spec.ts` asserts both halves — a width floor alone would pass a
-  field wide enough to tap that still cuts its label, and a clipping check alone would pass a
-  20px field showing all of a one-character value. Reverting the one style to `width: 96`
-  fails **5 of 10**, naming the fields: `Item 2 name="Pores/texture" sw=109 cw=94`,
-  `اسم العنصر 2="المسام/الملمس" sw=117 cw=94`, `Item 4 value="Fairly comfortable" sw=137 cw=119`,
-  `項目4の値="落ち着いている" sw=118 cw=101`. ko and zh pass at both widths, which is right —
-  they never clipped.
-
-  **Bug fix: `savePilotNote`, and the ordering is the fix rather than a detail of it.** The
-  cycle 25 finding. It was the only device store in the repo with no `window` guard, no cap and
-  no try/catch, running a bare `localStorage.setItem` from `/pilot`'s click handler. What a
-  full or blocked store cost was not only the note: the `QuotaExceededError` escaped into
-  React, so the next statement — `setCurrentPilotSession` — never ran, and `/scan` reads that
-  scope on every consent toggle to pass `participantId` / `sessionId` into
-  `recordConsentEvent`. An unestablished scope means every consent event for that participant
-  lands unscoped, and participant scope is what the participant-grouped cross-validation needs.
-  So the scope is now written **first**, from its own small key, and the note's failure cannot
-  take it down; `setCurrentPilotSession` is guarded too, since it had the same defect.
-  `savePilotNote` returns `PilotNote | null` like `recordConsentEvent` and `saveCropSample`,
-  and caps at 500 like `lib/labels.ts`.
-
-  `/pilot` now reports a refused write and **keeps the typed fields**, which is the same test
-  cycle 25 applied to `recordCareIntent` and lands on the opposite answer: there, nothing on
-  screen claimed the write had happened, so an error row would have reported a failure the user
-  did not experience. Here the form clears and the roster re-reads, so a dropped note looks
-  like a note that was never typed. Four source-line breaks, `lib/pilot.ts` restored
-  byte-identical (sha256 `5ee254d2f9dbfe0795fa7002a9e7b89ec4e3d6494ef924b91502ee3a3f27633c`):
-
-  ```
-  drop the note write's try/catch     2 failed | 5 passed   expected [Function] to not throw an error
-                                                            but 'QuotaExceededError: quota' was thrown
-  write the scope AFTER the note      1 failed | 6 passed   expected null to match object { participantId: 'P007' }
-  drop the cap                        1 failed | 6 passed   expected [ ...(501) ] to have a length of 500 but got 501
-  drop setCurrentPilotSession's       1 failed | 6 passed   QuotaExceededError: quota
-    try/catch
-  ```
-
-  **One break that did NOT bite, said plainly rather than dressed up.** Deleting the
-  `typeof window === "undefined"` guard from `savePilotNote` leaves all 7 cases green. Under
-  Node there is no `localStorage` binding at all, so the write throws a `ReferenceError` that
-  the same try/catch two lines down swallows, and the function returns null by the other route.
-  The SSR case is kept as a behavioural pin and the test file says so at the assertion; what
-  the guard actually buys — that the SSR path returns without attempting the write, the
-  convention the six sibling stores follow — is not observable from there.
-
-  **The `shareUrl` item was worked and deliberately not implemented, which is what the brief
-  asked for.** `docs/share-return-path-decision.md` lays out five options with what each costs
-  and recommends one, and the item stays open because the decision is the owner's. The reason
-  it is not a one-line change, stated from source rather than asserted: `moodShareUrl` needs
-  `{ oil, redness, pores }` as integers 0-2 and `/studio` does not have them — its state is a
-  headline string and four `{ label, value, calm }` rows filled from free-text inputs whose
-  purpose is that the user rewrites them. Option C (reverse-map the edited text through
-  `MOOD_LABELS`) is rejected on evidence rather than taste: the two shipped presets already
-  contain strings with no mood axis to map to, so the derivation yields nothing the moment
-  anyone types.
-
-  **Rotation, proved rather than asserted.** Across the cycle-23 move alone:
-  `docs/AUTOPILOT.md` **1669 -> 1621**, `docs/autopilot-changelog.md` **4966 -> 5204**; after
-  the two backlog items moved as well, **1632** and **5260**. (This paragraph and the
-  verification block below it were written after that measurement, so the committed file is
-  longer again — `wc -l` on the commit is the authority and the deltas above are the
-  rotation's, not the whole cycle's.) "Recent cycles" holds 26/25/24. Cycle 23 moved verbatim:
-  **17,054 bytes, 237 lines, sha256
-  `998fe4316e480280bfdd35cdab8d3197f9a23c6938af3e2763d95b1e7ed81b9d`** on both sides, `diff`
-  empty. Both `[x]` items moved to "Closed backlog items" under their original headings with
-  the original wording preserved as a blockquote. Normalising both files' non-blank lines
-  (strip leading whitespace and `>`, strip trailing whitespace, `sort -u`) and running
-  `comm -23 before after` leaves **nothing at all** — **5628** unique lines before, **5847**
-  after.
-
-  **One thing the rotation turned up that a reader should know.** The local `main` and
-  `origin/main` refs in this checkout are **stale at `a243b69` (cycle 21)**, four commits
-  behind the `ab23796` the brief names and the commit this branch was actually cut from. The
-  first byte-identity check was run against `main` and returned an empty file rather than an
-  error, which looks exactly like a failed extraction; it was re-run against `ab23796`. Any
-  cycle diffing "against main" in this container is diffing against cycle 21.
-
-  **Verification, on the finished tree.** `npm run smoke` green (`Smoke test passed.`),
-  vitest **615 passed in 91 files** (608 plus the 7 in the new pilot file), mobile E2E
-  **62 passed** (the 52 measured on `ab23796` at the top of this cycle, plus
-  the 10 new `/studio` locale x width cases), `python3 ml/selftest.py` **Ran 130 tests ... OK** (121 plus the 9 new
-  `FeatureGenerations` cases), `npm run lint` **0 errors, 2 warnings** — the same two — and
-  `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged.
-
-  `lib/skin.ts` is byte-identical to `ab23796`, and so are
-  `public/models/visible-attributes/manifest.json` (`status`, `promotionGate` and
-  `minQwkGainOverHeuristic` included), `ml/external_datasets.json`, `lib/consent.ts` and
-  `next.config.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` was not set, no consent kind was invented and
-  neither stream was merged, no dataset licence tier moved, and no face-image path changed.
-
-  **Supervisor review.** The share decision is the part worth reading, and this review's
-  own pre-analysis of it was worse than the branch's.
-
-  *A reviewer error, and it is the substantive kind.* Before the branch arrived this
-  review worked the same item and recommended **A** — mood link when the card came from a
-  scan — on the argument that it "never claims a reading the user did not make" and that
-  it reuses a decision `/scan` already shipped. **That argument is wrong**, and
-  `docs/share-return-path-decision.md` §3A says why: `/studio` is the editing surface, its
-  `reads` come from free-text `<input>`s whose whole purpose is rewriting
-  (`app/studio/page.tsx:140-141`), so a user can edit "유분 적음" to anything while the
-  link still encodes the scan's level. It does not claim a reading they never took; it
-  claims one they **edited away from**, in front of a stranger. Two more things this
-  review missed and the branch did not: the card has FOUR rows against the mood link's
-  THREE, so 전반 has no level at all, and a preset-prefilled session has no levels in any
-  form. **Option E did not occur to this review** and is better than A — send
-  `moodShareUrl(levels)` only while every value still matches its prefill, bare origin
-  otherwise — because it takes B's floor and A's ceiling and makes the contradiction
-  unrepresentable rather than merely unlikely. The branch's recommendation stands; this
-  review's is withdrawn.
-
-  What this review did establish and the branch confirms independently: the levels ARE
-  in hand at prefill (`lib/skin.ts:13`, `Bucket` carries `level: SkinLevel`) and are
-  simply dropped by the mapping, and `fromScan` already records preset-vs-real. Those
-  narrow the question; they do not decide it.
-
-  *Right call on scope.* `shareUrl` stayed OPEN — `grep -c` finds it in
-  `docs/AUTOPILOT.md` and NOT in the changelog — so the decision was written up without
-  the item being closed on the owner's behalf. `app/studio/page.tsx` changed for an
-  unrelated locale-clipping defect, not for this.
-
-  *The ML claim holds and its guard is narrow.* On main, `ml/run_pipeline.py` wrote
-  `model_version` and `input_schema_version` into the CSV (lines 338-339, declared at
-  277-278) but the `decoded` projection that `subgroups.coverage()` actually consumes did
-  not carry them — so a pooling check would have had nothing to read. Removing those two
-  projection lines again fails exactly one test, named for the defect:
-  `FAIL: test_the_pipeline_projection_carries_the_fields_coverage_reads`, 1 of 130. One
-  narrow break, one identifying failure.
-
-  *The pilot fix bites on both halves.* Restoring the bare uncapped
-  `localStorage.setItem(KEY, ...)` fails 3 of 7 with both symptoms:
-  `expected [Function] to not throw an error but 'QuotaExceededError: quota' was thrown`
-  and `expected [ …(501) ] to have a length of 500 but got 501`. The write-order argument
-  is correct and load-bearing: the scope is written before the note because `/scan` reads
-  `getCurrentPilotSession()` on every consent toggle, so a lost scope makes every
-  subsequent consent event unscoped — which is what participant-grouped cross-validation
-  needs.
-
-  *Rotation, against a pre-review snapshot of main.* 1669 → 1647 and 4966 → 5260, and
-  `comm -23` finds **18 lines missing**, all 18 from the two backlog items this cycle
-  closed (`savePilotNote`, and the feature-generation pooling rule), both present in the
-  changelog. "Recent cycles" holds 26/25/24.

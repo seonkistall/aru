@@ -163,13 +163,21 @@ export default function CarePage() {
                   <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>{t(pick.reason)}</p>
                 </div>
               </div>
-              <div id={merchantPanelId} style={{ display: "grid", gap: 7, marginTop: 12 }}>
-                {visibleLinks.map((link) => (
-                  <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
-                    <span>{t(link.label)}</span>
-                    <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
-                  </button>
-                ))}
+              {/* The toggle is a SIBLING of the panel, not a child of it. It used to sit
+                  inside the element its own aria-controls names, so the disclosure
+                  claimed to control a region containing itself — and a screen reader
+                  following that relationship landed back on the button it came from.
+                  Two nested grids with the same gap keep the rendered geometry
+                  identical to the single grid this replaced. */}
+              <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
+                <div id={merchantPanelId} style={{ display: "grid", gap: 7 }}>
+                  {visibleLinks.map((link) => (
+                    <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
+                      <span>{t(link.label)}</span>
+                      <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
+                    </button>
+                  ))}
+                </div>
                 {links.length > 1 && (
                   <button
                     type="button"

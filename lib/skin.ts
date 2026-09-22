@@ -925,6 +925,22 @@ export function relativeSpread(values: number[]): number {
  * the pixel area moves 50.8x while `areaPx / faceW^2` moves 1.9%, from 2.0403 to
  * 2.0012 — so the face-relative area is the invariant one and this is the
  * denominator a cross-device index has to use.
+ *
+ * `tiedPeaks` is the plateau census, and it changes nothing about `count`. A counted
+ * cell is reported here when some neighbour in its suppression window carries the
+ * bit-identical residual — so the tie-break's `j < i` clause, and not the image,
+ * decided that this cell was the one to survive. Cycle 23 measured that census from
+ * outside, on a replica built from the a* grid, and that replica cannot see anything
+ * the detector does downstream of a*: quantising `residual[i]` inside this function
+ * manufactured plateaus that the outside census could not detect
+ * (docs/blemish-perturbation-tolerance.md §7.4, the sixth break). Counting it here,
+ * off the residual the detector actually classifies, is what closes that gap.
+ *
+ * It is REPORTED and not acted on, deliberately. scipy's `find_peaks` takes the same
+ * shape — `_local_maxima_1d` returns each plateau's edges, `plateau_sizes` is a
+ * property the caller may read without filtering on it — and what `blemishCount`
+ * should do about a plateau-dominated frame (report it, refuse it, or carry a
+ * confidence) is an open decision, not this function's to make. §7.6 of the same doc.
  */
 export function detectBlemishes(
   data: Uint8ClampedArray,
@@ -932,7 +948,7 @@ export function detectBlemishes(
   h: number,
   landmarks: LM[],
   gains: { r: number; g: number; b: number }
-): { count: number; areaFace: number } {
+): { count: number; areaFace: number; tiedPeaks: number } {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -946,7 +962,7 @@ export function detectBlemishes(
   }
   const faceW = maxX - minX;
   const faceH = maxY - minY;
-  if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaFace: 0 };
+  if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaFace: 0, tiedPeaks: 0 };
 
   // Fractional on purpose. Rounding it to whole pixels moved the effective grid
   // between 72 and 108 cells across the face over a 7.2x resolution sweep, which
@@ -958,7 +974,7 @@ export function detectBlemishes(
   const y0 = Math.max(0, Math.floor(minY));
   const gw = Math.floor((Math.min(w - 1, Math.ceil(maxX)) - x0) / stride) + 1;
   const gh = Math.floor((Math.min(h - 1, Math.ceil(maxY)) - y0) / stride) + 1;
-  if (gw < 2 * BLEMISH.backgroundRadius || gh < 2 * BLEMISH.backgroundRadius) return { count: 0, areaFace: 0 };
+  if (gw < 2 * BLEMISH.backgroundRadius || gh < 2 * BLEMISH.backgroundRadius) return { count: 0, areaFace: 0, tiedPeaks: 0 };
 
   const excludeR = BLEMISH.excludeFraction * faceW;
   const excluded: Array<{ x: number; y: number }> = [];
@@ -1077,6 +1093,7 @@ export function detectBlemishes(
 
   let count = 0;
   let validCells = 0;
+  let tiedPeaks = 0;
   for (let gy = 0; gy < gh; gy += 1) {
     for (let gx = 0; gx < gw; gx += 1) {
       const i = gy * gw + gx;
@@ -1084,12 +1101,17 @@ export function detectBlemishes(
       validCells += 1;
       if (residual[i] < BLEMISH.minResidual) continue;
       let isPeak = true;
+      // Whether this cell sits on a plateau: some neighbour in the suppression
+      // window carries the bit-identical residual, so `j < i` and not the image
+      // decided which of them survived. Counted, never acted on — see tiedPeaks.
+      let onPlateau = false;
       for (let dy = -BLEMISH.suppressionRadius; dy <= BLEMISH.suppressionRadius && isPeak; dy += 1) {
         for (let dx = -BLEMISH.suppressionRadius; dx <= BLEMISH.suppressionRadius; dx += 1) {
           const nx = gx + dx;
           const ny = gy + dy;
           if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || (dx === 0 && dy === 0)) continue;
           const j = ny * gw + nx;
+          if (residual[j] === residual[i]) onPlateau = true;
           // Ties go to the cell scanned first, so a plateau counts once.
           if (residual[j] > residual[i] || (residual[j] === residual[i] && j < i)) {
             isPeak = false;
@@ -1097,11 +1119,14 @@ export function detectBlemishes(
           }
         }
       }
-      if (isPeak) count += 1;
+      if (isPeak) {
+        count += 1;
+        if (onPlateau) tiedPeaks += 1;
+      }
     }
   }
 
-  return { count, areaFace: (validCells * stride * stride) / (faceW * faceW) };
+  return { count, areaFace: (validCells * stride * stride) / (faceW * faceW), tiedPeaks };
 }
 
 export function extractRawFeatures(imageData: ImageData, landmarks: LM[]): SkinRawFeatures | null {
