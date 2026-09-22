@@ -9,7 +9,6 @@ export type CommerceLink = {
   label: string;
   href: string;
   note: string;
-  noteEn: string;
   kind: CommerceKind;
   region: "KR" | "GLOBAL";
   priority: number;
@@ -53,7 +52,6 @@ export function buildCommerceLinks(product: CommerceProduct): CommerceLink[] {
       label: "올리브영",
       href: oliveYoungSearchUrl(query),
       note: "오늘 매장이나 온라인 재고를 바로 볼 수 있어요",
-      noteEn: "Korea's biggest beauty retailer — check stock online.",
       kind: "marketplace",
       region: "KR",
       priority: 1,
@@ -64,7 +62,6 @@ export function buildCommerceLinks(product: CommerceProduct): CommerceLink[] {
       label: "네이버 쇼핑",
       href: naverShoppingSearchUrl(query),
       note: "가격 비교와 공식몰을 한눈에 봐요",
-      noteEn: "Compare prices and official brand stores.",
       kind: "marketplace",
       region: "KR",
       priority: 2,
@@ -75,7 +72,6 @@ export function buildCommerceLinks(product: CommerceProduct): CommerceLink[] {
       label: "쿠팡",
       href: coupangSearchUrl(query),
       note: "빠른 배송으로 받고 싶을 때 좋아요",
-      noteEn: "Fastest delivery option in Korea.",
       kind: "marketplace",
       region: "KR",
       priority: 3,
@@ -86,7 +82,6 @@ export function buildCommerceLinks(product: CommerceProduct): CommerceLink[] {
       label: "Global search",
       href: globalSearchUrl(query),
       note: "해외에서 구매 가능한지 확인해요",
-      noteEn: "Check overseas availability.",
       kind: "global",
       region: "GLOBAL",
       priority: 4,

@@ -103,10 +103,26 @@ function sanitizeProps(props?: FunnelProps): FunnelProps | undefined {
   return Object.keys(clean).length ? clean : undefined;
 }
 
+/**
+ * The stored events, or `[]` for anything that is not a list of them.
+ *
+ * `Array.isArray` rather than trusting the parse, because the two corruption modes used
+ * to be handled differently for no reason. A truncated value throws in `JSON.parse`,
+ * lands in the catch, returns `[]`, and the next `recordFunnelEvent` overwrites the key —
+ * the store repairs itself. A value that PARSES to the wrong shape (`null`, a number, an
+ * object, a string) took no such path: it was returned as-is, `recordFunnelEvent` called
+ * `.push` on it, and the throw landed in the outer catch that exists so analytics can
+ * never break the user flow. Nothing rewrote the key, so every later event on that device
+ * hit the same throw — one bad value switched the funnel off permanently and silently,
+ * for the whole life of the install, on the one measurement the product has of where
+ * users leave. `/api/sync` already refuses a non-array `funnelEvents`; this is the
+ * device-side half. Pinned in tests/funnel-store-shape.test.ts.
+ */
 export function getFunnelEvents(): FunnelEvent[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(parsed) ? (parsed as FunnelEvent[]) : [];
   } catch {
     return [];
   }
