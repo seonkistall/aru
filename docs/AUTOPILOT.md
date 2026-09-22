@@ -929,6 +929,54 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   items" under "### Next" with their original text preserved as a blockquote. Proof in the PR body:
   `wc -l` before/after both files and a `comm -23` preservation check.
 
+  **Supervisor review.** Kept deliberately cheap — the account is at
+  `seven_day / allowed_warning`, the worker was told to be economical, and so was this.
+
+  *The fix is the right shape, and this review's framing of the defect was the wrong way
+  round.* Before the branch arrived this review read `ctaPrimary` (`padding: "11px 18px"`,
+  no `minHeight`, no `line-height`), concluded the height is 22px plus whatever line box
+  the fallback font gives, and measured five locales under a plain `system-ui` stack:
+  38–40px, varying by locale, all flattened to exactly 44.0px by `min-height` + inline-flex.
+  That confirmed the mechanism and the remedy. It also framed **`ja` as the outlier**, and
+  the branch shows it is the opposite: all five compute `line-height: 21px`, `21 + 22 = 43`
+  is what the stylesheet asks for, and `ja` is the only locale that gets it. The other four
+  are 45px because their glyphs fall back to a font whose baseline sits 2px off the strut's,
+  and a line box is the UNION of the strut and the inline boxes on that baseline rather than
+  the larger of the two. The four "correct" locales were the accident.
+
+  *What this review could and could not confirm of that.* Forcing the strut explicitly
+  (`line-height: 21px`, one declared family plus fallbacks) gives **43.0px in all five**
+  here, with `line-height` and `font-size` computing identically across them — so the
+  arithmetic and the direction hold. The 2px split does NOT reproduce in this container,
+  because the fonts that cause it are not installed and every locale resolves to the same
+  fallback. Stated as a limit rather than a contradiction: the branch measured the app,
+  this review measured a reconstruction without the app's fonts.
+
+  The fix itself takes the `minHeight` + flex idiom and names the two places that already
+  use it (`pill()`, `app/components/flow-steps.tsx`) rather than nudging a per-locale
+  number, which is what the backlog item asked for and what this review was watching for.
+
+  *The ML guard bites narrowly.* Making `sample_generation` read only the flat spelling —
+  so a row the app wrote, nesting the fields under `meta`, reads unstamped — fails 4 of 137
+  with the names doing the identifying:
+  `ERROR: test_calibrate_reports_two_generations_in_one_threshold_fit`,
+  `FAIL: test_calibrate_finds_the_versions_the_app_export_nests_under_meta`,
+  `FAIL: test_both_readers_say_it_in_the_same_words`.
+
+  *Scope held where it mattered.* `shareUrl` is still open — `grep -c` finds it in
+  `docs/AUTOPILOT.md` and not in the changelog — so three cycles running have now declined
+  to guess a decision that is the owner's.
+
+  *Rotation.* 1699 → 1485 and 5260 → 5588; `comm -23` finds **21 lines missing**, 20 from
+  the two backlog items this cycle closed and the 21st the `Last updated:` date.
+  "Recent cycles" holds 27/26/25.
+
+  *One admission that belongs in this file rather than a scratchpad.* The new backlog item
+  about four dead i18n keys carried by `en.ts` and `ar.ts` and by neither `ja.ts` nor
+  `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
+  push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
+  stays out of this file is one a later cycle pays for twice.
+
 - 2026-09-21 (cycle 26) — Branch `autopilot/2026-09-21-1839`. **The "do not pool feature
   generations" rule stopped being documentation: a run that mixes two generations of the
   feature extractor now says so, and the check would never have fired even once it existed
