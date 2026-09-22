@@ -225,6 +225,53 @@ def feature_generation(row: dict) -> str:
     return "/".join(parts) if any(parts) else UNSTAMPED
 
 
+def generation_warnings(generations: dict[str, int], total: int) -> list[str]:
+    """The two things a caller should be told about a run's feature generations.
+
+    Lifted out of `coverage_warnings` so threshold fitting can say the same two things.
+    `ml/calibrate.py` reads its JSONL directly and never builds a `Coverage`, so before
+    this it had no version handling at all: a pre-09-16 and a post-09-16 reading landed
+    in one threshold fit with nothing said. One definition means the wording, the
+    ordering and the warn-not-block decision cannot drift between the two readers, and
+    a break here fails both.
+
+    This is a WARNING and not a blocker, and that follows a precedent rather than a
+    preference: scikit-learn draws the line between a provenance mismatch and a
+    structural one. An estimator unpickled under a different sklearn version gets
+    warnings.warn(InconsistentVersionWarning(...)) and the work continues — "This might
+    lead to breaking code or invalid results. Use at your own risk." — because nothing
+    in the artifact says how much the two versions differ. A feature-name mismatch at
+    predict time, which is checkably wrong, raises ValueError instead. Pooling two
+    extractor generations is the first kind: every index is present and well-formed, and
+    how far apart the generations are is not recorded anywhere. So it is named, counted,
+    and left to the reader.
+
+    Read from sklearn's own source at v1.5.2 and v1.7.1; see
+    docs/feature-generation-pooling.md.
+    """
+    out: list[str] = []
+    if total <= 0:
+        return out
+    stamped = {name: n for name, n in generations.items() if name != UNSTAMPED}
+    if len(stamped) > 1:
+        listed = ", ".join(f"{name} ({n})" for name, n in sorted(stamped.items(), key=lambda kv: (-kv[1], kv[0]))[:4])
+        out.append(
+            f"{len(stamped)} feature generations pooled in one run: {listed}"
+            f"{' ...' if len(stamped) > 4 else ''}. Index values computed by different "
+            "extractor generations are not comparable; splitting or filtering is a decision, "
+            "not a default."
+        )
+    unstamped = generations.get(UNSTAMPED, 0)
+    if unstamped and stamped:
+        pct = 100 * unstamped / total
+        out.append(
+            f"{unstamped} rows ({pct:.0f}%) carry no feature generation, beside {len(stamped)} "
+            "stamped generation(s); they cannot be placed in one, so pooling them is the same "
+            "comparison made blind."
+        )
+    return out
+
+
 def subgroup_key(row: dict) -> str:
     """Stable "<tone>/<age>" cell id used by every report and split."""
     return f"{resolve_tone_band(row)}/{resolve_age_band(row)}"
@@ -345,34 +392,7 @@ def coverage_warnings(cov: Coverage, min_cell: int = 20, min_groups_per_cell: in
     missing_age = [band for band in AGE_BANDS if not cov.age.get(band)]
     if missing_age:
         out.append(f"Age bands with zero samples: {', '.join(missing_age)}.")
-    # Feature generations. This is a WARNING and not a blocker, and that follows a
-    # precedent rather than a preference: scikit-learn draws the line between a
-    # provenance mismatch and a structural one. An estimator unpickled under a different
-    # sklearn version gets warnings.warn(InconsistentVersionWarning(...)) and the work
-    # continues — "This might lead to breaking code or invalid results. Use at your own
-    # risk." — because nothing in the artifact says how much the two versions differ.
-    # A feature-name mismatch at predict time, which is checkably wrong, raises
-    # ValueError instead. Pooling two extractor generations is the first kind: every
-    # index is present and well-formed, and how far apart the generations are is not
-    # recorded anywhere. So it is named, counted, and left to the reader.
-    # Read from sklearn's own source at v1.5.2 and v1.7.1; see docs/feature-generation-pooling.md.
-    stamped = {name: n for name, n in cov.generations.items() if name != UNSTAMPED}
-    if len(stamped) > 1:
-        listed = ", ".join(f"{name} ({n})" for name, n in sorted(stamped.items(), key=lambda kv: (-kv[1], kv[0]))[:4])
-        out.append(
-            f"{len(stamped)} feature generations pooled in one run: {listed}"
-            f"{' ...' if len(stamped) > 4 else ''}. Index values computed by different "
-            "extractor generations are not comparable; splitting or filtering is a decision, "
-            "not a default."
-        )
-    unstamped = cov.generations.get(UNSTAMPED, 0)
-    if unstamped and stamped:
-        pct = 100 * unstamped / cov.total
-        out.append(
-            f"{unstamped} rows ({pct:.0f}%) carry no feature generation, beside {len(stamped)} "
-            "stamped generation(s); they cannot be placed in one, so pooling them is the same "
-            "comparison made blind."
-        )
+    out.extend(generation_warnings(cov.generations, cov.total))
     thin = cov.thin_cells(min_cell)
     if thin:
         out.append(f"{len(thin)} cells below {min_cell} samples: {', '.join(thin[:6])}{' ...' if len(thin) > 6 else ''}.")

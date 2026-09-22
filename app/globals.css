@@ -32,6 +32,8 @@
   --peach: #f5f5f5;
   --on-plum: #ffffff;
   --success: #2f7d4f;
+  /* WCAG 2.5.5 Target Size (Enhanced), level AAA. Not the AA 24px floor (2.5.8) and
+     not Material's 48dp — see docs/tap-target-provenance.md for the source text. */
   --tap-min: 44px;
 }
 
