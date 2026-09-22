@@ -23,7 +23,12 @@ export function getMlReadiness({
       title: "Pilot coverage gate",
       detail: `Only ${participants} participant(s) are linked. Keep collecting before trusting ML metrics.`,
       nextAction: "Use /pilot to link P001-P030 sessions before relying on crop counts or validation scores.",
-      minCropsForNextBand: 30,
+      // null, not 30. Crops are not what moves this band — participants are — and
+      // /ops renders `max(0, minCropsForNextBand - crops)` as "Crops needed for next
+      // band". With 30 it printed 0 at any crop count of 30 or more while the band
+      // stayed pinned at calibrate, telling the operator they had finished collecting
+      // when the gate they were actually behind was the participant link.
+      minCropsForNextBand: null,
     };
   }
 
