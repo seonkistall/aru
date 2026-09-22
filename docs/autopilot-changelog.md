@@ -5586,3 +5586,301 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   the three backlog items this cycle closed — the two-model gate item, the `/scan`
   pixel-coverage item, and the `minQwkGainOverHeuristic` noise-band item — each present
   in the changelog. "Recent cycles" holds 24/23/22.
+
+- 2026-09-21 (cycle 25) — Branch `autopilot/2026-09-21-1239`. **The decision-margin
+  guard's blind spot is closed with the second hook cycle 23 asked for, and the break it
+  recorded as "did not bite" now bites. The noise bound every margin is reported as a
+  multiple of turns out to be a real upper bound with 226-816x of headroom, and ARU's
+  summed-area table is 4.4-7.1x less accurate than the reference construction in a place
+  where that cannot matter. And `/report`'s commerce row — the one carrying
+  `placement=report_summary`, the single link the revenue arithmetic rests on — has been
+  rendering both its CTAs as 24px slivers with the label cut mid-word, in every locale, at
+  every width, desktop included.**
+
+  **Baselines.** `npm ci` first (`node_modules` was absent). The arriving `npm run smoke`
+  came back green with the chromium override (`Smoke test passed.`, `Ran 121 tests ... OK`),
+  but it is **not quoted as a clean-tree baseline**: it was started before any edit and
+  finished after the first test-file edit had landed, so its vitest leg may have read a
+  modified tree. The supervisor's own main-branch measurements stand as the baseline and
+  this cycle compared against those. `npx tsc --noEmit | grep -c "error TS"` **13**,
+  unchanged, measured here.
+
+  **Research: what a reference summed-area table does differently, and why it was asked.**
+  The question came out of the ML work rather than being picked to fill a slot: every margin
+  in `tests/blemish-perturbation-tolerance.test.ts` is reported as a multiple of
+  `noiseScale = gw*gh * EPSILON * max|a*|`, and that bound was asserted in a comment and
+  verified by nobody. scikit-image's `integral_image`, read from its own source on
+  `raw.githubusercontent.com` — another project's implementation, not a paper and not a
+  standard — says two things that bear on ARU:
+
+  ```
+  skimage/transform/integral.py @ v0.24.0  http=200 bytes=5096
+  skimage/transform/integral.py @ v0.25.2  http=200 bytes=5096  (byte-identical to v0.24.0)
+    sha256 ed187d23b0b47dbb8457b67d451f9aa19e39237bf322c81a92fab5a1802927d6
+  ```
+
+  It promotes float inputs to at least float64 "for better accuracy and to avoid potential
+  overflow" — ARU's `sumTable` is already a `Float64Array`, so that precaution is taken. And
+  it builds the table as a **separable `cumsum` along each axis**, where `lib/skin.ts` uses
+  the one-pass inclusion-exclusion recurrence, which **subtracts a partial sum at every
+  cell**. A cumsum never does, so the two are not obviously equally accurate and ARU's is the
+  one with a mechanism to be worse. That made it a measurement rather than a reassurance.
+
+  **ML: the guard now reads the field the detector actually classifies.** `__perturbAStar`
+  is injected before the summed-area tables, so every residual this file reasoned about was
+  `residualsOf`'s reconstruction from the captured a\* grid. Anything `lib/skin.ts` did
+  downstream of a\* moved what the detector classifies without moving a single number in the
+  margin tables — cycle 23 measured that and wrote it down as §7.4's sixth break, the one
+  that did not bite. `__observeResidual` is a **second** hook, injected after the residual
+  loop and before the classification loop, against the anchor `let count = 0; let validCells
+  = 0;`. It is a second hook and not a widened first one because the two read different
+  arrays at different points, and a replica that had quietly stopped being the detector is
+  precisely the failure being guarded. Three things are asserted, in order: the two residual
+  fields agree **exactly at every valid cell**; classifying the detector's own residual
+  reproduces the count `detectBlemishes` returned; and the pinned margins hold when
+  re-measured on the detector's own field, which is an independent surface because editing
+  `residualsOf` to track a moved `lib/skin.ts` would satisfy the first and still fail here.
+
+  **Two source-line breaks, never of a test, and the second is the one that earns the
+  hook.** Break A is the exact break §7.4 recorded as passing — `residual[i] =
+  Math.round((astar[i] - background) * 1000) / 1000` — and it now fails, 3 of 11 in this
+  file, first assertion:
+
+  ```
+  noise 4 400x480: the detector's own residual differs from this file's replica at 11789 of
+  11789 valid cells (worst |d| = 5.000e-4). Every decision margin in this file is measured
+  on the replica, so a change downstream of a* moves what the detector classifies without
+  moving a single number above it: expected 11789 to be +0
+  ```
+
+  But break A was already visible to two other assertions in this same file and to two other
+  files, so on its own it does not show the hook adds coverage. Break B does: `residual[i] =
+  Math.max(-1e-9, astar[i] - background)` clamps only residuals far below the `minResidual:
+  1.6` floor, so no cell can change classification and every count pin in the tree stays
+  green. Across `blemish-perturbation-tolerance`, `blemish-tie-break`,
+  `blemish-density-scale`, `skin-index-contract` and `scan-cost-benchmark` — **45 tests, 2
+  failed, both in this file**, one of them the new case. `lib/skin.ts` was restored
+  byte-identical after each break: sha256
+  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08` before and after, and
+  `git diff lib/skin.ts` empty. It is untouched on this branch.
+
+  **And the bound the whole guard rests on is now measured rather than asserted.** Both
+  constructions were compared against an exact accumulation in a non-overlapping expansion,
+  rounded once. The reference was itself checked before it was used: it returns `1` for
+  `[1e16, 1, -1e16]` and `2` for `[1, 1e100, 1, -1e100]` where naive summation returns `0`
+  for both, it is order-independent over 10,000 values, and on those same values it agrees
+  with Python's correctly-rounded `math.fsum` to the last bit (`1790845758.191924` from both,
+  against `1790845758.191915` and `1790845758.1919322` for naive summation in the two
+  directions).
+
+  Three findings. **The bound holds, with room**: ARU's worst background error is
+  **4.230e-14 to 1.513e-13** a\* against a bound of **3.424e-11 to 3.820e-11**, so it uses
+  0.12%-0.44% of it — 226x to 816x of headroom — and `noiseScale` means what it says. That is
+  now an assertion, not a comment. **The cancellation argument is confirmed and does not
+  matter**: the cumsum construction is **4.4x to 7.1x more accurate** on all sixteen frames,
+  exactly as a construction with no subtraction in it should be, but ARU's error is
+  **6.9e8 to 1.8e11 times smaller** than the smallest suppression gap, so switching would buy
+  a factor of five on a quantity ten orders of magnitude below the decision it feeds. **No
+  change was proposed and none was made** — the number is recorded so the next cycle has it
+  instead of the argument. And the noiseless fixture is the worst case here too, at roughly
+  2x the noisy frames. `docs/blemish-perturbation-tolerance.md` §7.6-7.7.
+
+  **UI/UX: `/report`'s commerce row rendered both CTAs as 24px slivers, and it is the one
+  row the revenue arithmetic depends on.** `reportCommerceAction` is a `display: flex` row
+  with no `flexWrap`. It holds two `flex: 1` CTAs (so `flex-basis: 0`) and, since
+  2026-09-15, a third child: `<CommerceDisclosure style={{ width: "100%" }} />` at
+  `flex-basis: auto`. The disclosure alone claims the whole line, free space goes negative,
+  `flex-grow` never applies, and both anchors collapse to their horizontal padding. Measured
+  in Chromium at 360x800, not reasoned from the CSS:
+
+  ```
+  /api/out?...placement=report_product   288.0px   (three of these, inside the product cards — fine)
+  /api/out?...placement=report_summary    24.0px   sw=48 cw=24   "올리브영에서 제품 보기"
+  /care                                   24.0px   sw=30 cw=24   "제품과 상담 정보 보기"
+  /privacy                               320.0px
+  ```
+
+  So the `report_summary` out-click — the link `lib/commerce.ts` and the revenue table are
+  built around — has been a 24px tap target, 55% under `--tap-min: 44px`, with its label cut
+  mid-word, in all five locales. It is not a narrow-viewport problem: the disclosure's basis
+  claims the whole line at any width, so free space is negative everywhere. Measured before
+  and after the fix, same probe, ko:
+
+  ```
+  width   before (buy / care)        after (buy / care)
+   320    24.0 / 24.0   sw=48,30     109.2 / 134.8   no clipping
+   360    24.0 / 24.0   sw=48,30     126.6 / 157.4   no clipping
+   393    24.0 / 24.0   sw=48,30     141.0 / 176.0   no clipping
+   430    24.0 / 24.0   sw=48,30     157.0 / 197.0   no clipping
+   768    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
+  1280    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
+  ```
+
+  The fix is one property, `flexWrap: "wrap"`, which is what the disclosure's own
+  `marginTop: 4` always implied; at 360px all five locales read **126.6px** and **157.4px**
+  with no clipping.
+
+  **The trap in the guard, caught before it was committed.** The obvious selector,
+  `main a[href^="/api/out"]).first()`, **passes against the broken build**: the same step
+  carries three `report_product` links at 288px and `first()` picks one of those. The spec
+  binds to `placement=report_summary` inside the section that contains it, and asserts both
+  a width floor and `scrollWidth <= clientWidth` — a width check alone would pass a box wide
+  enough to tap that still cuts its label, and a clipping check alone would pass a 20px box
+  showing its whole label. This is cycle 24's `infoLinkBtn` regex lesson in a different
+  shape: the first version of the guard measured the wrong element and looked green.
+
+  **Bug fix: the `/studio` share button could never succeed, because the app's own CSP
+  refuses the fetch it makes.** `shareCardImage` rasterized the card to a
+  `data:image/png;base64,...` URL and then did `await (await fetch(dataUrl)).blob()` to build
+  the `File`. `next.config.ts` emits `connect-src 'self'`; that directive governs `fetch()`
+  and permits neither `data:` nor `blob:`. So the line threw `TypeError: Failed to fetch`
+  for every user on every browser — no flag, no platform condition — and the user got
+  "공유에 실패했어요. PNG 저장을 이용해 주세요." every time. Two consequences beyond the
+  message: the throw happens **before** the `navigator.canShare` branch, so the deliberate
+  download fallback at the end of the same function was unreachable too; and `onShare` never
+  fired, so `recordFunnelEvent("share_clicked", { surface: "studio" })` has **never** fired,
+  and any reading of the share funnel that includes `/studio` is wrong. That is
+  revenue-upstream items 2 and 3 at once.
+
+  Three E2E specs already visit `/studio` and none of them clicks the button, which is how a
+  total failure of the product's only image-share path went unseen. `tests/e2e/studio-share.spec.ts`
+  clicks it under the **real** header — the CSP is not stubbed, only `navigator.share`, because
+  a headless Chromium has no share sheet — and asserts the File actually reaches the sheet
+  (`name`, `type`, `size > 1000`), that no CSP refusal appears in the console, and that the
+  failure row is absent. Against the unfixed build it fails on the user-visible symptom:
+  `the share path reported failure to the user: expected 0, received 1`. The fix decodes the
+  data URL in process (`atob` → `Uint8Array` → `Blob`); the CSP was **not** widened, which
+  would be the wrong direction for a hardened header, and `createObjectURL` + `fetch` was
+  measured and rejected because `blob:` is refused by the same directive.
+
+  **Bug fix 2: `recordCareIntent`, and the UI half of the question answered "no".** The
+  backlog item cycle 24 left open. Checked before fixing, as it asked: the function has
+  exactly one caller, it is a bare `void`, and nothing on screen claims the intent was
+  stored — so unlike cycle 24's check-in card this was never a lie to a user, and the
+  consequence is a silently short care-intent log that nothing could detect. It now returns
+  `CareIntent | null` like both siblings. `/care` deliberately surfaces **nothing**:
+  `openCareLink` opens the merchant link whether or not the log write landed, so an error
+  row would report a failure the user did not experience.
+  `tests/care-intent-write-signal.test.ts` pins that decision as well as the signal — its
+  third case asserts the ORDER (`window.open` after the record, never gated on it), so a
+  reordering that leaves every statement present still fails.
+
+  **Two findings recorded rather than swept up**, both now backlog items: `shareUrl` is a
+  dead parameter, so even a working studio share sends a bare PNG with no way back to ARU
+  (revenue-upstream item 3, but what a studio card should link to is a product call); and
+  `lib/pilot.ts:savePilotNote` is the only store in the repo with no guard, no cap and no
+  try/catch, which is research-mode only since `/pilot` 404s in production.
+
+
+  **Rotation, proved rather than asserted.** Measured across the rotation step alone:
+  `docs/AUTOPILOT.md` **1809 -> 1541**, `docs/autopilot-changelog.md` **4694 -> 4966**.
+  (This paragraph and the verification block below it were written after that measurement,
+  so the committed file is longer than 1541 — `wc -l` on the commit is the authority and
+  the delta above is the rotation's, not the whole cycle's.)
+  "Recent cycles" holds 25/24/23; cycle 22 moved verbatim to the bottom of the changelog
+  (14,317 bytes, text unchanged), and both `[x]` items moved to "Closed backlog items"
+  under their original "### Now" heading with the original wording preserved as a
+  blockquote. Normalising both files' non-blank lines (strip leading whitespace and `>`,
+  strip trailing whitespace, `sort -u`) and running `comm -23 before after` leaves
+  **nothing at all** — **5527** unique lines before and **5527** after.
+
+  One thing the rotation script got wrong and it was repaired rather than left: its first
+  pass swept every top-level `[x]` in the file, which took the already-actioned
+  `confidenceLabel` entry out of "Supervisor findings not yet actioned" — a section that is
+  not the backlog and an item this cycle did not tick. It was put back verbatim and the
+  changelog copy removed; `grep -c` confirms one copy in `docs/AUTOPILOT.md` and zero in the
+  changelog.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest ****608 passed in 90 files** (603 plus 2 in the ML file and 3 in the new care-intent file)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged, and it was **15** at first:
+  the new `tests/care-intent-write-signal.test.ts` fixture inferred `merchant: string`
+  against `MerchantId`, caught here and fixed by typing the fixture
+  `Omit<CareIntent, "id" | "ts">` rather than by casting, so a field that drifts out of
+  `CareIntent` is still a compile error. `npm run lint` **0 errors, 2 warnings** — the same
+  two, `'_reads'` and `'_result'` at `lib/care.ts:72`. `python3 ml/selftest.py` **Ran 121
+  tests ... OK**, unchanged — nothing in `ml/` was touched. Mobile E2E ****52 passed (4.8m)** — 50 on main, plus one new spec on each of the two fixes**.
+
+  `lib/skin.ts` is byte-identical to main (sha256
+  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08`), and so are
+  `public/models/visible-attributes/manifest.json` (`status` and `promotionGate` included),
+  `ml/external_datasets.json`, `lib/consent.ts` and `next.config.ts` — the CSP was diagnosed
+  and **not widened**, which is the point of that fix. `NEXT_PUBLIC_FUNNEL_FLUSH` was not
+  set, no consent kind was invented and neither stream was merged, no dataset licence tier
+  moved, and no face image path changed.
+
+  **One run that is not quoted as evidence.** A full `npx vitest run` mid-cycle reported
+  `1 failed | 604 passed`; the immediate re-run of the same tree reported `605 passed in 89
+  files`, and the failure's identity was lost because that command was piped through
+  `tail -8`. Two investigation subagents were running commands against this working tree at
+  the time, which is the most likely cause and is not established. It is recorded because
+  it happened, not diagnosed, and the gate above is the run that counts.
+
+  **Supervisor review.** The CSP finding is the most consequential defect any cycle has
+  turned up, so it was reproduced here rather than read.
+
+  *The share surface really was dead, in a real browser.* Served the app's own header
+  shape (`default-src 'self'; img-src 'self' data: blob:; connect-src 'self'`,
+  `next.config.ts:18`) from a local server and ran both fetches in Chromium:
+
+  ```
+  fetch(data:...)  -> THREW TypeError: Failed to fetch
+  fetch(blob:...)  -> THREW TypeError: Failed to fetch
+  ```
+
+  Both halves of the claim hold, including the exact error text and the part a reader
+  would most want to check — that `createObjectURL` + `fetch` is no escape, because
+  `blob:` is refused by the same directive. `img-src` allowing `data: blob:` is a
+  different directive and does not help a `fetch()`. So `shareCardImage` threw on its
+  second line for every user on every browser, before `navigator.canShare` was reached,
+  which also made the download fallback unreachable and meant `share_clicked` never
+  fired for this surface. The share loop is the only organic acquisition path the
+  product has, and it had never worked.
+
+  *The replacement decoder is byte-exact.* Transcribed `dataUrlToBlob` and ran it
+  against a known PNG: 70 bytes in, 70 bytes out, `got.equals(want)` **true**, leading
+  bytes `89504e470d0a1a0a` — a valid PNG signature. The no-parameter case its comment
+  calls out behaves as claimed: `data:image/png,hello%20world` decodes with type
+  `image/png` rather than a truncated type.
+
+  *The 24px CTA reproduces, and the after-numbers match to three decimals.* Rebuilt the
+  commerce row's flex structure independently — two `flex: 1` anchors and a `width: 100%`
+  disclosure — and measured at 360x800 in Chromium:
+
+  ```
+  flexWrap: nowrap   buy=38x168      care=38x168
+  flexWrap: wrap     buy=126.61x68   care=157.39x68
+  ```
+
+  The entry's after-fix figures at 360 are **126.6 / 157.4**. The before-figure differs —
+  **38px here against the entry's 24px** — and the reason is that this reconstruction is
+  not the component: its label string is shorter than the shipped one, and the entry's
+  own `sw=48 cw=24` shows the real anchor clipping where this one merely narrowed. The
+  mechanism, the direction and the magnitude are confirmed; the exact before-pixel is the
+  entry's measurement of the real page and not this one's.
+
+  *The `recordCareIntent` item was the one to get wrong, and the branch did not.* This
+  cycle's brief flagged it: the fix is right but the justification must not claim a
+  user-visible lie, because there is none. Checked before the branch arrived —
+  `grep -nE "저장|saved|기록했" app/care/page.tsx` returns two hits, a code comment and
+  advice copy telling the USER to save their own product names, against
+  `app/checkin/page.tsx:146`'s `role="status"` "남겨주신 피드백을 저장했어요." over an
+  empty store. The branch says exactly this in the code comment, unprompted, and explains
+  why the failure is deliberately not surfaced: `openCareLink` cannot await before
+  `window.open` without popup blockers killing the link.
+
+  *The blind-spot guard closes what cycle 23 left open.* Quantising `residual[i]` to
+  three decimals at its source line — the precise change the backlog item said the old
+  margin guard could not see — now fails `the residual the detector actually classifies >
+  is the field the margins are measured on, cell for cell, at every frame and noise
+  level`, among 3 of 12.
+
+  *One thing verified here that a previous cycle asserted.* Cycle 24's "the noise band
+  does not change the gate" was merged on a reading of the code; it is now proved by
+  execution. With `qwk_noise.clears_band` forced to return `False` for every axis — the
+  worst possible verdict — on a model that beats the heuristic: `beats: True`,
+  `clearsNoiseBand: False`, **`BLOCKERS: []`**, one warning. `ml/subgroups.py` appends to
+  `blockers` only under `if not entry["beats"]`. The claim holds.
+
+  *Rotation, against a pre-review snapshot of main.* 1588 → 1599 and 4694 → 4966, and
+  `comm -23` finds **19 lines missing**, all 19 from the two backlog items this cycle
+  closed — both present in the changelog. "Recent cycles" holds 25/24/23.

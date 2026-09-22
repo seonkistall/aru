@@ -559,3 +559,146 @@ than asserted against.
 The count side of `windowMean` is deliberately not measured: `countTable` accumulates 0/1
 into partial sums bounded by `gw*gh` (at most 13,232 here), every one an exactly
 representable integer in float64, so the divisor carries no error.
+
+## 7.6 What a mature peak detector does with a plateau
+
+Added 2026-09-22 (cycle 28). §7.5 read `scikit-image`'s `peak_local_max` and found that
+ARU's tie convention is the conventional one, and that the reference's degenerate-input
+branch fires only on an entirely flat field so it is not transplantable. That left the
+backlog item's real question open: **report it, refuse it, or carry a confidence?**
+
+`scipy.signal.find_peaks` answers it, and answers it differently from `peak_local_max`.
+Read from scipy's own source on `raw.githubusercontent.com` — another project's
+implementation, not a paper and not a standard:
+
+```
+scipy/signal/_peak_finding_utils.pyx @ v1.14.1  http=200 bytes=12963
+  sha256 4d15c17a474a6a0ab5ffc54544afafc61707809628ea9eca45691df6daa63e48
+scipy/signal/_peak_finding.py        @ v1.14.1  http=200 bytes=48892
+  sha256 778cb7fff5527bd84f22e78b67ff7144a07d127a27bd4392ea0d71a7f5aec406
+```
+
+**A plateau is one maximum, and its extent is an output.** `_local_maxima_1d`'s own
+docstring defines a maximum as "one or more samples of equal value that are surrounded on
+both sides by at least one smaller sample", and it returns three arrays rather than one —
+`midpoints`, `left_edges`, `right_edges`. The loop walks forward over equal samples
+(`while i_ahead < i_max and x[i_ahead] == x[i]`), records the run's two edges, and takes
+`(left + right) // 2` as the representative index. Index order picks the *representative*
+of a plateau that is already established as a maximum; it never decides *whether* there
+is one.
+
+**Reporting is separable from filtering, explicitly.** In `find_peaks`, `plateau_size` is
+the first condition evaluated, and when it is given the return dict carries
+`plateau_sizes`, `left_edges` and `right_edges` alongside the peaks. The docstring names
+the report-without-filter case in as many words:
+
+> To calculate and return properties without excluding peaks, provide the open interval
+> ``(None, None)`` as a value to the appropriate argument
+
+So the reference's answer to the open question is **report**, as a property on the same
+return value as the count, with the decision about what to exclude left to the caller.
+Nothing in scipy refuses a plateau-dominated input and nothing in it carries a confidence.
+
+Two limits on how far that reads across, stated rather than glossed. `_local_maxima_1d`
+is one-dimensional, so its "surrounded on both sides" has no direct analogue in ARU's 5x5
+suppression window, and `find_peaks`'s plateau is a run of exactly equal samples while
+ARU's degenerate frame is *plateau-dominated* rather than flat. What transfers is the
+shape of the answer, not the algorithm.
+
+## 7.7 The census, moved inside the detector
+
+`detectBlemishes` now returns `tiedPeaks` next to `count` and `areaFace`: the number of
+counted cells that carry a neighbour with the bit-identical residual somewhere in their
+suppression window, so that `j < i` and not the image decided which of them survived.
+`count` is unchanged — the census is one float comparison per neighbour the loop already
+visits, and nothing reads it yet.
+
+**Why inside.** §7.4's sixth break is the argument. Quantising `residual[i]` to three
+decimals inside `lib/skin.ts` manufactures plateaus, and the replica this file builds
+cannot see it: the replica recomputes the residual from the captured a\* grid, so
+everything the detector does downstream of a\* is invisible to it, and both margin cases
+stayed green. Counted off the residual the detector actually classifies, it is visible.
+
+`ARU_PRINT_PLATEAU_CENSUS=1 npx vitest run tests/blemish-plateau-census.test.ts`.
+The fixture is `tests/blemish-density-scale.test.ts`'s — the same pixels as §7.3 but that
+file's clustered landmark layout rather than the `tests/scan-cost-benchmark.test.ts`
+landmark ring, so the face box differs and these counts are not §7.3's. It is the right
+fixture here because the open question is about that file's cross-resolution assertion.
+
+```
+in-detector plateau census, realistic fixture family
+noise  frame        counted  tiedPeaks
+    4  400x480          5          0
+    4  600x720          5          0
+    4  800x960          4          0
+    4  1080x1296        4          0
+    4  1440x1728        4          0
+    9  400x480          5          0
+    9  600x720          4          0
+    9  800x960          2          0
+    9  1080x1296        4          0
+    9  1440x1728        2          0
+   14  400x480          5          0
+   14  600x720          4          0
+   14  800x960          2          0
+   14  1080x1296        4          0
+   14  1440x1728        3          0
+
+in-detector plateau census, noiseAmplitude 0
+frame        counted  tiedPeaks
+400x480          3          2
+600x720          3          1
+800x960          3          2
+1080x1296        3          0
+1440x1728        3          1
+```
+
+Three things to read out of that pair.
+
+**Fifteen realistic frames, not one tie between them.** That is the guard: a realistic
+frame's counted cells clear their suppression neighbours by 1.2e6 to 3.2e8 times the
+detector's own rounding error (§7.3), so an exact tie among them is not something that
+happens, it is a report that something upstream collapsed distinct residuals onto one
+float.
+
+**The noiseless fixture's counts are the `3, 3, 3, 3, 3` that
+`tests/blemish-density-scale.test.ts` asserts must agree**, and four of the five carry at
+least one tie. The noisy fixture on the same frame list reads `5, 4, 2, 4, 2`, which is
+the pair the backlog item has been citing.
+
+**`1080x1296` carries no tie at all**, so "the noiseless fixture always has a tie" is
+false and the case pins the vector rather than asserting `> 0`. A cycle that reached for
+the weaker assertion would have shipped something that stays green while four of the five
+ties disappear.
+
+**Proof it bites**, with `lib/skin.ts` broken at the residual line and restored
+byte-identical afterwards:
+
+```
+residual[i] = background === null ? 0 : Math.round((astar[i] - background) * 1000) / 1000;
+```
+
+`npx vitest run` → `Tests  7 failed | 610 passed (617)`. The new case fails first and
+names the defect:
+
+```
+AssertionError: noise 4 600x720: 2 of 5 counted cells are settled by scan order, not by
+the image. On a frame with real pixel noise the suppression margins are 1e6x the
+detector's own rounding error, so an exact tie means something upstream collapsed
+distinct residuals.: expected 2 to be +0
+```
+
+The two margin cases §7.4 names — "measures a real margin on every realistic frame, and
+says how real" and "fails the same predicate on the noiseless fixture" — are **not** in
+that failure list, which is §7.4's finding reproduced. The other six failures are the
+pins §7.4 already credited (`blemish-tie-break`, `blemish-density-scale`, and two
+assertions here), and every one of them reports a moved number on the noiseless fixture
+or a moved pin. None of them says what went wrong. The census does, on the realistic
+frames, which is the whole of what it adds.
+
+**What is still not decided, and was not decided here.** Whether `blemishCount` should
+refuse a plateau-dominated frame, carry a confidence, or stay exactly as it is remains
+the open backlog item, and it is still the same question as whether
+`tests/blemish-density-scale.test.ts`'s cross-resolution agreement should hold at all.
+§7.6's reference supports reporting first and deciding the filter separately; taking the
+second half is a product call about a published index and is not a cycle's to make.
