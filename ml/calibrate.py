@@ -16,7 +16,8 @@ in the app, and the run says so rather than omitting them. The output thresholds
 get pasted back into lib/skin.ts — so the product's reads are now tuned by REAL
 Korean-selfie labels that only you have. That is the moat: not the model, the data.
 
-Pure standard library — no pip install, runs on any Python 3.
+Pure standard library — no pip install, runs on any Python 3. (ml/subgroups.py and its
+own imports are stdlib-only too, so importing it does not change that.)
 
 Usage:
     python ml/calibrate.py gyeol-labels-42.jsonl
@@ -28,6 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import aru_axes  # noqa: E402
+import subgroups  # noqa: E402
 
 # Axis -> the ROI feature lib/skin.ts computes it from. Only axes with a heuristic
 # feature can be threshold-calibrated; the rest have no scalar to cut on and wait
@@ -46,6 +48,45 @@ OBSERVATION_FEATURE = {"trouble": ("blemishDensity", "troubleSeen")}
 # dryness - the registry requires a survey answer; the consumer survey's 건조
 #           concern lives on the survey record, not on the scan sample.
 UNLABELLED_FEATURE = {"tone": "toneSpread", "dryness": "roughnessRatio"}
+
+
+def sample_generation(row):
+    """Which generation of the feature extractor produced this export row.
+
+    The thresholds this script fits are cut points on shine / relRedness / cov, and
+    those numbers are only comparable to numbers computed the same way. `fallbackVersion`
+    in lib/skin.ts has moved twice already (roi-calibrated-2026-09-16, then -09-18), each
+    time because a feature's semantics changed, and every stored sample records the string
+    it was captured under. Pooling two generations into one fit cuts a distribution that
+    is really two.
+
+    The two version fields sit in different places depending on who wrote the row. The
+    app's export nests them under `meta` (lib/labels.ts: SampleMeta.modelVersion /
+    inputSchemaVersion, written per sample at app/scan/use-capture-analysis.ts); a row
+    prepared by ml/prepare_crop_dataset.py carries them flat as model_version /
+    input_schema_version. subgroups.feature_generation already reads both spellings of
+    both fields, so this only has to hand it the right dict — `meta` first, because a row
+    that has both should be read the way it was written.
+    """
+    meta = row.get("meta") or {}
+    from_meta = subgroups.feature_generation(meta) if isinstance(meta, dict) else subgroups.UNSTAMPED
+    return from_meta if from_meta != subgroups.UNSTAMPED else subgroups.feature_generation(row)
+
+
+def generation_report(rows):
+    """Lines naming the generations in this run, or [] when there is nothing to report.
+
+    Deliberately the same two clauses `coverage()` reports, from the same function, and
+    deliberately a report rather than a refusal. What to DO about a mixed run — split it,
+    filter it, refuse it — is a decision about already-collected samples and is the same
+    decision VISIBLE_MODEL_CONTRACT.inputSchemaVersion is waiting on. See
+    docs/feature-generation-pooling.md.
+    """
+    counts = {}
+    for row in rows:
+        name = sample_generation(row)
+        counts[name] = counts.get(name, 0) + 1
+    return counts, subgroups.generation_warnings(counts, len(rows))
 
 
 def is_true(value):
@@ -243,6 +284,16 @@ def main():
     print(f"loaded {len(rows)} labeled samples\n")
     if len(rows) < 12:
         print("! very few samples - collect more scans+feedback before trusting these.\n")
+
+    counts, warnings = generation_report(rows)
+    if len(counts) > 1 or (counts and subgroups.UNSTAMPED in counts):
+        listed = ", ".join(f"{name} ({n})" for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+        print(f"feature generations in this run: {listed}")
+    for line in warnings:
+        print(f"! {line}")
+    if warnings:
+        print("  The thresholds below are fitted across all of them anyway - that is what")
+        print("  this run does today, and it is now said out loud rather than assumed.\n")
 
     for attr, feat in FEATURE.items():
         spec = aru_axes.axis(attr)  # fail loudly if the axis id ever drifts
