@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 ## What this is for
 
@@ -635,16 +635,6 @@ partly done and stays here.
   (a face-region illuminant estimate) for both, which is the argument for not patching
   the residual floor on its own. The test case now records the two counts exactly
   rather than asserting a property that is false. Noted 2026-09-16.
-- [AI] **`/checkin`'s "See my report" link is 43.0px high in `ja` and 45.0px in the other
-  four locales.** Measured 2026-09-21 (cycle 26) in Chromium at 360x800 while sweeping every
-  public route for tap targets: `マイレポートを見る` comes back 155.0x43.0 against ko 115.1x45.0,
-  en 128.3x45.0, zh 120.0x45.0 and ar 113.5x45.0. That is 1px under `--tap-min: 44px`, on the
-  empty-state links of the surface every re-engagement mail lands on. It is not covered by
-  `tests/e2e/checkin-touch-target.regression-1.spec.ts`, which measures the home link, nor by
-  the answer-controls case beside it, which seeds a confirmed purchase so the card renders and
-  the empty state never appears. Left open rather than nudged because 1px in one locale is a
-  line-box question (which font falls back, and at what line-height) and the fix should come
-  from whatever makes the height locale-independent, not from a magic number. Noted 2026-09-21.
 - [AI] Four i18n keys are carried by `en.ts` and `ar.ts` and by neither `ja.ts` nor
   `zh.ts`, and they are dead in all four: `"피부 영역을 가이드 안에 맞춰주세요."` and the
   three beside it are retake-guidance sentences that no code emits — the live loop in
@@ -716,16 +706,6 @@ partly done and stays here.
   reintroduces the split just closed. `docs/analysis-performance-roadmap.md` had an open
   item whose literal wording would have re-added frame-mean gray-world; it now points
   here. Noted 2026-09-16.
-- [AI] **`ml/calibrate.py` still has no feature-generation handling, and it is the half of
-  the pooling item that a warning did not close.** Cycle 26 gave every run that computes
-  subgroup coverage a report when it pools two generations, but threshold fitting does not go
-  through `coverage()`: `ml/calibrate.py` reads a CSV directly and has no version handling at
-  all, so a pre-09-16 and a post-09-16 reading still land in the same threshold fit with
-  nothing said. The same two clauses on the same two fields would do it. What stays out of
-  scope for a cycle is what to DO about a mixed run — split it, filter it, refuse it — which is
-  the same question `VISIBLE_MODEL_CONTRACT.inputSchemaVersion` is waiting on, and it is about
-  what happens to already-collected samples. Noted 2026-09-21 (cycle 26);
-  `docs/feature-generation-pooling.md` §5.
 - [AI] `toneSpread` is background-coupled at about 2% through the same frame-mean gains
   the tone path just stopped using — 0.052372 behind a blue wall, 0.053504 behind warm
   wood, on a face held byte-for-byte identical. It is a ratio, so this is second-order
@@ -948,6 +928,142 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   as a scan->buyer rate without saying so — which is where the whole 3x comes from —
   and five claims stronger than their evidence, including "cannot reach $10,000/month"
   in a document whose own table shows architecture A reaching it at 500,000 scans.
+- 2026-09-22 (cycle 27) — Branch `autopilot/2026-09-22-0039`. **Threshold fitting stopped
+  pooling two feature generations in silence — the half cycle 26 left open, closed the way it
+  said: one shared warning, from one definition, read by both `coverage()` and `ml/calibrate.py`.
+  `/checkin`'s empty-state links reach the 44px tap contract in every locale, and the reason
+  `ja` was the one that missed is written down: 43.0px was the height the stylesheet actually
+  asked for, and the four locales that read 45.0 were the accident. And `--tap-min: 44px`, the
+  number every UI cycle leans on, finally has a source: WCAG 2.5.5 AAA, verified against the W3C
+  repository's own text.**
+
+  **Baselines, measured here on a clean tree before any edit; they match the supervisor's.**
+  `node_modules` was absent, so `npm ci` first. `npm run smoke` green with the chromium override
+  at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **615 passed in 91 files**,
+  mobile E2E **62 passed (3.4m)**, `python3 ml/selftest.py` **Ran 130 tests ... OK**, `npm run
+  lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:72`),
+  `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research (자료조사): where `--tap-min: 44px` comes from.** It has been a magic number since it
+  was introduced — no comment or doc named the standard behind it, though the UI track reaches for
+  it every cycle. Verified against the W3C WCAG repository's own source on
+  `raw.githubusercontent.com` (`w3.org` refuses this network) and Material's own `dimens.xml`:
+  **WCAG 2.5.5 Target Size (Enhanced), level AAA is "at least 44 by 44 CSS pixels"**, which is the
+  figure ARU uses; the AA floor (2.5.8, added in WCAG 2.2) is 24px, and Material Android is 48dp.
+  So ARU holds itself to the AAA target, and a 43.0px control is a real miss against ARU's own
+  bar, not against the legal minimum. Both criteria's **Inline** exception (a target constrained
+  by the line-height of surrounding text) does not apply to `/checkin`'s standalone block CTAs,
+  which is why the fix is a minimum-height, not a line-box tweak. Fetch URLs and sha256s in
+  `docs/tap-target-provenance.md`; the value now carries a one-line citation at
+  `app/globals.css:35`.
+
+  **ML: `ml/calibrate.py` now reports a mixed-generation run, the other half of the pooling item.**
+  Cycle 26 gave every run through `coverage()` a warning when it pooled two extractor generations,
+  but threshold fitting never goes through `coverage()`: `ml/calibrate.py` reads its JSONL directly,
+  so a pre-09-16 and a post-09-16 reading still landed in one cut-point fit with nothing said. The
+  two clauses were lifted out of `coverage_warnings` into `subgroups.generation_warnings(counts,
+  total)` — one definition, so the wording, the ordering and the warn-not-block decision cannot
+  drift between the two readers — and `calibrate.py` calls it, reading each export row's version out
+  of `meta` first (where the app nests it) and the flat row second (where `prepare_crop_dataset`
+  writes it). A mixed run still produces thresholds: what to DO about pooled samples is the
+  `inputSchemaVersion` decision, and is not a cycle's to make. `subgroups.py` and `calibrate.py`
+  restored byte-identical after each break (sha recorded), `ml/selftest.py` now **Ran 137 tests …
+  OK** (7 new), and two source-line breaks were confirmed to fail exactly the new cases and no
+  others: raising the pooling clause to `> 2` failed 4 (incl. both readers' agreement test,
+  `AssertionError: 1 != 2`), and dropping `meta` from `sample_generation` failed 3+1
+  (`'unstamped' != 'roi-calibrated-2026-09-18/...'`). `docs/feature-generation-pooling.md` §5 named
+  this as the remaining half.
+
+  **UI/UX: `/checkin`'s empty-state links reach 44px in every locale, and the cause is recorded.**
+  Cycle 26 measured `マイレポートを見る` at 155.0x43.0 against ko/en/zh/ar at 45.0 — 1px under
+  `--tap-min` on the surface every re-engagement mail lands on, and covered by no test (the two
+  existing cases measure the home link and seed a purchase so the empty state never renders).
+  Measured in Chromium at 360x800, all five locales compute the SAME `font-size: 14px` /
+  `line-height: 21px` on these links, so 21 + 2×11 padding = 43px is the height the CSS asks for;
+  `ja` was the only locale that got it, because ko/en/zh/ar fall back to a font whose baseline sits
+  2px off the strut's and a line box is the union of strut and inline boxes, not the taller of them.
+  So the four "correct" locales were the accident. `ctaBase` now carries `minHeight:
+  var(--tap-min)` + flex centring — the same shape `pill()` and `flow-steps` already use — which
+  makes the height locale-independent instead of nudging a padding that would move all five and fix
+  none. Re-measured: ja 155.0x**44**, all others ≥45, doc overflow 0 in every locale. Guarded by 5
+  new per-locale cases in `tests/e2e/checkin-touch-target.regression-1.spec.ts`; breaking the fix at
+  its source line (removing `minHeight` from `ctaBase`) failed exactly the `ja` case,
+  `AssertionError: ["マイレポートを見る 155x43"] != []`, and the other 10 passed.
+
+  **Bug fix: none this cycle, said plainly rather than dressed up.** Hunted across `/api/out`'s
+  placement handling, the public funnel ingest (`redactFunnelEvent`, `originAllowed`,
+  `summarizeFunnel`, `funnelDropoff`), the unsubscribe HMAC token, `lib/recommend.ts`'s scoring and
+  `budgetLabel` (checked against the survey's stored band ceilings — they match), and
+  `mergeVisionAnalysis`. Every candidate resolved to intended, already-tested behaviour; the one
+  smell found (a redundant outer `t()` in `mood-from-link.tsx`) is a no-op that returns its input
+  on a dictionary miss, so it cannot be broken into a failing test and does not meet the guard bar.
+  The account is at `seven_day / allowed_warning`, so rather than manufacture a narrow break of
+  sound code, this track is reported as producing nothing — which the guardrails bless over a
+  dressed-up measurement.
+
+  **Verification, pasted from the runs that produced it.** `npx vitest run` → `Test Files 91 passed
+  (91) / Tests 615 passed (615)`. `npx tsc --noEmit | grep -c "error TS"` → `13`. `python3
+  ml/selftest.py` → `Ran 137 tests ... OK`. `npm run lint` → `0 errors, 2 warnings` (`lib/care.ts`).
+  Full `npm run smoke` with the chromium override → `Smoke test passed.`, its Playwright leg `67
+  passed (3.2m)` (62 baseline + 5 new empty-state cases). One false alarm worth recording so the
+  next cycle does not chase it: a backgrounded smoke run exited 144 (SIGTERM) because the command
+  began with `pkill -f "next dev"`, whose pattern matched the worker's OWN shell command line and
+  killed it — the product was fine; re-run in the foreground with no `pkill`, it passed.
+
+  **Rotation.** `docs/AUTOPILOT.md` 1699 → 1485; `docs/autopilot-changelog.md` 5260 → 5588. Cycle 24
+  moved verbatim to the changelog bottom, and the two backlog items this cycle ticked `[x]` — the
+  `ml/calibrate.py` generation-handling item and the `/checkin` 43px item — moved to "Closed backlog
+  items" under "### Next" with their original text preserved as a blockquote. Proof in the PR body:
+  `wc -l` before/after both files and a `comm -23` preservation check.
+
+  **Supervisor review.** Kept deliberately cheap — the account is at
+  `seven_day / allowed_warning`, the worker was told to be economical, and so was this.
+
+  *The fix is the right shape, and this review's framing of the defect was the wrong way
+  round.* Before the branch arrived this review read `ctaPrimary` (`padding: "11px 18px"`,
+  no `minHeight`, no `line-height`), concluded the height is 22px plus whatever line box
+  the fallback font gives, and measured five locales under a plain `system-ui` stack:
+  38–40px, varying by locale, all flattened to exactly 44.0px by `min-height` + inline-flex.
+  That confirmed the mechanism and the remedy. It also framed **`ja` as the outlier**, and
+  the branch shows it is the opposite: all five compute `line-height: 21px`, `21 + 22 = 43`
+  is what the stylesheet asks for, and `ja` is the only locale that gets it. The other four
+  are 45px because their glyphs fall back to a font whose baseline sits 2px off the strut's,
+  and a line box is the UNION of the strut and the inline boxes on that baseline rather than
+  the larger of the two. The four "correct" locales were the accident.
+
+  *What this review could and could not confirm of that.* Forcing the strut explicitly
+  (`line-height: 21px`, one declared family plus fallbacks) gives **43.0px in all five**
+  here, with `line-height` and `font-size` computing identically across them — so the
+  arithmetic and the direction hold. The 2px split does NOT reproduce in this container,
+  because the fonts that cause it are not installed and every locale resolves to the same
+  fallback. Stated as a limit rather than a contradiction: the branch measured the app,
+  this review measured a reconstruction without the app's fonts.
+
+  The fix itself takes the `minHeight` + flex idiom and names the two places that already
+  use it (`pill()`, `app/components/flow-steps.tsx`) rather than nudging a per-locale
+  number, which is what the backlog item asked for and what this review was watching for.
+
+  *The ML guard bites narrowly.* Making `sample_generation` read only the flat spelling —
+  so a row the app wrote, nesting the fields under `meta`, reads unstamped — fails 4 of 137
+  with the names doing the identifying:
+  `ERROR: test_calibrate_reports_two_generations_in_one_threshold_fit`,
+  `FAIL: test_calibrate_finds_the_versions_the_app_export_nests_under_meta`,
+  `FAIL: test_both_readers_say_it_in_the_same_words`.
+
+  *Scope held where it mattered.* `shareUrl` is still open — `grep -c` finds it in
+  `docs/AUTOPILOT.md` and not in the changelog — so three cycles running have now declined
+  to guess a decision that is the owner's.
+
+  *Rotation.* 1699 → 1485 and 5260 → 5588; `comm -23` finds **21 lines missing**, 20 from
+  the two backlog items this cycle closed and the 21st the `Last updated:` date.
+  "Recent cycles" holds 27/26/25.
+
+  *One admission that belongs in this file rather than a scratchpad.* The new backlog item
+  about four dead i18n keys carried by `en.ts` and `ar.ts` and by neither `ja.ts` nor
+  `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
+  push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
+  stays out of this file is one a later cycle pays for twice.
+
 - 2026-09-21 (cycle 26) — Branch `autopilot/2026-09-21-1839`. **The "do not pool feature
   generations" rule stopped being documentation: a run that mixes two generations of the
   feature extractor now says so, and the check would never have fired even once it existed
@@ -1204,301 +1320,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `comm -23` finds **18 lines missing**, all 18 from the two backlog items this cycle
   closed (`savePilotNote`, and the feature-generation pooling rule), both present in the
   changelog. "Recent cycles" holds 26/25/24.
-
-- 2026-09-21 (cycle 25) — Branch `autopilot/2026-09-21-1239`. **The decision-margin
-  guard's blind spot is closed with the second hook cycle 23 asked for, and the break it
-  recorded as "did not bite" now bites. The noise bound every margin is reported as a
-  multiple of turns out to be a real upper bound with 226-816x of headroom, and ARU's
-  summed-area table is 4.4-7.1x less accurate than the reference construction in a place
-  where that cannot matter. And `/report`'s commerce row — the one carrying
-  `placement=report_summary`, the single link the revenue arithmetic rests on — has been
-  rendering both its CTAs as 24px slivers with the label cut mid-word, in every locale, at
-  every width, desktop included.**
-
-  **Baselines.** `npm ci` first (`node_modules` was absent). The arriving `npm run smoke`
-  came back green with the chromium override (`Smoke test passed.`, `Ran 121 tests ... OK`),
-  but it is **not quoted as a clean-tree baseline**: it was started before any edit and
-  finished after the first test-file edit had landed, so its vitest leg may have read a
-  modified tree. The supervisor's own main-branch measurements stand as the baseline and
-  this cycle compared against those. `npx tsc --noEmit | grep -c "error TS"` **13**,
-  unchanged, measured here.
-
-  **Research: what a reference summed-area table does differently, and why it was asked.**
-  The question came out of the ML work rather than being picked to fill a slot: every margin
-  in `tests/blemish-perturbation-tolerance.test.ts` is reported as a multiple of
-  `noiseScale = gw*gh * EPSILON * max|a*|`, and that bound was asserted in a comment and
-  verified by nobody. scikit-image's `integral_image`, read from its own source on
-  `raw.githubusercontent.com` — another project's implementation, not a paper and not a
-  standard — says two things that bear on ARU:
-
-  ```
-  skimage/transform/integral.py @ v0.24.0  http=200 bytes=5096
-  skimage/transform/integral.py @ v0.25.2  http=200 bytes=5096  (byte-identical to v0.24.0)
-    sha256 ed187d23b0b47dbb8457b67d451f9aa19e39237bf322c81a92fab5a1802927d6
-  ```
-
-  It promotes float inputs to at least float64 "for better accuracy and to avoid potential
-  overflow" — ARU's `sumTable` is already a `Float64Array`, so that precaution is taken. And
-  it builds the table as a **separable `cumsum` along each axis**, where `lib/skin.ts` uses
-  the one-pass inclusion-exclusion recurrence, which **subtracts a partial sum at every
-  cell**. A cumsum never does, so the two are not obviously equally accurate and ARU's is the
-  one with a mechanism to be worse. That made it a measurement rather than a reassurance.
-
-  **ML: the guard now reads the field the detector actually classifies.** `__perturbAStar`
-  is injected before the summed-area tables, so every residual this file reasoned about was
-  `residualsOf`'s reconstruction from the captured a\* grid. Anything `lib/skin.ts` did
-  downstream of a\* moved what the detector classifies without moving a single number in the
-  margin tables — cycle 23 measured that and wrote it down as §7.4's sixth break, the one
-  that did not bite. `__observeResidual` is a **second** hook, injected after the residual
-  loop and before the classification loop, against the anchor `let count = 0; let validCells
-  = 0;`. It is a second hook and not a widened first one because the two read different
-  arrays at different points, and a replica that had quietly stopped being the detector is
-  precisely the failure being guarded. Three things are asserted, in order: the two residual
-  fields agree **exactly at every valid cell**; classifying the detector's own residual
-  reproduces the count `detectBlemishes` returned; and the pinned margins hold when
-  re-measured on the detector's own field, which is an independent surface because editing
-  `residualsOf` to track a moved `lib/skin.ts` would satisfy the first and still fail here.
-
-  **Two source-line breaks, never of a test, and the second is the one that earns the
-  hook.** Break A is the exact break §7.4 recorded as passing — `residual[i] =
-  Math.round((astar[i] - background) * 1000) / 1000` — and it now fails, 3 of 11 in this
-  file, first assertion:
-
-  ```
-  noise 4 400x480: the detector's own residual differs from this file's replica at 11789 of
-  11789 valid cells (worst |d| = 5.000e-4). Every decision margin in this file is measured
-  on the replica, so a change downstream of a* moves what the detector classifies without
-  moving a single number above it: expected 11789 to be +0
-  ```
-
-  But break A was already visible to two other assertions in this same file and to two other
-  files, so on its own it does not show the hook adds coverage. Break B does: `residual[i] =
-  Math.max(-1e-9, astar[i] - background)` clamps only residuals far below the `minResidual:
-  1.6` floor, so no cell can change classification and every count pin in the tree stays
-  green. Across `blemish-perturbation-tolerance`, `blemish-tie-break`,
-  `blemish-density-scale`, `skin-index-contract` and `scan-cost-benchmark` — **45 tests, 2
-  failed, both in this file**, one of them the new case. `lib/skin.ts` was restored
-  byte-identical after each break: sha256
-  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08` before and after, and
-  `git diff lib/skin.ts` empty. It is untouched on this branch.
-
-  **And the bound the whole guard rests on is now measured rather than asserted.** Both
-  constructions were compared against an exact accumulation in a non-overlapping expansion,
-  rounded once. The reference was itself checked before it was used: it returns `1` for
-  `[1e16, 1, -1e16]` and `2` for `[1, 1e100, 1, -1e100]` where naive summation returns `0`
-  for both, it is order-independent over 10,000 values, and on those same values it agrees
-  with Python's correctly-rounded `math.fsum` to the last bit (`1790845758.191924` from both,
-  against `1790845758.191915` and `1790845758.1919322` for naive summation in the two
-  directions).
-
-  Three findings. **The bound holds, with room**: ARU's worst background error is
-  **4.230e-14 to 1.513e-13** a\* against a bound of **3.424e-11 to 3.820e-11**, so it uses
-  0.12%-0.44% of it — 226x to 816x of headroom — and `noiseScale` means what it says. That is
-  now an assertion, not a comment. **The cancellation argument is confirmed and does not
-  matter**: the cumsum construction is **4.4x to 7.1x more accurate** on all sixteen frames,
-  exactly as a construction with no subtraction in it should be, but ARU's error is
-  **6.9e8 to 1.8e11 times smaller** than the smallest suppression gap, so switching would buy
-  a factor of five on a quantity ten orders of magnitude below the decision it feeds. **No
-  change was proposed and none was made** — the number is recorded so the next cycle has it
-  instead of the argument. And the noiseless fixture is the worst case here too, at roughly
-  2x the noisy frames. `docs/blemish-perturbation-tolerance.md` §7.6-7.7.
-
-  **UI/UX: `/report`'s commerce row rendered both CTAs as 24px slivers, and it is the one
-  row the revenue arithmetic depends on.** `reportCommerceAction` is a `display: flex` row
-  with no `flexWrap`. It holds two `flex: 1` CTAs (so `flex-basis: 0`) and, since
-  2026-09-15, a third child: `<CommerceDisclosure style={{ width: "100%" }} />` at
-  `flex-basis: auto`. The disclosure alone claims the whole line, free space goes negative,
-  `flex-grow` never applies, and both anchors collapse to their horizontal padding. Measured
-  in Chromium at 360x800, not reasoned from the CSS:
-
-  ```
-  /api/out?...placement=report_product   288.0px   (three of these, inside the product cards — fine)
-  /api/out?...placement=report_summary    24.0px   sw=48 cw=24   "올리브영에서 제품 보기"
-  /care                                   24.0px   sw=30 cw=24   "제품과 상담 정보 보기"
-  /privacy                               320.0px
-  ```
-
-  So the `report_summary` out-click — the link `lib/commerce.ts` and the revenue table are
-  built around — has been a 24px tap target, 55% under `--tap-min: 44px`, with its label cut
-  mid-word, in all five locales. It is not a narrow-viewport problem: the disclosure's basis
-  claims the whole line at any width, so free space is negative everywhere. Measured before
-  and after the fix, same probe, ko:
-
-  ```
-  width   before (buy / care)        after (buy / care)
-   320    24.0 / 24.0   sw=48,30     109.2 / 134.8   no clipping
-   360    24.0 / 24.0   sw=48,30     126.6 / 157.4   no clipping
-   393    24.0 / 24.0   sw=48,30     141.0 / 176.0   no clipping
-   430    24.0 / 24.0   sw=48,30     157.0 / 197.0   no clipping
-   768    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
-  1280    24.0 / 24.0   sw=48,30     170.1 / 213.9   no clipping
-  ```
-
-  The fix is one property, `flexWrap: "wrap"`, which is what the disclosure's own
-  `marginTop: 4` always implied; at 360px all five locales read **126.6px** and **157.4px**
-  with no clipping.
-
-  **The trap in the guard, caught before it was committed.** The obvious selector,
-  `main a[href^="/api/out"]).first()`, **passes against the broken build**: the same step
-  carries three `report_product` links at 288px and `first()` picks one of those. The spec
-  binds to `placement=report_summary` inside the section that contains it, and asserts both
-  a width floor and `scrollWidth <= clientWidth` — a width check alone would pass a box wide
-  enough to tap that still cuts its label, and a clipping check alone would pass a 20px box
-  showing its whole label. This is cycle 24's `infoLinkBtn` regex lesson in a different
-  shape: the first version of the guard measured the wrong element and looked green.
-
-  **Bug fix: the `/studio` share button could never succeed, because the app's own CSP
-  refuses the fetch it makes.** `shareCardImage` rasterized the card to a
-  `data:image/png;base64,...` URL and then did `await (await fetch(dataUrl)).blob()` to build
-  the `File`. `next.config.ts` emits `connect-src 'self'`; that directive governs `fetch()`
-  and permits neither `data:` nor `blob:`. So the line threw `TypeError: Failed to fetch`
-  for every user on every browser — no flag, no platform condition — and the user got
-  "공유에 실패했어요. PNG 저장을 이용해 주세요." every time. Two consequences beyond the
-  message: the throw happens **before** the `navigator.canShare` branch, so the deliberate
-  download fallback at the end of the same function was unreachable too; and `onShare` never
-  fired, so `recordFunnelEvent("share_clicked", { surface: "studio" })` has **never** fired,
-  and any reading of the share funnel that includes `/studio` is wrong. That is
-  revenue-upstream items 2 and 3 at once.
-
-  Three E2E specs already visit `/studio` and none of them clicks the button, which is how a
-  total failure of the product's only image-share path went unseen. `tests/e2e/studio-share.spec.ts`
-  clicks it under the **real** header — the CSP is not stubbed, only `navigator.share`, because
-  a headless Chromium has no share sheet — and asserts the File actually reaches the sheet
-  (`name`, `type`, `size > 1000`), that no CSP refusal appears in the console, and that the
-  failure row is absent. Against the unfixed build it fails on the user-visible symptom:
-  `the share path reported failure to the user: expected 0, received 1`. The fix decodes the
-  data URL in process (`atob` → `Uint8Array` → `Blob`); the CSP was **not** widened, which
-  would be the wrong direction for a hardened header, and `createObjectURL` + `fetch` was
-  measured and rejected because `blob:` is refused by the same directive.
-
-  **Bug fix 2: `recordCareIntent`, and the UI half of the question answered "no".** The
-  backlog item cycle 24 left open. Checked before fixing, as it asked: the function has
-  exactly one caller, it is a bare `void`, and nothing on screen claims the intent was
-  stored — so unlike cycle 24's check-in card this was never a lie to a user, and the
-  consequence is a silently short care-intent log that nothing could detect. It now returns
-  `CareIntent | null` like both siblings. `/care` deliberately surfaces **nothing**:
-  `openCareLink` opens the merchant link whether or not the log write landed, so an error
-  row would report a failure the user did not experience.
-  `tests/care-intent-write-signal.test.ts` pins that decision as well as the signal — its
-  third case asserts the ORDER (`window.open` after the record, never gated on it), so a
-  reordering that leaves every statement present still fails.
-
-  **Two findings recorded rather than swept up**, both now backlog items: `shareUrl` is a
-  dead parameter, so even a working studio share sends a bare PNG with no way back to ARU
-  (revenue-upstream item 3, but what a studio card should link to is a product call); and
-  `lib/pilot.ts:savePilotNote` is the only store in the repo with no guard, no cap and no
-  try/catch, which is research-mode only since `/pilot` 404s in production.
-
-
-  **Rotation, proved rather than asserted.** Measured across the rotation step alone:
-  `docs/AUTOPILOT.md` **1809 -> 1541**, `docs/autopilot-changelog.md` **4694 -> 4966**.
-  (This paragraph and the verification block below it were written after that measurement,
-  so the committed file is longer than 1541 — `wc -l` on the commit is the authority and
-  the delta above is the rotation's, not the whole cycle's.)
-  "Recent cycles" holds 25/24/23; cycle 22 moved verbatim to the bottom of the changelog
-  (14,317 bytes, text unchanged), and both `[x]` items moved to "Closed backlog items"
-  under their original "### Now" heading with the original wording preserved as a
-  blockquote. Normalising both files' non-blank lines (strip leading whitespace and `>`,
-  strip trailing whitespace, `sort -u`) and running `comm -23 before after` leaves
-  **nothing at all** — **5527** unique lines before and **5527** after.
-
-  One thing the rotation script got wrong and it was repaired rather than left: its first
-  pass swept every top-level `[x]` in the file, which took the already-actioned
-  `confidenceLabel` entry out of "Supervisor findings not yet actioned" — a section that is
-  not the backlog and an item this cycle did not tick. It was put back verbatim and the
-  changelog copy removed; `grep -c` confirms one copy in `docs/AUTOPILOT.md` and zero in the
-  changelog.
-
-  **Verification.** `npm run smoke` green (`Smoke test passed.`), vitest ****608 passed in 90 files** (603 plus 2 in the ML file and 3 in the new care-intent file)**,
-  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged, and it was **15** at first:
-  the new `tests/care-intent-write-signal.test.ts` fixture inferred `merchant: string`
-  against `MerchantId`, caught here and fixed by typing the fixture
-  `Omit<CareIntent, "id" | "ts">` rather than by casting, so a field that drifts out of
-  `CareIntent` is still a compile error. `npm run lint` **0 errors, 2 warnings** — the same
-  two, `'_reads'` and `'_result'` at `lib/care.ts:72`. `python3 ml/selftest.py` **Ran 121
-  tests ... OK**, unchanged — nothing in `ml/` was touched. Mobile E2E ****52 passed (4.8m)** — 50 on main, plus one new spec on each of the two fixes**.
-
-  `lib/skin.ts` is byte-identical to main (sha256
-  `75cfb0a72728c0caa167d80cd85d8938496bf3d6322c90fa2a8b705a85b17b08`), and so are
-  `public/models/visible-attributes/manifest.json` (`status` and `promotionGate` included),
-  `ml/external_datasets.json`, `lib/consent.ts` and `next.config.ts` — the CSP was diagnosed
-  and **not widened**, which is the point of that fix. `NEXT_PUBLIC_FUNNEL_FLUSH` was not
-  set, no consent kind was invented and neither stream was merged, no dataset licence tier
-  moved, and no face image path changed.
-
-  **One run that is not quoted as evidence.** A full `npx vitest run` mid-cycle reported
-  `1 failed | 604 passed`; the immediate re-run of the same tree reported `605 passed in 89
-  files`, and the failure's identity was lost because that command was piped through
-  `tail -8`. Two investigation subagents were running commands against this working tree at
-  the time, which is the most likely cause and is not established. It is recorded because
-  it happened, not diagnosed, and the gate above is the run that counts.
-
-  **Supervisor review.** The CSP finding is the most consequential defect any cycle has
-  turned up, so it was reproduced here rather than read.
-
-  *The share surface really was dead, in a real browser.* Served the app's own header
-  shape (`default-src 'self'; img-src 'self' data: blob:; connect-src 'self'`,
-  `next.config.ts:18`) from a local server and ran both fetches in Chromium:
-
-  ```
-  fetch(data:...)  -> THREW TypeError: Failed to fetch
-  fetch(blob:...)  -> THREW TypeError: Failed to fetch
-  ```
-
-  Both halves of the claim hold, including the exact error text and the part a reader
-  would most want to check — that `createObjectURL` + `fetch` is no escape, because
-  `blob:` is refused by the same directive. `img-src` allowing `data: blob:` is a
-  different directive and does not help a `fetch()`. So `shareCardImage` threw on its
-  second line for every user on every browser, before `navigator.canShare` was reached,
-  which also made the download fallback unreachable and meant `share_clicked` never
-  fired for this surface. The share loop is the only organic acquisition path the
-  product has, and it had never worked.
-
-  *The replacement decoder is byte-exact.* Transcribed `dataUrlToBlob` and ran it
-  against a known PNG: 70 bytes in, 70 bytes out, `got.equals(want)` **true**, leading
-  bytes `89504e470d0a1a0a` — a valid PNG signature. The no-parameter case its comment
-  calls out behaves as claimed: `data:image/png,hello%20world` decodes with type
-  `image/png` rather than a truncated type.
-
-  *The 24px CTA reproduces, and the after-numbers match to three decimals.* Rebuilt the
-  commerce row's flex structure independently — two `flex: 1` anchors and a `width: 100%`
-  disclosure — and measured at 360x800 in Chromium:
-
-  ```
-  flexWrap: nowrap   buy=38x168      care=38x168
-  flexWrap: wrap     buy=126.61x68   care=157.39x68
-  ```
-
-  The entry's after-fix figures at 360 are **126.6 / 157.4**. The before-figure differs —
-  **38px here against the entry's 24px** — and the reason is that this reconstruction is
-  not the component: its label string is shorter than the shipped one, and the entry's
-  own `sw=48 cw=24` shows the real anchor clipping where this one merely narrowed. The
-  mechanism, the direction and the magnitude are confirmed; the exact before-pixel is the
-  entry's measurement of the real page and not this one's.
-
-  *The `recordCareIntent` item was the one to get wrong, and the branch did not.* This
-  cycle's brief flagged it: the fix is right but the justification must not claim a
-  user-visible lie, because there is none. Checked before the branch arrived —
-  `grep -nE "저장|saved|기록했" app/care/page.tsx` returns two hits, a code comment and
-  advice copy telling the USER to save their own product names, against
-  `app/checkin/page.tsx:146`'s `role="status"` "남겨주신 피드백을 저장했어요." over an
-  empty store. The branch says exactly this in the code comment, unprompted, and explains
-  why the failure is deliberately not surfaced: `openCareLink` cannot await before
-  `window.open` without popup blockers killing the link.
-
-  *The blind-spot guard closes what cycle 23 left open.* Quantising `residual[i]` to
-  three decimals at its source line — the precise change the backlog item said the old
-  margin guard could not see — now fails `the residual the detector actually classifies >
-  is the field the margins are measured on, cell for cell, at every frame and noise
-  level`, among 3 of 12.
-
-  *One thing verified here that a previous cycle asserted.* Cycle 24's "the noise band
-  does not change the gate" was merged on a reading of the code; it is now proved by
-  execution. With `qwk_noise.clears_band` forced to return `False` for every axis — the
-  worst possible verdict — on a model that beats the heuristic: `beats: True`,
-  `clearsNoiseBand: False`, **`BLOCKERS: []`**, one warning. `ml/subgroups.py` appends to
-  `blockers` only under `if not entry["beats"]`. The claim holds.
-
-  *Rotation, against a pre-review snapshot of main.* 1588 → 1599 and 4694 → 4966, and
-  `comm -23` finds **19 lines missing**, all 19 from the two backlog items this cycle
-  closed — both present in the changelog. "Recent cycles" holds 25/24/23.

@@ -71,3 +71,43 @@ for (const lang of ["ko", "en", "ja", "zh", "ar"]) {
     expect(overflow.elements, `${lang}: elements clip their content`).toEqual([]);
   });
 }
+
+// The same contract on the EMPTY state, which neither case above reaches: the first
+// measures only the home link, and the second seeds a confirmed purchase so the card
+// renders and the empty state never appears. It is the state a re-engagement mail lands
+// on for anyone who has not recorded a product use — and its two links are the only way
+// out of the page.
+//
+// Measured in Chromium at 360x800 before the fix: `マイレポートを見る` came back
+// 155.0x43.0 against ko 115.1x45.0, en 128.3x45.0, zh 120.0x45.0 and ar 113.5x45.0.
+// 43.0 is one pixel under `--tap-min: 44px` and, counter-intuitively, it is the height
+// the stylesheet actually asks for — see the comment on `ctaBase` in
+// app/checkin/page.tsx. Asserted per locale rather than only on the observed one,
+// because what made ja differ is a font-fallback baseline and a new dictionary entry
+// can move any of the five.
+for (const lang of ["ko", "en", "ja", "zh", "ar"]) {
+  test(`check-in empty-state links meet the touch-target contract in ${lang}`, async ({ page }) => {
+    await page.addInitScript((l) => localStorage.setItem("aru.lang", l), lang);
+    await page.goto("/checkin");
+
+    // No seeded store, so the empty state is what renders. Asserted so a page that
+    // stopped rendering its links cannot pass by emptiness.
+    const links = page.locator("main a");
+    await expect(links).toHaveCount(3); // the home link plus the two empty-state CTAs
+
+    const undersized = await page.evaluate(() => {
+      const bad: string[] = [];
+      document.querySelectorAll("main a, main button").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width < 44 || r.height < 44) {
+          bad.push(`${(el.textContent ?? "").trim()} ${Math.round(r.width * 10) / 10}x${Math.round(r.height * 10) / 10}`);
+        }
+      });
+      return bad;
+    });
+    expect(undersized, `${lang}: empty-state controls under 44px`).toEqual([]);
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `${lang}: document overflows 360px`).toBeLessThanOrEqual(0);
+  });
+}

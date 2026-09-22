@@ -217,6 +217,68 @@ class FeatureGenerations(unittest.TestCase):
         for key in ("model_version", "input_schema_version"):
             self.assertIn(key, projection, f"run_pipeline's coverage projection dropped {key}")
 
+    # --- the other half: threshold fitting, which never goes through coverage() ---
+    #
+    # ml/calibrate.py reads its JSONL directly and had no version handling at all, so a
+    # pre-09-16 and a post-09-16 reading still landed in one threshold fit with nothing
+    # said. docs/feature-generation-pooling.md §5 named this as the remaining half.
+
+    @staticmethod
+    def _export_rows(*metas):
+        # The shape the app actually exports: features + labels at the top level and the
+        # two version fields nested under `meta` (lib/labels.ts: SampleMeta).
+        return [
+            {"features": {"shine": 0.1 * (i + 1)}, "labels": {"oil": 0}, "meta": meta}
+            for i, meta in enumerate(metas)
+        ]
+
+    CAMEL_NEW = {"modelVersion": "roi-calibrated-2026-09-18", "inputSchemaVersion": "2026-06-30.visible-face-crop.v1"}
+    CAMEL_OLD = {"modelVersion": "roi-calibrated-2026-09-16", "inputSchemaVersion": "2026-06-30.visible-face-crop.v1"}
+
+    def test_calibrate_finds_the_versions_the_app_export_nests_under_meta(self):
+        # The placement, not the spelling, is what calibrate has to get right: an export
+        # row carries them under `meta`, so reading the row itself finds UNSTAMPED and
+        # every row in a real export pools silently.
+        row = self._export_rows(self.CAMEL_NEW)[0]
+        self.assertEqual(subgroups.feature_generation(row), subgroups.UNSTAMPED)
+        self.assertEqual(calibrate.sample_generation(row), subgroups.feature_generation(self.NEW))
+
+    def test_calibrate_also_reads_a_flat_row(self):
+        # prepare_crop_dataset writes the two fields flat. Both shapes reach one id.
+        self.assertEqual(calibrate.sample_generation(dict(self.NEW)), subgroups.feature_generation(self.NEW))
+
+    def test_calibrate_reports_two_generations_in_one_threshold_fit(self):
+        counts, warnings = calibrate.generation_report(self._export_rows(self.CAMEL_NEW, self.CAMEL_NEW, self.CAMEL_OLD))
+        self.assertEqual(counts[subgroups.feature_generation(self.NEW)], 2)
+        self.assertEqual(counts[subgroups.feature_generation(self.OLD)], 1)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("2 feature generations pooled in one run", warnings[0])
+
+    def test_calibrate_says_nothing_when_one_generation_fits(self):
+        _, warnings = calibrate.generation_report(self._export_rows(self.CAMEL_NEW, self.CAMEL_NEW))
+        self.assertEqual(warnings, [])
+
+    def test_calibrate_reports_unstamped_rows_beside_stamped_ones(self):
+        _, warnings = calibrate.generation_report(self._export_rows(self.CAMEL_NEW, self.CAMEL_NEW, self.CAMEL_NEW, {}))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("carry no feature generation", warnings[0])
+        self.assertIn("1 rows (25%)", warnings[0])
+
+    def test_both_readers_say_it_in_the_same_words(self):
+        # One definition, so the wording, the ordering and the warn-not-block decision
+        # cannot drift between the run report and the threshold fit.
+        _, from_calibrate = calibrate.generation_report(self._export_rows(self.CAMEL_NEW, self.CAMEL_NEW, self.CAMEL_OLD, {}))
+        from_coverage = self._generation_warnings(self._rows(self.NEW, self.NEW, self.OLD, {}))
+        self.assertEqual(from_calibrate, from_coverage)
+        self.assertEqual(len(from_calibrate), 2)
+
+    def test_a_threshold_fit_is_reported_and_not_refused(self):
+        # The decision this does NOT make: a mixed run still produces thresholds. What to
+        # do about already-collected samples is the inputSchemaVersion item's question.
+        rows = self._export_rows(self.CAMEL_NEW, self.CAMEL_OLD)
+        samples, _ = calibrate.collect(rows, "shine", lambda row: row["labels"]["oil"])
+        self.assertEqual(len(samples), 2)
+
 
 class Folds(unittest.TestCase):
     def _rows(self):

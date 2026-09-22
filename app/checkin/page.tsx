@@ -311,5 +311,31 @@ const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fo
 const card: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 18, marginBottom: 14 };
 const weekBadge: React.CSSProperties = { fontSize: 11, fontWeight: 800, color: "var(--on-plum)", background: "var(--plum)", borderRadius: 999, padding: "2px 8px" };
 const softBadge: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", background: "var(--surface-tint)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 8px" };
-const ctaPrimary: React.CSSProperties = { display: "inline-block", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "11px 18px", fontSize: 14, fontWeight: 700, textDecoration: "none" };
-const ctaGhost: React.CSSProperties = { display: "inline-block", background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 18px", fontSize: 14, fontWeight: 700, textDecoration: "none" };
+// The 44px contract on the empty-state and all-done links, the same way `pill()` above
+// and app/components/flow-steps.tsx already apply it: a minimum plus flex centring, so
+// the height stops being whatever the line box happens to be.
+//
+// It was not a magic number that was missing, and the cause is worth recording because
+// it is not what it looks like. Measured in Chromium at 360x800, all five locales
+// compute the SAME `font-size: 14px` and `line-height: 21px` on these links, and all
+// five blockify to `display: block` (they are flex items). With 11px padding top and
+// bottom, 21 + 22 = 43px is the height the CSS asks for — and `ja` is the only locale
+// that gets it. ko/en/zh/ar come back 45.0px because the glyphs fall back to a font
+// whose baseline sits 2px off the strut's, and a line box is the union of the strut and
+// the inline boxes aligned on that baseline, not the larger of their heights. So the
+// four "correct" locales were the accident and `マイレポートを見る` at 155.0x43.0 was the
+// stylesheet being obeyed. Nudging the padding would move all five and fix none of it.
+const ctaBase: React.CSSProperties = {
+  minHeight: "var(--tap-min)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  borderRadius: 8,
+  padding: "11px 18px",
+  fontSize: 14,
+  fontWeight: 700,
+  textDecoration: "none",
+};
+const ctaPrimary: React.CSSProperties = { ...ctaBase, background: "var(--plum)", color: "var(--on-plum)" };
+const ctaGhost: React.CSSProperties = { ...ctaBase, background: "transparent", color: "var(--ink)", border: "1px solid var(--line)" };
