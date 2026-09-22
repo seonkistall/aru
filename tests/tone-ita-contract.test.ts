@@ -84,6 +84,17 @@ function faceOnWall(wall: readonly [number, number, number]): ImageData {
 
 const landmarks = faceLandmarks();
 
+// Shared by both halves of the background measurement below: the tone half, which
+// asserts these five frames read identically, and the toneSpread half, which asserts
+// they do not. One list so the two can never be measured over different walls.
+const WALLS: [string, [number, number, number]][] = [
+  ["grey", [180, 180, 180]],
+  ["warm wood", [200, 150, 105]],
+  ["cool blue", [120, 150, 205]],
+  ["white", [235, 235, 235]],
+  ["dark", [60, 60, 60]],
+];
+
 // sRGB, L*, b*, ITA and band, all produced by ml/tools/verify_tone_ita.py.
 const SWATCHES: { rgb: [number, number, number]; lstar: number; ita: number; band: string }[] = [
   { rgb: [242, 223, 211], lstar: 90.0, ita: 78.4, band: "very_light" },
@@ -139,14 +150,7 @@ describe("toneIta", () => {
    * a dataset image and a live scan of one face landed in different cells.
    */
   it("does not change when only the background changes", () => {
-    const walls: [string, [number, number, number]][] = [
-      ["grey", [180, 180, 180]],
-      ["warm wood", [200, 150, 105]],
-      ["cool blue", [120, 150, 205]],
-      ["white", [235, 235, 235]],
-      ["dark", [60, 60, 60]],
-    ];
-    const readings = walls.map(([name, wall]) => {
+    const readings = WALLS.map(([name, wall]) => {
       const reads = analyzeSkin(faceOnWall(wall), landmarks);
       expect(reads, `analyzeSkin returned null for the ${name} wall`).not.toBeNull();
       return { name, ita: reads!.raw.toneIta, lstar: reads!.raw.toneLstar, band: bandFor(reads!.raw.toneIta) };
@@ -157,5 +161,80 @@ describe("toneIta", () => {
       expect(reading.lstar, `toneLstar behind a ${reading.name} wall`).toBe(first.lstar);
       expect(reading.band, `tone band behind a ${reading.name} wall`).toBe(first.band);
     }
+  });
+});
+
+/**
+ * The other half of the same measurement, and it lives in this file because the
+ * fixture does: `faceOnWall` is the only frame in the tree that holds a face
+ * byte-for-byte identical while the background changes, and copying it would give the
+ * two halves two fixtures that could drift apart.
+ *
+ * `toneIta` and `toneLstar` stopped using the frame-mean gray-world gains (§2 of
+ * docs/tone-ita-verification.md). `toneSpread` did not: `analyzeSkin` builds its region
+ * L* values through those gains (lib/skin.ts, the `labOf` applied to each region mean),
+ * so a coloured wall still moves it. It is a published field — `NEW_FEATURE_KEYS` in
+ * ml/skin_indices.py — exported into every ML sample, and the size of that coupling was
+ * a note with no test behind it until this case existed.
+ *
+ * The case pins the five values rather than asserting "close enough", for the reason
+ * the note gives: `tests/skin-index-contract.test.ts` asserts `toBeCloseTo(…, 2)` on
+ * toneSpread elsewhere, and a 2% move is invisible at two decimals. Measurements and
+ * what they bound: docs/tone-ita-verification.md §4.
+ */
+describe("toneSpread under a changing background", () => {
+  const WALL_TONE_SPREAD: [string, number][] = [
+    ["grey", 0.052903635205415585],
+    ["warm wood", 0.05350370949189595],
+    ["cool blue", 0.0523705964019627],
+    ["white", 0.05286602230161696],
+    ["dark", 0.05303399943360612],
+  ];
+
+  it("moves by a bounded amount, and nothing else published moves at all", () => {
+    const readings = WALLS.map(([name, wall]) => {
+      const reads = analyzeSkin(faceOnWall(wall), landmarks);
+      expect(reads, `analyzeSkin returned null for the ${name} wall`).not.toBeNull();
+      return { name, raw: reads!.raw };
+    });
+
+    for (const [index, [name, expected]] of WALL_TONE_SPREAD.entries()) {
+      expect(readings[index].name).toBe(name);
+      expect(
+        readings[index].raw.toneSpread,
+        `toneSpread behind a ${name} wall — a published ML column moving with the room`
+      ).toBe(expected);
+    }
+
+    // The coupling is confined to this one field. Everything else published stays
+    // bit-identical across all five walls, so a change that starts moving one of them
+    // is a new dependence on the background rather than a bigger version of this one.
+    // blemishCount is 0 on this fixture (it carries no discs), so this says nothing
+    // about the detector's own use of the gains — tests/skin-index-contract.test.ts
+    // covers that on a fixture that has blemishes.
+    const INVARIANT = [
+      "roughnessRatio", "blemishCount", "blemishDensity", "shine",
+      "relRedness", "cov", "toneIta", "toneLstar", "tzoneL", "cheekL",
+    ] as const;
+    for (const key of INVARIANT) {
+      for (const reading of readings) {
+        expect(
+          reading.raw[key],
+          `${key} behind a ${reading.name} wall — only toneSpread may move with the background`
+        ).toBe(readings[0].raw[key]);
+      }
+    }
+  });
+
+  // The number the backlog item asked to have attached: how wide the band is, stated
+  // as a ratio because toneSpread is compared against cut points drawn ACROSS frames.
+  it("stays inside the 2.2% band the documented measurement bounds it to", () => {
+    const values = WALLS.map(([, wall]) => analyzeSkin(faceOnWall(wall), landmarks)!.raw.toneSpread);
+    const ratio = Math.max(...values) / Math.min(...values) - 1;
+    expect(ratio).toBeGreaterThan(0.02);
+    expect(
+      ratio,
+      "background coupling of toneSpread widened past the measured 2.1636%"
+    ).toBeLessThan(0.022);
   });
 });

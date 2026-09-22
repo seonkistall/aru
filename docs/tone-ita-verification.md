@@ -198,6 +198,70 @@ larger piece of work and it is in the backlog rather than smuggled in here.
 
 `toneLstar` moved for the same reason and is fixed by the same change.
 
+## 4. The half the gains still hold: `toneSpread`, measured 2026-09-22
+
+§2 took the frame-mean gray-world gains off `toneIta` and `toneLstar`. It did not take
+them off `toneSpread`, and nothing measured what that costs until this section. The
+claim on record was a note — "background-coupled at about 2%", 2026-09-16, with two
+numbers and no test behind either.
+
+Re-measured here through `analyzeSkin`, on the `faceOnWall` fixture in
+`tests/tone-ita-contract.test.ts` — one face held byte-for-byte identical, only the wall
+behind it changing — every published field of `SkinReads.raw`:
+
+| wall | gray-world gains (r, g, b) | `toneSpread` | vs grey |
+|---|---|---|---|
+| grey `[180,180,180]` | 0.93626, 1.01253, 1.05898 | 0.052903635205415585 | — |
+| warm wood `[200,150,105]` | 0.82791, 1.01832, 1.23438 | **0.05350370949189595** | +1.134% |
+| cool blue `[120,150,205]` | 1.03366, 1.03720, 0.93595 | **0.0523705964019627** | −1.008% |
+| white `[235,235,235]` | 0.94373, 1.01096, 1.05128 | 0.05286602230161696 | −0.071% |
+| dark `[60,60,60]` | 0.91027, 1.01825, 1.08772 | 0.05303399943360612 | +0.246% |
+
+Widest ratio, warm wood over cool blue: **2.1636%** (`max/min - 1 = 0.021636436622493482`).
+
+Two things this establishes that the note did not.
+
+**It is exactly one field.** `roughnessRatio`, `blemishCount`, `blemishDensity`, `shine`,
+`relRedness`, `cov`, `toneIta`, `toneLstar`, `tzoneL` and `cheekL` are **bit-identical**
+across all five walls — asserted, not spot-checked. So the background dependence is
+confined to `toneSpread` and a future change that starts moving any of the others is a
+new coupling rather than a wider version of this one. One caveat stated rather than
+implied: `blemishCount` is **0** on this fixture, which carries no discs, so these rows
+say nothing about `detectBlemishes`'s own use of the same gains.
+
+**The note reproduces, to five decimal places.** It gave 0.053504 for warm wood, which is
+this measurement rounded; and 0.052372 for blue against the 0.0523706 measured here, a
+1e-6 difference. The measured values are the ones now pinned.
+
+What it bounds. `toneSpread` is in `NEW_FEATURE_KEYS` (`ml/skin_indices.py`) and is
+exported into every ML sample, and it is compared against cut points drawn *across*
+frames — so "within one frame" understates it, and a 2.2% band is the noise floor under
+any threshold sitting on this axis. It is second-order next to what §3 records for ITA (a
+sign flip, three bands from one face) because `toneSpread` is a ratio of region L\* values
+and a cast that scales all four regions together largely cancels; the residual is the part
+that does not, the gains being per-channel while the regions differ in hue as well as
+lightness.
+
+**What would fix it, and why this cycle did not do it.** Break the gains out of the region
+L\* computation in `lib/skin.ts` and the coupling goes to **exactly zero** — measured, as
+one of the two source-line breaks below. That is not a free change: it moves every
+`toneSpread` value the product will ever compute, the field is published, and
+`VISIBLE_MODEL_CONTRACT.inputSchemaVersion` has never moved under three previous
+"Bumped" comments, so already-collected samples could not be told apart from new ones.
+That is the open backlog item about the schema version, not a line to slip in here.
+
+*Source-line breaks, both run 2026-09-22, both against `tests/tone-ita-contract.test.ts`
+and both reverted:*
+
+- `frameChannelGains`'s sub-sampling divisor 60 → 30, so the gains are estimated from a
+  different grid: `AssertionError: toneSpread behind a grey wall — a published ML column
+  moving with the room: expected 0.05291142788884354 to be 0.052903635205415585`
+  (1 failed | 6 passed).
+- the region L\* helper stops applying the gains
+  (`rgbToLab(m.meanR * gains.r, …)` → `rgbToLab(m.meanR, …)`): the same assertion at
+  `expected 0.0525811307190166`, **plus** `expected 0 to be greater than 0.02` — the
+  coupling vanishing is what names the mechanism (2 failed | 5 passed).
+
 ## Egress, re-probed 2026-09-16
 
 The blocked list in `docs/AUTOPILOT.md` was accurate and is now narrower in one place

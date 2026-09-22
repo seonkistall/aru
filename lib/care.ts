@@ -11,7 +11,6 @@ export type CareLink = {
   label: string;
   href: string;
   note: string;
-  noteEn?: string;
   kind: CareIntentKind;
   merchant?: MerchantId;
   placement?: string;
@@ -26,7 +25,6 @@ export function productSearchLinks(sku: Sku, placement = "care"): CareLink[] {
       label: link.label,
       href: commerceOutHref(sku.id, link.merchant, placement),
       note: link.note,
-      noteEn: link.noteEn,
       kind: "purchase",
       merchant: link.merchant,
       placement,

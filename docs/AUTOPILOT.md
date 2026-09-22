@@ -622,21 +622,6 @@ partly done and stays here.
   so nothing a user sees falls back to Korean. The question is only whether the four are
   stale entries to delete or a retake path that was removed and should come back; that
   needs someone to say which, so it is not a delete a cycle should do on its own.
-- [AI] **`noteEn` is carried on every commerce link and rendered nowhere**, which is the
-  `shareUrl` shape one surface over. `CommerceLink.noteEn` (`lib/commerce.ts`) holds an
-  English sentence for each of the four merchants ("Korea's biggest beauty retailer — check
-  stock online.", and three beside it), `productSearchLinks` copies it onto `CareLink`
-  (`lib/care.ts:29`), and no code, test or doc reads it: `/care` renders `t(link.note)`.
-  Checked before writing this down rather than assumed — all four Korean `note` strings and
-  three of the four `label` strings resolve in `en`, `ja`, `zh` and `ar`, so nothing a
-  non-Korean user sees falls back to Korean and this is dead weight rather than a live
-  defect. (The fourth label is `"Global search"`, already English, which `t()` passes
-  through for `en` and leaves in English for `ja`/`zh`/`ar`.) Delete it or render it — but
-  note the audit that would have caught it: cycle 27's coverage sweep read the Korean
-  literal at each `t("…")` CALL SITE, and these literals are data in `lib/commerce.ts`
-  passed through `t(link.note)`, so a call-site sweep cannot see them. Same class:
-  `careSummary` (`lib/care.ts:72`) takes `_reads` and `_result` and reads neither, which is
-  where the two standing lint warnings come from. Noted 2026-09-22.
 - [AI] Tone and dryness have no label source. Propose the smallest consented way to
   collect one, with the PIPA consequences spelled out; do not implement it alone.
 - [~] [AI] Recommendation quality: the reasons are LLM-generated and efficacy-filtered,
@@ -699,13 +684,34 @@ partly done and stays here.
   reintroduces the split just closed. `docs/analysis-performance-roadmap.md` had an open
   item whose literal wording would have re-added frame-mean gray-world; it now points
   here. Noted 2026-09-16.
-- [AI] `toneSpread` is background-coupled at about 2% through the same frame-mean gains
+- [~] [AI] `toneSpread` is background-coupled at about 2% through the same frame-mean gains
   the tone path just stopped using — 0.052372 behind a blue wall, 0.053504 behind warm
   wood, on a face held byte-for-byte identical. It is a ratio, so this is second-order
   rather than the sign flip ITA suffered, and `tests/skin-index-contract.test.ts`'s
   `toBeCloseTo(…, 2)` hides it — but it is compared against cut points drawn *across*
   frames, so "within one frame" understates it. Pre-existing, same class one level down.
   Noted 2026-09-16.
+  **2026-09-22, cycle 29: measured, pinned, and the fix is a schema decision rather than a
+  line of code.** The note reproduces: across five walls on the `faceOnWall` fixture,
+  warm wood reads **0.05350370949189595** and cool blue **0.0523705964019627**, a widest
+  ratio of **2.1636%**. (The note's 0.053504 is that warm-wood value rounded; its 0.052372
+  is 1e-6 off the 0.0523706 measured here, and the measured values are the ones pinned.)
+  Two things it did not establish, now asserted rather than spot-checked: it is **exactly
+  one field** — `roughnessRatio`, `blemishCount`, `blemishDensity`, `shine`, `relRedness`,
+  `cov`, `toneIta`, `toneLstar`, `tzoneL` and `cheekL` are bit-identical across all five
+  walls — and `blemishCount` is **0** on that fixture, so nothing here speaks to
+  `detectBlemishes`'s own use of the same gains. The guard is a new
+  `describe("toneSpread under a changing background")` in `tests/tone-ita-contract.test.ts`,
+  which is where the fixture lives; the alternative was a second copy of `faceOnWall` that
+  could drift from the tone half.
+  Stays `[~]` for a reason the item did not know. Taking the gains out of the region L\*
+  computation drives the coupling to **exactly zero** — measured, as the second of the two
+  source-line breaks — so the fix is one expression. What stops it is that `toneSpread` is
+  in `NEW_FEATURE_KEYS` and exported into every ML sample, so moving it moves a published
+  column for every future capture while `VISIBLE_MODEL_CONTRACT.inputSchemaVersion` has
+  never moved under three "Bumped" comments, and already-collected samples could not be
+  told apart from new ones. That is the schema-version item four entries down, not a line
+  to slip in here. Measurements and both breaks: `docs/tone-ita-verification.md` §4.
 - [AI] The ITA band cut points (55 / 41 / 28 / 10 in `ml/subgroups.py` and
   `lib/tone-bands.ts`) have no primary source reachable from this network.
   `docs/tone-ita-verification.md` establishes that ARU computes the *angle* correctly to
@@ -875,6 +881,162 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-22 (cycle 29) — Branch `autopilot/2026-09-22-1839`. **`toneSpread` is the one
+  published ML column that still reads the room it was captured in, and the size of that
+  is now a pinned 2.1636% instead of a note. One malformed value in `localStorage` could
+  switch a device's funnel off permanently and silently, because the two corruption modes
+  were handled differently for no reason. And the dead `noteEn` field is gone, with the
+  audit that could never have seen it built first.**
+
+  **Baselines, measured here on a clean tree at `bedb80a` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first (exit 0). `npm run smoke`
+  green with the chromium override at `/opt/pw-browsers/chromium-1194`
+  (`Smoke test passed.`), vitest **618 passed in 92 files**, its Playwright leg
+  **70 passed (3.4m)**, `python3 ml/selftest.py` **Ran 137 tests in 1.713s ... OK**,
+  `npm run lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at
+  `lib/care.ts:70`), `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research (자료조사): does a shipped browser analytics SDK check the shape of its own
+  persisted event queue?** The bug-fix track needed to know whether `Array.isArray` at the
+  read was the normal guard or an over-reaction, and the answer decided where the guard
+  sits. Read from the libraries' own source, pinned by digest —
+  `@amplitude/analytics-core` **2.57.0** from `registry.npmjs.org`
+  (sha256 `1cb97d68…1cab28e`) and `posthog-js@main`
+  `packages/browser/src/storage.ts` (sha256 `d2406cda…61f546`). Neither validates the
+  shape at the read. Amplitude's `BrowserStorage.get()` is a try/catch around
+  `JSON.parse` returning whatever came out — byte-for-byte the shape ARU had — and the
+  guard lives at the consumer, as `unsent && unsent.length > 0` before `.map`. That is a
+  duck-type check, and it is four-fifths of one: verified in node against the five values
+  that parse, it skips `null`, `5` and `{}`, and lets `"abc"` through to
+  `TypeError: v.map is not a function`. PostHog is `JSON.parse(...) || {}` at every read,
+  same class. So ARU was strictly weaker than both references (it had neither guard), and
+  the finding that actually changed the fix is the third one: **where** the guard sits
+  decides whether the store repairs itself. Guard at the consumer and the bad value stays
+  in the key forever; guard at the read and return `[]`, and the next write overwrites it.
+  Neither reference does that. `docs/funnel-store-shape.md`, which also states plainly
+  that no occurrence has been observed in the wild and must not be cited as if one had.
+
+  **ML: `toneSpread` is background-coupled, and it is the only published field that is.**
+  §2 of `docs/tone-ita-verification.md` took the frame-mean gray-world gains off `toneIta`
+  and `toneLstar`; it never took them off `toneSpread`, which builds its region L\* values
+  through them. The claim on record was a 2026-09-16 note with two numbers and no test.
+  Re-measured through `analyzeSkin` on the `faceOnWall` fixture — one face held
+  byte-for-byte identical, only the wall changing — every published field of
+  `SkinReads.raw`:
+
+  ```
+  wall         gains (r, g, b)                    toneSpread             vs grey
+  grey         0.93626, 1.01253, 1.05898          0.052903635205415585   —
+  warm wood    0.82791, 1.01832, 1.23438          0.05350370949189595    +1.134%
+  cool blue    1.03366, 1.03720, 0.93595          0.0523705964019627     −1.008%
+  white        0.94373, 1.01096, 1.05128          0.05286602230161696    −0.071%
+  dark         0.91027, 1.01825, 1.08772          0.05303399943360612    +0.246%
+  ```
+
+  Widest ratio **2.1636%** (`max/min - 1 = 0.021636436622493482`), which is the "about 2%"
+  the note claimed. Two things the note did not establish. It is **exactly one field**:
+  `roughnessRatio`, `blemishCount`, `blemishDensity`, `shine`, `relRedness`, `cov`,
+  `toneIta`, `toneLstar`, `tzoneL` and `cheekL` are **bit-identical** across all five
+  walls, asserted rather than spot-checked, so a change that starts moving one of them is
+  a new coupling rather than a wider version of this one. And `blemishCount` is **0** on
+  this fixture, which carries no discs — said out loud because it means these rows say
+  nothing about `detectBlemishes`'s own use of the same gains. The note's 0.053504 is the
+  warm-wood value rounded; its 0.052372 is 1e-6 off the 0.0523706 measured here.
+
+  The case lives in `tests/tone-ita-contract.test.ts` because the fixture does — a second
+  copy of `faceOnWall` would give the two halves of one measurement two fixtures that
+  could drift — and the walls are now one shared `WALLS` const so the tone half and the
+  spread half can never be measured over different ones. Two source-line breaks, both run
+  and both reverted: `frameChannelGains`'s sub-sampling divisor 60 → 30 gives
+  `AssertionError: toneSpread behind a grey wall — a published ML column moving with the
+  room: expected 0.05291142788884354 to be 0.052903635205415585` (1 failed | 6 passed);
+  dropping the gains from the region L\* helper gives the same assertion at
+  `expected 0.0525811307190166` **plus** `expected 0 to be greater than 0.02`
+  (2 failed | 5 passed). That second break is the finding: **the fix is one expression and
+  it drives the coupling to exactly zero.** What stops it is that `toneSpread` is in
+  `NEW_FEATURE_KEYS` and exported into every ML sample, so moving it moves a published
+  column for every future capture while `inputSchemaVersion` has never moved under three
+  "Bumped" comments — the schema-version backlog item, not a line to slip in here.
+  `docs/tone-ita-verification.md` §4.
+
+  **Bug fix: one bad value in `localStorage` switched a device's funnel off for good.**
+  `getFunnelEvents` wrapped `JSON.parse` in a try/catch, so a TRUNCATED value returned
+  `[]` and the next `recordFunnelEvent` overwrote the key — the store repaired itself. A
+  value that PARSES to the wrong shape took no such path: it was returned as-is,
+  `recordFunnelEvent` called `.push` on it, and the throw landed in the outer catch that
+  exists so analytics can never break the user flow. Nothing rewrote the key, so every
+  later event hit the same throw. `tests/funnel-store-shape.test.ts` fails against the
+  unfixed source on all five shapes that parse —
+  `AssertionError: recordFunnelEvent() returned null on an object — the funnel is off:
+  expected null not to be null`, **10 failed | 2 passed** — while the two control cases
+  pass, which is what makes this an inconsistency rather than a preference: unparseable
+  JSON already self-healed, and a real array was never affected. The fix is
+  `Array.isArray` at the read, which is also what makes the repair happen. This is the
+  device-side half of a hole `/api/sync` already closed on the server
+  (`tests/api-json-boundaries.test.ts`), and the funnel is the only measurement the
+  product has of where users leave — revenue-upstream item 2.
+
+  **UI/UX: the dead `noteEn` field, deleted, with the audit built first.** Cycle 28 filed
+  it and said "delete it or render it". Rendering it would duplicate what `t(link.note)`
+  already produces in English, so it went — from `lib/commerce.ts` and `lib/care.ts`,
+  the only two files that mentioned it. What made that a deletion rather than a guess is
+  `tests/care-link-copy-coverage.test.ts`, which closes the blind spot the item named:
+  cycle 27's sweep read the Korean literal at each `t("…")` CALL SITE, and these literals
+  are DATA passed through `t(link.note)`, so a call-site sweep could not see them. The new
+  file collects them from the data instead — `buildCommerceLinks`, `productSearchLinks`
+  over all 23 catalogue skus, `clinicLinks` in both branches — and asserts each resolves
+  in `en`, `ja`, `zh` and `ar`. The rule is Hangul-bearing rather than an exception list,
+  and a second case pins `"Global search"` as the only language-neutral string so "no
+  Hangul" cannot grow into "untranslated". Broken at source by deleting the 올리브영 note
+  from `lib/i18n/en.ts:855`: `care copy that would render as Korean: en:
+  buildCommerceLinks[oliveyoung].note = "오늘 매장이나 온라인 재고를 바로 볼 수 있어요"`,
+  2 of 3 failing. The item's `careSummary` half was looked at and deliberately left:
+  `tests/product-trust.test.ts:63` passes a visible-redness reading in precisely to assert
+  it does NOT raise `clinicPriority`, so `_reads` is what that test's intent is written
+  in. The two lint warnings stay, now as a recorded decision.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`) with the chromium
+  override; vitest **635 passed in 94 files** (from 618/92 — the two new files plus the
+  toneSpread cases); `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged;
+  `python3 ml/selftest.py` **Ran 137 tests in 1.713s ... OK**; `npm run lint` **0 errors,
+  2 warnings**, the same two. Nothing in `public/models/visible-attributes/manifest.json`,
+  `NEXT_PUBLIC_FUNNEL_FLUSH`, `shareUrl` or what `blemishCount` reports was touched.
+
+  *Rotation, against a pre-review snapshot of main.* `wc -l` 1420 → 1290 and 5886 → 6176.
+  `comm -23` over the two files concatenated and sorted finds **2 lines missing**, and both
+  are backlog-item headers this cycle EDITED rather than moved — the `noteEn` header, now
+  carrying `[x]`, and the `toneSpread` header, now carrying `[~]`. Nothing was lost in
+  either move: `diff` says the cycle 26 entry (256 lines) and the closed `noteEn` item
+  (33 lines) are **byte-identical** in their new homes. "Recent cycles" holds 29/28/27.
+
+  **Supervisor review.** One note on the run itself first: the scheduled 12:39 cycle did
+  NOT run — the supervising session had no tool access at that time and the trigger only
+  queued. This cycle is the 18:39 firing, spawned at 20:49 UTC; the two queued firings were
+  not run back to back.
+
+  *The funnel defect is real and its guard bites.* Restoring the unchecked
+  `return JSON.parse(localStorage.getItem(KEY) || "[]")` fails 10 cases, the first two
+  naming the mechanism: `getFunnelEvents() on null: expected null to deeply equal []` and
+  `recordFunnelEvent() returned null on null — the funnel is off`. The asymmetry the
+  comment describes is the whole defect: a truncated value throws in `JSON.parse` and the
+  store repairs itself on the next write, while a value that PARSES to the wrong shape
+  was returned as-is, threw on `.push` inside the catch that exists so analytics cannot
+  break the flow, and nothing ever rewrote the key.
+
+  *`noteEn` went the safe direction.* This review had flagged before the branch arrived
+  that resolving the item by RENDERING the field would put four merchant claims in front
+  of users, one of them an unsourced comparative (`"Fastest delivery option in Korea."`,
+  `lib/commerce.ts:78`). The branch deleted it — 5 lines from `lib/commerce.ts`, 2 from
+  `lib/care.ts`, nothing rendered.
+
+  *`toneSpread` was measured and not changed.* It is a published, exported column, and
+  `git diff` on `lib/skin.ts` is empty; the item went `[AI]` → `[~]` rather than closing.
+
+  *Rotation.* 1420 → 1297 and 5886 → 6176; `comm -23` finds **2 lines missing** — the
+  first line of the `noteEn` item (closed, 3 mentions now in the changelog) and the first
+  line of the `toneSpread` item (the `[~]` marker). `shareUrl` is still open, a fifth
+  cycle running. `lib/skin.ts` and the manifest are untouched.
 
 - 2026-09-22 (cycle 28) — Branch `autopilot/2026-09-22-0639`. **`detectBlemishes` now says
   whether the frame it just counted was decided by the image or by scan order, and the
@@ -1161,260 +1323,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
   push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
   stays out of this file is one a later cycle pays for twice.
-
-- 2026-09-21 (cycle 26) — Branch `autopilot/2026-09-21-1839`. **The "do not pool feature
-  generations" rule stopped being documentation: a run that mixes two generations of the
-  feature extractor now says so, and the check would never have fired even once it existed
-  because `run_pipeline` hands `coverage()` a projection that had dropped both version fields.
-  Whether that is a warning or a blocker was decided from scikit-learn's own source rather
-  than from taste. And `/studio` — the product's only image-share surface — has been cutting
-  its own prefilled text in three of five locales, at every width.**
-
-  **Baselines, measured here on a clean tree before any edit, and they match the supervisor's
-  to the number.** `npm ci` first (`node_modules` was absent). `npm run smoke` green with the
-  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **608
-  passed in 90 files**, mobile E2E **52 passed (4.1m)**, `python3 ml/selftest.py` **Ran 121
-  tests ... OK**, `npm run lint` **0 errors, 2 warnings** (the same `'_reads'` / `'_result'` at
-  `lib/care.ts:72`), `npx tsc --noEmit | grep -c "error TS"` **13**.
-
-  **Research: warn or block, answered from an implementation rather than from recall.** The ML
-  item below had to put a mixed-generation run somewhere, and the two places are not
-  equivalent: `coverage_warnings` is read by a human and gates nothing, while
-  `promotion_check`'s `blockers` stop a promotion — and writing a new promotion rule means
-  editing the shipped manifest, which is hard guardrail 8 and the owner's call. scikit-learn
-  draws exactly this line and draws it explicitly. Read from its own source — another
-  project's implementation, not a paper and not a standard, since `scikit-learn.org` and
-  `en.wikipedia.org` both refuse this network:
-
-  ```
-  sklearn/exceptions.py       @ 1.5.2  http=200 bytes=6058   sha256 635e992922c815c6b95cf11d84bd0f06d5bd1d58e4adeb335e2864d17ae61618
-  sklearn/exceptions.py       @ 1.7.1  http=200 bytes=7703   sha256 09a6854b80d56ea86a52276203e70cbd33fa0d1eaa205984533ba2312e470de7
-  sklearn/base.py             @ 1.5.2  http=200 bytes=53095  sha256 cd62bc6b3f5a6f16466c7eaa0ec91a83a83c91b93610d67e39c55fda85530c89
-  sklearn/base.py             @ 1.7.1  http=200 bytes=47777  sha256 a2ad39c5ff6491d04c35738e942860def0e80d6800aeb1690cfd68bf46be8d91
-  sklearn/utils/validation.py @ 1.7.1  http=200 bytes=108488 sha256 ae3c972e645e2d0ba00459e8f82ac540f0a670f474cc293875a95f4d63f0ccc2
-  ```
-
-  A **provenance** mismatch warns and continues: `BaseEstimator.__setstate__` (`base.py:372` in
-  1.5.2, `:438` in 1.7.1, the same nine lines in both) calls `warnings.warn` — not `raise` — on
-  `InconsistentVersionWarning`, a `UserWarning` subclass whose message says "This might lead to
-  breaking code or invalid results. Use at your own risk." A **structural** mismatch raises:
-  `_check_feature_names` (`validation.py:2697`) ends its comparison branch with
-  `raise ValueError`, enumerating the unseen and missing names. And an **unstamped** artifact is
-  given a name of its own rather than merged into the current one —
-  `state.pop("_sklearn_version", "pre-0.18")` reads a version-less pickle as a *different*
-  version and warns, not as one that matches.
-
-  Pooling two extractor generations is the first kind: every index is present and well-formed,
-  and nothing in the rows records how far apart two generations are. So it is named, counted,
-  and left to the reader. `docs/feature-generation-pooling.md` §2.
-
-  **ML: the backlog item closed, plus the reason it would not have worked.** Every clause of
-  the 2026-09-16 item was re-checked against main rather than taken on trust and all of them
-  still held: `model_version` and `input_schema_version` are written at
-  `ml/prepare_crop_dataset.py:117-118` and `ml/run_pipeline.py:338-339` and listed in the CSV
-  header at `:277-278`, and grepping the whole of `ml/` for either name returns those five
-  write sites and **nothing that reads them back**. The item's own dates are its argument:
-  `fallbackVersion` is `roi-calibrated-2026-09-18` today and was `-09-16` when the item was
-  filed, and it moves when a feature's semantics change.
-
-  `subgroups.feature_generation(row)` resolves a row's generation (snake_case and camelCase
-  spellings of both fields, so one generation cannot split into two on spelling);
-  `Coverage.generations` counts them; `coverage_warnings` emits one line naming and counting
-  the pooled generations and a second for rows carrying no stamp beside stamped ones. Every
-  run that already wrote `subgroup_warnings` gets it for free — `run_pipeline`,
-  `train_visible_attributes` (3 call sites), `evaluate_dataset`, `external_manifest`.
-
-  **The part the item did not know about, and it is worth more than the fix.** With the
-  counting in place the warning would still never have fired on a real run.
-  `run_pipeline.py:363` builds a narrow projection of each row (`decoded`) and passes *that* to
-  `coverage()`, not the CSV row — and the projection carried `participant_id`, `session_id`,
-  `device_id`, `toneIta`, `age_band` and `id`, neither version field. The generation of every
-  row was invisible at exactly the place the check runs. The two fields are version strings,
-  not identifiers, and the projection already carried three of the latter, so nothing about a
-  person was widened.
-
-  **Five source-line breaks, never of a test, and each one narrow enough to name what it
-  protects.** Baseline `Ran 130 tests ... OK`; `ml/subgroups.py` restored byte-identical
-  (sha256 `270cc66838e7e9bb5d1f57bcdfe5df710179010dbe235bf041ee81a1e2f9b076` before and after).
-
-  ```
-  1  if len(stamped) > 1:  ->  > 2                 FAILED (failures=2)   AssertionError: 0 != 1
-  2  drop input_schema_version from the key list   FAILED (failures=1)   AssertionError: 0 != 1
-  3  stamped = dict(cov.generations)  (fold in     FAILED (failures=2)   Lists differ: ['3 rows (100%) carry
-     the unstamped rows)                                                 no feature generatio[112 chars]nd.'] != []
-  4  remove both fields from decoded again        FAILED (failures=1)   'model_version' not found in
-                                                                        'decoded.append({...' : run_pipeline's
-                                                                        coverage projection dropped model_version
-  5  ("model_version", "modelVersion") -> 1-tuple FAILED (failures=1)   'roi-calibrated-2026-09-18/2026-06-30.
-                                                                        visible-face-crop.v1' != '/2026-06-30.
-                                                                        visible-face-crop.v1'
-  ```
-
-  Break 3 is the one that shows the two clauses are independent: folding unstamped rows in with
-  the stamped ones leaves every "two generations" assertion green and fails only the two cases
-  about unstamped rows. Break 4 is the one that would have shipped a check that could not fire.
-
-  **UI/UX: `/studio`'s read editor cut its own prefilled text in three of five locales.** Found
-  by sweeping every public route × 5 locales for controls under 44px and for elements whose
-  `scrollWidth` exceeds their `clientWidth`, then measuring the rendered text width of each
-  field against the box it gets. The name field is a fixed `width: 96` — 94px of content box —
-  which is wider than the Korean labels it was sized for and narrower than the translations the
-  same field is prefilled with. Measured in Chromium, as needed-minus-available in px, negative
-  = clipped:
-
-  ```
-  field   locale  value                  @360    @320
-  name    en      "Pores/texture"        -14.7   -14.7
-  name    ar      "المسام/الملمس"         -23.2   -23.2
-  value   en      "Fairly comfortable"   +21.7   -18.3
-  value   ja      "落ち着いている"           +23.4   -16.6
-  ```
-
-  The name box does not depend on the viewport, so en and ar cut the label at **every** width,
-  desktop included. Widening the name inside one line is not available and that was measured
-  rather than assumed: at 320px the en value already needs 137.3px against a 119px box, so
-  taking width from the value makes the narrow viewport worse. The name takes its own line
-  instead (`flex-basis: 100%` on a wrapping row). After: every field has **85.7 to 323px** of
-  headroom at 320/360/393/430 in all five locales, the worst case being the en value at 320px.
-
-  `tests/e2e/studio-label-fit.spec.ts` asserts both halves — a width floor alone would pass a
-  field wide enough to tap that still cuts its label, and a clipping check alone would pass a
-  20px field showing all of a one-character value. Reverting the one style to `width: 96`
-  fails **5 of 10**, naming the fields: `Item 2 name="Pores/texture" sw=109 cw=94`,
-  `اسم العنصر 2="المسام/الملمس" sw=117 cw=94`, `Item 4 value="Fairly comfortable" sw=137 cw=119`,
-  `項目4の値="落ち着いている" sw=118 cw=101`. ko and zh pass at both widths, which is right —
-  they never clipped.
-
-  **Bug fix: `savePilotNote`, and the ordering is the fix rather than a detail of it.** The
-  cycle 25 finding. It was the only device store in the repo with no `window` guard, no cap and
-  no try/catch, running a bare `localStorage.setItem` from `/pilot`'s click handler. What a
-  full or blocked store cost was not only the note: the `QuotaExceededError` escaped into
-  React, so the next statement — `setCurrentPilotSession` — never ran, and `/scan` reads that
-  scope on every consent toggle to pass `participantId` / `sessionId` into
-  `recordConsentEvent`. An unestablished scope means every consent event for that participant
-  lands unscoped, and participant scope is what the participant-grouped cross-validation needs.
-  So the scope is now written **first**, from its own small key, and the note's failure cannot
-  take it down; `setCurrentPilotSession` is guarded too, since it had the same defect.
-  `savePilotNote` returns `PilotNote | null` like `recordConsentEvent` and `saveCropSample`,
-  and caps at 500 like `lib/labels.ts`.
-
-  `/pilot` now reports a refused write and **keeps the typed fields**, which is the same test
-  cycle 25 applied to `recordCareIntent` and lands on the opposite answer: there, nothing on
-  screen claimed the write had happened, so an error row would have reported a failure the user
-  did not experience. Here the form clears and the roster re-reads, so a dropped note looks
-  like a note that was never typed. Four source-line breaks, `lib/pilot.ts` restored
-  byte-identical (sha256 `5ee254d2f9dbfe0795fa7002a9e7b89ec4e3d6494ef924b91502ee3a3f27633c`):
-
-  ```
-  drop the note write's try/catch     2 failed | 5 passed   expected [Function] to not throw an error
-                                                            but 'QuotaExceededError: quota' was thrown
-  write the scope AFTER the note      1 failed | 6 passed   expected null to match object { participantId: 'P007' }
-  drop the cap                        1 failed | 6 passed   expected [ ...(501) ] to have a length of 500 but got 501
-  drop setCurrentPilotSession's       1 failed | 6 passed   QuotaExceededError: quota
-    try/catch
-  ```
-
-  **One break that did NOT bite, said plainly rather than dressed up.** Deleting the
-  `typeof window === "undefined"` guard from `savePilotNote` leaves all 7 cases green. Under
-  Node there is no `localStorage` binding at all, so the write throws a `ReferenceError` that
-  the same try/catch two lines down swallows, and the function returns null by the other route.
-  The SSR case is kept as a behavioural pin and the test file says so at the assertion; what
-  the guard actually buys — that the SSR path returns without attempting the write, the
-  convention the six sibling stores follow — is not observable from there.
-
-  **The `shareUrl` item was worked and deliberately not implemented, which is what the brief
-  asked for.** `docs/share-return-path-decision.md` lays out five options with what each costs
-  and recommends one, and the item stays open because the decision is the owner's. The reason
-  it is not a one-line change, stated from source rather than asserted: `moodShareUrl` needs
-  `{ oil, redness, pores }` as integers 0-2 and `/studio` does not have them — its state is a
-  headline string and four `{ label, value, calm }` rows filled from free-text inputs whose
-  purpose is that the user rewrites them. Option C (reverse-map the edited text through
-  `MOOD_LABELS`) is rejected on evidence rather than taste: the two shipped presets already
-  contain strings with no mood axis to map to, so the derivation yields nothing the moment
-  anyone types.
-
-  **Rotation, proved rather than asserted.** Across the cycle-23 move alone:
-  `docs/AUTOPILOT.md` **1669 -> 1621**, `docs/autopilot-changelog.md` **4966 -> 5204**; after
-  the two backlog items moved as well, **1632** and **5260**. (This paragraph and the
-  verification block below it were written after that measurement, so the committed file is
-  longer again — `wc -l` on the commit is the authority and the deltas above are the
-  rotation's, not the whole cycle's.) "Recent cycles" holds 26/25/24. Cycle 23 moved verbatim:
-  **17,054 bytes, 237 lines, sha256
-  `998fe4316e480280bfdd35cdab8d3197f9a23c6938af3e2763d95b1e7ed81b9d`** on both sides, `diff`
-  empty. Both `[x]` items moved to "Closed backlog items" under their original headings with
-  the original wording preserved as a blockquote. Normalising both files' non-blank lines
-  (strip leading whitespace and `>`, strip trailing whitespace, `sort -u`) and running
-  `comm -23 before after` leaves **nothing at all** — **5628** unique lines before, **5847**
-  after.
-
-  **One thing the rotation turned up that a reader should know.** The local `main` and
-  `origin/main` refs in this checkout are **stale at `a243b69` (cycle 21)**, four commits
-  behind the `ab23796` the brief names and the commit this branch was actually cut from. The
-  first byte-identity check was run against `main` and returned an empty file rather than an
-  error, which looks exactly like a failed extraction; it was re-run against `ab23796`. Any
-  cycle diffing "against main" in this container is diffing against cycle 21.
-
-  **Verification, on the finished tree.** `npm run smoke` green (`Smoke test passed.`),
-  vitest **615 passed in 91 files** (608 plus the 7 in the new pilot file), mobile E2E
-  **62 passed** (the 52 measured on `ab23796` at the top of this cycle, plus
-  the 10 new `/studio` locale x width cases), `python3 ml/selftest.py` **Ran 130 tests ... OK** (121 plus the 9 new
-  `FeatureGenerations` cases), `npm run lint` **0 errors, 2 warnings** — the same two — and
-  `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged.
-
-  `lib/skin.ts` is byte-identical to `ab23796`, and so are
-  `public/models/visible-attributes/manifest.json` (`status`, `promotionGate` and
-  `minQwkGainOverHeuristic` included), `ml/external_datasets.json`, `lib/consent.ts` and
-  `next.config.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` was not set, no consent kind was invented and
-  neither stream was merged, no dataset licence tier moved, and no face-image path changed.
-
-  **Supervisor review.** The share decision is the part worth reading, and this review's
-  own pre-analysis of it was worse than the branch's.
-
-  *A reviewer error, and it is the substantive kind.* Before the branch arrived this
-  review worked the same item and recommended **A** — mood link when the card came from a
-  scan — on the argument that it "never claims a reading the user did not make" and that
-  it reuses a decision `/scan` already shipped. **That argument is wrong**, and
-  `docs/share-return-path-decision.md` §3A says why: `/studio` is the editing surface, its
-  `reads` come from free-text `<input>`s whose whole purpose is rewriting
-  (`app/studio/page.tsx:140-141`), so a user can edit "유분 적음" to anything while the
-  link still encodes the scan's level. It does not claim a reading they never took; it
-  claims one they **edited away from**, in front of a stranger. Two more things this
-  review missed and the branch did not: the card has FOUR rows against the mood link's
-  THREE, so 전반 has no level at all, and a preset-prefilled session has no levels in any
-  form. **Option E did not occur to this review** and is better than A — send
-  `moodShareUrl(levels)` only while every value still matches its prefill, bare origin
-  otherwise — because it takes B's floor and A's ceiling and makes the contradiction
-  unrepresentable rather than merely unlikely. The branch's recommendation stands; this
-  review's is withdrawn.
-
-  What this review did establish and the branch confirms independently: the levels ARE
-  in hand at prefill (`lib/skin.ts:13`, `Bucket` carries `level: SkinLevel`) and are
-  simply dropped by the mapping, and `fromScan` already records preset-vs-real. Those
-  narrow the question; they do not decide it.
-
-  *Right call on scope.* `shareUrl` stayed OPEN — `grep -c` finds it in
-  `docs/AUTOPILOT.md` and NOT in the changelog — so the decision was written up without
-  the item being closed on the owner's behalf. `app/studio/page.tsx` changed for an
-  unrelated locale-clipping defect, not for this.
-
-  *The ML claim holds and its guard is narrow.* On main, `ml/run_pipeline.py` wrote
-  `model_version` and `input_schema_version` into the CSV (lines 338-339, declared at
-  277-278) but the `decoded` projection that `subgroups.coverage()` actually consumes did
-  not carry them — so a pooling check would have had nothing to read. Removing those two
-  projection lines again fails exactly one test, named for the defect:
-  `FAIL: test_the_pipeline_projection_carries_the_fields_coverage_reads`, 1 of 130. One
-  narrow break, one identifying failure.
-
-  *The pilot fix bites on both halves.* Restoring the bare uncapped
-  `localStorage.setItem(KEY, ...)` fails 3 of 7 with both symptoms:
-  `expected [Function] to not throw an error but 'QuotaExceededError: quota' was thrown`
-  and `expected [ …(501) ] to have a length of 500 but got 501`. The write-order argument
-  is correct and load-bearing: the scope is written before the note because `/scan` reads
-  `getCurrentPilotSession()` on every consent toggle, so a lost scope makes every
-  subsequent consent event unscoped — which is what participant-grouped cross-validation
-  needs.
-
-  *Rotation, against a pre-review snapshot of main.* 1669 → 1647 and 4966 → 5260, and
-  `comm -23` finds **18 lines missing**, all 18 from the two backlog items this cycle
-  closed (`savePilotNote`, and the feature-generation pooling rule), both present in the
-  changelog. "Recent cycles" holds 26/25/24.
