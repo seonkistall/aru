@@ -984,6 +984,48 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   under "### Next" for the dead `noteEn` field. `wc -l` before/after and the `comm -23`
   preservation check are in the PR body.
 
+  **Supervisor review.** Kept cheap — the account is at `seven_day / allowed_warning`
+  (resets 2026-09-22 20:00 UTC) and the worker was told to be economical, so this was too:
+  two reads before the branch, two breaks after.
+
+  *The fork this cycle had to get right, and did.* The item names three outcomes — report
+  it, refuse it, or carry a confidence — and they are not equally available to a cycle.
+  `blemishCount` is in `ml/skin_indices.py:141` `NEW_FEATURE_KEYS`, so it is an export
+  column every ML sample carries, and it is pinned per frame size at
+  `tests/scan-cost-benchmark.test.ts:347`. **Refusing or altering the count would move an
+  exported column and retroactively change what every already-collected sample means** —
+  the `fallbackVersion` class of change, needing the version treatment or an owner call.
+  Reporting alongside is additive and ordinary cycle work. This cycle took the additive
+  branch, left `count` untouched (`git diff` on
+  `tests/scan-cost-benchmark.test.ts` is **0 lines**), and says in the function's own
+  comment that what to do about a plateau-dominated frame "is an open decision, not this
+  function's to make". The item went `[AI]` → `[~]` rather than closing, which is the
+  honest marker: "notice" is answered, "what to do" is not.
+
+  *Both breaks bite, and the second is the one that matters.* Removing the census line
+  fails 1 of 2 with the pinned string named. Quantising `residual[i]` to three decimals —
+  the sixth break in §7.4, the one that did NOT bite when the census was computed from an
+  outside replica — now fails 2 of 2, and fires on the NOISY fixture as well:
+  `noise 4 600x720: 2 of 5 counted cells are settled by scan order, not by the image. On a
+  frame with real pixel noise the suppression margins are 1e6x the detector's own rounding
+  error, so an exact tie means something upstream collapsed distinct residuals.` That is
+  the proof the census is computed inside the detector rather than from a replica, which
+  is exactly what the "decision-margin guard is blind to the residual arithmetic" item
+  asked for.
+
+  *Read of the tie logic, since a census that miscounts is worse than none.* The
+  suppression loop breaks out on `residual[j] > residual[i] || (residual[j] === residual[i]
+  && j < i)`, so a cell that survives as a peak has run the full neighbour loop and
+  `onPlateau` is fully determined for it; and a surviving cell's ties can only be with
+  later-indexed neighbours, which is precisely "won on `j < i`" as the comment claims.
+
+  *Scope held for a fourth cycle.* `shareUrl` is still open in this file and absent from
+  the changelog.
+
+  *Rotation.* 1533 → 1378 and 5588 → 5886; `comm -23` finds **1 line missing**, and it is
+  the plateau item's own first line, changed by the `[AI]` → `[~] [AI]` marker. "Recent
+  cycles" holds 28/27/26.
+
 - 2026-09-22 (cycle 27) — Branch `autopilot/2026-09-22-0039`. **Threshold fitting stopped
   pooling two feature generations in silence — the half cycle 26 left open, closed the way it
   said: one shared warning, from one definition, read by both `coverage()` and `ml/calibrate.py`.
