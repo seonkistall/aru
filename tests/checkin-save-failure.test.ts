@@ -73,7 +73,19 @@ describe("check-in writes report whether they landed", () => {
     // which tests/e2e/checkin-schedule.regression-7.spec.ts already does.
     const page = readFileSync(resolve(root, "app/checkin/page.tsx"), "utf8");
     expect(page).toContain("const saved = await recordCheckin(");
-    expect(page).toMatch(/if \(!saved\) \{\s*setSaveFailed\(true\);\s*return;/);
+    // Widened 2026-09-21 when the repurchase branch merged in. The original regex
+    // required `setSaveFailed(true);` and `return;` to be adjacent, which forbade any
+    // other statement in the branch — and the branch now also needs `setSaving(false)`
+    // to release the double-tap guard, without which a failed save disables the button
+    // permanently and the user cannot do the retry this very message asks for.
+    // What the assertion is actually for is unchanged: on a refused write the card
+    // must set the failure flag and leave before `onDone()`.
+    expect(page).toMatch(/if \(!saved\) \{[^}]*setSaveFailed\(true\);[^}]*return;/);
+    const branch = page.slice(page.indexOf("if (!saved) {"));
+    // Comments stripped first: the branch explains itself by naming `onDone()`, and an
+    // assertion that reads its own explanation as code is no assertion.
+    const body = branch.slice(0, branch.indexOf("}")).replace(/\/\/.*$/gm, "");
+    expect(body, "onDone() must not run on a refused write").not.toContain("onDone()");
     expect(page).toContain(
       't("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.")',
     );

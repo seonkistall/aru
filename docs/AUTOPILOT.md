@@ -23,14 +23,26 @@ Be clear-eyed about what the loop can and cannot move:
 Target: **$10,000 / month**. ARU's only revenue surface today is the commerce
 out-link (`/api/out` → `lib/commerce.ts`).
 
+**Corrected 2026-09-21. The basket figure below was 1.54x too high for twenty cycles,
+in the direction that flattered the plan.** The table said ~₩30,000 and credited it to
+"catalogue price band in `lib/skus.ts`". The median of that band is **₩19,500** and the
+mean ₩19,514. Do not re-derive any of this by hand — run `node scripts/revenue-model.mjs`,
+which reads the price band out of `lib/skus.ts` at run time and labels every assumption.
+The full design is [`docs/revenue-design.md`](revenue-design.md).
+
 | Quantity | Value | Where it comes from |
 |---|---|---|
-| Typical Korean skincare basket | ~₩30,000 (~$22) | catalogue price band in `lib/skus.ts` |
-| Affiliate commission | **7%** on a recommended item, 3% on another item bought through the link | 올리브영 쇼핑 큐레이터 terms, 2026-09-15 |
-| Revenue per converted click | ~₩2,100 (~$1.5) at 7% | basket × commission |
-| Conversions needed per month | **~6,700** | $10,000 ÷ revenue per conversion |
-| Scan→purchase conversion (optimistic) | 2–5% | affiliate-content benchmark, unverified for this product |
-| Monthly scans implied | **~100,000–700,000** | conversions ÷ conversion rate |
+| Catalogue median price | **₩19,500** (mean ₩19,514, 22 SKUs) | MEASURED from `lib/skus.ts` by the model script |
+| Affiliate commission | **7%** on a recommended item, 3% on another item bought through the link | 올리브영 쇼핑 큐레이터 terms, 2026-09-15 — a search result, not a page this repo opened |
+| Revenue per converted click | **~₩1,365 (~$0.99)** at 7% of the median | basket × commission |
+| Conversions needed per month | **~10,110** | $10,000 ÷ revenue per conversion |
+| Scan→purchase conversion | 2–5% | ASSUMED. Never measured for this product, which has never had traffic |
+| New scans implied, one purchase per user | **~202,000–505,000** | conversions ÷ conversion rate |
+| New scans implied, with replenishment | **~67,000–168,000** | the same, over 3 purchases per retained user per year |
+
+A ₩30,000 basket is defensible if a user buys more than one item — the recommendation
+shows up to three — but that is an assumption about behaviour, and it was credited to
+the price band. The model now carries it as a separate, labelled row.
 
 Two things follow, and every cycle should act on them rather than re-deriving them:
 
@@ -91,11 +103,17 @@ While that table reads $0, prefer work in this order. It is not a rule against q
 work — a broken product converts nothing — but a tie-breaker when two items look equally
 worth doing.
 
-1. **Anything that makes an existing click earn money.** The affiliate plumbing is the
-   clearest case: `COMMERCE_LINK_OVERRIDES_JSON` is the designed insertion point and is
-   empty, and every link currently lands on a *search results page* rather than a product
-   page. That second one is a conversion leak the loop can fix today, without waiting for
-   the owner's programme applications.
+1. **Anything that makes an existing click earn money, or makes a user worth more than
+   one click.** The affiliate plumbing is the clearest case: `COMMERCE_LINK_OVERRIDES_JSON`
+   is the designed insertion point and is empty, and every link currently lands on a
+   *search results page* rather than a product page.
+   **Revised 2026-09-21 by the design in [`docs/revenue-design.md`](revenue-design.md):
+   the bigger lever was never the click, it was the second purchase.** Skincare is
+   consumable and the product had built an entire retention loop — product-use tracking,
+   2-week and 4-week check-ins, the reminder email — while `/checkin` asked
+   "재구매 할래요?" and wrote the answer to localStorage without offering one. Fixing that
+   moves the traffic $10,000/month needs from ~202,000-505,000 new scans a month to
+   ~67,000-168,000. Landed; the next increments are basket size and the reminder email.
 2. **Anything that makes the funnel observable.** Optimising what you cannot measure is
    guessing. `lib/funnel.ts` is still localStorage-only.
 3. **Anything that makes one user bring another.** The share loop is the only organic
@@ -264,6 +282,30 @@ partly done and stays here.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
+- [AI] **Per-language urls.** `LanguageProvider` switches language client-side, so
+  ARU's five languages share one url each. There is nothing for `hreflang` to point at
+  and the copy a Korean-language crawler reads is English — a Korean query cannot rank
+  an English page, and Korea is the market. This is the largest SEO defect in the
+  product and the reason `app/sitemap.ts` has three urls that are all effectively
+  English. It is a routing change (paths, metadata, the switcher, every internal
+  link), not a metadata one. Recorded 2026-09-21; see `docs/marketing-plan.md`.
+- [AI] **`/guide/[topic]`: the only unbuilt acquisition surface a code cycle can
+  build.** ARU has three indexable urls because every other page renders an empty
+  session state to a crawler. 6-8 server-rendered Korean pages, each answering one
+  query the product already has an opinion about and ending at `/scan`. Every one of
+  them must pass `efficacyClean()` — these are the pages most likely to drift into a
+  medical claim, and an indexed 의료기기법 problem is worse than an unfound one. Topic
+  list, cost, and kill criteria in `docs/marketing-plan.md`.
+- [AI] **Raise the basket.** `recommend()` returns up to three picks and the funnel
+  drives one click at one product. Two items at the catalogue median is ₩39,000 and
+  halves every traffic requirement in `scripts/revenue-model.mjs`; a full routine cuts
+  it by two thirds. Not mechanical: a bundle that exists to raise the basket rather
+  than to suit the skin is exactly what `efficacyClean()` cannot catch and a user can
+  feel. Gap 3 in `docs/revenue-design.md`.
+- [AI] The repurchase offer appears only to an answer given in the same session,
+  because a `Checkin` row stores the boolean and nothing else. Storing "offered, not
+  yet clicked" would let a returning user see it once without re-offering a purchase
+  to someone who already made one. Noted 2026-09-21 with the fix that created it.
 - [~] [AI] Server-side funnel telemetry. `lib/funnel.ts` is localStorage-only, so nobody
   can see where users drop off. Without it every UX cycle is guessing. (2026-09-15 added
   `share_landed` and `viralActivation`, but they are still on-device.)
@@ -876,6 +918,51 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-21 (owner-requested, out of cycle) — **Design for $10,000/month, the gaps it
+  exposed, and the two that were fixed.** Branch `revenue/design-10k`. Not a numbered
+  cycle: the owner asked for the revenue architecture to be designed, its gaps found and
+  fixed, and the marketing done. `npm run smoke` green before and after.
+
+  **The model.** `scripts/revenue-model.mjs` — committed rather than written in prose,
+  because the number this file has carried since 2026-09-15 was never re-derived. It
+  reads the price band out of `lib/skus.ts` at run time and labels every input MEASURED
+  or ASSUMED. `docs/revenue-design.md` is the design; `docs/marketing-plan.md` the
+  acquisition half.
+
+  **What it found.** At the catalogue's own median (₩19,500, not the ₩30,000 this file
+  credited to it) a conversion is worth **$0.99**, so $10,000/month is **10,110
+  purchases** and — with one purchase per user, which is what shipped — **202,198 to
+  505,495 new scans a month**. The correction is not that ₩30,000 is wrong; a two-item
+  basket is ₩39,000. It is that a behavioural assumption was credited to a price band
+  that does not support it, which made it look measured.
+
+  **Gap 1, fixed.** `/checkin` asked 재구매 할래요?, and a user who tapped 할래요 got a
+  boolean in `localStorage` and a thank-you. The highest-intent moment in the product
+  earned nothing and was not counted. It now renders the buy link through `/api/out`
+  (`placement=checkin_repurchase`) under the disclosure, and fires `repurchase_intent`
+  carrying `week` and `satisfaction` and no sku. That is the whole difference between
+  the two architectures in the model: **202,198-505,495 new scans a month becomes
+  67,399-168,498**. Every piece it needed — product-use tracking, the 2- and 4-week
+  rounds, the reminder email — was already built; the loop had made a retention engine
+  and left the last link out.
+
+  **Gap 2, partly fixed.** No `robots.txt` and no sitemap existed. `app/robots.ts`,
+  `app/sitemap.ts`, `lib/site.ts`, `tests/seo-surface.test.ts`. The sitemap has three
+  urls and that is the finding rather than the fix: every other page renders an empty
+  session state to a crawler. The structural half — five languages at one url each, so
+  a Korean query meets English copy — is a routing change and is now a backlog item.
+
+  **What the adversarial review changed before this was committed**, which is the part
+  worth keeping: four of the six original tests were `expect(source).toContain(...)`
+  greps that **still passed with the buy link deleted from the render tree**. They are
+  now real renders — the answered branch was extracted to `CheckinDone` so both
+  directions can be rendered, and the mutation that fooled the greps now fails.
+  The review also caught a `1/12` ramp claim that is really `1/p`, a hardcoded "~2,700
+  subscribers" that is 2,816 when computed, `/survey` sitting in neither the allow nor
+  the disallow list (so crawlable and in no sitemap), a scan->purchase band being used
+  as a scan->buyer rate without saying so — which is where the whole 3x comes from —
+  and five claims stronger than their evidence, including "cannot reach $10,000/month"
+  in a document whose own table shows architecture A reaching it at 500,000 scans.
 - 2026-09-22 (cycle 28) — Branch `autopilot/2026-09-22-0639`. **`detectBlemishes` now says
   whether the frame it just counted was decided by the image or by scan order, and the
   census is inside the detector because that is the only place it can see what cycle 23's
@@ -1161,260 +1248,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
   push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
   stays out of this file is one a later cycle pays for twice.
-
-- 2026-09-21 (cycle 26) — Branch `autopilot/2026-09-21-1839`. **The "do not pool feature
-  generations" rule stopped being documentation: a run that mixes two generations of the
-  feature extractor now says so, and the check would never have fired even once it existed
-  because `run_pipeline` hands `coverage()` a projection that had dropped both version fields.
-  Whether that is a warning or a blocker was decided from scikit-learn's own source rather
-  than from taste. And `/studio` — the product's only image-share surface — has been cutting
-  its own prefilled text in three of five locales, at every width.**
-
-  **Baselines, measured here on a clean tree before any edit, and they match the supervisor's
-  to the number.** `npm ci` first (`node_modules` was absent). `npm run smoke` green with the
-  chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **608
-  passed in 90 files**, mobile E2E **52 passed (4.1m)**, `python3 ml/selftest.py` **Ran 121
-  tests ... OK**, `npm run lint` **0 errors, 2 warnings** (the same `'_reads'` / `'_result'` at
-  `lib/care.ts:72`), `npx tsc --noEmit | grep -c "error TS"` **13**.
-
-  **Research: warn or block, answered from an implementation rather than from recall.** The ML
-  item below had to put a mixed-generation run somewhere, and the two places are not
-  equivalent: `coverage_warnings` is read by a human and gates nothing, while
-  `promotion_check`'s `blockers` stop a promotion — and writing a new promotion rule means
-  editing the shipped manifest, which is hard guardrail 8 and the owner's call. scikit-learn
-  draws exactly this line and draws it explicitly. Read from its own source — another
-  project's implementation, not a paper and not a standard, since `scikit-learn.org` and
-  `en.wikipedia.org` both refuse this network:
-
-  ```
-  sklearn/exceptions.py       @ 1.5.2  http=200 bytes=6058   sha256 635e992922c815c6b95cf11d84bd0f06d5bd1d58e4adeb335e2864d17ae61618
-  sklearn/exceptions.py       @ 1.7.1  http=200 bytes=7703   sha256 09a6854b80d56ea86a52276203e70cbd33fa0d1eaa205984533ba2312e470de7
-  sklearn/base.py             @ 1.5.2  http=200 bytes=53095  sha256 cd62bc6b3f5a6f16466c7eaa0ec91a83a83c91b93610d67e39c55fda85530c89
-  sklearn/base.py             @ 1.7.1  http=200 bytes=47777  sha256 a2ad39c5ff6491d04c35738e942860def0e80d6800aeb1690cfd68bf46be8d91
-  sklearn/utils/validation.py @ 1.7.1  http=200 bytes=108488 sha256 ae3c972e645e2d0ba00459e8f82ac540f0a670f474cc293875a95f4d63f0ccc2
-  ```
-
-  A **provenance** mismatch warns and continues: `BaseEstimator.__setstate__` (`base.py:372` in
-  1.5.2, `:438` in 1.7.1, the same nine lines in both) calls `warnings.warn` — not `raise` — on
-  `InconsistentVersionWarning`, a `UserWarning` subclass whose message says "This might lead to
-  breaking code or invalid results. Use at your own risk." A **structural** mismatch raises:
-  `_check_feature_names` (`validation.py:2697`) ends its comparison branch with
-  `raise ValueError`, enumerating the unseen and missing names. And an **unstamped** artifact is
-  given a name of its own rather than merged into the current one —
-  `state.pop("_sklearn_version", "pre-0.18")` reads a version-less pickle as a *different*
-  version and warns, not as one that matches.
-
-  Pooling two extractor generations is the first kind: every index is present and well-formed,
-  and nothing in the rows records how far apart two generations are. So it is named, counted,
-  and left to the reader. `docs/feature-generation-pooling.md` §2.
-
-  **ML: the backlog item closed, plus the reason it would not have worked.** Every clause of
-  the 2026-09-16 item was re-checked against main rather than taken on trust and all of them
-  still held: `model_version` and `input_schema_version` are written at
-  `ml/prepare_crop_dataset.py:117-118` and `ml/run_pipeline.py:338-339` and listed in the CSV
-  header at `:277-278`, and grepping the whole of `ml/` for either name returns those five
-  write sites and **nothing that reads them back**. The item's own dates are its argument:
-  `fallbackVersion` is `roi-calibrated-2026-09-18` today and was `-09-16` when the item was
-  filed, and it moves when a feature's semantics change.
-
-  `subgroups.feature_generation(row)` resolves a row's generation (snake_case and camelCase
-  spellings of both fields, so one generation cannot split into two on spelling);
-  `Coverage.generations` counts them; `coverage_warnings` emits one line naming and counting
-  the pooled generations and a second for rows carrying no stamp beside stamped ones. Every
-  run that already wrote `subgroup_warnings` gets it for free — `run_pipeline`,
-  `train_visible_attributes` (3 call sites), `evaluate_dataset`, `external_manifest`.
-
-  **The part the item did not know about, and it is worth more than the fix.** With the
-  counting in place the warning would still never have fired on a real run.
-  `run_pipeline.py:363` builds a narrow projection of each row (`decoded`) and passes *that* to
-  `coverage()`, not the CSV row — and the projection carried `participant_id`, `session_id`,
-  `device_id`, `toneIta`, `age_band` and `id`, neither version field. The generation of every
-  row was invisible at exactly the place the check runs. The two fields are version strings,
-  not identifiers, and the projection already carried three of the latter, so nothing about a
-  person was widened.
-
-  **Five source-line breaks, never of a test, and each one narrow enough to name what it
-  protects.** Baseline `Ran 130 tests ... OK`; `ml/subgroups.py` restored byte-identical
-  (sha256 `270cc66838e7e9bb5d1f57bcdfe5df710179010dbe235bf041ee81a1e2f9b076` before and after).
-
-  ```
-  1  if len(stamped) > 1:  ->  > 2                 FAILED (failures=2)   AssertionError: 0 != 1
-  2  drop input_schema_version from the key list   FAILED (failures=1)   AssertionError: 0 != 1
-  3  stamped = dict(cov.generations)  (fold in     FAILED (failures=2)   Lists differ: ['3 rows (100%) carry
-     the unstamped rows)                                                 no feature generatio[112 chars]nd.'] != []
-  4  remove both fields from decoded again        FAILED (failures=1)   'model_version' not found in
-                                                                        'decoded.append({...' : run_pipeline's
-                                                                        coverage projection dropped model_version
-  5  ("model_version", "modelVersion") -> 1-tuple FAILED (failures=1)   'roi-calibrated-2026-09-18/2026-06-30.
-                                                                        visible-face-crop.v1' != '/2026-06-30.
-                                                                        visible-face-crop.v1'
-  ```
-
-  Break 3 is the one that shows the two clauses are independent: folding unstamped rows in with
-  the stamped ones leaves every "two generations" assertion green and fails only the two cases
-  about unstamped rows. Break 4 is the one that would have shipped a check that could not fire.
-
-  **UI/UX: `/studio`'s read editor cut its own prefilled text in three of five locales.** Found
-  by sweeping every public route × 5 locales for controls under 44px and for elements whose
-  `scrollWidth` exceeds their `clientWidth`, then measuring the rendered text width of each
-  field against the box it gets. The name field is a fixed `width: 96` — 94px of content box —
-  which is wider than the Korean labels it was sized for and narrower than the translations the
-  same field is prefilled with. Measured in Chromium, as needed-minus-available in px, negative
-  = clipped:
-
-  ```
-  field   locale  value                  @360    @320
-  name    en      "Pores/texture"        -14.7   -14.7
-  name    ar      "المسام/الملمس"         -23.2   -23.2
-  value   en      "Fairly comfortable"   +21.7   -18.3
-  value   ja      "落ち着いている"           +23.4   -16.6
-  ```
-
-  The name box does not depend on the viewport, so en and ar cut the label at **every** width,
-  desktop included. Widening the name inside one line is not available and that was measured
-  rather than assumed: at 320px the en value already needs 137.3px against a 119px box, so
-  taking width from the value makes the narrow viewport worse. The name takes its own line
-  instead (`flex-basis: 100%` on a wrapping row). After: every field has **85.7 to 323px** of
-  headroom at 320/360/393/430 in all five locales, the worst case being the en value at 320px.
-
-  `tests/e2e/studio-label-fit.spec.ts` asserts both halves — a width floor alone would pass a
-  field wide enough to tap that still cuts its label, and a clipping check alone would pass a
-  20px field showing all of a one-character value. Reverting the one style to `width: 96`
-  fails **5 of 10**, naming the fields: `Item 2 name="Pores/texture" sw=109 cw=94`,
-  `اسم العنصر 2="المسام/الملمس" sw=117 cw=94`, `Item 4 value="Fairly comfortable" sw=137 cw=119`,
-  `項目4の値="落ち着いている" sw=118 cw=101`. ko and zh pass at both widths, which is right —
-  they never clipped.
-
-  **Bug fix: `savePilotNote`, and the ordering is the fix rather than a detail of it.** The
-  cycle 25 finding. It was the only device store in the repo with no `window` guard, no cap and
-  no try/catch, running a bare `localStorage.setItem` from `/pilot`'s click handler. What a
-  full or blocked store cost was not only the note: the `QuotaExceededError` escaped into
-  React, so the next statement — `setCurrentPilotSession` — never ran, and `/scan` reads that
-  scope on every consent toggle to pass `participantId` / `sessionId` into
-  `recordConsentEvent`. An unestablished scope means every consent event for that participant
-  lands unscoped, and participant scope is what the participant-grouped cross-validation needs.
-  So the scope is now written **first**, from its own small key, and the note's failure cannot
-  take it down; `setCurrentPilotSession` is guarded too, since it had the same defect.
-  `savePilotNote` returns `PilotNote | null` like `recordConsentEvent` and `saveCropSample`,
-  and caps at 500 like `lib/labels.ts`.
-
-  `/pilot` now reports a refused write and **keeps the typed fields**, which is the same test
-  cycle 25 applied to `recordCareIntent` and lands on the opposite answer: there, nothing on
-  screen claimed the write had happened, so an error row would have reported a failure the user
-  did not experience. Here the form clears and the roster re-reads, so a dropped note looks
-  like a note that was never typed. Four source-line breaks, `lib/pilot.ts` restored
-  byte-identical (sha256 `5ee254d2f9dbfe0795fa7002a9e7b89ec4e3d6494ef924b91502ee3a3f27633c`):
-
-  ```
-  drop the note write's try/catch     2 failed | 5 passed   expected [Function] to not throw an error
-                                                            but 'QuotaExceededError: quota' was thrown
-  write the scope AFTER the note      1 failed | 6 passed   expected null to match object { participantId: 'P007' }
-  drop the cap                        1 failed | 6 passed   expected [ ...(501) ] to have a length of 500 but got 501
-  drop setCurrentPilotSession's       1 failed | 6 passed   QuotaExceededError: quota
-    try/catch
-  ```
-
-  **One break that did NOT bite, said plainly rather than dressed up.** Deleting the
-  `typeof window === "undefined"` guard from `savePilotNote` leaves all 7 cases green. Under
-  Node there is no `localStorage` binding at all, so the write throws a `ReferenceError` that
-  the same try/catch two lines down swallows, and the function returns null by the other route.
-  The SSR case is kept as a behavioural pin and the test file says so at the assertion; what
-  the guard actually buys — that the SSR path returns without attempting the write, the
-  convention the six sibling stores follow — is not observable from there.
-
-  **The `shareUrl` item was worked and deliberately not implemented, which is what the brief
-  asked for.** `docs/share-return-path-decision.md` lays out five options with what each costs
-  and recommends one, and the item stays open because the decision is the owner's. The reason
-  it is not a one-line change, stated from source rather than asserted: `moodShareUrl` needs
-  `{ oil, redness, pores }` as integers 0-2 and `/studio` does not have them — its state is a
-  headline string and four `{ label, value, calm }` rows filled from free-text inputs whose
-  purpose is that the user rewrites them. Option C (reverse-map the edited text through
-  `MOOD_LABELS`) is rejected on evidence rather than taste: the two shipped presets already
-  contain strings with no mood axis to map to, so the derivation yields nothing the moment
-  anyone types.
-
-  **Rotation, proved rather than asserted.** Across the cycle-23 move alone:
-  `docs/AUTOPILOT.md` **1669 -> 1621**, `docs/autopilot-changelog.md` **4966 -> 5204**; after
-  the two backlog items moved as well, **1632** and **5260**. (This paragraph and the
-  verification block below it were written after that measurement, so the committed file is
-  longer again — `wc -l` on the commit is the authority and the deltas above are the
-  rotation's, not the whole cycle's.) "Recent cycles" holds 26/25/24. Cycle 23 moved verbatim:
-  **17,054 bytes, 237 lines, sha256
-  `998fe4316e480280bfdd35cdab8d3197f9a23c6938af3e2763d95b1e7ed81b9d`** on both sides, `diff`
-  empty. Both `[x]` items moved to "Closed backlog items" under their original headings with
-  the original wording preserved as a blockquote. Normalising both files' non-blank lines
-  (strip leading whitespace and `>`, strip trailing whitespace, `sort -u`) and running
-  `comm -23 before after` leaves **nothing at all** — **5628** unique lines before, **5847**
-  after.
-
-  **One thing the rotation turned up that a reader should know.** The local `main` and
-  `origin/main` refs in this checkout are **stale at `a243b69` (cycle 21)**, four commits
-  behind the `ab23796` the brief names and the commit this branch was actually cut from. The
-  first byte-identity check was run against `main` and returned an empty file rather than an
-  error, which looks exactly like a failed extraction; it was re-run against `ab23796`. Any
-  cycle diffing "against main" in this container is diffing against cycle 21.
-
-  **Verification, on the finished tree.** `npm run smoke` green (`Smoke test passed.`),
-  vitest **615 passed in 91 files** (608 plus the 7 in the new pilot file), mobile E2E
-  **62 passed** (the 52 measured on `ab23796` at the top of this cycle, plus
-  the 10 new `/studio` locale x width cases), `python3 ml/selftest.py` **Ran 130 tests ... OK** (121 plus the 9 new
-  `FeatureGenerations` cases), `npm run lint` **0 errors, 2 warnings** — the same two — and
-  `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged.
-
-  `lib/skin.ts` is byte-identical to `ab23796`, and so are
-  `public/models/visible-attributes/manifest.json` (`status`, `promotionGate` and
-  `minQwkGainOverHeuristic` included), `ml/external_datasets.json`, `lib/consent.ts` and
-  `next.config.ts`. `NEXT_PUBLIC_FUNNEL_FLUSH` was not set, no consent kind was invented and
-  neither stream was merged, no dataset licence tier moved, and no face-image path changed.
-
-  **Supervisor review.** The share decision is the part worth reading, and this review's
-  own pre-analysis of it was worse than the branch's.
-
-  *A reviewer error, and it is the substantive kind.* Before the branch arrived this
-  review worked the same item and recommended **A** — mood link when the card came from a
-  scan — on the argument that it "never claims a reading the user did not make" and that
-  it reuses a decision `/scan` already shipped. **That argument is wrong**, and
-  `docs/share-return-path-decision.md` §3A says why: `/studio` is the editing surface, its
-  `reads` come from free-text `<input>`s whose whole purpose is rewriting
-  (`app/studio/page.tsx:140-141`), so a user can edit "유분 적음" to anything while the
-  link still encodes the scan's level. It does not claim a reading they never took; it
-  claims one they **edited away from**, in front of a stranger. Two more things this
-  review missed and the branch did not: the card has FOUR rows against the mood link's
-  THREE, so 전반 has no level at all, and a preset-prefilled session has no levels in any
-  form. **Option E did not occur to this review** and is better than A — send
-  `moodShareUrl(levels)` only while every value still matches its prefill, bare origin
-  otherwise — because it takes B's floor and A's ceiling and makes the contradiction
-  unrepresentable rather than merely unlikely. The branch's recommendation stands; this
-  review's is withdrawn.
-
-  What this review did establish and the branch confirms independently: the levels ARE
-  in hand at prefill (`lib/skin.ts:13`, `Bucket` carries `level: SkinLevel`) and are
-  simply dropped by the mapping, and `fromScan` already records preset-vs-real. Those
-  narrow the question; they do not decide it.
-
-  *Right call on scope.* `shareUrl` stayed OPEN — `grep -c` finds it in
-  `docs/AUTOPILOT.md` and NOT in the changelog — so the decision was written up without
-  the item being closed on the owner's behalf. `app/studio/page.tsx` changed for an
-  unrelated locale-clipping defect, not for this.
-
-  *The ML claim holds and its guard is narrow.* On main, `ml/run_pipeline.py` wrote
-  `model_version` and `input_schema_version` into the CSV (lines 338-339, declared at
-  277-278) but the `decoded` projection that `subgroups.coverage()` actually consumes did
-  not carry them — so a pooling check would have had nothing to read. Removing those two
-  projection lines again fails exactly one test, named for the defect:
-  `FAIL: test_the_pipeline_projection_carries_the_fields_coverage_reads`, 1 of 130. One
-  narrow break, one identifying failure.
-
-  *The pilot fix bites on both halves.* Restoring the bare uncapped
-  `localStorage.setItem(KEY, ...)` fails 3 of 7 with both symptoms:
-  `expected [Function] to not throw an error but 'QuotaExceededError: quota' was thrown`
-  and `expected [ …(501) ] to have a length of 500 but got 501`. The write-order argument
-  is correct and load-bearing: the scope is written before the note because `/scan` reads
-  `getCurrentPilotSession()` on every consent toggle, so a lost scope makes every
-  subsequent consent event unscoped — which is what participant-grouped cross-validation
-  needs.
-
-  *Rotation, against a pre-review snapshot of main.* 1669 → 1647 and 4966 → 5260, and
-  `comm -23` finds **18 lines missing**, all 18 from the two backlog items this cycle
-  closed (`savePilotNote`, and the feature-generation pooling rule), both present in the
-  changelog. "Recent cycles" holds 26/25/24.

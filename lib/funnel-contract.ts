@@ -74,6 +74,12 @@ export const FUNNEL_PROP_KEYS: Record<FunnelEventKind, readonly string[]> = {
   reco_viewed: ["scanApplied", "picks"],
   care_viewed: [],
   checkin_opened: [],
+  // `week` is 2 or 4 and `satisfaction` is 1-3. Both are bounded small integers, and
+  // together they answer the question the revenue model turns on — how often a
+  // check-in produces a repeat purchase, and whether satisfaction predicts it. No sku
+  // and no product name: which product a named device repurchases is a different
+  // disclosure than how many repurchases happen.
+  repurchase_intent: ["week", "satisfaction"],
   share_clicked: ["surface", "mode"],
   commerce_clicked: ["placement", "merchant"],
 };

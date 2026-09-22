@@ -45,6 +45,10 @@ export type FunnelEventKind =
   // /checkin mount — the landing page for every re-engagement email, and the only
   // measure of whether those emails bring anyone back.
   | "checkin_opened"
+  // A check-in answered 재구매 = 할래요. The highest-intent moment the product has and
+  // the only repeat-purchase signal it collects: skincare is consumable, so a retained
+  // user has several buying moments a year and the funnel only ever counted the first.
+  | "repurchase_intent"
   | "share_clicked"
   | "commerce_clicked";
 
@@ -217,6 +221,7 @@ export const FUNNEL_ORDER: FunnelEventKind[] = [
   "reco_viewed",
   "care_viewed",
   "checkin_opened",
+  "repurchase_intent",
   "share_clicked",
   "commerce_clicked",
 ];
