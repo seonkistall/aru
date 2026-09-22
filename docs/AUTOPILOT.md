@@ -1010,6 +1010,34 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   either move: `diff` says the cycle 26 entry (256 lines) and the closed `noteEn` item
   (33 lines) are **byte-identical** in their new homes. "Recent cycles" holds 29/28/27.
 
+  **Supervisor review.** One note on the run itself first: the scheduled 12:39 cycle did
+  NOT run — the supervising session had no tool access at that time and the trigger only
+  queued. This cycle is the 18:39 firing, spawned at 20:49 UTC; the two queued firings were
+  not run back to back.
+
+  *The funnel defect is real and its guard bites.* Restoring the unchecked
+  `return JSON.parse(localStorage.getItem(KEY) || "[]")` fails 10 cases, the first two
+  naming the mechanism: `getFunnelEvents() on null: expected null to deeply equal []` and
+  `recordFunnelEvent() returned null on null — the funnel is off`. The asymmetry the
+  comment describes is the whole defect: a truncated value throws in `JSON.parse` and the
+  store repairs itself on the next write, while a value that PARSES to the wrong shape
+  was returned as-is, threw on `.push` inside the catch that exists so analytics cannot
+  break the flow, and nothing ever rewrote the key.
+
+  *`noteEn` went the safe direction.* This review had flagged before the branch arrived
+  that resolving the item by RENDERING the field would put four merchant claims in front
+  of users, one of them an unsourced comparative (`"Fastest delivery option in Korea."`,
+  `lib/commerce.ts:78`). The branch deleted it — 5 lines from `lib/commerce.ts`, 2 from
+  `lib/care.ts`, nothing rendered.
+
+  *`toneSpread` was measured and not changed.* It is a published, exported column, and
+  `git diff` on `lib/skin.ts` is empty; the item went `[AI]` → `[~]` rather than closing.
+
+  *Rotation.* 1420 → 1297 and 5886 → 6176; `comm -23` finds **2 lines missing** — the
+  first line of the `noteEn` item (closed, 3 mentions now in the changelog) and the first
+  line of the `toneSpread` item (the `[~]` marker). `shareUrl` is still open, a fifth
+  cycle running. `lib/skin.ts` and the manifest are untouched.
+
 - 2026-09-22 (cycle 28) — Branch `autopilot/2026-09-22-0639`. **`detectBlemishes` now says
   whether the frame it just counted was decided by the image or by scan order, and the
   census is inside the detector because that is the only place it can see what cycle 23's
