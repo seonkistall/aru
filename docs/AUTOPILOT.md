@@ -1041,6 +1041,32 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   "Closed backlog items"; two new items were opened instead. "Recent cycles" holds
   30/29/28.
 
+  **Supervisor review.** The ML defect is real, its guard bites narrowly, and the app-side
+  twin was checked rather than assumed.
+
+  *The mechanism, confirmed.* `nan < lo` and `nan < hi` are both false, so strictly-less
+  bucketing sends NaN to level 2 — `node` prints `NaN -> 2`, `Infinity -> 2`,
+  `-Infinity -> 0` for the oil cuts. Restoring a bare `float(features[feat])` at the
+  grading call site in `ml/run_pipeline.py` fails 3 of 142, all in `NonFiniteFeature`:
+  `test_a_non_finite_feature_is_not_graded_as_the_top_level`,
+  `test_the_dropped_rows_are_reported_rather_than_skipped_in_silence`, and an ERROR in
+  `test_a_missing_feature_value_does_not_take_the_run_down`.
+
+  *The app-side twin cannot fire, and that was checked.* `lib/skin.ts` grades with the
+  same expression in `bucket()` (line 408) and `levelFor()` (line 823), and the branch
+  deliberately leaves both alone — "the screen belongs at the call site" — which is right,
+  since changing the comparison would open a fake accuracy gap between app and heuristic.
+  What decides whether the app is exposed is whether its three graded features can go
+  non-finite, and they cannot on finite inputs: `shineIndex` divides by `(cheekL || 1)`,
+  `redChromaticity` by `(r + g + b || 1)`, and `cov` by `(cheekL || 1)` (line 1197). The
+  defect was confined to the pipeline, where CSV cells arrive as strings and `None`.
+
+  *Scope held.* `lib/skin.ts` and the manifest are untouched; no exported column moved;
+  `shareUrl` is still open, a sixth cycle running.
+
+  *Rotation.* 1325 → 1348 and 6176 → 6312; `comm -23` finds **1 line missing**, the
+  `Last updated:` date. "Recent cycles" holds 30/29/28.
+
 - 2026-09-22 (cycle 29) — Branch `autopilot/2026-09-22-1839`. **`toneSpread` is the one
   published ML column that still reads the room it was captured in, and the size of that
   is now a pinned 2.1636% instead of a note. One malformed value in `localStorage` could
