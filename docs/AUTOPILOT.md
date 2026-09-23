@@ -1197,7 +1197,52 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   and `shareUrl` are untouched; `blemishCount` and `toneSpread` report exactly what they
   reported; `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere; no dependency added.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and the claims audit the brief asked for held up: one
+  count in the probe doc was stale, and nothing went past its own table this time.
+
+  *Predicted before the branch existed, then checked.* A throwaway vitest on `a27b202`
+  gave `recommend(survey, scan)` the same `picks=3 top=sr1` for a valid scan, `null`, and
+  seven wrong shapes (`5`, `{}`, `"abc"`, `[]`, `true`, `{oil:"x",...}`, `{oil:null,...}`),
+  so the brief told the worker not to guard scan on a crash claim. Reading `/report`
+  then predicted three things without running them: a render-time throw at
+  `reads.oil.value`, the mirror into `aru_last_result`, and `[]` throwing too. All three are
+  in the worker's measured table, and no scan guard was added.
+
+  *Reproduced.* With the four app files put back to `a27b202` and the new spec kept,
+  `reads-shape.regression-17.spec.ts` under `-c playwright.mobile.config.ts` gives
+  `13 failed` / `39 passed (3.3m)`, the worker's pre-fix figure exactly. Against its
+  table, that is nine `/report` rows, two `/studio` rows and the two `aru_last_result`
+  cases outside the loop.
+
+  *Guards broken at their source lines against `tests/skin-reads-shape.test.ts`:*
+  - Dropping `reads.signals.every(isConfidenceSignal)` → `2 failed | 29 passed (31)`,
+    both named "signals".
+  - Dropping `isBucket(reads.overall)` → `1 failed | 30 passed (31)`, "rejects a missing
+    overall bucket".
+  - Replacing `loadLastResult`'s ternary with `return parsed as LastResult;` →
+    `3 failed | 28 passed (31)`. The probe doc said two; the third is the `__proto__`
+    case, whose first assertion is that a stored `reads: 5` comes back `null`.
+    Corrected in `docs/reads-shape-probe.md`. The entry above is right for the run it
+    reports (784 tests, before that case existed).
+
+  *Could the guard reject a real reading?* Every field `isSkinReads` requires is
+  non-optional in the `SkinReads` type, and each one (`signals`, `source`,
+  `retakeRecommended`, `retakeReasons`, `confidenceLabel`, `headline`, `Bucket.level`) was
+  first added in `c991886` (2026-07-10). `lib/last-result.ts` did not exist until
+  `7419b54` (2026-07-16), so no stored `aru_last_result` predates those fields, and
+  "accepts the reading analyzeSkin produces" covers a live reading.
+
+  *The two timeouts.* This is not a weakened test: only the clock moved, and the
+  assertions are unchanged. On this container the two cases ran in 2807ms and 1937ms. The
+  worker's 4844-5039ms is its own machine under load, so "failing on the clock" is
+  container-dependent rather than a property of the code.
+
+  *UI.* The `/care` arrow change was read, not measured here. It adds `primaryLinkBtn`,
+  a new layout on the existing `linkBtn` box, and reuses the `--plum` arrow that
+  `clinicBtn` rows already carry. No new colour, and the claim in its comment was checked
+  against the file.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
 
 - 2026-09-23 (cycle 32) — Branch `autopilot/2026-09-23-1239`. **A malformed survey took
   both revenue screens, and `/report` wrote it to disk on the way past so the next tab

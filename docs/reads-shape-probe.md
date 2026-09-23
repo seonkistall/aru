@@ -105,9 +105,14 @@ without a reading.
 | `app/studio/page.tsx` | **2 failed \| 50 passed** | the two partial-object `/studio` cases only |
 | `lib/last-result.ts` | **1 failed \| 51 passed** | the mirrored-copy case only |
 
-The third one also fails two named cases in `tests/skin-reads-shape.test.ts` over all
-of `tests/` — `drops a wrong-shaped reads and still returns the survey` and `drops a
-partial reads that the old optional-chain test let through`.
+The third one also fails named cases in `tests/skin-reads-shape.test.ts` — `drops a
+wrong-shaped reads and still returns the survey` and `drops a partial reads that the old
+optional-chain test let through`. *Supervisor correction at review:* re-run against the
+committed file, replacing the ternary with `return parsed as LastResult;`, it fails
+**three** — `3 failed | 28 passed (31)` — the third being `leaves Object.prototype alone
+when the stored record carries __proto__`, whose first assertion is that a stored
+`reads: 5` comes back `null`. That case is in the committed file; the draft's count of
+two did not include it.
 
 ## 4. Primary source: why the new spread cannot be turned into a pollution vector
 
