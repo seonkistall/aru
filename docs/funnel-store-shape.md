@@ -107,3 +107,70 @@ Nothing here says how a wrong-shaped value gets into the key in the first place.
 occurrence has been observed in the wild — the product has no traffic, which is the
 standing BLOCKER — so the fix is written against a mechanism, not against a report, and
 this document should not be cited as evidence that it has happened.
+
+## 2026-09-23 (cycle 30): the same read idiom, one level worse
+
+The funnel was not the only store reading `JSON.parse(localStorage.getItem(KEY) || "[]")`
+and handing the result straight back. `lib/scan-history.ts` did the same, and there the
+consequence is not a store that switches itself off — it is a page that dies.
+
+`ScanHistoryStrip` renders on `/report`'s first step and calls `getScanHistory()` in a
+mount effect. On a value that parses to the wrong shape the component's own guards do
+not catch it: `history.length < 2` is `undefined < 2` on an object, which is **false**,
+so the early return does not fire, and `history.slice(-6)` then throws inside render.
+React unmounts the segment and `app/error.tsx` replaces the whole report — the analysis,
+the product cards, and both `/api/out` links with them. The crash is deterministic in
+the stored value, so the boundary's own "다시 시도" re-renders and throws again.
+
+Proved in Chromium before the fix, five wrong shapes, five failures
+(`tests/e2e/report-device-store-shape.regression-13.spec.ts`), with the browser console
+naming both throw sites:
+
+```
+TypeError: history.slice is not a function
+    at ScanHistoryStrip (app/components/scan-history-strip.tsx:21:26)
+TypeError: recent.map is not a function
+    at ScanHistoryStrip (app/components/scan-history-strip.tsx:41:17)
+```
+
+The second one is why `"abcdef"` is in the shape list: a string survives BOTH of the
+component's guards — `.length` is 6 and `.slice(-6)` returns a string — and dies one
+call later. `Array.isArray` at the read covers it; a `.length` check would not.
+
+`scanHistoryCount()` had a second problem the funnel's did not: no try/catch of its
+own, so `getScanHistory().length` on a stored `null` threw in whatever called it. The
+read guard closes that too.
+
+Same fix, same argument, same place: `Array.isArray` at the read, which is also what
+makes the next `pushScanHistory` repair the key instead of leaving the device broken
+for the life of the install. `tests/device-store-shape.test.ts` breaks at the source
+line — dropping the guard fails **10 of 12** scan-history cases with
+`AssertionError: getScanHistory() on null: expected null to deeply equal []` first,
+while the two controls (an unparseable value, which already self-healed, and a real
+array, which was never affected) stay green.
+
+### Two more reads, guarded on a weaker grade of evidence
+
+`lib/crops.ts` and `lib/labels.ts` got the same guard, and what is known about them is
+less than what is known about the scan history. `app/scan/feedback.tsx` seeds state with
+`useState(() => labelCount())` and `useState(() => cropSampleCount())`. A lazy
+`useState` initialiser runs DURING render, and neither count function has a try/catch of
+its own — both are `getX().length` — so a stored `null` threw a TypeError there.
+
+The throw is measured (`tests/device-store-shape.test.ts`, 5 of 18 cases fail with the
+guards dropped). **The page-level consequence is not.** An attempt to reproduce it in
+Chromium the way `/report` was reproduced passed on all five shapes, and the reason is
+that the `Feedback` panel mounts only after a capture produces reads — there is no
+camera in this container, so the initialisers never ran. That spec was deleted rather
+than kept, because a test that passes for the wrong reason would tell the next cycle
+this path is covered. So: the mechanism is demonstrated at the call, the crash is
+reasoned from the call site, and it is not claimed as observed.
+
+The four device stores reading the same idiom and **not** changed — `lib/consent.ts`,
+`lib/store.ts`, `lib/pilot.ts`, `lib/funnel-flush.ts` — are not claimed to be safe.
+`lib/store.ts` is the closest to biting: its `lsPush` calls `all.push(value)` OUTSIDE
+the try, so a wrong shape rejects into `recordCareIntent`'s caller on `/care`. It was
+left because that is a different failure (an unhandled rejection, not a render throw)
+and it deserves its own measurement. The consent store must not be given this guard
+casually at all: "read as empty" there means "no consent event in the audit trail",
+which is guardrail 4 territory and a decision rather than a one-line change.
