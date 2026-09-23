@@ -496,6 +496,32 @@ partly done and stays here.
   carry a confidence, on a published index — is the product call this item still holds, and
   it is still the same question as the cross-resolution assertion.
   `tests/blemish-plateau-census.test.ts`, `docs/blemish-perturbation-tolerance.md` §7.6-§7.7.
+  **2026-09-23, cycle 33: the harness this item rests on was failing on the clock, and
+  the open question is untouched.** `tests/blemish-perturbation-tolerance.test.ts` is
+  where both this item and the `srgbLinear` one above get their a* error and certified
+  radius, and its case `measures the certified radius and the achieved one, at every
+  frame size` declared no timeout, so it ran against vitest's 5000ms default. Measured
+  wall time over eight verbose runs: **4844, 4845, 4864, 4880, 4908, 4962, 4989
+  and 5039 ms** — a margin of 1-3%. It failed three times before the fix (one of a
+  standalone batch of eight, the first attempt of a second standalone batch, and one
+  full-suite run), *Measured:* the one failure whose output was captured is
+  **`Error: Test timed out in 5000ms`**, raised on the `it(...)` line and not on any
+  assertion; the other two were recorded only as a failing count and a test name, so
+  "never an assertion" is established for that one and not for all three. *Inferred:*
+  that the other two are the same thing, because raising only the timeout took the case
+  to 10 of 10, which a flaky assertion would not do. No number this file certifies was
+  ever observed to differ. The case
+  and `keeps its error under the noise bound every margin above is divided by` (3536
+  and 3675 ms, the next one at risk) now carry `{ timeout: 120_000 }`, the convention
+  already used by the `{ timeout: 300_000 }` case in the same file and by
+  `tests/cheek-clipping-signal.test.ts:296`. Ten standalone runs after the change:
+  **10 of 10 green**. A repo-wide verbose run reported exactly three cases at or above
+  2500 ms — those two and `cheek-clipping-signal`'s 6472 ms one, which already declared
+  a timeout — so this was the whole of the exposure in that run. *Not established:* why
+  the case sits so close to 5000 ms (nothing was profiled or made faster), and whether
+  another case drifts over the line on a slower machine; the sweep is one run's numbers
+  on this container. The product question this item holds — report, refuse, or carry a
+  confidence on a degenerate frame — is not advanced.
 - [AI] **The 0.86 vision-confidence cap and the 0.8614 confidence gate are 0.0014
   apart and were chosen independently.** `mergeVisionAnalysis`
   (`app/scan/capture-analysis.ts`) sets `next.confidence = Math.max(base.confidence,
@@ -979,6 +1005,199 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-23 (cycle 33) — Branch `autopilot/2026-09-23-1839`. **The shape check cycle 32
+  put on the survey was missing one key over, and this time the screen died during render
+  rather than in an effect. Two of the four screens that read it turned out not to break
+  at all, and that is written down with the inputs rather than guarded away. The harness
+  every blemish number in this backlog rests on was failing on the clock, not on a number.
+  And on `/care` the link that earns had less affordance than the clinic link that does
+  not.**
+
+  **Baselines, measured here on a clean tree at `a27b202` before any edit.** `node_modules`
+  was absent, so `npm ci` first. `npx vitest run` **755 passed in 97 files**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 142 tests in 2.620s ... OK**, and `npm run smoke` with the chromium override at
+  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** They match the
+  supervisor's.
+
+  **Bug fix — `gyeol_reads`, and the two screens that did NOT need guarding.** Measured
+  against the UNCHANGED code first, in Chromium at 360px, with a valid `gyeol_survey` in
+  place so cycle 32's guard never fired:
+  `tests/e2e/reads-shape.regression-17.spec.ts` under `playwright.mobile.config.ts`,
+  **13 failed | 39 passed (52)**. Twelve wrong `gyeol_reads` shapes across `/report`,
+  `/care` and `/studio`, six wrong `gyeol_scan` shapes across `/report` and `/survey`,
+  and two mirror cases. What broke:
+
+  | `gyeol_reads` holds | /report | /care | /studio |
+  |---|---|---|---|
+  | `5`, `"abcdef"`, `{}`, `true`, `[]`, string buckets | ✘ (6) | ✓ (6) | ✓ (6) |
+  | an oil bucket and nothing else | ✘ | ✓ | **✘** |
+  | everything but `overall` | ✘ | ✓ | **✘** |
+  | `signals: [5]` | ✘ | ✓ | ✓ |
+  | `extras: [5]`, `retakeReasons: [5]`, `source: "made-up"` | ✓ (3) | ✓ (3) | ✓ (3) |
+
+  So **nine of the twelve took `/report`, two took `/studio`, and none took `/care`.**
+  `/report` throws during RENDER, not inside the mount effect the survey bug lived in —
+  `analysisRows` tests `reads` for truthiness and then indexes `reads.oil.value`, so `5`
+  and `"abcdef"` sail through:
+
+  ```
+  TypeError: Cannot read properties of undefined (reading 'value')
+      at Report (app/report/page.tsx:200:55)
+  > 200 | ..."유분"), reads.oil, explain("oil", reads.oil.value)] as [string, { value: string; calm...
+  ```
+
+  Plus the two cases outside the loop: `/report` fell into `app/error.tsx` on a `reads: 5`
+  already sitting in `localStorage["aru_last_result"]`, and it mirrored a wrong-shaped
+  `reads` into that key on the way past, because `saveLastResult` runs before the render
+  that throws — the same third read cycle 32 found for the survey.
+
+  **What did not break is on record rather than guarded.** `/care` parses `reads` and
+  hands it to `careSummary(survey, _reads, _result)`, which reads neither underscored
+  parameter — those two are the baseline's two eslint warnings — so nothing on that page
+  renders a field of `reads`, and **no `/care` reads guard was added**; the twelve rows
+  above are the inputs tried. `gyeol_scan` is the same: **twelve cases, all green** —
+  `5`, `"abcdef"`, `{}`, `true`, `[]` and `{"oil":"x","redness":0,"pores":0}` on both
+  `/report` and `/survey`, so **no scan guard was added either**, which extends the
+  supervisor's `recommend()` measurement to `loadScanHint`'s property reads and
+  comparisons. `/studio`'s existing `scan?.oil?.value` test already rejects everything
+  except a PARTIAL reading, which passes it and then throws at `scan.pores.value`.
+
+  The guard is `isSkinReads` in `lib/last-result.ts`, at three reads (`/report`'s parse,
+  `/studio`'s parse, `loadLastResult`). Structural only, the rule `isSurvey` set: `source`
+  and `confidenceLabel` are checked for `typeof === "string"` and NOT for membership,
+  because a reading whose source string this build no longer knows still renders
+  (`SOURCE_LABEL[source]` is undefined and the chip comes out empty — measured, row 12).
+  All four buckets are checked because `/report` renders all four; `signals` is checked
+  element by element because `signalCheck` calls `signal.label.includes`; `extras` and
+  `retakeReasons` get `Array.isArray` and no more, because their elements were measured
+  not to break anything. It lives in `lib/last-result.ts` and not beside the type so that
+  `/care` and `/studio`, which import `SkinReads` as a type only, do not pull
+  `lib/skin.ts`'s 67,485 bytes into their client bundles for a shape check.
+  `loadLastResult` DROPS a wrong-shaped `reads` and keeps the record rather than rejecting
+  it: the survey is still good and the report still renders without a reading.
+  With the guard the same spec is **52 passed**.
+
+  *Break-the-line, three guards, three separate runs of the same 52-case spec:*
+
+  | guard removed | result | what failed |
+  |---|---|---|
+  | `app/report/page.tsx` | **10 failed \| 42 passed** | the nine `/report` reads cases and the mirror check |
+  | `app/studio/page.tsx` | **2 failed \| 50 passed** | the two partial-object `/studio` cases only |
+  | `lib/last-result.ts` | **1 failed \| 51 passed** | the mirrored-copy case only |
+
+  The third, run over all of `tests/` instead, is **3 failed | 781 passed (784)**: the two
+  named cases in `tests/skin-reads-shape.test.ts` — `drops a wrong-shaped reads and still
+  returns the survey` and `drops a partial reads that the old optional-chain test let
+  through` — plus one unrelated timeout, which became this cycle's ML item.
+  `docs/reads-shape-probe.md`.
+
+  **Research (자료조사) — the new spread in `loadLastResult`, from the specification's own
+  source.** Asked because the fix rebuilds a record as `{ ...record, reads: null }` from a
+  `JSON.parse`d value, and because `isSkinReads` uses `Number.isFinite` on a field that
+  arrives out of a device store.
+
+  ```
+  --- https://raw.githubusercontent.com/tc39/ecma262/main/spec.html
+  http=200 bytes=3087902
+  sha256 17e1fe359da75a82ae164014e1c862287cbe2ffdc8297d45bcf6068c007a69af
+  ```
+
+  **`Number.isFinite`** is "*If `number` is not a Number, return `false`*" before it is
+  anything else, so a `confidence` arriving as the string `"0.82"` is rejected rather than
+  coerced — the global `isFinite` accepts it. **PropertyDefinitionEvaluation** has a
+  ParseJSON branch that sets `isProtoSetter` to `false`, so `"__proto__"` inside a stored
+  JSON is an ordinary own data property and not a prototype assignment.
+  **CopyDataProperties**, the operation object spread runs, ends each key with "*Perform !
+  CreateDataPropertyOrThrow(`target`, `nextKey`, `propertyValue`)*" — CreateDataProperty
+  and not Set, so copying that own key forward does not invoke the
+  `Object.prototype.__proto__` setter either. Checked against the engine as well as the
+  text, node v22.22.2: `prototype unchanged: true`, `spread prototype unchanged: true`,
+  `({}).polluted after spread: undefined`, `Number.isFinite("0.82"): false` against
+  `isFinite("0.82"): true`. Both are asserted in `tests/skin-reads-shape.test.ts`.
+  *Not established:* anything about the round-trip beyond these three clauses.
+
+  **ML — the harness every blemish number rests on was failing on the clock.**
+  `tests/blemish-perturbation-tolerance.test.ts` is where both the plateau item and the
+  `srgbLinear` item get their a* error and certified radius. Its case `measures the
+  certified radius and the achieved one, at every frame size` declared no timeout, so it
+  ran against vitest's 5000 ms default (`vitest.config.ts` sets no `testTimeout`). Wall
+  time over eight verbose runs: **4844, 4845, 4864, 4880, 4908, 4962, 4989 and
+  5039 ms**. It failed three times before the fix — one of a standalone batch of eight,
+  the first attempt of a second standalone batch, and one full-suite run — The one failure whose output was captured is
+  **`Error: Test timed out in 5000ms`**, raised on the `it(...)` line and not on an
+  assertion; the other two were recorded only as a count and a name, so that holds for
+  the captured one and is an inference for the other two — raising only the clock took
+  the case to 10 of 10, which a flaky assertion would not do. No certified number was
+  ever observed to differ. That case and `keeps its error under the noise bound
+  every margin above is divided by` (3536 and 3675 ms, the next one at risk) now carry
+  `{ timeout: 120_000 }`, the convention the same file's `{ timeout: 300_000 }` case and
+  `tests/cheek-clipping-signal.test.ts:296` already use. **10 of 10 standalone runs green
+  after.** One repo-wide verbose run reported exactly three cases at or above 2500 ms —
+  those two and `cheek-clipping-signal`'s 6472 ms one, which already declared a timeout.
+  It was chosen over the `[AI]` ML items in "Now" that were read
+  for this cycle — the blemish-constant calibration and the ordinal floor need a labelled
+  export, the 0.86 cap needs real vision confidences, the share-preview fork needs an
+  owner call, and `srgbLinear` cannot land without moving `toneSpread`, which this cycle
+  is forbidden to touch; the rest of the section was not read item by item — and because a certification harness that goes red on a slow machine is what makes the next
+  cycle distrust its own evidence. *Not established:* why the case sits so close to
+  5000 ms; nothing was profiled or made faster, and the sweep is one run on this
+  container. The plateau item's product question is untouched.
+
+  **UI/UX — on `/care` the link that earns had less affordance than the link that does
+  not.** Found by running the app in Chromium at 360px and then grepping the style objects
+  rather than reading the screenshot for them. A DOM sweep of `/`, `/report`, `/care` and
+  `/checkin` in ko and en found **no horizontal overflow** (`scrollWidth 360` against
+  `clientWidth 360` on all eight) and, in ko, **no interactive element under 44x44** on any
+  of the four, so the defect is not layout. It is hierarchy: `app/care/page.tsx:255` `linkBtn`,
+  the `/api/out` merchant button, is `background: "var(--paper)"` with `1px solid
+  var(--line)` and no arrow, while `app/care/page.tsx:257` `clinicBtn` on the SAME page is
+  the same `var(--paper)` box with the same `var(--line)` border and carries a
+  `.aru-dir-arrow` `→` in `var(--plum)` at 18px. So the two rows are painted alike and the
+  one with the go-signal is the clinic link, which earns nothing. (Grepped, not assumed:
+  the filled `var(--plum)` / `var(--on-plum)` treatment is `product-card.tsx:111` and,
+  since cycle 32, `report/page.tsx:548`; `/care` uses it on neither.) The fix gives the
+  FIRST merchant link — `productSearchLinks` sorts by priority and that one is what shows
+  while the list is collapsed — the same arrow `clinicBtn` uses, one per product card,
+  laid out as `clinicBtn` lays it out (row, `space-between`). The alternates behind
+  "다른 판매처 보기" keep the quieter box, so the hierarchy inside the card still reads, and
+  no new colour was introduced. *Break-the-line:* with the arrow removed, the new case in
+  `tests/e2e/mobile-layout.spec.ts` fails **`ko: the primary merchant link has no
+  go-arrow`** — `1 failed`. *Not established:* whether the arrow moves any click; there is
+  no traffic to read, and `viralActivation` still has no baseline.
+
+  **The new case went red once, in the first full smoke run, and the test was wrong rather
+  than the page.** `Error: ko: no merchant button on /care ... Expected: > 0, Received: 0`:
+  it counted the merchant buttons straight after `document.fonts.ready`, which does not
+  wait for the mount effect that builds the picks, and the saved page snapshot shows the
+  section header painted with the product rows not yet in it. The count now runs after an
+  auto-waiting `toBeVisible()` on the first merchant button. Three consecutive runs of the
+  whole file after the change: **7 passed** each time, and the break-the-line above was
+  re-run against the corrected locator and still fails on the same message.
+
+  *Validation on the final tree.* `npx vitest run` **786 passed in 98 files**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npx eslint .` **0 errors,
+  2 warnings** (the same two, run on its own), `python3 ml/selftest.py` **Ran 142 tests in
+  2.495s ... OK**, and two consecutive `npm run smoke` runs with the chromium override,
+  the second reporting vitest leg **786 passed (98 files)**, Playwright leg **156 passed
+  (7.7m)**, then **`Smoke test passed.`** The e2e count moves 103 → 156: the 52-case
+  `reads-shape.regression-17` spec plus the one new `mobile-layout` case. The 103 is the
+  supervisor's figure, not one measured here — the baseline smoke run's per-leg counts
+  were not captured.
+
+  *Rotation.* AUTOPILOT 1688 → 1744 and the changelog 6618 → 6781, cycle 30's 162 lines
+  moved verbatim to the end of the changelog. `sort -u` over both files before and after
+  and `comm -23` old against new finds **0 lines missing**. "Recent cycles" holds 33/32/31.
+  `README.md` is unchanged: cycle 32's probe doc is not listed there either, so
+  `docs/reads-shape-probe.md` follows it.
+
+  *Scope held.* `lib/skin.ts`, `lib/consent.ts`, `public/models/visible-attributes/manifest.json`
+  and `shareUrl` are untouched; `blemishCount` and `toneSpread` report exactly what they
+  reported; `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere; no dependency added.
+
+  *Supervisor review:* pending.
 
 - 2026-09-23 (cycle 32) — Branch `autopilot/2026-09-23-1239`. **A malformed survey took
   both revenue screens, and `/report` wrote it to disk on the way past so the next tab
@@ -1523,166 +1742,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on the merged tree (worker's `32b8de5` plus the doc correction):* see the
   PR body for the literal output.
-
-- 2026-09-23 (cycle 30) — Branch `autopilot/2026-09-23-0039`. **One theme, four tracks: a
-  value that is not what its type says, and what each layer does about it. The ML pipeline
-  was grading an unmeasurable feature as the MOST SEVERE level and counting it in the
-  accuracy an operator reads. A malformed value in one device store replaced the whole
-  `/report` page — product cards and both `/api/out` links included — with the error
-  boundary, permanently. And `/unsubscribe` told three different failures, one of them
-  ARU's own misconfiguration, that the reader's link had expired.**
-
-  **Baselines, measured here on a clean tree at `af00c7c` before any edit; they match the
-  supervisor's.** `node_modules` was absent, so `npm ci` first (exit 0). `npm run smoke`
-  green with the chromium override at `/opt/pw-browsers/chromium-1194`
-  (`Smoke test passed.`), vitest **635 passed in 94 files**, its Playwright leg
-  **70 passed (4.6m)**, `python3 ml/selftest.py` **Ran 137 tests in 2.221s ... OK**,
-  `npm run lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at
-  `lib/care.ts:70`), `npx tsc --noEmit | grep -c "error TS"` **13**.
-
-  **Research (자료조사): what a mature pipeline does with a feature that is not a finite
-  number — it refuses, and it never substitutes.** The ML track needed this before
-  deciding between refuse, drop and grade. Read from scikit-learn's own source rather
-  than documentation or recall: `sklearn/utils/validation.py` @ **1.5.2** from
-  `raw.githubusercontent.com` (`http=200 bytes=92307`, sha256
-  `a6beb3a2…3b8249dc`). `check_array`'s `force_all_finite` defaults to **True**, and its
-  three options are raise, accept, and accept-NaN-only — **none of them is "substitute a
-  value"**. `_assert_all_finite` raises `ValueError("Input contains NaN")`, and the
-  estimator-facing message names the two remedies in as many words: "using an imputer
-  transformer in a pipeline or drop samples with missing values". Two limits stated
-  rather than glossed: it governs an estimator's input matrix, not a report's accuracy
-  figure, and ARU cannot raise the way an estimator can — one unmeasurable row must not
-  end a run over 300 good ones. So the answer it gives ARU is the second half, drop, with
-  the count reported, which is the shape cycle 28 took from scipy's `find_peaks`.
-  `docs/non-finite-feature-policy.md`.
-
-  **ML: three code paths met one situation and disagreed, and the one that fed the report
-  was the wrong one.** Measured on `af00c7c` before any change:
-  `run_pipeline.feature_summary` **drops** a non-finite value (`math.isfinite`);
-  `ml/heuristic_baseline._as_float` — the screen the promotion gate's baseline uses —
-  **refuses** it; and `run_pipeline.heuristic_baseline` **graded** it. `nan < lo` and
-  `nan < hi` are both False, so `bucket` returned **2**, the most severe of three levels,
-  and the row counted in `n` and entered the confusion matrix as a prediction.
-  `bucket(inf) = 2`, `bucket(-inf) = 0`. A `None` value was worse: `float(None)` raises,
-  and that call runs once per report, so one such row ended the whole run.
-
-  The cell it lands in is the worst one there is — always predicted 2, so on a row
-  labelled 0 it is a two-level miss, which quadratic weighting punishes four times as
-  hard as a one-level miss. On 16 rows whose 12 measurable ones the shipped cuts grade
-  perfectly, against the pre-change function copied verbatim from
-  `git show HEAD:ml/run_pipeline.py`:
-
-  ```
-  BEFORE  n=16 accuracy=0.75 unusable=n/a   confusion actual=0 -> {'0': 4, '1': 0, '2': 4}
-  AFTER   n=12 accuracy=1.0  unusable=4     confusion actual=0 -> {'0': 4, '1': 0, '2': 0}
-  ```
-
-  `_as_float` is now public `as_feature_float` and `run_pipeline` imports it, so there is
-  one screen instead of two; the residue is REPORTED as `unusable` rather than skipped in
-  silence, on the report line and as a per-axis warning. `bucket` was deliberately NOT
-  changed — strictly-less-than against each cut in order is the shipped rule, identical to
-  `bucket()` in `lib/skin.ts` and `predict_level` in `ml/heuristic_baseline.py`, and
-  moving it would manufacture a fake accuracy gap between the heuristic and the app; its
-  docstring now says what it requires of its caller. A **fourth** disagreement was found
-  by the test rather than by reading: `isinstance(True, int)` is True in Python, so
-  `feature_summary` summarised a JSON `true` as the number **1.0** while
-  `as_feature_float` rejected it — that case failed the first time it ran and
-  `feature_summary` now excludes `bool`. Two source-line breaks, both run and reverted:
-  the screen back to `float(features[feat])` gives
-  `TypeError: float() argument must be a string or a real number, not 'NoneType'` plus
-  `AssertionError: 16 != 12 : NaN rows were graded` (2 failures, 1 error); dropping the
-  `bool` exclusion gives `AssertionError: {'shine': {'count': 1, ...}} != {}`
-  (1 failure). `test_a_clean_run_reports_nothing_dropped` stays green under both.
-  **Nothing in `public/models/visible-attributes/manifest.json` was touched** — not
-  `status`, not `promotionGate`, not `minQwkGainOverHeuristic`. This changes what the
-  readiness report *says*, not what the gate *requires*.
-
-  **Bug fix: a malformed device store took the whole `/report` page, permanently.**
-  `ScanHistoryStrip` renders on `/report`'s first step. `getScanHistory()` was
-  `JSON.parse(localStorage.getItem(KEY) || "[]")` handed straight back, so a TRUNCATED
-  value self-healed through the catch while a value that PARSES to the wrong shape reached
-  the component: `history.length < 2` is `undefined < 2` on an object (**false**, so the
-  early return does not fire) and `history.slice(-6)` then throws INSIDE RENDER. React
-  unmounts the segment and `app/error.tsx` replaces the entire report — the analysis, the
-  product cards and both `/api/out` links with them — and because the crash is
-  deterministic in the stored value, the boundary's own "다시 시도" throws again. Proved in
-  Chromium first: `tests/e2e/report-device-store-shape.regression-13.spec.ts` failed **5 of
-  5** against the unfixed source, the console naming both throw sites
-  (`TypeError: history.slice is not a function` at `scan-history-strip.tsx:21`, and
-  `recent.map is not a function` at `:41` — which is why `"abcdef"` is in the shape list: a
-  string survives BOTH guards and dies one call later). `Array.isArray` at the read fixes
-  it and is also what makes the next write repair the key.
-  `tests/device-store-shape.test.ts` breaks at the source line: **10 failed | 2 passed**,
-  with the two controls (an unparseable value, which already self-healed, and a real array,
-  which was never affected) green — which is what makes this an inconsistency rather than a
-  preference. This is the same class as cycle 29's funnel fix one level up, and
-  `docs/funnel-store-shape.md` now carries both halves.
-
-  *Two more reads guarded on a weaker grade of evidence, said plainly.* `lib/crops.ts` and
-  `lib/labels.ts` feed `app/scan/feedback.tsx`'s LAZY `useState` initialisers
-  (`useState(() => cropSampleCount())`), which run during render with no try/catch of their
-  own. The throw is measured (5 of 18 cases fail with the guards dropped); the page-level
-  consequence is **not**. A browser spec written to reproduce it the way `/report` was
-  reproduced passed on all five shapes, because the `Feedback` panel mounts only after a
-  capture and this container has no camera — that spec was DELETED rather than kept, since
-  a test passing for the wrong reason tells the next cycle a path is covered. The four
-  remaining stores on the same idiom (`lib/consent.ts`, `lib/store.ts`, `lib/pilot.ts`,
-  `lib/funnel-flush.ts`) were left, with reasons, in the backlog item below.
-
-  **UI/UX: `/unsubscribe` told three different failures that the reader's link had
-  expired.** `POST /api/reengage/unsubscribe` has four outcomes and only ONE means the link
-  is finished: **400** (token does not verify), **503** (`UNSUBSCRIBE_SECRET` or the
-  Supabase admin client not configured), **500** (the consent write failed), and a request
-  that never arrives, which the page's `.catch(() => null)` collapses into the same `null`.
-  All four rendered "이 링크는 사용할 수 없거나 유효 기간이 지났어요." Revoking consent is
-  the one action in the product that must not fail quietly: a person told their unsubscribe
-  link has expired stops trying, and then keeps receiving the mail they asked to stop,
-  because what actually happened was ARU's own misconfiguration. Now 400 alone says the
-  link is finished, and 500/503/no-response get a retryable sentence that also names the
-  fallback route — replying to the mail itself — added to `en`, `ja`, `zh` and `ar`. The
-  missing-token case is no longer `role="alert"` either: a live region whose content is
-  present on the FIRST render announces nothing, so the one sentence explaining why the
-  only control on the page is disabled is now plain text tied to the button with
-  `aria-describedby`, and the alert is kept for what genuinely arrives later.
-  `tests/e2e/unsubscribe-outcome.regression-14.spec.ts` fails **4 of 6** against the
-  pre-fix page while the two controls (400 → expired, 200 → confirmed) stay green.
-
-  **Verification.** `npm run smoke` green (`Smoke test passed.`) with the chromium
-  override; vitest **653 passed in 95 files** (from 635/94 — one new unit file plus the two
-  new specs' cases), `python3 ml/selftest.py` **Ran 142 tests ... OK** (from 137),
-  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npm run lint` **0 errors, 2
-  warnings** (the same two). Full output in the session report.
-
-  *Rotation.* 1325 → 1340 and 6176 → 6312; `comm -23` over the two files concatenated
-  and sorted finds **1 line missing**, and it is `Last updated: 2026-09-22`, changed to
-  2026-09-23 by this entry. Cycle 27's 135 lines are byte-identical in the changelog
-  (sha256 `cebd1ecf…3d36cece` on both sides of the move). No backlog item was ticked
-  `[x]` this cycle — none of the four tracks closed a listed item — so nothing moved to
-  "Closed backlog items"; two new items were opened instead. "Recent cycles" holds
-  30/29/28.
-
-  **Supervisor review.** The ML defect is real, its guard bites narrowly, and the app-side
-  twin was checked rather than assumed.
-
-  *The mechanism, confirmed.* `nan < lo` and `nan < hi` are both false, so strictly-less
-  bucketing sends NaN to level 2 — `node` prints `NaN -> 2`, `Infinity -> 2`,
-  `-Infinity -> 0` for the oil cuts. Restoring a bare `float(features[feat])` at the
-  grading call site in `ml/run_pipeline.py` fails 3 of 142, all in `NonFiniteFeature`:
-  `test_a_non_finite_feature_is_not_graded_as_the_top_level`,
-  `test_the_dropped_rows_are_reported_rather_than_skipped_in_silence`, and an ERROR in
-  `test_a_missing_feature_value_does_not_take_the_run_down`.
-
-  *The app-side twin cannot fire, and that was checked.* `lib/skin.ts` grades with the
-  same expression in `bucket()` (line 408) and `levelFor()` (line 823), and the branch
-  deliberately leaves both alone — "the screen belongs at the call site" — which is right,
-  since changing the comparison would open a fake accuracy gap between app and heuristic.
-  What decides whether the app is exposed is whether its three graded features can go
-  non-finite, and they cannot on finite inputs: `shineIndex` divides by `(cheekL || 1)`,
-  `redChromaticity` by `(r + g + b || 1)`, and `cov` by `(cheekL || 1)` (line 1197). The
-  defect was confined to the pipeline, where CSV cells arrive as strings and `None`.
-
-  *Scope held.* `lib/skin.ts` and the manifest are untouched; no exported column moved;
-  `shareUrl` is still open, a sixth cycle running.
-
-  *Rotation.* 1325 → 1348 and 6176 → 6312; `comm -23` finds **1 line missing**, the
-  `Last updated:` date. "Recent cycles" holds 30/29/28.

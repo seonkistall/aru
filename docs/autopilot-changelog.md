@@ -6616,3 +6616,166 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   first line of the `noteEn` item (closed, 3 mentions now in the changelog) and the first
   line of the `toneSpread` item (the `[~]` marker). `shareUrl` is still open, a fifth
   cycle running. `lib/skin.ts` and the manifest are untouched.
+
+- 2026-09-23 (cycle 30) — Branch `autopilot/2026-09-23-0039`. **One theme, four tracks: a
+  value that is not what its type says, and what each layer does about it. The ML pipeline
+  was grading an unmeasurable feature as the MOST SEVERE level and counting it in the
+  accuracy an operator reads. A malformed value in one device store replaced the whole
+  `/report` page — product cards and both `/api/out` links included — with the error
+  boundary, permanently. And `/unsubscribe` told three different failures, one of them
+  ARU's own misconfiguration, that the reader's link had expired.**
+
+  **Baselines, measured here on a clean tree at `af00c7c` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first (exit 0). `npm run smoke`
+  green with the chromium override at `/opt/pw-browsers/chromium-1194`
+  (`Smoke test passed.`), vitest **635 passed in 94 files**, its Playwright leg
+  **70 passed (4.6m)**, `python3 ml/selftest.py` **Ran 137 tests in 2.221s ... OK**,
+  `npm run lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at
+  `lib/care.ts:70`), `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research (자료조사): what a mature pipeline does with a feature that is not a finite
+  number — it refuses, and it never substitutes.** The ML track needed this before
+  deciding between refuse, drop and grade. Read from scikit-learn's own source rather
+  than documentation or recall: `sklearn/utils/validation.py` @ **1.5.2** from
+  `raw.githubusercontent.com` (`http=200 bytes=92307`, sha256
+  `a6beb3a2…3b8249dc`). `check_array`'s `force_all_finite` defaults to **True**, and its
+  three options are raise, accept, and accept-NaN-only — **none of them is "substitute a
+  value"**. `_assert_all_finite` raises `ValueError("Input contains NaN")`, and the
+  estimator-facing message names the two remedies in as many words: "using an imputer
+  transformer in a pipeline or drop samples with missing values". Two limits stated
+  rather than glossed: it governs an estimator's input matrix, not a report's accuracy
+  figure, and ARU cannot raise the way an estimator can — one unmeasurable row must not
+  end a run over 300 good ones. So the answer it gives ARU is the second half, drop, with
+  the count reported, which is the shape cycle 28 took from scipy's `find_peaks`.
+  `docs/non-finite-feature-policy.md`.
+
+  **ML: three code paths met one situation and disagreed, and the one that fed the report
+  was the wrong one.** Measured on `af00c7c` before any change:
+  `run_pipeline.feature_summary` **drops** a non-finite value (`math.isfinite`);
+  `ml/heuristic_baseline._as_float` — the screen the promotion gate's baseline uses —
+  **refuses** it; and `run_pipeline.heuristic_baseline` **graded** it. `nan < lo` and
+  `nan < hi` are both False, so `bucket` returned **2**, the most severe of three levels,
+  and the row counted in `n` and entered the confusion matrix as a prediction.
+  `bucket(inf) = 2`, `bucket(-inf) = 0`. A `None` value was worse: `float(None)` raises,
+  and that call runs once per report, so one such row ended the whole run.
+
+  The cell it lands in is the worst one there is — always predicted 2, so on a row
+  labelled 0 it is a two-level miss, which quadratic weighting punishes four times as
+  hard as a one-level miss. On 16 rows whose 12 measurable ones the shipped cuts grade
+  perfectly, against the pre-change function copied verbatim from
+  `git show HEAD:ml/run_pipeline.py`:
+
+  ```
+  BEFORE  n=16 accuracy=0.75 unusable=n/a   confusion actual=0 -> {'0': 4, '1': 0, '2': 4}
+  AFTER   n=12 accuracy=1.0  unusable=4     confusion actual=0 -> {'0': 4, '1': 0, '2': 0}
+  ```
+
+  `_as_float` is now public `as_feature_float` and `run_pipeline` imports it, so there is
+  one screen instead of two; the residue is REPORTED as `unusable` rather than skipped in
+  silence, on the report line and as a per-axis warning. `bucket` was deliberately NOT
+  changed — strictly-less-than against each cut in order is the shipped rule, identical to
+  `bucket()` in `lib/skin.ts` and `predict_level` in `ml/heuristic_baseline.py`, and
+  moving it would manufacture a fake accuracy gap between the heuristic and the app; its
+  docstring now says what it requires of its caller. A **fourth** disagreement was found
+  by the test rather than by reading: `isinstance(True, int)` is True in Python, so
+  `feature_summary` summarised a JSON `true` as the number **1.0** while
+  `as_feature_float` rejected it — that case failed the first time it ran and
+  `feature_summary` now excludes `bool`. Two source-line breaks, both run and reverted:
+  the screen back to `float(features[feat])` gives
+  `TypeError: float() argument must be a string or a real number, not 'NoneType'` plus
+  `AssertionError: 16 != 12 : NaN rows were graded` (2 failures, 1 error); dropping the
+  `bool` exclusion gives `AssertionError: {'shine': {'count': 1, ...}} != {}`
+  (1 failure). `test_a_clean_run_reports_nothing_dropped` stays green under both.
+  **Nothing in `public/models/visible-attributes/manifest.json` was touched** — not
+  `status`, not `promotionGate`, not `minQwkGainOverHeuristic`. This changes what the
+  readiness report *says*, not what the gate *requires*.
+
+  **Bug fix: a malformed device store took the whole `/report` page, permanently.**
+  `ScanHistoryStrip` renders on `/report`'s first step. `getScanHistory()` was
+  `JSON.parse(localStorage.getItem(KEY) || "[]")` handed straight back, so a TRUNCATED
+  value self-healed through the catch while a value that PARSES to the wrong shape reached
+  the component: `history.length < 2` is `undefined < 2` on an object (**false**, so the
+  early return does not fire) and `history.slice(-6)` then throws INSIDE RENDER. React
+  unmounts the segment and `app/error.tsx` replaces the entire report — the analysis, the
+  product cards and both `/api/out` links with them — and because the crash is
+  deterministic in the stored value, the boundary's own "다시 시도" throws again. Proved in
+  Chromium first: `tests/e2e/report-device-store-shape.regression-13.spec.ts` failed **5 of
+  5** against the unfixed source, the console naming both throw sites
+  (`TypeError: history.slice is not a function` at `scan-history-strip.tsx:21`, and
+  `recent.map is not a function` at `:41` — which is why `"abcdef"` is in the shape list: a
+  string survives BOTH guards and dies one call later). `Array.isArray` at the read fixes
+  it and is also what makes the next write repair the key.
+  `tests/device-store-shape.test.ts` breaks at the source line: **10 failed | 2 passed**,
+  with the two controls (an unparseable value, which already self-healed, and a real array,
+  which was never affected) green — which is what makes this an inconsistency rather than a
+  preference. This is the same class as cycle 29's funnel fix one level up, and
+  `docs/funnel-store-shape.md` now carries both halves.
+
+  *Two more reads guarded on a weaker grade of evidence, said plainly.* `lib/crops.ts` and
+  `lib/labels.ts` feed `app/scan/feedback.tsx`'s LAZY `useState` initialisers
+  (`useState(() => cropSampleCount())`), which run during render with no try/catch of their
+  own. The throw is measured (5 of 18 cases fail with the guards dropped); the page-level
+  consequence is **not**. A browser spec written to reproduce it the way `/report` was
+  reproduced passed on all five shapes, because the `Feedback` panel mounts only after a
+  capture and this container has no camera — that spec was DELETED rather than kept, since
+  a test passing for the wrong reason tells the next cycle a path is covered. The four
+  remaining stores on the same idiom (`lib/consent.ts`, `lib/store.ts`, `lib/pilot.ts`,
+  `lib/funnel-flush.ts`) were left, with reasons, in the backlog item below.
+
+  **UI/UX: `/unsubscribe` told three different failures that the reader's link had
+  expired.** `POST /api/reengage/unsubscribe` has four outcomes and only ONE means the link
+  is finished: **400** (token does not verify), **503** (`UNSUBSCRIBE_SECRET` or the
+  Supabase admin client not configured), **500** (the consent write failed), and a request
+  that never arrives, which the page's `.catch(() => null)` collapses into the same `null`.
+  All four rendered "이 링크는 사용할 수 없거나 유효 기간이 지났어요." Revoking consent is
+  the one action in the product that must not fail quietly: a person told their unsubscribe
+  link has expired stops trying, and then keeps receiving the mail they asked to stop,
+  because what actually happened was ARU's own misconfiguration. Now 400 alone says the
+  link is finished, and 500/503/no-response get a retryable sentence that also names the
+  fallback route — replying to the mail itself — added to `en`, `ja`, `zh` and `ar`. The
+  missing-token case is no longer `role="alert"` either: a live region whose content is
+  present on the FIRST render announces nothing, so the one sentence explaining why the
+  only control on the page is disabled is now plain text tied to the button with
+  `aria-describedby`, and the alert is kept for what genuinely arrives later.
+  `tests/e2e/unsubscribe-outcome.regression-14.spec.ts` fails **4 of 6** against the
+  pre-fix page while the two controls (400 → expired, 200 → confirmed) stay green.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`) with the chromium
+  override; vitest **653 passed in 95 files** (from 635/94 — one new unit file plus the two
+  new specs' cases), `python3 ml/selftest.py` **Ran 142 tests ... OK** (from 137),
+  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npm run lint` **0 errors, 2
+  warnings** (the same two). Full output in the session report.
+
+  *Rotation.* 1325 → 1340 and 6176 → 6312; `comm -23` over the two files concatenated
+  and sorted finds **1 line missing**, and it is `Last updated: 2026-09-22`, changed to
+  2026-09-23 by this entry. Cycle 27's 135 lines are byte-identical in the changelog
+  (sha256 `cebd1ecf…3d36cece` on both sides of the move). No backlog item was ticked
+  `[x]` this cycle — none of the four tracks closed a listed item — so nothing moved to
+  "Closed backlog items"; two new items were opened instead. "Recent cycles" holds
+  30/29/28.
+
+  **Supervisor review.** The ML defect is real, its guard bites narrowly, and the app-side
+  twin was checked rather than assumed.
+
+  *The mechanism, confirmed.* `nan < lo` and `nan < hi` are both false, so strictly-less
+  bucketing sends NaN to level 2 — `node` prints `NaN -> 2`, `Infinity -> 2`,
+  `-Infinity -> 0` for the oil cuts. Restoring a bare `float(features[feat])` at the
+  grading call site in `ml/run_pipeline.py` fails 3 of 142, all in `NonFiniteFeature`:
+  `test_a_non_finite_feature_is_not_graded_as_the_top_level`,
+  `test_the_dropped_rows_are_reported_rather_than_skipped_in_silence`, and an ERROR in
+  `test_a_missing_feature_value_does_not_take_the_run_down`.
+
+  *The app-side twin cannot fire, and that was checked.* `lib/skin.ts` grades with the
+  same expression in `bucket()` (line 408) and `levelFor()` (line 823), and the branch
+  deliberately leaves both alone — "the screen belongs at the call site" — which is right,
+  since changing the comparison would open a fake accuracy gap between app and heuristic.
+  What decides whether the app is exposed is whether its three graded features can go
+  non-finite, and they cannot on finite inputs: `shineIndex` divides by `(cheekL || 1)`,
+  `redChromaticity` by `(r + g + b || 1)`, and `cov` by `(cheekL || 1)` (line 1197). The
+  defect was confined to the pipeline, where CSV cells arrive as strings and `None`.
+
+  *Scope held.* `lib/skin.ts` and the manifest are untouched; no exported column moved;
+  `shareUrl` is still open, a sixth cycle running.
+
+  *Rotation.* 1325 → 1348 and 6176 → 6312; `comm -23` finds **1 line missing**, the
+  `Last updated:` date. "Recent cycles" holds 30/29/28.

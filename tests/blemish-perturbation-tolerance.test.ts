@@ -783,7 +783,15 @@ describe("how far a* can move before blemishCount changes", () => {
     }
   });
 
-  it("measures the certified radius and the achieved one, at every frame size", async () => {
+  // Explicit budget, not decoration: measured here at 4844-5039ms against vitest's
+  // 5000ms default (vitest.config.ts sets no testTimeout), and it went red three times
+  // before this line. The one red whose output was captured is `Test timed out in
+  // 5000ms`, raised here and not on an assertion; raising only the clock then took the
+  // case to 10 of 10, which is why the other two are read the same way. It is the
+  // harness the srgbLinear and plateau backlog items both cite, so a red here reads as
+  // a broken measurement when it is only a slow machine. Same convention as the
+  // `{ timeout: 300_000 }` case below and `tests/cheek-clipping-signal.test.ts`.
+  it("measures the certified radius and the achieved one, at every frame size", { timeout: 120_000 }, async () => {
     const mod = await load("skin-perturbable", (source) => source);
     const rows: Array<{ w: number; h: number; certified: number; lift: number; drop: number }> = [];
     for (const [w, h, count] of COMMITTED) {
@@ -1403,7 +1411,9 @@ describe("the summed-area table the local background is read from", () => {
    * 0/1 into partial sums bounded by gw*gh, every one of them an exactly representable
    * integer in float64, so the divisor carries no error to measure.
    */
-  it("keeps its error under the noise bound every margin above is divided by", async () => {
+  // 3536-3675ms measured against the same 5000ms default: the next case in this file
+  // that would start failing on the clock rather than on a number.
+  it("keeps its error under the noise bound every margin above is divided by", { timeout: 120_000 }, async () => {
     const mod = await load("skin-perturbable", (source) => source);
     const rows: Array<{
       label: string;
