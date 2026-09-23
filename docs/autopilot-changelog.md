@@ -6460,3 +6460,159 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   *Rotation.* 1533 → 1378 and 5588 → 5886; `comm -23` finds **1 line missing**, and it is
   the plateau item's own first line, changed by the `[AI]` → `[~] [AI]` marker. "Recent
   cycles" holds 28/27/26.
+
+- 2026-09-22 (cycle 29) — Branch `autopilot/2026-09-22-1839`. **`toneSpread` is the one
+  published ML column that still reads the room it was captured in, and the size of that
+  is now a pinned 2.1636% instead of a note. One malformed value in `localStorage` could
+  switch a device's funnel off permanently and silently, because the two corruption modes
+  were handled differently for no reason. And the dead `noteEn` field is gone, with the
+  audit that could never have seen it built first.**
+
+  **Baselines, measured here on a clean tree at `bedb80a` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first (exit 0). `npm run smoke`
+  green with the chromium override at `/opt/pw-browsers/chromium-1194`
+  (`Smoke test passed.`), vitest **618 passed in 92 files**, its Playwright leg
+  **70 passed (3.4m)**, `python3 ml/selftest.py` **Ran 137 tests in 1.713s ... OK**,
+  `npm run lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at
+  `lib/care.ts:70`), `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research (자료조사): does a shipped browser analytics SDK check the shape of its own
+  persisted event queue?** The bug-fix track needed to know whether `Array.isArray` at the
+  read was the normal guard or an over-reaction, and the answer decided where the guard
+  sits. Read from the libraries' own source, pinned by digest —
+  `@amplitude/analytics-core` **2.57.0** from `registry.npmjs.org`
+  (sha256 `1cb97d68…1cab28e`) and `posthog-js@main`
+  `packages/browser/src/storage.ts` (sha256 `d2406cda…61f546`). Neither validates the
+  shape at the read. Amplitude's `BrowserStorage.get()` is a try/catch around
+  `JSON.parse` returning whatever came out — byte-for-byte the shape ARU had — and the
+  guard lives at the consumer, as `unsent && unsent.length > 0` before `.map`. That is a
+  duck-type check, and it is four-fifths of one: verified in node against the five values
+  that parse, it skips `null`, `5` and `{}`, and lets `"abc"` through to
+  `TypeError: v.map is not a function`. PostHog is `JSON.parse(...) || {}` at every read,
+  same class. So ARU was strictly weaker than both references (it had neither guard), and
+  the finding that actually changed the fix is the third one: **where** the guard sits
+  decides whether the store repairs itself. Guard at the consumer and the bad value stays
+  in the key forever; guard at the read and return `[]`, and the next write overwrites it.
+  Neither reference does that. `docs/funnel-store-shape.md`, which also states plainly
+  that no occurrence has been observed in the wild and must not be cited as if one had.
+
+  **ML: `toneSpread` is background-coupled, and it is the only published field that is.**
+  §2 of `docs/tone-ita-verification.md` took the frame-mean gray-world gains off `toneIta`
+  and `toneLstar`; it never took them off `toneSpread`, which builds its region L\* values
+  through them. The claim on record was a 2026-09-16 note with two numbers and no test.
+  Re-measured through `analyzeSkin` on the `faceOnWall` fixture — one face held
+  byte-for-byte identical, only the wall changing — every published field of
+  `SkinReads.raw`:
+
+  ```
+  wall         gains (r, g, b)                    toneSpread             vs grey
+  grey         0.93626, 1.01253, 1.05898          0.052903635205415585   —
+  warm wood    0.82791, 1.01832, 1.23438          0.05350370949189595    +1.134%
+  cool blue    1.03366, 1.03720, 0.93595          0.0523705964019627     −1.008%
+  white        0.94373, 1.01096, 1.05128          0.05286602230161696    −0.071%
+  dark         0.91027, 1.01825, 1.08772          0.05303399943360612    +0.246%
+  ```
+
+  Widest ratio **2.1636%** (`max/min - 1 = 0.021636436622493482`), which is the "about 2%"
+  the note claimed. Two things the note did not establish. It is **exactly one field**:
+  `roughnessRatio`, `blemishCount`, `blemishDensity`, `shine`, `relRedness`, `cov`,
+  `toneIta`, `toneLstar`, `tzoneL` and `cheekL` are **bit-identical** across all five
+  walls, asserted rather than spot-checked, so a change that starts moving one of them is
+  a new coupling rather than a wider version of this one. And `blemishCount` is **0** on
+  this fixture, which carries no discs — said out loud because it means these rows say
+  nothing about `detectBlemishes`'s own use of the same gains. The note's 0.053504 is the
+  warm-wood value rounded; its 0.052372 is 1e-6 off the 0.0523706 measured here.
+
+  The case lives in `tests/tone-ita-contract.test.ts` because the fixture does — a second
+  copy of `faceOnWall` would give the two halves of one measurement two fixtures that
+  could drift — and the walls are now one shared `WALLS` const so the tone half and the
+  spread half can never be measured over different ones. Two source-line breaks, both run
+  and both reverted: `frameChannelGains`'s sub-sampling divisor 60 → 30 gives
+  `AssertionError: toneSpread behind a grey wall — a published ML column moving with the
+  room: expected 0.05291142788884354 to be 0.052903635205415585` (1 failed | 6 passed);
+  dropping the gains from the region L\* helper gives the same assertion at
+  `expected 0.0525811307190166` **plus** `expected 0 to be greater than 0.02`
+  (2 failed | 5 passed). That second break is the finding: **the fix is one expression and
+  it drives the coupling to exactly zero.** What stops it is that `toneSpread` is in
+  `NEW_FEATURE_KEYS` and exported into every ML sample, so moving it moves a published
+  column for every future capture while `inputSchemaVersion` has never moved under three
+  "Bumped" comments — the schema-version backlog item, not a line to slip in here.
+  `docs/tone-ita-verification.md` §4.
+
+  **Bug fix: one bad value in `localStorage` switched a device's funnel off for good.**
+  `getFunnelEvents` wrapped `JSON.parse` in a try/catch, so a TRUNCATED value returned
+  `[]` and the next `recordFunnelEvent` overwrote the key — the store repaired itself. A
+  value that PARSES to the wrong shape took no such path: it was returned as-is,
+  `recordFunnelEvent` called `.push` on it, and the throw landed in the outer catch that
+  exists so analytics can never break the user flow. Nothing rewrote the key, so every
+  later event hit the same throw. `tests/funnel-store-shape.test.ts` fails against the
+  unfixed source on all five shapes that parse —
+  `AssertionError: recordFunnelEvent() returned null on an object — the funnel is off:
+  expected null not to be null`, **10 failed | 2 passed** — while the two control cases
+  pass, which is what makes this an inconsistency rather than a preference: unparseable
+  JSON already self-healed, and a real array was never affected. The fix is
+  `Array.isArray` at the read, which is also what makes the repair happen. This is the
+  device-side half of a hole `/api/sync` already closed on the server
+  (`tests/api-json-boundaries.test.ts`), and the funnel is the only measurement the
+  product has of where users leave — revenue-upstream item 2.
+
+  **UI/UX: the dead `noteEn` field, deleted, with the audit built first.** Cycle 28 filed
+  it and said "delete it or render it". Rendering it would duplicate what `t(link.note)`
+  already produces in English, so it went — from `lib/commerce.ts` and `lib/care.ts`,
+  the only two files that mentioned it. What made that a deletion rather than a guess is
+  `tests/care-link-copy-coverage.test.ts`, which closes the blind spot the item named:
+  cycle 27's sweep read the Korean literal at each `t("…")` CALL SITE, and these literals
+  are DATA passed through `t(link.note)`, so a call-site sweep could not see them. The new
+  file collects them from the data instead — `buildCommerceLinks`, `productSearchLinks`
+  over all 23 catalogue skus, `clinicLinks` in both branches — and asserts each resolves
+  in `en`, `ja`, `zh` and `ar`. The rule is Hangul-bearing rather than an exception list,
+  and a second case pins `"Global search"` as the only language-neutral string so "no
+  Hangul" cannot grow into "untranslated". Broken at source by deleting the 올리브영 note
+  from `lib/i18n/en.ts:855`: `care copy that would render as Korean: en:
+  buildCommerceLinks[oliveyoung].note = "오늘 매장이나 온라인 재고를 바로 볼 수 있어요"`,
+  2 of 3 failing. The item's `careSummary` half was looked at and deliberately left:
+  `tests/product-trust.test.ts:63` passes a visible-redness reading in precisely to assert
+  it does NOT raise `clinicPriority`, so `_reads` is what that test's intent is written
+  in. The two lint warnings stay, now as a recorded decision.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`) with the chromium
+  override; vitest **635 passed in 94 files** (from 618/92 — the two new files plus the
+  toneSpread cases); `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged;
+  `python3 ml/selftest.py` **Ran 137 tests in 1.713s ... OK**; `npm run lint` **0 errors,
+  2 warnings**, the same two. Nothing in `public/models/visible-attributes/manifest.json`,
+  `NEXT_PUBLIC_FUNNEL_FLUSH`, `shareUrl` or what `blemishCount` reports was touched.
+
+  *Rotation, against a pre-review snapshot of main.* `wc -l` 1420 → 1290 and 5886 → 6176.
+  `comm -23` over the two files concatenated and sorted finds **2 lines missing**, and both
+  are backlog-item headers this cycle EDITED rather than moved — the `noteEn` header, now
+  carrying `[x]`, and the `toneSpread` header, now carrying `[~]`. Nothing was lost in
+  either move: `diff` says the cycle 26 entry (256 lines) and the closed `noteEn` item
+  (33 lines) are **byte-identical** in their new homes. "Recent cycles" holds 29/28/27.
+
+  **Supervisor review.** One note on the run itself first: the scheduled 12:39 cycle did
+  NOT run — the supervising session had no tool access at that time and the trigger only
+  queued. This cycle is the 18:39 firing, spawned at 20:49 UTC; the two queued firings were
+  not run back to back.
+
+  *The funnel defect is real and its guard bites.* Restoring the unchecked
+  `return JSON.parse(localStorage.getItem(KEY) || "[]")` fails 10 cases, the first two
+  naming the mechanism: `getFunnelEvents() on null: expected null to deeply equal []` and
+  `recordFunnelEvent() returned null on null — the funnel is off`. The asymmetry the
+  comment describes is the whole defect: a truncated value throws in `JSON.parse` and the
+  store repairs itself on the next write, while a value that PARSES to the wrong shape
+  was returned as-is, threw on `.push` inside the catch that exists so analytics cannot
+  break the flow, and nothing ever rewrote the key.
+
+  *`noteEn` went the safe direction.* This review had flagged before the branch arrived
+  that resolving the item by RENDERING the field would put four merchant claims in front
+  of users, one of them an unsourced comparative (`"Fastest delivery option in Korea."`,
+  `lib/commerce.ts:78`). The branch deleted it — 5 lines from `lib/commerce.ts`, 2 from
+  `lib/care.ts`, nothing rendered.
+
+  *`toneSpread` was measured and not changed.* It is a published, exported column, and
+  `git diff` on `lib/skin.ts` is empty; the item went `[AI]` → `[~]` rather than closing.
+
+  *Rotation.* 1420 → 1297 and 5886 → 6176; `comm -23` finds **2 lines missing** — the
+  first line of the `noteEn` item (closed, 3 mentions now in the changelog) and the first
+  line of the `toneSpread` item (the `[~]` marker). `shareUrl` is still open, a fifth
+  cycle running. `lib/skin.ts` and the manifest are untouched.

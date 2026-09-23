@@ -116,6 +116,71 @@ per CONDITION — 반사 costs oil and redness on every seed — but "every cond
 published reading on a sixth of the seeds or more" is not true per attribute, and this
 doc is where that exception is written down.
 
+## 조명 dark + oil: 71 is not reachable from these two splits (2026-09-23, cycle 32)
+
+The one row the section above leaves open. It is not pinned (`0:82 1:38`), so cycle 31's
+identity does not apply to it and its 21/120 is a real per-seed count. What 71 could have
+been is now answered as far as this construction can answer it.
+
+`ARU_PRINT_RETAKE_OIL=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
+2x2 over the 120 seeds at the committed construction (tuning seed 1, cheekL 60):
+
+```
+OIL contingency tuneSeed=1 cheekL=60	c00=82 c01=21 c10=0 c11=17
+```
+
+**The clean-1 / degraded-0 cell is empty.** No seed that reads level 1 on the clean
+capture drops to level 0 when the capture is darkened, so the count is not two
+independent splits colliding — it is exactly the difference of the marginals,
+`38 - 17 = 21`, which is the number the sweep reports.
+
+**That puts 71 out of reach, by arithmetic on measured numbers.** With `a` clean level-1
+seeds and `b` degraded level-1 seeds over the same 120 seeds, disagreements are
+`c01 + c10`, and `c01 <= min(120 - a, b)`, `c10 <= min(a, 120 - b)`. At the measured
+`a = 17, b = 38` the largest any rearrangement of those seeds could give is
+`38 + 17 = 55`. A different noise field cannot produce 71 from these splits; a different
+fixture, cut point or analyzer is required. Asserted in
+`tests/retake-signal-rule.test.ts` → "has an empty clean-1/degraded-0 cell, so its count
+is the difference of the two splits", so a construction change that moves any of it fails
+a named test rather than quietly re-opening the question.
+
+**Two sweeps say how far the count moves under the two knobs it could depend on**, and
+they behave in opposite ways to a pinned row:
+
+```
+OIL tuneSeed	clean level-1	degraded level-1	disagreements
+OIL 1	17	38	21/120
+OIL 2	65	65	12/120
+OIL 3	87	76	13/120
+OIL 5	63	65	12/120
+OIL 8	89	79	12/120
+OIL 13	8	24	16/120
+OIL 21	34	49	17/120
+OIL 34	101	83	18/120
+OIL cheekL	clean level-1	degraded level-1	disagreements
+OIL 40	17	43	26/120
+OIL 50	17	41	24/120
+OIL 60	17	38	21/120
+OIL 70	17	34	17/120
+OIL 80	17	31	16/120
+OIL 90	17	31	14/120
+OIL 100	17	32	15/120
+OIL 120	17	24	9/120
+```
+
+Re-seeding the bisection swings the CLEAN split by an order of magnitude (17 to 101
+level-1 seeds) while the disagreement count stays between 12 and 21. In a pinned row the
+count *is* the clean split, so it would have swung with it. Darkening the capture nearly
+trebles the count (9 at cheekL 120 to 26 at cheekL 40, with one reversal, 14 then 15,
+between cheekL 90 and 100), which is the condition the row is supposed to be reading.
+
+*Measured:* every number in the three blocks above, and the 55 bound, which is arithmetic
+on the measured marginals. *Inferred:* that cycle 11's 71/120 came from a different
+construction rather than a different seed — the bound rules out the seed, and nothing
+here identifies what else differed. *Not established:* which of fixture, cut point or
+analyzer changed, and whether some construction not tried here reaches 71. Both need
+cycle 11's fixture, which was never committed.
+
 ## What this does not answer
 
 Nothing here touches a real face. The fixtures are synthetic frames with seeded

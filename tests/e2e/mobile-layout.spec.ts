@@ -281,6 +281,27 @@ test("the report's commerce row keeps both CTAs tappable and legible", async ({ 
       await expectTapHeight(locator);
       await expectInsideViewport(page, locator);
     }
+
+    // Tappable and legible was never the whole of it: the row also has to read as if
+    // the merchant link were the action. It did not — the out-link was on the pale
+    // `--surface-tint` at `flex: 1` while the internal /care link took the filled
+    // `--plum` at `flex: 1.3`, so the paying CTA was both the quieter one and the
+    // narrower one, and in ko it wrapped onto two lines while /care sat on one.
+    const paint = async (locator: typeof buy) =>
+      locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+    const filled = await paint(buy);
+    expect(filled, `${lang}: the out-link is not the filled CTA in this row`).not.toBe(await paint(care));
+    // Same treatment as every other merchant CTA in the product, taken from one of the
+    // product cards on this very step rather than hard-coded as an rgb triple.
+    const cardBuy = page.locator('a[href*="placement=report_product"]').first();
+    expect(filled, `${lang}: the out-link is not painted like the product cards' CTA`).toBe(await paint(cardBuy));
+    const buyBox = await buy.boundingBox();
+    const careBox = await care.boundingBox();
+    expect(
+      buyBox!.width,
+      `${lang}: the out-link (${buyBox!.width.toFixed(1)}px) is narrower than the /care link (${careBox!.width.toFixed(1)}px)`,
+    ).toBeGreaterThanOrEqual(careBox!.width);
+
     await context.close();
   }
 });
