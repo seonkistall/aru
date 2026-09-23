@@ -321,3 +321,102 @@ describe("the 120-seed disagreement table", () => {
     }
   }, 120_000);
 });
+
+/**
+ * Why the 조명 rows of that sweep did not reproduce, and what a disagreement count on
+ * this fixture is actually measuring.
+ *
+ * The backlog records the failure: re-deriving cycle 11's table brought 반사 and
+ * 피부 영역 back within a handful of seeds, while 조명 came back wrong in BOTH
+ * directions — dark oil 21/120 against a written 71/120, dark pores 120/120 against a
+ * written 4/120. A re-derivation differing from the original is expected; differing by
+ * that much, in opposite directions, on one condition only, is a question.
+ *
+ * The answer is in `tuned()`, not in the degradation. It bisects each fixture until the
+ * CLEAN capture's raw value sits ON that attribute's cut point — at seed 1, the only
+ * seed it looks at. Every other seed draws a different noise field, so the clean
+ * capture lands on whichever side of the cut that field pushes it, near enough to a
+ * coin flip. A disagreement is `clean.level !== degraded.level`. When the degraded
+ * capture's level is PINNED (the degradation is large enough that noise cannot move it
+ * off one value), the count collapses to "how many of the 120 clean captures landed on
+ * the other side" — a property of the noise field, not of the condition, and one that
+ * any change in fixture construction moves freely between 0 and 120. That is also why
+ * a single such count can be both too high and too low against the original: it is the
+ * clean split being read, and the pinned degraded value decides which end it reports.
+ *
+ * `ARU_PRINT_RETAKE_SPLIT=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
+ * two distributions this rests on. It changes no rule and no threshold: the retake rule
+ * is unaffected, because it rests on every condition costing a published reading on a
+ * sixth of the seeds or more, and this says that ONE condition's exact fraction is not
+ * a stable quantity, not that it is small.
+ */
+describe("what a 120-seed disagreement count on the tuned fixture is measuring", () => {
+  it("prints the clean and degraded level distributions behind each count", () => {
+    if (!process.env.ARU_PRINT_RETAKE_SPLIT) return;
+    const write = (line: string) => process.stdout.write(`SPLIT ${line}\n`);
+    const attrs = ["oil", "redness", "pores"] as const;
+    const conditions: Array<[string, { cheekL: number; glint: number; clipped: boolean }]> = [
+      ["조명 dark", { cheekL: 60, glint: 0, clipped: false }],
+      ["조명 blown out", { cheekL: 216, glint: 0, clipped: false }],
+      ["반사", { cheekL: REFERENCE_CHEEK_L, glint: 24, clipped: false }],
+      ["피부 영역", { cheekL: REFERENCE_CHEEK_L, glint: 0, clipped: true }],
+    ];
+    const fixtures = Object.fromEntries(attrs.map((attr) => [attr, tuned(attr)])) as Record<(typeof attrs)[number], Fixture>;
+    const tally = (levels: number[]) =>
+      [0, 1, 2].map((level) => `${level}:${levels.filter((value) => value === level).length}`).join(" ");
+    write("condition\tattr\tclean levels\tdegraded levels\tdegraded pinned\tdisagreements");
+    for (const [name, condition] of conditions) {
+      for (const attr of attrs) {
+        const cleanLevels: number[] = [];
+        const degradedLevels: number[] = [];
+        let disagreements = 0;
+        for (let seed = 1; seed <= 120; seed += 1) {
+          const clean = analyzeSkin(noisyFrame(fixtures[attr], REFERENCE_CHEEK_L, seed, 0), landmarks(CHEEK_OK))!;
+          const degraded = analyzeSkin(
+            noisyFrame(fixtures[attr], condition.cheekL, seed, condition.glint),
+            landmarks(condition.clipped ? CHEEK_CLIPPED : CHEEK_OK)
+          )!;
+          cleanLevels.push(clean[attr].level);
+          degradedLevels.push(degraded[attr].level);
+          if (clean[attr].value !== degraded[attr].value) disagreements += 1;
+        }
+        const pinned = new Set(degradedLevels).size === 1;
+        write(
+          `${name}\t${attr}\t${tally(cleanLevels)}\t${tally(degradedLevels)}` +
+            `\t${pinned ? "yes" : "no"}\t${disagreements}/120`
+        );
+      }
+    }
+  }, 240_000);
+
+  /**
+   * The mechanism itself, asserted rather than printed, on the cheapest row that shows
+   * it: 조명 dark + redness. Twelve seeds, not 120 — the point is not the fraction, it
+   * is that the degraded level does not move while the clean level does.
+   *
+   * With the full 120 the identity is exact, from the printed table: 조명 dark redness
+   * pins the degraded level at 1 and the clean capture splits 29/91 around its cut, and
+   * the sweep reports 29/120 — the clean level-0 count, to the row. 조명 blown out
+   * redness pins at 0 against the same clean split and reports 91/120, the level-1
+   * count. 조명 dark pores pins at 2 against a clean split holding no 2 at all and
+   * reports 120/120. In every pinned row the "disagreement count" is a readout of where
+   * `tuned()`'s bisection-at-seed-1 happened to leave the CLEAN capture relative to its
+   * own cut point, which is a property of one noise field and moves freely when the
+   * fixture construction changes. The unpinned rows (피부 영역 on all three attributes,
+   * 반사 pores, 조명 dark oil) are the ones whose count is a per-seed measurement.
+   */
+  it("pins the degraded level while the clean level moves, which is what the count reads", () => {
+    const fixture = tuned("redness");
+    const cleanLevels = new Set<number>();
+    const degradedLevels = new Set<number>();
+    for (let seed = 1; seed <= 12; seed += 1) {
+      cleanLevels.add(analyzeSkin(noisyFrame(fixture, REFERENCE_CHEEK_L, seed, 0), landmarks(CHEEK_OK))!.redness.level);
+      degradedLevels.add(analyzeSkin(noisyFrame(fixture, 60, seed, 0), landmarks(CHEEK_OK))!.redness.level);
+    }
+    // The clean capture straddles its cut point, because that is what `tuned()` put it on.
+    expect(cleanLevels.size, "the clean capture did not straddle its cut point").toBeGreaterThan(1);
+    // The degraded one does not move at all, so every seed's outcome is decided by which
+    // side the CLEAN capture landed on — not by the condition under test.
+    expect([...degradedLevels], "the degraded capture was not pinned to one level").toEqual([1]);
+  }, 60_000);
+});

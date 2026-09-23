@@ -39,6 +39,19 @@ export default function Checkin() {
       }
       setDone(initial);
       setProductUses(nextProductUses);
+    }).catch(() => {
+      // Without this, ANY rejection out of the two device reads leaves `productUses`
+      // at null and the component's `productUses === null` branch renders an empty
+      // <main> — a blank white screen, with no error boundary and no retry, for the
+      // life of the install. This is the landing page for every re-engagement email,
+      // so a blank screen costs the two CTAs in the empty state below (내 리포트 보기 /
+      // 피부 스캔하기). The wrong-shape rejection that made this reachable is fixed at
+      // its source in lib/store.ts, but the missing catch was the reason a store
+      // problem became a dead page rather than an empty one, and it would be the
+      // reason again for the next one. Falling back to the empty state is honest: we
+      // could not read any recorded use, and that is exactly what it says.
+      setDone({});
+      setProductUses([]);
     });
   }, []);
 

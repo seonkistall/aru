@@ -6310,3 +6310,153 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
   push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
   stays out of this file is one a later cycle pays for twice.
+
+- 2026-09-22 (cycle 28) — Branch `autopilot/2026-09-22-0639`. **`detectBlemishes` now says
+  whether the frame it just counted was decided by the image or by scan order, and the
+  census is inside the detector because that is the only place it can see what cycle 23's
+  replica could not. `/care` — the second commerce surface, reachable from the nav on every
+  page — had a disclosure whose `aria-controls` named a panel containing the disclosure
+  itself, and no browser-level coverage of any kind. And `/ops` was telling the operator
+  that zero more crops were needed for a band that crops cannot unlock.**
+
+  **Baselines, measured here on a clean tree at `87a9834` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first. `npm run smoke` green with
+  the chromium override at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest
+  **615 passed in 91 files**, its Playwright leg **67 passed (3.9m)**, `python3
+  ml/selftest.py` **Ran 137 tests ... OK**, `npm run lint` **0 errors, 2 warnings** (the
+  same `_reads` / `_result` at `lib/care.ts:72`), `npx tsc --noEmit | grep -c "error TS"`
+  **13**.
+
+  **Research (자료조사): what a mature peak detector does with a plateau — report it.** The
+  ML item below had to choose between report, refuse and carry-a-confidence, and cycle 23
+  had only half an answer: `scikit-image`'s `peak_local_max` has a degenerate-input branch
+  that fires on an entirely flat field, which ARU's plateau-dominated fixture is not.
+  `scipy.signal.find_peaks` answers the other half, read from scipy's own source on
+  `raw.githubusercontent.com` (`_peak_finding_utils.pyx` and `_peak_finding.py` @ v1.14.1,
+  sha256s in the doc). `_local_maxima_1d` defines a maximum as "one or more samples of equal
+  value that are surrounded on both sides by at least one smaller sample" and returns
+  `midpoints`, `left_edges` and `right_edges` — a plateau is ONE maximum whose extent is an
+  output, and index order picks the representative of a maximum already established, never
+  whether there is one. `find_peaks` then exposes `plateau_size` as the first condition
+  evaluated and documents the report-without-filter case in as many words: "To calculate and
+  return properties without excluding peaks, provide the open interval ``(None, None)``".
+  So the reference's answer is **report, on the same return value as the count, and leave
+  the filter to the caller**. Two limits stated rather than glossed: it is 1-D, so
+  "surrounded on both sides" has no direct analogue in a 5x5 suppression window, and its
+  plateau is a run of exactly equal samples while ARU's degenerate frame is
+  plateau-dominated rather than flat. `docs/blemish-perturbation-tolerance.md` §7.6.
+
+  **ML: the plateau census moved inside `detectBlemishes`, which is what makes it bite.**
+  `detectBlemishes` returns `tiedPeaks` next to `count` and `areaFace`: counted cells
+  carrying a neighbour with the bit-identical residual somewhere in their suppression
+  window, so `j < i` and not the image chose the survivor. One float comparison per
+  neighbour the loop already visits; `count` byte-identical; nothing reads the field yet,
+  deliberately. The argument for inside is §7.4's sixth break, which that section recorded
+  as "did not bite": quantising `residual[i]` to three decimals manufactures plateaus, and
+  the replica rebuilds the residual from the captured a\* grid so it cannot see anything
+  downstream of a\*. Applied to `lib/skin.ts` and run: `Tests 7 failed | 610 passed (617)`,
+  the new case failing first with `noise 4 600x720: 2 of 5 counted cells are settled by scan
+  order, not by the image: expected 2 to be +0`, and the two margin cases §7.4 names — "measures
+  a real margin on every realistic frame, and says how real" and "fails the same predicate on
+  the noiseless fixture" — **not** in the failure list, which reproduces §7.4's finding. The
+  other six report a moved number on the noiseless fixture or a moved pin; none of them says
+  what went wrong. `lib/skin.ts` restored byte-identical afterwards. Fifteen realistic frames
+  (three noise levels × five sizes) carry zero ties. The noiseless fixture reads
+  `3/2 3/1 3/2 3/0 3/1` — the `3, 3, 3, 3, 3` `tests/blemish-density-scale.test.ts` asserts
+  must agree, four of five carrying a tie and `1080x1296` carrying none, which is why the case
+  pins the vector instead of asserting `> 0`. `tests/blemish-plateau-census.test.ts`,
+  `docs/blemish-perturbation-tolerance.md` §7.7. The backlog item stays `[~]`: what
+  `blemishCount` should DO about a plateau-dominated frame is a product call on a published
+  index, and §7.6 only says to report before deciding the filter.
+
+  **UI/UX: `/care`'s merchant disclosure named a panel that contained it, and `/care` had no
+  browser coverage at all.** `aria-controls={merchantPanelId}` pointed at the grid the toggle
+  was itself a child of, so a screen-reader user following the relationship from "다른 판매처
+  보기" landed on a region whose contents included the button they had just left, and the
+  always-rendered region was announced as collapsed. Confirmed in Chromium at 360px in all
+  five locales before the fix (`containsToggle=true`, five of five). The fix makes the toggle
+  the panel's SIBLING — two nested grids at the same 7px gap — and the rendered geometry is
+  unchanged: every button's x, y, width and height identical collapsed and expanded, diffed
+  before against after. Breaking it at its source line (the `id` back on the outer grid)
+  fails 2 of the 3 new cases with `aria-controls="care-merchants-tn2" names a panel that
+  contains its own toggle: a disclosure cannot control a region it is inside` and `the
+  expanded panel swallowed its own toggle`, while the layout case stays green.
+  `tests/e2e/care-merchant-disclosure.regression-12.spec.ts` also gives `/care` its first
+  360px × five-locale guard on document overflow and the 44px tap contract.
+
+  **The layout sweep that found nothing, recorded so the next cycle does not redo it.**
+  `/care`, `/survey`, `/privacy` and `/checkin` measured in Chromium at 320px and 360px in
+  ko/en/ja/zh/ar — twenty-four page loads per route pair — looking for document overflow and
+  for any `button`, `a`, `input`, `select` or `textarea` under 44px or clipped outside the
+  viewport. **Nothing found.** That is a measurement and not an improvement, and it is the
+  reason this cycle's UI work is the disclosure rather than a clipping fix.
+
+  **Bug fix: `/ops` reported "Crops needed for next band: 0" for a band crops cannot
+  unlock.** `getMlReadiness`'s participant gate (`lib/ml-readiness.ts`) returns
+  `band: "calibrate"` whenever fewer than five pilot participants are linked, whatever the
+  crop count — and it returned `minCropsForNextBand: 30` with it. `app/ops/page.tsx:233`
+  renders that as `Crops needed for next band: {Math.max(0, minCropsForNextBand - crops)}`,
+  so at any crop count of 30 or more with four participants the panel printed **0**, telling
+  the operator they had finished collecting while the band was pinned on something else
+  entirely. `tests/ml-readiness.test.ts` already pinned exactly that state (300 crops, 4
+  participants, band `calibrate`) without ever looking at the number beside it. Fixed to
+  `null`, which `/ops` already handles by not rendering the line — the branch's `nextAction`
+  ("Use /pilot to link P001-P030 sessions") is what actually applies. Reverting the one line
+  fails the new case with `at 30 crops and 4 participants /ops offers a crop target the band
+  does not depend on…: expected +0 to be null`, 1 of 3 in the file. The crop-count bands are
+  untouched and the case asserts one of them still reports a real target (12 crops → 18).
+
+  **Verification, pasted from the runs that produced it.** `npm run smoke` with the chromium
+  override → `Test Files 92 passed (92)`, `Tests 618 passed (618)`, Playwright `70 passed
+  (3.7m)`, `Smoke test passed.` `npx tsc --noEmit | grep -c "error TS"` → `13`. `npm run
+  lint` → `0 errors, 2 warnings` (`lib/care.ts`). `python3 ml/selftest.py` → `Ran 137 tests
+  ... OK` — unchanged, this cycle's ML work is in TypeScript.
+
+  **Rotation.** `docs/AUTOPILOT.md` 1533 → 1378; `docs/autopilot-changelog.md` 5588 →
+  5886. Cycle 25's 297-line entry moved verbatim to the changelog bottom. **No backlog item
+  was ticked `[x]` this cycle**, so nothing moved to "Closed backlog items": the plateau item
+  went `[AI]` → `[~]` because the decision it names is still open, and one new item was filed
+  under "### Next" for the dead `noteEn` field. `wc -l` before/after and the `comm -23`
+  preservation check are in the PR body.
+
+  **Supervisor review.** Kept cheap — the account is at `seven_day / allowed_warning`
+  (resets 2026-09-22 20:00 UTC) and the worker was told to be economical, so this was too:
+  two reads before the branch, two breaks after.
+
+  *The fork this cycle had to get right, and did.* The item names three outcomes — report
+  it, refuse it, or carry a confidence — and they are not equally available to a cycle.
+  `blemishCount` is in `ml/skin_indices.py:141` `NEW_FEATURE_KEYS`, so it is an export
+  column every ML sample carries, and it is pinned per frame size at
+  `tests/scan-cost-benchmark.test.ts:347`. **Refusing or altering the count would move an
+  exported column and retroactively change what every already-collected sample means** —
+  the `fallbackVersion` class of change, needing the version treatment or an owner call.
+  Reporting alongside is additive and ordinary cycle work. This cycle took the additive
+  branch, left `count` untouched (`git diff` on
+  `tests/scan-cost-benchmark.test.ts` is **0 lines**), and says in the function's own
+  comment that what to do about a plateau-dominated frame "is an open decision, not this
+  function's to make". The item went `[AI]` → `[~]` rather than closing, which is the
+  honest marker: "notice" is answered, "what to do" is not.
+
+  *Both breaks bite, and the second is the one that matters.* Removing the census line
+  fails 1 of 2 with the pinned string named. Quantising `residual[i]` to three decimals —
+  the sixth break in §7.4, the one that did NOT bite when the census was computed from an
+  outside replica — now fails 2 of 2, and fires on the NOISY fixture as well:
+  `noise 4 600x720: 2 of 5 counted cells are settled by scan order, not by the image. On a
+  frame with real pixel noise the suppression margins are 1e6x the detector's own rounding
+  error, so an exact tie means something upstream collapsed distinct residuals.` That is
+  the proof the census is computed inside the detector rather than from a replica, which
+  is exactly what the "decision-margin guard is blind to the residual arithmetic" item
+  asked for.
+
+  *Read of the tie logic, since a census that miscounts is worse than none.* The
+  suppression loop breaks out on `residual[j] > residual[i] || (residual[j] === residual[i]
+  && j < i)`, so a cell that survives as a peak has run the full neighbour loop and
+  `onPlateau` is fully determined for it; and a surviving cell's ties can only be with
+  later-indexed neighbours, which is precisely "won on `j < i`" as the comment claims.
+
+  *Scope held for a fourth cycle.* `shareUrl` is still open in this file and absent from
+  the changelog.
+
+  *Rotation.* 1533 → 1378 and 5588 → 5886; `comm -23` finds **1 line missing**, and it is
+  the plateau item's own first line, changed by the `[AI]` → `[~] [AI]` marker. "Recent
+  cycles" holds 28/27/26.

@@ -84,10 +84,30 @@ export function createPilotSession(input: {
   };
 }
 
+/**
+ * The one store in this family that is NOT an array, so `Array.isArray` is the wrong
+ * guard for it and a blanket "same fix everywhere" would have been wrong here.
+ *
+ * All three call sites read `session.participantId` / `session.sessionId` after a
+ * truthiness check (`app/scan/page.tsx`, `app/scan/use-capture-analysis.ts`,
+ * `app/pilot/page.tsx`), so `null`, `false` and `0` were already neutralised by the
+ * callers and nothing crashed. What was NOT neutralised is a TRUTHY non-session: on a
+ * stored `5`, `"abcdef"` or `{"a":1}` the truthiness check passes, `participantId` is
+ * `undefined`, and every consent event captured in that session lands UNSCOPED. That is
+ * a silent loss in the research stream — participant scope is what the participant-
+ * grouped cross-validation needs — rather than a visible failure, which makes it the
+ * harder one to notice. So the check is on the two fields the callers actually read,
+ * not merely on "is an object".
+ * `tests/commerce-store-shape.test.ts`.
+ */
 export function getCurrentPilotSession(): PilotSession | null {
   if (typeof window === "undefined") return null;
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    const parsed: unknown = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const candidate = parsed as Partial<PilotSession>;
+    if (typeof candidate.participantId !== "string" || typeof candidate.sessionId !== "string") return null;
+    return parsed as PilotSession;
   } catch {
     return null;
   }
@@ -108,10 +128,20 @@ export function clearCurrentPilotSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
+/**
+ * `Array.isArray` at the read, same guard and same argument as `lib/funnel.ts` and the
+ * cycle-30 stores. Measured on the unguarded code, a stored `null` / `5` / `{}` /
+ * `"abcdef"` / `false` was handed straight back, so `pilotNoteCount()` threw at
+ * `.length` on `null` and `savePilotNote` threw at `all.push` on all five — inside
+ * `/pilot`'s click handler, which is the screen an operator uses to establish
+ * participant scope. Guarding at the read is also what lets the next save repair the
+ * key. `tests/commerce-store-shape.test.ts`.
+ */
 export function getPilotNotes(): PilotNote[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(parsed) ? (parsed as PilotNote[]) : [];
   } catch {
     return [];
   }

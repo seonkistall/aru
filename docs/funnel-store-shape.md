@@ -174,3 +174,140 @@ left because that is a different failure (an unhandled rejection, not a render t
 and it deserves its own measurement. The consent store must not be given this guard
 casually at all: "read as empty" there means "no consent event in the audit trail",
 which is guardrail 4 territory and a decision rather than a one-line change.
+
+## 2026-09-23 (cycle 31): the commerce stores, the pilot roster, and the one that is not an array
+
+Cycle 30 left four stores unguarded and said so. Three of them are now measured and
+fixed — `lib/store.ts` and `lib/pilot.ts` — and one turned out not to need it.
+
+### `lib/funnel-flush.ts` was already guarded; the backlog was wrong about it
+
+`readCursor` (`lib/funnel-flush.ts:104-112`) is the only `JSON.parse(localStorage…)` in
+that file and it already checks:
+
+```ts
+const parsed = JSON.parse(localStorage.getItem(CURSOR_KEY) || "[]");
+return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+```
+
+That is `Array.isArray` plus a per-element type filter, which is stricter than the guard
+cycles 29 and 30 added. No code changed here; the backlog text was corrected instead.
+
+### What the wrong shapes actually did, before any guard
+
+`tests/commerce-store-shape.test.ts` was written against the UNCHANGED `lib/store.ts`
+and `lib/pilot.ts` first. **40 of its 49 cases failed.** The distinct throws, counted
+from that run:
+
+```
+      4 AssertionError: promise rejected "TypeError: Cannot read properties of null…" instead of resolving
+      3 AssertionError: promise rejected "TypeError: all.push is not a function" instead of resolving
+      1 TypeError: lsGet(...).reverse is not a function
+      1 TypeError: all.push is not a function
+      1 TypeError: Cannot read properties of null (reading 'reverse')
+      1 TypeError: Cannot read properties of null (reading 'push')
+      1 AssertionError: promise rejected "TypeError: lsGet(...).filter is not a fun…" instead of resolving
+      1 AssertionError: careIntentCount() on null: expected [Function] to not throw an error but 'TypeError: Cannot read properties of …' was thrown
+```
+
+Four consequences, each traced to a call site rather than asserted:
+
+- **`/care` opens the merchant link and logs nothing.** `openCareLink`
+  (`app/care/page.tsx:78`) calls `void recordCareIntent(...)` and then navigates. The
+  rejection has no handler, so the commerce click looks like it worked and the care
+  intent — the only record that the click happened — is dropped. This is the failure
+  the backlog called "closest to biting", and it is the one that costs revenue data.
+- **`/privacy` loses the whole page, delete controls included.** Its mount effect runs
+  `setCareTotal(careIntentCount())` with no try/catch (`app/privacy/page.tsx:22-30`), and
+  `careIntentCount()` on a stored `null` threw at `.length`. `app/error.tsx` then replaces
+  the page a user went there to delete their data from.
+- **`/checkin` stays blank forever.** Its effect is
+  `Promise.all([getProductUses(), getCheckins()]).then(...)` with no `.catch`
+  (`app/checkin/page.tsx:29`), so a rejection leaves `productUses` at `null` and the
+  component's `if (productUses === null) return <main …/>` renders an empty page for the
+  life of the install. This is the landing page for every re-engagement email.
+- **`/pilot` drops a roster row from the operator's click handler.** `savePilotNote`
+  reached `all.push` on all five shapes.
+
+The page-level consequences above are reasoned from the call sites, as cycle 30's crops
+and labels were. They are not claimed as observed in a browser.
+
+### `getCurrentPilotSession` is not an array, and `Array.isArray` is the wrong guard
+
+The store the backlog said to think about. It returns an object, its three call sites
+(`app/scan/page.tsx:323,334,510`, `app/scan/use-capture-analysis.ts:168`,
+`app/pilot/page.tsx:20`) read `session.participantId` / `session.sessionId` behind a
+truthiness check, and so `null`, `false` and `0` were already neutralised **by the
+callers** — nothing crashed on those. What was not neutralised is a truthy non-session:
+on `5`, `"abcdef"` or `{"a":1}` the truthiness check passes, `participantId` is
+`undefined`, and every consent event captured in that session lands unscoped. Participant
+scope is what the participant-grouped cross-validation needs, so that is a silent loss
+in the research stream, not a crash — the harder failure to notice, and the reason the
+guard checks the two fields the callers read rather than merely "is an object".
+
+**Primary source read for this decision** — does a shipped store that persists an
+*object* (not an array) shape-check what it reads back?
+
+```
+--- https://raw.githubusercontent.com/pmndrs/zustand/main/src/middleware/persist.ts
+http=200 bytes=11972
+sha256 db7c4f7f6ce2a54defac2212f6b0f348fa0a5323fb83f40f321d1d2ffd3fe909
+```
+
+`createJSONStorage`'s read is a bare parse plus a cast — no shape check, exactly the
+idiom ARU had:
+
+```ts
+const parse = (str: string | null) => {
+  if (str === null) {
+    return null
+  }
+  return JSON.parse(str, options?.reviver) as StorageValue<S>
+}
+```
+
+and the hydrate path checks truthiness plus one field's type, then spreads:
+
+```ts
+if (deserializedStorageValue) {
+  if (
+    typeof deserializedStorageValue.version === 'number' &&
+    deserializedStorageValue.version !== options.version
+  ) { … } else {
+    return [false, deserializedStorageValue.state] as const
+  }
+}
+```
+
+```ts
+merge: (persistedState: unknown, currentState: S) => ({
+  ...currentState,
+  ...(persistedState as object),
+}),
+```
+
+So zustand does not shape-check either. It survives the five naked wrong shapes only
+because of its `{state, version}` envelope: a bare `5` or `"abcdef"` has no `.state`, so
+`merge` spreads `undefined` and the current state is returned unchanged. Run against that
+exact idiom in node v22.22.2, current state `{participantId:"P007",sessionId:"P007-1"}`:
+
+```
+null                         -> {"participantId":"P007","sessionId":"P007-1"}
+5                            -> {"participantId":"P007","sessionId":"P007-1"}
+{}                           -> {"participantId":"P007","sessionId":"P007-1"}
+"abcdef"                     -> {"participantId":"P007","sessionId":"P007-1"}
+false                        -> {"participantId":"P007","sessionId":"P007-1"}
+{"state":"abcdef","version":0} -> {"0":"a","1":"b","2":"c","3":"d","4":"e","5":"f","participantId":"P007","sessionId":"P007-1"}
+{"state":5,"version":0}      -> {"participantId":"P007","sessionId":"P007-1"}
+```
+
+The last two rows are the finding. A *well-formed* envelope carrying a wrong `state`
+spreads straight into the store — a JSON string becomes six numeric keys on application
+state — because nothing between the parse and the spread asks what `state` is. ARU's
+pilot session has no envelope at all, so the truthiness check at each call site was the
+only thing standing there. That is what the field check replaces, and it is why copying
+`Array.isArray` across all four reads without looking would have left this one open.
+
+### Break-the-line
+
+Recorded in the cycle 31 entry of `docs/AUTOPILOT.md`.
