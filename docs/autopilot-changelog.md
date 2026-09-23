@@ -6174,3 +6174,139 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   `comm -23` finds **18 lines missing**, all 18 from the two backlog items this cycle
   closed (`savePilotNote`, and the feature-generation pooling rule), both present in the
   changelog. "Recent cycles" holds 26/25/24.
+
+- 2026-09-22 (cycle 27) — Branch `autopilot/2026-09-22-0039`. **Threshold fitting stopped
+  pooling two feature generations in silence — the half cycle 26 left open, closed the way it
+  said: one shared warning, from one definition, read by both `coverage()` and `ml/calibrate.py`.
+  `/checkin`'s empty-state links reach the 44px tap contract in every locale, and the reason
+  `ja` was the one that missed is written down: 43.0px was the height the stylesheet actually
+  asked for, and the four locales that read 45.0 were the accident. And `--tap-min: 44px`, the
+  number every UI cycle leans on, finally has a source: WCAG 2.5.5 AAA, verified against the W3C
+  repository's own text.**
+
+  **Baselines, measured here on a clean tree before any edit; they match the supervisor's.**
+  `node_modules` was absent, so `npm ci` first. `npm run smoke` green with the chromium override
+  at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **615 passed in 91 files**,
+  mobile E2E **62 passed (3.4m)**, `python3 ml/selftest.py` **Ran 130 tests ... OK**, `npm run
+  lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:72`),
+  `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research (자료조사): where `--tap-min: 44px` comes from.** It has been a magic number since it
+  was introduced — no comment or doc named the standard behind it, though the UI track reaches for
+  it every cycle. Verified against the W3C WCAG repository's own source on
+  `raw.githubusercontent.com` (`w3.org` refuses this network) and Material's own `dimens.xml`:
+  **WCAG 2.5.5 Target Size (Enhanced), level AAA is "at least 44 by 44 CSS pixels"**, which is the
+  figure ARU uses; the AA floor (2.5.8, added in WCAG 2.2) is 24px, and Material Android is 48dp.
+  So ARU holds itself to the AAA target, and a 43.0px control is a real miss against ARU's own
+  bar, not against the legal minimum. Both criteria's **Inline** exception (a target constrained
+  by the line-height of surrounding text) does not apply to `/checkin`'s standalone block CTAs,
+  which is why the fix is a minimum-height, not a line-box tweak. Fetch URLs and sha256s in
+  `docs/tap-target-provenance.md`; the value now carries a one-line citation at
+  `app/globals.css:35`.
+
+  **ML: `ml/calibrate.py` now reports a mixed-generation run, the other half of the pooling item.**
+  Cycle 26 gave every run through `coverage()` a warning when it pooled two extractor generations,
+  but threshold fitting never goes through `coverage()`: `ml/calibrate.py` reads its JSONL directly,
+  so a pre-09-16 and a post-09-16 reading still landed in one cut-point fit with nothing said. The
+  two clauses were lifted out of `coverage_warnings` into `subgroups.generation_warnings(counts,
+  total)` — one definition, so the wording, the ordering and the warn-not-block decision cannot
+  drift between the two readers — and `calibrate.py` calls it, reading each export row's version out
+  of `meta` first (where the app nests it) and the flat row second (where `prepare_crop_dataset`
+  writes it). A mixed run still produces thresholds: what to DO about pooled samples is the
+  `inputSchemaVersion` decision, and is not a cycle's to make. `subgroups.py` and `calibrate.py`
+  restored byte-identical after each break (sha recorded), `ml/selftest.py` now **Ran 137 tests …
+  OK** (7 new), and two source-line breaks were confirmed to fail exactly the new cases and no
+  others: raising the pooling clause to `> 2` failed 4 (incl. both readers' agreement test,
+  `AssertionError: 1 != 2`), and dropping `meta` from `sample_generation` failed 3+1
+  (`'unstamped' != 'roi-calibrated-2026-09-18/...'`). `docs/feature-generation-pooling.md` §5 named
+  this as the remaining half.
+
+  **UI/UX: `/checkin`'s empty-state links reach 44px in every locale, and the cause is recorded.**
+  Cycle 26 measured `マイレポートを見る` at 155.0x43.0 against ko/en/zh/ar at 45.0 — 1px under
+  `--tap-min` on the surface every re-engagement mail lands on, and covered by no test (the two
+  existing cases measure the home link and seed a purchase so the empty state never renders).
+  Measured in Chromium at 360x800, all five locales compute the SAME `font-size: 14px` /
+  `line-height: 21px` on these links, so 21 + 2×11 padding = 43px is the height the CSS asks for;
+  `ja` was the only locale that got it, because ko/en/zh/ar fall back to a font whose baseline sits
+  2px off the strut's and a line box is the union of strut and inline boxes, not the taller of them.
+  So the four "correct" locales were the accident. `ctaBase` now carries `minHeight:
+  var(--tap-min)` + flex centring — the same shape `pill()` and `flow-steps` already use — which
+  makes the height locale-independent instead of nudging a padding that would move all five and fix
+  none. Re-measured: ja 155.0x**44**, all others ≥45, doc overflow 0 in every locale. Guarded by 5
+  new per-locale cases in `tests/e2e/checkin-touch-target.regression-1.spec.ts`; breaking the fix at
+  its source line (removing `minHeight` from `ctaBase`) failed exactly the `ja` case,
+  `AssertionError: ["マイレポートを見る 155x43"] != []`, and the other 10 passed.
+
+  **Bug fix: none this cycle, said plainly rather than dressed up.** Hunted across `/api/out`'s
+  placement handling, the public funnel ingest (`redactFunnelEvent`, `originAllowed`,
+  `summarizeFunnel`, `funnelDropoff`), the unsubscribe HMAC token, `lib/recommend.ts`'s scoring and
+  `budgetLabel` (checked against the survey's stored band ceilings — they match), and
+  `mergeVisionAnalysis`. Every candidate resolved to intended, already-tested behaviour; the one
+  smell found (a redundant outer `t()` in `mood-from-link.tsx`) is a no-op that returns its input
+  on a dictionary miss, so it cannot be broken into a failing test and does not meet the guard bar.
+  The account is at `seven_day / allowed_warning`, so rather than manufacture a narrow break of
+  sound code, this track is reported as producing nothing — which the guardrails bless over a
+  dressed-up measurement.
+
+  **Verification, pasted from the runs that produced it.** `npx vitest run` → `Test Files 91 passed
+  (91) / Tests 615 passed (615)`. `npx tsc --noEmit | grep -c "error TS"` → `13`. `python3
+  ml/selftest.py` → `Ran 137 tests ... OK`. `npm run lint` → `0 errors, 2 warnings` (`lib/care.ts`).
+  Full `npm run smoke` with the chromium override → `Smoke test passed.`, its Playwright leg `67
+  passed (3.2m)` (62 baseline + 5 new empty-state cases). One false alarm worth recording so the
+  next cycle does not chase it: a backgrounded smoke run exited 144 (SIGTERM) because the command
+  began with `pkill -f "next dev"`, whose pattern matched the worker's OWN shell command line and
+  killed it — the product was fine; re-run in the foreground with no `pkill`, it passed.
+
+  **Rotation.** `docs/AUTOPILOT.md` 1699 → 1485; `docs/autopilot-changelog.md` 5260 → 5588. Cycle 24
+  moved verbatim to the changelog bottom, and the two backlog items this cycle ticked `[x]` — the
+  `ml/calibrate.py` generation-handling item and the `/checkin` 43px item — moved to "Closed backlog
+  items" under "### Next" with their original text preserved as a blockquote. Proof in the PR body:
+  `wc -l` before/after both files and a `comm -23` preservation check.
+
+  **Supervisor review.** Kept deliberately cheap — the account is at
+  `seven_day / allowed_warning`, the worker was told to be economical, and so was this.
+
+  *The fix is the right shape, and this review's framing of the defect was the wrong way
+  round.* Before the branch arrived this review read `ctaPrimary` (`padding: "11px 18px"`,
+  no `minHeight`, no `line-height`), concluded the height is 22px plus whatever line box
+  the fallback font gives, and measured five locales under a plain `system-ui` stack:
+  38–40px, varying by locale, all flattened to exactly 44.0px by `min-height` + inline-flex.
+  That confirmed the mechanism and the remedy. It also framed **`ja` as the outlier**, and
+  the branch shows it is the opposite: all five compute `line-height: 21px`, `21 + 22 = 43`
+  is what the stylesheet asks for, and `ja` is the only locale that gets it. The other four
+  are 45px because their glyphs fall back to a font whose baseline sits 2px off the strut's,
+  and a line box is the UNION of the strut and the inline boxes on that baseline rather than
+  the larger of the two. The four "correct" locales were the accident.
+
+  *What this review could and could not confirm of that.* Forcing the strut explicitly
+  (`line-height: 21px`, one declared family plus fallbacks) gives **43.0px in all five**
+  here, with `line-height` and `font-size` computing identically across them — so the
+  arithmetic and the direction hold. The 2px split does NOT reproduce in this container,
+  because the fonts that cause it are not installed and every locale resolves to the same
+  fallback. Stated as a limit rather than a contradiction: the branch measured the app,
+  this review measured a reconstruction without the app's fonts.
+
+  The fix itself takes the `minHeight` + flex idiom and names the two places that already
+  use it (`pill()`, `app/components/flow-steps.tsx`) rather than nudging a per-locale
+  number, which is what the backlog item asked for and what this review was watching for.
+
+  *The ML guard bites narrowly.* Making `sample_generation` read only the flat spelling —
+  so a row the app wrote, nesting the fields under `meta`, reads unstamped — fails 4 of 137
+  with the names doing the identifying:
+  `ERROR: test_calibrate_reports_two_generations_in_one_threshold_fit`,
+  `FAIL: test_calibrate_finds_the_versions_the_app_export_nests_under_meta`,
+  `FAIL: test_both_readers_say_it_in_the_same_words`.
+
+  *Scope held where it mattered.* `shareUrl` is still open — `grep -c` finds it in
+  `docs/AUTOPILOT.md` and not in the changelog — so three cycles running have now declined
+  to guess a decision that is the owner's.
+
+  *Rotation.* 1699 → 1485 and 5260 → 5588; `comm -23` finds **21 lines missing**, 20 from
+  the two backlog items this cycle closed and the 21st the `Last updated:` date.
+  "Recent cycles" holds 27/26/25.
+
+  *One admission that belongs in this file rather than a scratchpad.* The new backlog item
+  about four dead i18n keys carried by `en.ts` and `ar.ts` and by neither `ja.ts` nor
+  `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
+  push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
+  stays out of this file is one a later cycle pays for twice.

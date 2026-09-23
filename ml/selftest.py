@@ -41,6 +41,7 @@ import licensing  # noqa: E402
 import model_contract  # noqa: E402
 import ordinal_metrics  # noqa: E402
 import qwk_noise  # noqa: E402
+import run_pipeline  # noqa: E402
 import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
@@ -1555,6 +1556,87 @@ class HeuristicBaseline(unittest.TestCase):
             [_FakeRow({"wrinkles": 1}, {"shine": "0.1"})], ("wrinkles",), {"wrinkles": 4}
         )
         self.assertNotIn("wrinkles", report)
+
+
+class NonFiniteFeature(unittest.TestCase):
+    """A feature value that is not a finite number must never become a prediction.
+
+    Three code paths in this repository met the same situation and disagreed.
+    `run_pipeline.feature_summary` drops it (`math.isfinite`). `as_feature_float`, which
+    the promotion gate's baseline uses, returns None for it. And until 2026-09-23
+    `run_pipeline.heuristic_baseline` graded it: `nan < lo` and `nan < hi` are both
+    False, so `bucket` returned 2 -- the most severe level -- with full confidence, and
+    the row counted in `n`.
+
+    The cell it lands in is the worst one there is. An actual-0 row predicted 2 is a
+    two-level miss, which quadratic weighting punishes four times as hard as a one-level
+    miss, so a handful of unmeasurable rows moves the qwk the promotion gate compares a
+    model against. Measured before the fix on 16 rows whose 12 measurable ones the
+    shipped cuts grade perfectly: 75.0% on 16 labels, the 4 NaN rows sitting at
+    actual=0/predicted=2. After: 100.0% on 12, with 4 reported as unusable.
+    docs/non-finite-feature-policy.md.
+    """
+
+    ROWS = (
+        [{"features": {"shine": 0.01}, "labels": {"oil": 0}}] * 4
+        + [{"features": {"shine": 0.10}, "labels": {"oil": 1}}] * 4
+        + [{"features": {"shine": 0.30}, "labels": {"oil": 2}}] * 4
+    )
+
+    def test_the_two_screens_agree_on_every_shape_the_export_can_carry(self):
+        # feature_summary and as_feature_float are the two screens that were already
+        # right; this pins them together so a change to one is a failure and not a
+        # third policy.
+        for value in (float("nan"), float("inf"), float("-inf"), None, "", "  ", "abc", True):
+            summarised = run_pipeline.feature_summary([{"features": {"shine": value}, "labels": {}}])
+            self.assertEqual(summarised, {}, f"feature_summary kept {value!r}")
+            self.assertIsNone(heuristic_baseline.as_feature_float(value), f"as_feature_float kept {value!r}")
+        for value in (0.0, -1.5, 12, "0.25"):
+            self.assertIsNotNone(
+                heuristic_baseline.as_feature_float(value), f"as_feature_float dropped the usable {value!r}"
+            )
+
+    def test_a_non_finite_feature_is_not_graded_as_the_top_level(self):
+        for label, value in (("NaN", float("nan")), ("+inf", float("inf")), ("-inf", float("-inf"))):
+            rows = list(self.ROWS) + [{"features": {"shine": value}, "labels": {"oil": 0}}] * 4
+            oil = run_pipeline.heuristic_baseline(rows)["oil"]
+            self.assertEqual(oil["n"], 12, f"{label} rows were graded")
+            self.assertEqual(oil["unusable"], 4, f"{label} rows were dropped without being reported")
+            self.assertEqual(oil["accuracy"], 1.0, f"{label} rows moved the accuracy")
+            self.assertEqual(
+                oil["confusion"]["0"],
+                {"0": 4, "1": 0, "2": 0},
+                f"a {label} feature reached the confusion matrix as a prediction",
+            )
+
+    def test_a_missing_feature_value_does_not_take_the_run_down(self):
+        # `float(None)` raises TypeError, and this function is called once per report
+        # run, so one such row ended the whole pipeline rather than one axis.
+        rows = list(self.ROWS) + [{"features": {"shine": None}, "labels": {"oil": 0}}]
+        oil = run_pipeline.heuristic_baseline(rows)["oil"]
+        self.assertEqual((oil["n"], oil["unusable"]), (12, 1))
+
+    def test_the_dropped_rows_are_reported_rather_than_skipped_in_silence(self):
+        rows = list(self.ROWS) + [{"features": {"shine": float("nan")}, "labels": {"oil": 0}}] * 4
+        summary = {
+            "counts": {"labels": 40, "crops": 40},
+            "labels": {"distribution": {"oil": {"0": 1, "1": 1, "2": 1}}},
+            "heuristic_baseline": run_pipeline.heuristic_baseline(rows),
+        }
+        warnings = [w for w in run_pipeline.warnings_for(summary) if w.startswith("oil:")]
+        self.assertEqual(len(warnings), 1, f"no warning names the dropped rows: {warnings}")
+        self.assertIn("4 labelled row(s)", warnings[0])
+        self.assertIn("12 were", warnings[0])
+
+    def test_a_clean_run_reports_nothing_dropped(self):
+        oil = run_pipeline.heuristic_baseline(list(self.ROWS))["oil"]
+        self.assertEqual((oil["n"], oil["unusable"], oil["accuracy"]), (12, 0, 1.0))
+        summary = {
+            "counts": {"labels": 40, "crops": 40},
+            "labels": {"distribution": {"oil": {"0": 1, "1": 1, "2": 1}}},
+            "heuristic_baseline": run_pipeline.heuristic_baseline(list(self.ROWS)),
+        }
+        self.assertEqual([w for w in run_pipeline.warnings_for(summary) if w.startswith("oil:")], [])
 
 
 class BeatsHeuristic(unittest.TestCase):

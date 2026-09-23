@@ -3,15 +3,51 @@ import Link from "next/link";
 import { useState } from "react";
 import { t, useLanguage } from "@/lib/i18n";
 
+/**
+ * Why this screen distinguishes "this link is dead" from "we could not do it".
+ *
+ * `POST /api/reengage/unsubscribe` has four outcomes and only one of them means the
+ * link is finished: 400 (the token does not verify), 503 (UNSUBSCRIBE_SECRET or the
+ * Supabase admin client is not configured), 500 (the consent write failed), and a
+ * request that never arrives at all, which `.catch(() => null)` turns into the same
+ * `null` as a rejection. Until 2026-09-23 every one of them rendered
+ * "이 링크는 사용할 수 없거나 유효 기간이 지났어요."
+ *
+ * That is the wrong thing to say to three of the four. A person told their unsubscribe
+ * link has expired stops trying — and then keeps receiving the mail they asked to stop,
+ * because what actually happened was ARU's own server being misconfigured or their
+ * request not landing. Revoking consent is the one action in the product that must not
+ * fail quietly, so a retryable failure now says so and points at the mail itself as the
+ * fallback route.
+ *
+ * The missing-token case is also no longer an alert. `role="alert"` is a live region,
+ * and content present in it on the FIRST render is not an announcement of anything —
+ * it is the page's own explanation of why the button is disabled, so it is plain text
+ * tied to the button with `aria-describedby`. The alert is kept for what genuinely
+ * arrives later: the outcome of a request the person made.
+ */
+type State = "idle" | "sending" | "done" | "expired" | "unavailable";
+
+const NO_TOKEN_NOTE_ID = "unsubscribe-no-token";
+
 export function UnsubscribeForm({ token }: { token: string }) {
   useLanguage();
-  const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [state, setState] = useState<State>("idle");
 
   async function unsubscribe() {
     setState("sending");
     const response = await fetch("/api/reengage/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).catch(() => null);
-    setState(response?.ok ? "done" : "error");
+    if (response?.ok) {
+      setState("done");
+      return;
+    }
+    // 400 is the only status that means the link itself is finished — the route
+    // returns it for a token that does not verify and for a malformed body. 500, 503
+    // and a request that never arrived are ARU's problem, and trying again can fix them.
+    setState(response?.status === 400 ? "expired" : "unavailable");
   }
+
+  const busy = !token || state === "sending";
 
   return (
     <main className="min-h-screen px-5 py-16" style={{ background: "var(--paper)" }}>
@@ -28,13 +64,26 @@ export function UnsubscribeForm({ token }: { token: string }) {
             <button
               type="button"
               onClick={unsubscribe}
-              disabled={!token || state === "sending"}
-              style={{ marginTop: 20, minHeight: 44, padding: "12px 18px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--ink)", color: "var(--paper)", fontWeight: 800, cursor: !token || state === "sending" ? "not-allowed" : "pointer", opacity: !token || state === "sending" ? 0.55 : 1 }}
+              disabled={busy}
+              aria-describedby={!token ? NO_TOKEN_NOTE_ID : undefined}
+              style={{ marginTop: 20, minHeight: 44, padding: "12px 18px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--ink)", color: "var(--paper)", fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.55 : 1 }}
             >
               {state === "sending" ? t("처리 중…") : t("이메일 알림 해지하기")}
             </button>
-            {(!token || state === "error") && (
-              <p role="alert" style={{ color: "var(--plum)", lineHeight: 1.55, marginTop: 12 }}>{t("이 링크는 사용할 수 없거나 유효 기간이 지났어요.")}</p>
+            {!token && (
+              <p id={NO_TOKEN_NOTE_ID} style={{ color: "var(--plum)", lineHeight: 1.55, marginTop: 12 }}>
+                {t("이 링크는 사용할 수 없거나 유효 기간이 지났어요.")}
+              </p>
+            )}
+            {token && state === "expired" && (
+              <p role="alert" style={{ color: "var(--plum)", lineHeight: 1.55, marginTop: 12 }}>
+                {t("이 링크는 사용할 수 없거나 유효 기간이 지났어요.")}
+              </p>
+            )}
+            {token && state === "unavailable" && (
+              <p role="alert" style={{ color: "var(--plum)", lineHeight: 1.55, marginTop: 12 }}>
+                {t("지금은 해지를 처리하지 못했어요. 잠시 후 다시 시도해 주세요. 계속 안 되면 받은 메일에 회신해 주세요.")}
+              </p>
             )}
           </>
         )}

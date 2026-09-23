@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-22
+Last updated: 2026-09-23
 
 ## What this is for
 
@@ -622,6 +622,16 @@ partly done and stays here.
   so nothing a user sees falls back to Korean. The question is only whether the four are
   stale entries to delete or a retake path that was removed and should come back; that
   needs someone to say which, so it is not a delete a cycle should do on its own.
+- [AI] **At what fraction of unusable rows should the readiness report stop reporting an
+  accuracy at all?** Cycle 30 stopped `run_pipeline.heuristic_baseline` grading a
+  non-finite feature as level 2 and made the residue a reported `unusable` count with a
+  per-axis warning (`docs/non-finite-feature-policy.md`). What it deliberately did not
+  invent is a threshold: at some fraction the accuracy over the rows that remain stops
+  meaning anything, and a warning should become a blocker. No number for that was chosen,
+  because picking one needs a real export and none exists — the golden-set blocker. Also
+  unknown, and not to be written down as if it were: whether any real export has EVER
+  carried a non-finite feature. This is a hole closed before it was observed. Noted
+  2026-09-23.
 - [AI] Tone and dryness have no label source. Propose the smallest consented way to
   collect one, with the PIPA consequences spelled out; do not implement it alone.
 - [~] [AI] Recommendation quality: the reasons are LLM-generated and efficacy-filtered,
@@ -663,6 +673,18 @@ partly done and stays here.
   `public/models/visible-attributes/manifest.json`, which `tests/ml-registry.test.ts`
   pins to it, and that is guardrail 8 territory. Needs a deliberate decision about what
   happens to already-collected samples, not a one-line bump. Noted 2026-09-16.
+- [AI] **Four device stores still read `JSON.parse(localStorage…)` and hand the result
+  back unchecked**, after cycle 29 guarded `lib/funnel.ts` and cycle 30 guarded
+  `lib/scan-history.ts`, `lib/crops.ts` and `lib/labels.ts`. They are `lib/consent.ts`,
+  `lib/store.ts`, `lib/pilot.ts` and `lib/funnel-flush.ts`, and they are NOT claimed to be
+  safe — nobody has measured what a wrong shape does to each. `lib/store.ts` is the closest
+  to biting and is a different failure from the two already fixed: its `lsPush` calls
+  `all.push(value)` OUTSIDE the try, so a wrong shape rejects into `recordCareIntent`'s
+  caller on `/care` as an unhandled rejection rather than as a render throw, and the
+  commerce click still opens while nothing is recorded. **`lib/consent.ts` must not be
+  given this guard casually**: "read as empty" there means "no consent event in the audit
+  trail", which is guardrail 4 and a decision rather than a line. Mechanism and both
+  grades of evidence: `docs/funnel-store-shape.md`. Noted 2026-09-23.
 - [AI] Illuminant correction for tone, done properly. Removing the gray-world gain
   stopped the background deciding the tone band, but an uncorrected warm lamp still
   moves the reading, which is the documented limit of ITA-from-a-photo. Doing better
@@ -881,6 +903,143 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-23 (cycle 30) — Branch `autopilot/2026-09-23-0039`. **One theme, four tracks: a
+  value that is not what its type says, and what each layer does about it. The ML pipeline
+  was grading an unmeasurable feature as the MOST SEVERE level and counting it in the
+  accuracy an operator reads. A malformed value in one device store replaced the whole
+  `/report` page — product cards and both `/api/out` links included — with the error
+  boundary, permanently. And `/unsubscribe` told three different failures, one of them
+  ARU's own misconfiguration, that the reader's link had expired.**
+
+  **Baselines, measured here on a clean tree at `af00c7c` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first (exit 0). `npm run smoke`
+  green with the chromium override at `/opt/pw-browsers/chromium-1194`
+  (`Smoke test passed.`), vitest **635 passed in 94 files**, its Playwright leg
+  **70 passed (4.6m)**, `python3 ml/selftest.py` **Ran 137 tests in 2.221s ... OK**,
+  `npm run lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at
+  `lib/care.ts:70`), `npx tsc --noEmit | grep -c "error TS"` **13**.
+
+  **Research (자료조사): what a mature pipeline does with a feature that is not a finite
+  number — it refuses, and it never substitutes.** The ML track needed this before
+  deciding between refuse, drop and grade. Read from scikit-learn's own source rather
+  than documentation or recall: `sklearn/utils/validation.py` @ **1.5.2** from
+  `raw.githubusercontent.com` (`http=200 bytes=92307`, sha256
+  `a6beb3a2…3b8249dc`). `check_array`'s `force_all_finite` defaults to **True**, and its
+  three options are raise, accept, and accept-NaN-only — **none of them is "substitute a
+  value"**. `_assert_all_finite` raises `ValueError("Input contains NaN")`, and the
+  estimator-facing message names the two remedies in as many words: "using an imputer
+  transformer in a pipeline or drop samples with missing values". Two limits stated
+  rather than glossed: it governs an estimator's input matrix, not a report's accuracy
+  figure, and ARU cannot raise the way an estimator can — one unmeasurable row must not
+  end a run over 300 good ones. So the answer it gives ARU is the second half, drop, with
+  the count reported, which is the shape cycle 28 took from scipy's `find_peaks`.
+  `docs/non-finite-feature-policy.md`.
+
+  **ML: three code paths met one situation and disagreed, and the one that fed the report
+  was the wrong one.** Measured on `af00c7c` before any change:
+  `run_pipeline.feature_summary` **drops** a non-finite value (`math.isfinite`);
+  `ml/heuristic_baseline._as_float` — the screen the promotion gate's baseline uses —
+  **refuses** it; and `run_pipeline.heuristic_baseline` **graded** it. `nan < lo` and
+  `nan < hi` are both False, so `bucket` returned **2**, the most severe of three levels,
+  and the row counted in `n` and entered the confusion matrix as a prediction.
+  `bucket(inf) = 2`, `bucket(-inf) = 0`. A `None` value was worse: `float(None)` raises,
+  and that call runs once per report, so one such row ended the whole run.
+
+  The cell it lands in is the worst one there is — always predicted 2, so on a row
+  labelled 0 it is a two-level miss, which quadratic weighting punishes four times as
+  hard as a one-level miss. On 16 rows whose 12 measurable ones the shipped cuts grade
+  perfectly, against the pre-change function copied verbatim from
+  `git show HEAD:ml/run_pipeline.py`:
+
+  ```
+  BEFORE  n=16 accuracy=0.75 unusable=n/a   confusion actual=0 -> {'0': 4, '1': 0, '2': 4}
+  AFTER   n=12 accuracy=1.0  unusable=4     confusion actual=0 -> {'0': 4, '1': 0, '2': 0}
+  ```
+
+  `_as_float` is now public `as_feature_float` and `run_pipeline` imports it, so there is
+  one screen instead of two; the residue is REPORTED as `unusable` rather than skipped in
+  silence, on the report line and as a per-axis warning. `bucket` was deliberately NOT
+  changed — strictly-less-than against each cut in order is the shipped rule, identical to
+  `bucket()` in `lib/skin.ts` and `predict_level` in `ml/heuristic_baseline.py`, and
+  moving it would manufacture a fake accuracy gap between the heuristic and the app; its
+  docstring now says what it requires of its caller. A **fourth** disagreement was found
+  by the test rather than by reading: `isinstance(True, int)` is True in Python, so
+  `feature_summary` summarised a JSON `true` as the number **1.0** while
+  `as_feature_float` rejected it — that case failed the first time it ran and
+  `feature_summary` now excludes `bool`. Two source-line breaks, both run and reverted:
+  the screen back to `float(features[feat])` gives
+  `TypeError: float() argument must be a string or a real number, not 'NoneType'` plus
+  `AssertionError: 16 != 12 : NaN rows were graded` (2 failures, 1 error); dropping the
+  `bool` exclusion gives `AssertionError: {'shine': {'count': 1, ...}} != {}`
+  (1 failure). `test_a_clean_run_reports_nothing_dropped` stays green under both.
+  **Nothing in `public/models/visible-attributes/manifest.json` was touched** — not
+  `status`, not `promotionGate`, not `minQwkGainOverHeuristic`. This changes what the
+  readiness report *says*, not what the gate *requires*.
+
+  **Bug fix: a malformed device store took the whole `/report` page, permanently.**
+  `ScanHistoryStrip` renders on `/report`'s first step. `getScanHistory()` was
+  `JSON.parse(localStorage.getItem(KEY) || "[]")` handed straight back, so a TRUNCATED
+  value self-healed through the catch while a value that PARSES to the wrong shape reached
+  the component: `history.length < 2` is `undefined < 2` on an object (**false**, so the
+  early return does not fire) and `history.slice(-6)` then throws INSIDE RENDER. React
+  unmounts the segment and `app/error.tsx` replaces the entire report — the analysis, the
+  product cards and both `/api/out` links with them — and because the crash is
+  deterministic in the stored value, the boundary's own "다시 시도" throws again. Proved in
+  Chromium first: `tests/e2e/report-device-store-shape.regression-13.spec.ts` failed **5 of
+  5** against the unfixed source, the console naming both throw sites
+  (`TypeError: history.slice is not a function` at `scan-history-strip.tsx:21`, and
+  `recent.map is not a function` at `:41` — which is why `"abcdef"` is in the shape list: a
+  string survives BOTH guards and dies one call later). `Array.isArray` at the read fixes
+  it and is also what makes the next write repair the key.
+  `tests/device-store-shape.test.ts` breaks at the source line: **10 failed | 2 passed**,
+  with the two controls (an unparseable value, which already self-healed, and a real array,
+  which was never affected) green — which is what makes this an inconsistency rather than a
+  preference. This is the same class as cycle 29's funnel fix one level up, and
+  `docs/funnel-store-shape.md` now carries both halves.
+
+  *Two more reads guarded on a weaker grade of evidence, said plainly.* `lib/crops.ts` and
+  `lib/labels.ts` feed `app/scan/feedback.tsx`'s LAZY `useState` initialisers
+  (`useState(() => cropSampleCount())`), which run during render with no try/catch of their
+  own. The throw is measured (5 of 18 cases fail with the guards dropped); the page-level
+  consequence is **not**. A browser spec written to reproduce it the way `/report` was
+  reproduced passed on all five shapes, because the `Feedback` panel mounts only after a
+  capture and this container has no camera — that spec was DELETED rather than kept, since
+  a test passing for the wrong reason tells the next cycle a path is covered. The four
+  remaining stores on the same idiom (`lib/consent.ts`, `lib/store.ts`, `lib/pilot.ts`,
+  `lib/funnel-flush.ts`) were left, with reasons, in the backlog item below.
+
+  **UI/UX: `/unsubscribe` told three different failures that the reader's link had
+  expired.** `POST /api/reengage/unsubscribe` has four outcomes and only ONE means the link
+  is finished: **400** (token does not verify), **503** (`UNSUBSCRIBE_SECRET` or the
+  Supabase admin client not configured), **500** (the consent write failed), and a request
+  that never arrives, which the page's `.catch(() => null)` collapses into the same `null`.
+  All four rendered "이 링크는 사용할 수 없거나 유효 기간이 지났어요." Revoking consent is
+  the one action in the product that must not fail quietly: a person told their unsubscribe
+  link has expired stops trying, and then keeps receiving the mail they asked to stop,
+  because what actually happened was ARU's own misconfiguration. Now 400 alone says the
+  link is finished, and 500/503/no-response get a retryable sentence that also names the
+  fallback route — replying to the mail itself — added to `en`, `ja`, `zh` and `ar`. The
+  missing-token case is no longer `role="alert"` either: a live region whose content is
+  present on the FIRST render announces nothing, so the one sentence explaining why the
+  only control on the page is disabled is now plain text tied to the button with
+  `aria-describedby`, and the alert is kept for what genuinely arrives later.
+  `tests/e2e/unsubscribe-outcome.regression-14.spec.ts` fails **4 of 6** against the
+  pre-fix page while the two controls (400 → expired, 200 → confirmed) stay green.
+
+  **Verification.** `npm run smoke` green (`Smoke test passed.`) with the chromium
+  override; vitest **653 passed in 95 files** (from 635/94 — one new unit file plus the two
+  new specs' cases), `python3 ml/selftest.py` **Ran 142 tests ... OK** (from 137),
+  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npm run lint` **0 errors, 2
+  warnings** (the same two). Full output in the session report.
+
+  *Rotation.* 1325 → 1340 and 6176 → 6312; `comm -23` over the two files concatenated
+  and sorted finds **1 line missing**, and it is `Last updated: 2026-09-22`, changed to
+  2026-09-23 by this entry. Cycle 27's 135 lines are byte-identical in the changelog
+  (sha256 `cebd1ecf…3d36cece` on both sides of the move). No backlog item was ticked
+  `[x]` this cycle — none of the four tracks closed a listed item — so nothing moved to
+  "Closed backlog items"; two new items were opened instead. "Recent cycles" holds
+  30/29/28.
 
 - 2026-09-22 (cycle 29) — Branch `autopilot/2026-09-22-1839`. **`toneSpread` is the one
   published ML column that still reads the room it was captured in, and the size of that
@@ -1187,139 +1346,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Rotation.* 1533 → 1378 and 5588 → 5886; `comm -23` finds **1 line missing**, and it is
   the plateau item's own first line, changed by the `[AI]` → `[~] [AI]` marker. "Recent
   cycles" holds 28/27/26.
-
-- 2026-09-22 (cycle 27) — Branch `autopilot/2026-09-22-0039`. **Threshold fitting stopped
-  pooling two feature generations in silence — the half cycle 26 left open, closed the way it
-  said: one shared warning, from one definition, read by both `coverage()` and `ml/calibrate.py`.
-  `/checkin`'s empty-state links reach the 44px tap contract in every locale, and the reason
-  `ja` was the one that missed is written down: 43.0px was the height the stylesheet actually
-  asked for, and the four locales that read 45.0 were the accident. And `--tap-min: 44px`, the
-  number every UI cycle leans on, finally has a source: WCAG 2.5.5 AAA, verified against the W3C
-  repository's own text.**
-
-  **Baselines, measured here on a clean tree before any edit; they match the supervisor's.**
-  `node_modules` was absent, so `npm ci` first. `npm run smoke` green with the chromium override
-  at `/opt/pw-browsers/chromium-1194` (`Smoke test passed.`), vitest **615 passed in 91 files**,
-  mobile E2E **62 passed (3.4m)**, `python3 ml/selftest.py` **Ran 130 tests ... OK**, `npm run
-  lint` **0 errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:72`),
-  `npx tsc --noEmit | grep -c "error TS"` **13**.
-
-  **Research (자료조사): where `--tap-min: 44px` comes from.** It has been a magic number since it
-  was introduced — no comment or doc named the standard behind it, though the UI track reaches for
-  it every cycle. Verified against the W3C WCAG repository's own source on
-  `raw.githubusercontent.com` (`w3.org` refuses this network) and Material's own `dimens.xml`:
-  **WCAG 2.5.5 Target Size (Enhanced), level AAA is "at least 44 by 44 CSS pixels"**, which is the
-  figure ARU uses; the AA floor (2.5.8, added in WCAG 2.2) is 24px, and Material Android is 48dp.
-  So ARU holds itself to the AAA target, and a 43.0px control is a real miss against ARU's own
-  bar, not against the legal minimum. Both criteria's **Inline** exception (a target constrained
-  by the line-height of surrounding text) does not apply to `/checkin`'s standalone block CTAs,
-  which is why the fix is a minimum-height, not a line-box tweak. Fetch URLs and sha256s in
-  `docs/tap-target-provenance.md`; the value now carries a one-line citation at
-  `app/globals.css:35`.
-
-  **ML: `ml/calibrate.py` now reports a mixed-generation run, the other half of the pooling item.**
-  Cycle 26 gave every run through `coverage()` a warning when it pooled two extractor generations,
-  but threshold fitting never goes through `coverage()`: `ml/calibrate.py` reads its JSONL directly,
-  so a pre-09-16 and a post-09-16 reading still landed in one cut-point fit with nothing said. The
-  two clauses were lifted out of `coverage_warnings` into `subgroups.generation_warnings(counts,
-  total)` — one definition, so the wording, the ordering and the warn-not-block decision cannot
-  drift between the two readers — and `calibrate.py` calls it, reading each export row's version out
-  of `meta` first (where the app nests it) and the flat row second (where `prepare_crop_dataset`
-  writes it). A mixed run still produces thresholds: what to DO about pooled samples is the
-  `inputSchemaVersion` decision, and is not a cycle's to make. `subgroups.py` and `calibrate.py`
-  restored byte-identical after each break (sha recorded), `ml/selftest.py` now **Ran 137 tests …
-  OK** (7 new), and two source-line breaks were confirmed to fail exactly the new cases and no
-  others: raising the pooling clause to `> 2` failed 4 (incl. both readers' agreement test,
-  `AssertionError: 1 != 2`), and dropping `meta` from `sample_generation` failed 3+1
-  (`'unstamped' != 'roi-calibrated-2026-09-18/...'`). `docs/feature-generation-pooling.md` §5 named
-  this as the remaining half.
-
-  **UI/UX: `/checkin`'s empty-state links reach 44px in every locale, and the cause is recorded.**
-  Cycle 26 measured `マイレポートを見る` at 155.0x43.0 against ko/en/zh/ar at 45.0 — 1px under
-  `--tap-min` on the surface every re-engagement mail lands on, and covered by no test (the two
-  existing cases measure the home link and seed a purchase so the empty state never renders).
-  Measured in Chromium at 360x800, all five locales compute the SAME `font-size: 14px` /
-  `line-height: 21px` on these links, so 21 + 2×11 padding = 43px is the height the CSS asks for;
-  `ja` was the only locale that got it, because ko/en/zh/ar fall back to a font whose baseline sits
-  2px off the strut's and a line box is the union of strut and inline boxes, not the taller of them.
-  So the four "correct" locales were the accident. `ctaBase` now carries `minHeight:
-  var(--tap-min)` + flex centring — the same shape `pill()` and `flow-steps` already use — which
-  makes the height locale-independent instead of nudging a padding that would move all five and fix
-  none. Re-measured: ja 155.0x**44**, all others ≥45, doc overflow 0 in every locale. Guarded by 5
-  new per-locale cases in `tests/e2e/checkin-touch-target.regression-1.spec.ts`; breaking the fix at
-  its source line (removing `minHeight` from `ctaBase`) failed exactly the `ja` case,
-  `AssertionError: ["マイレポートを見る 155x43"] != []`, and the other 10 passed.
-
-  **Bug fix: none this cycle, said plainly rather than dressed up.** Hunted across `/api/out`'s
-  placement handling, the public funnel ingest (`redactFunnelEvent`, `originAllowed`,
-  `summarizeFunnel`, `funnelDropoff`), the unsubscribe HMAC token, `lib/recommend.ts`'s scoring and
-  `budgetLabel` (checked against the survey's stored band ceilings — they match), and
-  `mergeVisionAnalysis`. Every candidate resolved to intended, already-tested behaviour; the one
-  smell found (a redundant outer `t()` in `mood-from-link.tsx`) is a no-op that returns its input
-  on a dictionary miss, so it cannot be broken into a failing test and does not meet the guard bar.
-  The account is at `seven_day / allowed_warning`, so rather than manufacture a narrow break of
-  sound code, this track is reported as producing nothing — which the guardrails bless over a
-  dressed-up measurement.
-
-  **Verification, pasted from the runs that produced it.** `npx vitest run` → `Test Files 91 passed
-  (91) / Tests 615 passed (615)`. `npx tsc --noEmit | grep -c "error TS"` → `13`. `python3
-  ml/selftest.py` → `Ran 137 tests ... OK`. `npm run lint` → `0 errors, 2 warnings` (`lib/care.ts`).
-  Full `npm run smoke` with the chromium override → `Smoke test passed.`, its Playwright leg `67
-  passed (3.2m)` (62 baseline + 5 new empty-state cases). One false alarm worth recording so the
-  next cycle does not chase it: a backgrounded smoke run exited 144 (SIGTERM) because the command
-  began with `pkill -f "next dev"`, whose pattern matched the worker's OWN shell command line and
-  killed it — the product was fine; re-run in the foreground with no `pkill`, it passed.
-
-  **Rotation.** `docs/AUTOPILOT.md` 1699 → 1485; `docs/autopilot-changelog.md` 5260 → 5588. Cycle 24
-  moved verbatim to the changelog bottom, and the two backlog items this cycle ticked `[x]` — the
-  `ml/calibrate.py` generation-handling item and the `/checkin` 43px item — moved to "Closed backlog
-  items" under "### Next" with their original text preserved as a blockquote. Proof in the PR body:
-  `wc -l` before/after both files and a `comm -23` preservation check.
-
-  **Supervisor review.** Kept deliberately cheap — the account is at
-  `seven_day / allowed_warning`, the worker was told to be economical, and so was this.
-
-  *The fix is the right shape, and this review's framing of the defect was the wrong way
-  round.* Before the branch arrived this review read `ctaPrimary` (`padding: "11px 18px"`,
-  no `minHeight`, no `line-height`), concluded the height is 22px plus whatever line box
-  the fallback font gives, and measured five locales under a plain `system-ui` stack:
-  38–40px, varying by locale, all flattened to exactly 44.0px by `min-height` + inline-flex.
-  That confirmed the mechanism and the remedy. It also framed **`ja` as the outlier**, and
-  the branch shows it is the opposite: all five compute `line-height: 21px`, `21 + 22 = 43`
-  is what the stylesheet asks for, and `ja` is the only locale that gets it. The other four
-  are 45px because their glyphs fall back to a font whose baseline sits 2px off the strut's,
-  and a line box is the UNION of the strut and the inline boxes on that baseline rather than
-  the larger of the two. The four "correct" locales were the accident.
-
-  *What this review could and could not confirm of that.* Forcing the strut explicitly
-  (`line-height: 21px`, one declared family plus fallbacks) gives **43.0px in all five**
-  here, with `line-height` and `font-size` computing identically across them — so the
-  arithmetic and the direction hold. The 2px split does NOT reproduce in this container,
-  because the fonts that cause it are not installed and every locale resolves to the same
-  fallback. Stated as a limit rather than a contradiction: the branch measured the app,
-  this review measured a reconstruction without the app's fonts.
-
-  The fix itself takes the `minHeight` + flex idiom and names the two places that already
-  use it (`pill()`, `app/components/flow-steps.tsx`) rather than nudging a per-locale
-  number, which is what the backlog item asked for and what this review was watching for.
-
-  *The ML guard bites narrowly.* Making `sample_generation` read only the flat spelling —
-  so a row the app wrote, nesting the fields under `meta`, reads unstamped — fails 4 of 137
-  with the names doing the identifying:
-  `ERROR: test_calibrate_reports_two_generations_in_one_threshold_fit`,
-  `FAIL: test_calibrate_finds_the_versions_the_app_export_nests_under_meta`,
-  `FAIL: test_both_readers_say_it_in_the_same_words`.
-
-  *Scope held where it mattered.* `shareUrl` is still open — `grep -c` finds it in
-  `docs/AUTOPILOT.md` and not in the changelog — so three cycles running have now declined
-  to guess a decision that is the owner's.
-
-  *Rotation.* 1699 → 1485 and 5260 → 5588; `comm -23` finds **21 lines missing**, 20 from
-  the two backlog items this cycle closed and the 21st the `Last updated:` date.
-  "Recent cycles" holds 27/26/25.
-
-  *One admission that belongs in this file rather than a scratchpad.* The new backlog item
-  about four dead i18n keys carried by `en.ts` and `ar.ts` and by neither `ja.ts` nor
-  `zh.ts` is a finding this supervisor made during cycle 21, judged "cosmetic, not worth a
-  push", and left in a scratch note. Cycle 26 re-derived it from nothing. A finding that
-  stays out of this file is one a later cycle pays for twice.

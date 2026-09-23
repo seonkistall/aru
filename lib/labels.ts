@@ -134,10 +134,20 @@ export function saveLabel(sample: LabeledSample): boolean {
   }
 }
 
+/**
+ * `Array.isArray` at the read, for the reason given in `lib/scan-history.ts` and in
+ * docs/funnel-store-shape.md: a TRUNCATED value already self-healed through the catch,
+ * while a value that PARSES to the wrong shape was handed back as written. Here that
+ * reaches a RENDER — `app/scan/feedback.tsx` seeds state with
+ * `useState(() => labelCount())`, a lazy initialiser, which runs during render and
+ * has no try/catch of its own, so a stored `null` threw at `.length` there. Guarding at
+ * the read is also what lets the next write repair the key.
+ */
 export function getLabels(): LabeledSample[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(parsed) ? (parsed as LabeledSample[]) : [];
   } catch {
     return [];
   }

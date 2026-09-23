@@ -31,6 +31,7 @@ from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import heuristic_baseline as shipped_heuristic  # noqa: E402
 import skin_indices  # noqa: E402
 import subgroups  # noqa: E402
 
@@ -141,7 +142,12 @@ def feature_summary(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, float
         features = row.get("features", {})
         for key in ("shine", "relRedness", "cov", "tzoneL", "cheekL", *skin_indices.NEW_FEATURE_KEYS):
             value = features.get(key)
-            if isinstance(value, (int, float)) and math.isfinite(value):
+            # `not isinstance(value, bool)` because `isinstance(True, int)` is True in
+            # Python, so a JSON `true` in a feature column was being summarised as the
+            # number 1.0 here while `as_feature_float` — the screen the promotion
+            # gate's baseline uses — rejects a bool outright. Found by the selftest
+            # case that pins the two screens together, not by reading either one.
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
                 buckets[key].append(float(value))
 
     summary: dict[str, dict[str, float | int | None]] = {}
@@ -159,26 +165,59 @@ def feature_summary(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, float
 
 
 def bucket(value: float, lo: float, hi: float) -> int:
+    """Level for a FINITE feature value. Callers must screen the value first.
+
+    `nan < lo` and `nan < hi` are both False, so this returns 2 — the most severe
+    level — for a value that has no value at all. That is not a bug in the comparison
+    and it is not fixable here: strictly-less-than against each cut in order is the
+    shipped rule (`bucket()` in lib/skin.ts, `predict_level` in ml/heuristic_baseline.py)
+    and it must not drift. Screening belongs at the call site, which is what
+    `shipped_heuristic.as_feature_float` is.
+    """
     if value < lo:
         return 0
     return 1 if value < hi else 2
 
 
 def heuristic_baseline(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The report's own baseline accuracy per axis, plus what it could not grade.
+
+    Until 2026-09-23 this read `float(features[feat])` with no screen, and three code
+    paths in this repository disagreed about one situation. `feature_summary`, twenty
+    lines up, drops a non-finite value with `math.isfinite`. `as_feature_float` in the
+    sibling module — the baseline the PROMOTION GATE scores — returns None for it. And
+    this function graded it: NaN and +inf both came out of `bucket` as level 2, entered
+    the confusion matrix as a confident maximum-severity prediction, and counted in `n`,
+    so the accuracy an operator reads was computed partly from rows with no measurement
+    in them. A `None` feature was worse still — `float(None)` raises TypeError and took
+    the whole pipeline run down.
+
+    Now it uses the sibling's policy and REPORTS the residue as `unusable` rather than
+    skipping in silence, which is the shape cycle 28's research settled on (scipy's
+    `find_peaks` makes a plateau's extent an output and leaves the filter to the
+    caller). docs/non-finite-feature-policy.md.
+    """
     out: dict[str, Any] = {}
     for attr in ATTRS:
         feat = FEATURE_FOR_ATTR[attr]
         lo, hi = HEURISTIC_THRESHOLDS[attr]
         total = 0
         correct = 0
+        unusable = 0
         confusion = {str(actual): {str(pred): 0 for pred in range(3)} for actual in range(3)}
         for row in rows:
             features = row.get("features", {})
             labels = row.get("labels", {})
             if feat not in features or attr not in labels:
                 continue
-            pred = bucket(float(features[feat]), lo, hi)
-            actual = int(labels[attr])
+            actual_raw = labels[attr]
+            value = shipped_heuristic.as_feature_float(features[feat])
+            if value is None:
+                if str(actual_raw) in confusion:
+                    unusable += 1
+                continue
+            pred = bucket(value, lo, hi)
+            actual = int(actual_raw)
             if actual in (0, 1, 2):
                 confusion[str(actual)][str(pred)] += 1
                 correct += int(pred == actual)
@@ -187,6 +226,7 @@ def heuristic_baseline(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "feature": feat,
             "thresholds": {"lo": lo, "hi": hi},
             "n": total,
+            "unusable": unusable,
             "accuracy": round(correct / total, 4) if total else None,
             "confusion": confusion,
         }
@@ -397,6 +437,14 @@ def warnings_for(summary: dict[str, Any]) -> list[str]:
         missing = [label for label in ("0", "1", "2") if counts.get(label, 0) == 0]
         if missing:
             warnings.append(f"{attr} is missing label bucket(s): {', '.join(missing)}.")
+    for attr, rec in (summary.get("heuristic_baseline") or {}).items():
+        dropped = rec.get("unusable", 0)
+        graded = rec.get("n", 0)
+        if dropped:
+            warnings.append(
+                f"{attr}: {dropped} labelled row(s) carry a {rec.get('feature')} that is not a finite number "
+                f"and were not graded ({graded} were). Before 2026-09-23 they were graded as level 2."
+            )
     for warning in summary.get("decode", {}).get("subgroup_warnings", []) or []:
         warnings.append(f"Subgroup coverage: {warning}")
     pilot = summary.get("pilot", {})
@@ -433,7 +481,12 @@ def write_markdown(path: Path, summary: dict[str, Any]) -> None:
     for attr, rec in summary["heuristic_baseline"].items():
         acc = rec["accuracy"]
         acc_text = "n/a" if acc is None else f"{acc:.1%}"
-        lines.append(f"- {attr}: {acc_text} on {rec['n']} labels using {rec['feature']}")
+        # The dropped rows are printed next to the accuracy, not left to the JSON: an
+        # accuracy over 40 of 300 labelled rows reads the same as one over 300 unless
+        # the line says what the other 260 were.
+        dropped = rec.get("unusable", 0)
+        skipped = f", {dropped} unusable" if dropped else ""
+        lines.append(f"- {attr}: {acc_text} on {rec['n']} labels using {rec['feature']}{skipped}")
     lines.extend(["", "## Label Distribution", ""])
     for attr, counts in summary["labels"]["distribution"].items():
         lines.append(f"- {attr}: " + ", ".join(f"{label}={counts.get(label, 0)}" for label in ("0", "1", "2")))

@@ -56,8 +56,20 @@ def predict_level(value: float, thresholds: list[float]) -> int:
     return level
 
 
-def _as_float(value: object) -> float | None:
-    """Manifest CSV cells are strings, and an unmeasured feature is an empty one."""
+def as_feature_float(value: object) -> float | None:
+    """The repository's one answer to "is this feature value usable?", or None.
+
+    Manifest CSV cells are strings, and an unmeasured feature is an empty one. NaN and
+    +-inf are rejected for the reason scikit-learn's own `check_array` rejects them
+    (`force_all_finite=True` by default: raise, and the error tells the caller to impute
+    or to drop the sample — it never substitutes one). ARU cannot raise here, so it
+    drops, and the caller reports how many it dropped.
+
+    Public, and imported by ml/run_pipeline.py, because a second implementation of this
+    is exactly how the two sides drifted: `bucket()` there took `float(value)` straight
+    and `nan < lo` is False in both directions, so an unmeasurable feature was graded as
+    the TOP level with full confidence. docs/non-finite-feature-policy.md.
+    """
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
@@ -134,7 +146,7 @@ def score(
             if not isinstance(truth, int) or isinstance(truth, bool) or not 0 <= truth < levels:
                 raise ValueError(f"{axis}: label {truth!r} outside 0..{levels - 1}")
             labelled += 1
-            value = _as_float((row.meta or {}).get(feature_key))
+            value = as_feature_float((row.meta or {}).get(feature_key))
             if value is None:
                 skipped += 1
                 continue

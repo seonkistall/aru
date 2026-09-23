@@ -15,10 +15,25 @@ export type ScanHistoryEntry = {
 const KEY = DEVICE_DATA_KEY.scanHistory;
 const MAX = 30;
 
+/**
+ * Guarded with `Array.isArray`, because the two corruption modes were reaching very
+ * different places. A TRUNCATED value throws in `JSON.parse` and the catch returns
+ * `[]`, so the strip renders nothing and the next `pushScanHistory` overwrites the
+ * key — the store repairs itself. A value that PARSES to the wrong shape had no such
+ * path: it was handed back as written, and `ScanHistoryStrip` renders it on
+ * `/report`, where `history.length < 2` is `undefined < 2` on an object (false) and
+ * `history.slice(-6)` then throws INSIDE RENDER. React unmounts the segment and
+ * `app/error.tsx` replaces the whole report — the analysis, the product cards and
+ * both `/api/out` links with them — and because the crash is deterministic in the
+ * stored value, `reset()` throws again. Same guard, same reason, as `lib/funnel.ts`:
+ * checking at the read is also what lets the next write repair the key.
+ * `tests/e2e/report-device-store-shape.regression-13.spec.ts`.
+ */
 export function getScanHistory(): ScanHistoryEntry[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(parsed) ? (parsed as ScanHistoryEntry[]) : [];
   } catch {
     return [];
   }
