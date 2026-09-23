@@ -176,8 +176,13 @@ between cheekL 90 and 100), which is the condition the row is supposed to be rea
 
 *Measured:* every number in the three blocks above, and the 55 bound, which is arithmetic
 on the measured marginals. *Inferred:* that cycle 11's 71/120 came from a different
-construction rather than a different seed — the bound rules out the seed, and nothing
-here identifies what else differed. *Not established:* which of fixture, cut point or
+construction rather than a different arrangement of seeds. At tuning seed 1 the bound
+rules out every arrangement of the 120 seeds. **It does not rule out a different tuning
+seed:** the same bound computed from the tuning-seed table above is 110, 77, 112, 72 and
+83 at tuning seeds 2, 3, 5, 8 and 21 — five of the eight — so 71 is arithmetically
+reachable there. What argues against the tuning seed is the measured count, 12 to 21 at
+all eight, not the bound. *Supervisor correction, cycle 32 review:* the worker's draft
+said "the bound rules out the seed". Nothing here identifies what else differed. *Not established:* which of fixture, cut point or
 analyzer changed, and whether some construction not tried here reaches 71. Both need
 cycle 11's fixture, which was never committed.
 

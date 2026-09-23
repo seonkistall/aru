@@ -291,7 +291,7 @@ test("the report's commerce row keeps both CTAs tappable and legible", async ({ 
       locator.evaluate((element) => getComputedStyle(element).backgroundColor);
     const filled = await paint(buy);
     expect(filled, `${lang}: the out-link is not the filled CTA in this row`).not.toBe(await paint(care));
-    // Same treatment as every other merchant CTA in the product, taken from one of the
+    // Same treatment as the product cards' merchant CTA, taken from one of the
     // product cards on this very step rather than hard-coded as an rgb triple.
     const cardBuy = page.locator('a[href*="placement=report_product"]').first();
     expect(filled, `${lang}: the out-link is not painted like the product cards' CTA`).toBe(await paint(cardBuy));

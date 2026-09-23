@@ -544,8 +544,8 @@ partly done and stays here.
   reading on a sixth of the seeds" holds per condition but **not** per attribute.
   The mechanism is asserted, not only printed, in `tests/retake-signal-rule.test.ts`.
   Full table and the arithmetic: `docs/retake-sweep-what-it-measures.md`.
-  **2026-09-23, cycle 32: the last open row is answered as far as this construction can
-  answer it — 71/120 is not reachable from it.**
+  **2026-09-23, cycle 32: the last open row is narrowed — 71/120 is not reachable from the
+  committed construction's splits, and was not reached at any of eight tuning seeds.**
   `ARU_PRINT_RETAKE_OIL=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
   2x2 for 조명 dark oil over the 120 seeds at the committed construction:
   `c00=82 c01=21 c10=0 c11=17`. **The clean-1 / degraded-0 cell is empty** — no seed that
@@ -1167,8 +1167,11 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   exception, 14 at cheekL 90 against 15 at cheekL 100, is named here rather than smoothed
   out of the sentence. *Measured:* every
   number above, and the 55, which is arithmetic on the measured marginals. *Inferred:*
-  that cycle 11's 71 came from a different construction rather than a different seed —
-  the bound rules out the seed and nothing here identifies what else differed. *Not
+  that cycle 11's 71 came from a different construction rather than a different seed.
+  The bound rules out every arrangement at tuning seed 1 but **not** a different tuning
+  seed — computed from the tuning-seed table it is 110, 77, 112, 72 and 83 at seeds 2, 3,
+  5, 8 and 21 — so what argues against the seed is the measured 12-21, not the bound
+  (supervisor correction at review; the draft said "the bound rules out the seed"). *Not
   established:* which of fixture, cut point or analyzer changed, and whether some
   construction not tried here reaches 71; both need cycle 11's fixture, which was never
   committed. The contingency and the bound are asserted, not only printed, so a
@@ -1183,9 +1186,11 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   internal navigation to `/care`, was `var(--plum)` on `var(--on-plum)` at `flex: 1.3`.
   So the money link was both the quieter of the two and the narrower, and in ko
   "올리브영에서 제품 보기" wrapped onto two lines inside the smaller box while
-  "제품과 상담 정보 보기" sat on one line in the filled one. Every other merchant CTA in
-  the product is already the filled treatment — `app/components/product-card.tsx` line
-  111, and both of `/care`'s — so this row was the exception, not the rule. The two
+  "제품과 상담 정보 보기" sat on one line in the filled one. The product cards' merchant
+  CTA on the same page (`app/components/product-card.tsx` line 111) is already the filled
+  treatment, so this row was out of step with it. (Supervisor correction at review: the
+  draft also said both of `/care`'s merchant buttons were filled; `/care`'s `linkBtn` is
+  `background: "var(--paper)"` with a line border.) The two
   treatments are swapped. The existing case in `tests/e2e/mobile-layout.spec.ts` checked
   that both CTAs were tappable and legible and passed throughout, in all five locales,
   which is how the defect survived; it now also checks that the out-link is painted like
@@ -1214,7 +1219,48 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   missing** — every edit this cycle made to those two files is an insertion, and
   `Last updated:` already read 2026-09-23. "Recent cycles" holds 32/31/30.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** The survey fix and the `/api/out` negative result are sound; the
+  ML addition overstated what its bound rules out and was corrected before merge.
+
+  *`/api/out`, predicted before the branch existed.* Reading the route while the worker
+  ran, the only request-controlled value that reaches the redirect is `placement`, since
+  `sku` and `merchant` are resolved against `SKUS` before any URL is built, and the
+  host check is an exact-match `Set` on `url.hostname`. So an open redirect was not
+  expected and none was found. The twelve quoted inputs were re-run here against the
+  same predicate and every verdict and hostname matched; `url.bs` re-fetched as
+  `http=200 bytes=166059` with the same sha256, and the special-scheme backslash clause
+  is in it. One thing the supervisor raised and then found already handled: a 쿠팡
+  파트너스 short link on `link.coupang.com` is not on `ALLOWED_HOSTS`, but
+  `docs/commerce-partnership-playbook.md` already lists it as unverified and an earlier
+  cycle made that rejection loud. Not new.
+
+  *Survey guard.* In a browser, under `-c playwright.mobile.config.ts`, with all three
+  reads unguarded (both pages' `isSurvey` line and `loadLastResult` back to its
+  truthiness check), `commerce-survey-shape.regression-16.spec.ts` gives `17 failed`,
+  each at the `app/error.tsx` assertion, which is the defect. Guards broken one at a time
+  against `tests/survey-shape.test.ts`: removing `Number.isFinite(survey.budget)` gives
+  `4 failed | 45 passed (49)`, all four named "budget". Removing the `Array.isArray`
+  clause gives `49 passed (49)`. That clause is redundant, because an array fails the field
+  checks that follow, so it is harmless and nothing depends on it. `budget` has been a
+  `number` since `lib/recommend.ts` was first committed (`7419b54`), so the new check
+  cannot reject a survey an older build saved.
+
+  *Corrected before merge.* The contingency and both sweeps reproduced exactly here
+  (`Tests 14 passed (14)`, every OIL line identical). The bound is right at tuning
+  seed 1: `min(103,38) + min(17,82) = 55`. But the draft's "Inferred" line said "the bound
+  rules out the seed", and the same bound from its own tuning-seed table is 110, 77, 112,
+  72 and 83 at seeds 2, 3, 5, 8 and 21. So 71 is arithmetically reachable at five of
+  the eight, and what argues against a different tuning seed is the measured count
+  (12-21 everywhere), not the bound. The headline and both "Inferred" lines now say that.
+  This is the second cycle running in which the prose went one step past its own table.
+
+  *UI.* The swap of `buyBtn` and `commerceCareBtn` treatments was read, not measured
+  here. The draft's claim that every other merchant CTA is already `--plum` holds for
+  `product-card.tsx` line 111 and is false for `/care`, whose `linkBtn` is
+  `var(--paper)` outlined; the code comment, the test comment and the entry above are
+  corrected to say only what holds. The style change itself is unaffected. Smoke covers the added `mobile-layout.spec.ts` case.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
 
 - 2026-09-23 (cycle 31) — Branch `autopilot/2026-09-23-0639`. **Two of the four stores
   cycle 30 left unguarded were costing real things: `/care` opened the merchant link and

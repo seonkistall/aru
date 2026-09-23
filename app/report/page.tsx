@@ -533,9 +533,10 @@ const reportCommerceAction: React.CSSProperties = { display: "flex", flexWrap: "
 // this page that can earn anything was pale and on `flex: 1` while an internal
 // navigation took `--plum` and `flex: 1.3` — so at 360px "올리브영에서 제품 보기" wrapped
 // onto two lines inside the narrower box while "제품과 상담 정보 보기" sat on one line in
-// the filled one, and the row read as if /care were the action being offered. Every
-// other merchant CTA in the product (`app/components/product-card.tsx` line 111, and
-// both of /care's own) is already `--plum` on `--on-plum`; this row was the exception.
+// the filled one, and the row read as if /care were the action being offered. The
+// product cards' merchant CTA on this same page (`app/components/product-card.tsx`) is
+// already `--plum` on `--on-plum`; this row now matches it. (/care's merchant buttons
+// are `--paper` outlined, not filled — a different screen, left as it is.)
 const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const privacyLink: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 12, color: "var(--text-muted)", fontSize: 13, textDecoration: "underline" };
