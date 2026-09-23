@@ -3,7 +3,7 @@
 // (localStorage) — same privacy posture as the other local stores; nothing is
 // transmitted. Stores the INPUTS (survey + scan levels + the read snapshot),
 // which is enough to reconstruct the report via recommend().
-import type { ScanReads, Survey } from "./recommend";
+import { isSurvey, type ScanReads, type Survey } from "./recommend";
 import type { SkinReads } from "./skin";
 import { DEVICE_DATA_KEY } from "./device-data";
 
@@ -24,8 +24,12 @@ export function loadLastResult(): LastResult | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as LastResult) : null;
-    return parsed && parsed.survey ? parsed : null;
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    // `parsed.survey` used to be a truthiness check, which `5`, `"abcdef"` and `{}` all
+    // pass — and this value is what BOTH revenue screens fall back to in a fresh tab, so
+    // a truthy non-survey here is a dead /report and a dead /care on every future visit.
+    if (typeof parsed !== "object" || parsed === null) return null;
+    return isSurvey((parsed as { survey?: unknown }).survey) ? (parsed as LastResult) : null;
   } catch {
     return null;
   }

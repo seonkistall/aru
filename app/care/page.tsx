@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink } from "@/lib/care";
-import { recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
+import { isSurvey, recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { useFunnelPageView } from "@/app/use-funnel-page-view";
 import { loadLastResult } from "@/lib/last-result";
@@ -29,12 +29,18 @@ function loadCareView(): CareView | null {
     return { survey: saved.survey, reads: saved.reads ?? null, result: recommend(saved.survey, saved.scan ?? null) };
   }
 
-  let survey: Survey;
+  let parsed: unknown;
   try {
-    survey = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
+  // The catch above only covers the parse. A value that PARSES to the wrong shape used
+  // to go straight into recommend(), which throws at survey.concerns / survey.avoid
+  // inside this mount effect — app/error.tsx then takes the page, commerce links and
+  // all. Falling through to null lands on the path this page already has for "no survey".
+  if (!isSurvey(parsed)) return null;
+  const survey: Survey = parsed;
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {

@@ -421,3 +421,112 @@ describe("what a 120-seed disagreement count on the tuned fixture is measuring",
     expect([...degradedLevels], "the degraded capture was not pinned to one level").toEqual([1]);
   }, 60_000);
 });
+
+/**
+ * The one row cycle 31 left open: 조명 dark + oil, 21/120 here against a written 71/120.
+ *
+ * Cycle 31's identity accounts for the seven PINNED rows and explicitly does not account
+ * for this one, because its degraded capture is not pinned (`0:82 1:38`). So the count
+ * here is a genuine per-seed measurement and the question is what 71 could have been.
+ *
+ * Measured, not argued. `ARU_PRINT_RETAKE_OIL=1 npx vitest run
+ * tests/retake-signal-rule.test.ts` prints all three blocks below.
+ *
+ * 1. The 2x2 over the 120 seeds at the committed construction (tuning seed 1, cheekL 60):
+ *
+ *        clean 0 / degraded 0   82
+ *        clean 0 / degraded 1   21
+ *        clean 1 / degraded 0    0
+ *        clean 1 / degraded 1   17
+ *
+ *    The `clean 1 / degraded 0` cell is EMPTY: no seed that reads level 1 on the clean
+ *    capture drops to 0 when darkened. So the count is not a coin flip between two
+ *    independent splits — it is exactly the difference of the two marginals,
+ *    `38 - 17 = 21`, which is what the sweep reports.
+ *
+ * 2. That makes 71 unreachable from these two splits, by arithmetic on measured numbers
+ *    rather than by inference. With `a` clean level-1 seeds and `b` degraded level-1
+ *    seeds, disagreements are `c01 + c10` with `c01 <= min(120 - a, b)` and
+ *    `c10 <= min(a, 120 - b)`, so at `a = 17, b = 38` the most any arrangement of the
+ *    same 120 seeds can reach is `38 + 17 = 55`. 71 needs a different fixture, cut point
+ *    or analyzer — not a different noise field.
+ *
+ * 3. Two sweeps say how far the count moves under the two knobs it could plausibly
+ *    depend on. Over eight tuning seeds it stays in a narrow band (12 to 21) while the
+ *    CLEAN split it is drawn from swings by an order of magnitude (17 to 101), and over
+ *    eight darkness levels it nearly trebles as the capture gets darker (9 at cheekL 120
+ *    to 26 at cheekL 40, with one reversal, 14 then 15, between 90 and 100):
+ *
+ *      tuneSeed  1   2   3   5   8  13  21  34      clean level-1 seeds 17..101
+ *      count    21  12  13  12  12  16  17  18
+ *
+ *      cheekL   40  50  60  70  80  90 100 120
+ *      count    26  24  21  17  16  14  15   9
+ *
+ *    That is the opposite of a pinned row, where the count IS the clean split and moves
+ *    with it. NOT established: which of fixture, cut point or analyzer differed in cycle
+ *    11, and whether some construction not tried here reaches 71. Both need cycle 11's
+ *    fixture, which was never committed — it is in BLOCKERS with the golden set.
+ */
+describe("조명 dark + oil, the one unpinned row whose count did not reproduce", () => {
+  const contingency = (fixture: Fixture, darkL: number) => {
+    const cell = { c00: 0, c01: 0, c10: 0, c11: 0 };
+    for (let seed = 1; seed <= 120; seed += 1) {
+      const clean = analyzeSkin(noisyFrame(fixture, REFERENCE_CHEEK_L, seed, 0), landmarks(CHEEK_OK))!.oil.level;
+      const degraded = analyzeSkin(noisyFrame(fixture, darkL, seed, 0), landmarks(CHEEK_OK))!.oil.level;
+      if (clean === 0 && degraded === 0) cell.c00 += 1;
+      else if (clean === 0 && degraded === 1) cell.c01 += 1;
+      else if (clean === 1 && degraded === 0) cell.c10 += 1;
+      else cell.c11 += 1;
+    }
+    return cell;
+  };
+
+  it("has an empty clean-1/degraded-0 cell, so its count is the difference of the two splits", () => {
+    const cell = contingency(tuned("oil"), 60);
+    expect(cell, "the 조명 dark oil contingency moved").toEqual({ c00: 82, c01: 21, c10: 0, c11: 17 });
+
+    const cleanLevel1 = cell.c10 + cell.c11;
+    const degradedLevel1 = cell.c01 + cell.c11;
+    const disagreements = cell.c01 + cell.c10;
+    expect([cleanLevel1, degradedLevel1, disagreements]).toEqual([17, 38, 21]);
+    expect(disagreements).toBe(degradedLevel1 - cleanLevel1);
+
+    // And 71 is out of reach of these two splits however the seeds are arranged, which
+    // is why cycle 11's number cannot be recovered by re-running with another seed.
+    const most = Math.min(120 - cleanLevel1, degradedLevel1) + Math.min(cleanLevel1, 120 - degradedLevel1);
+    expect(most).toBe(55);
+    expect(most).toBeLessThan(71);
+  }, 120_000);
+
+  it("prints the contingency and the two sweeps behind that paragraph", () => {
+    if (!process.env.ARU_PRINT_RETAKE_OIL) return;
+    const write = (line: string) => process.stdout.write(`OIL ${line}\n`);
+    // `tuned()` bisects at seed 1; this is the same bisection with the seed exposed, so
+    // the sweep changes exactly one thing.
+    const tunedAt = (tuneSeed: number): Fixture => {
+      const base: Fixture = { contrast: 1, redBoost: 0, noise: 4 };
+      const rawOf = (fixture: Fixture) =>
+        analyzeSkin(noisyFrame(fixture, REFERENCE_CHEEK_L, tuneSeed, 0), landmarks(CHEEK_OK))!.raw.shine;
+      let lo = 0;
+      let hi = 0.5;
+      for (let i = 0; i < 60; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (rawOf({ ...base, contrast: 1 + mid }) < CUTS.oil) lo = mid;
+        else hi = mid;
+      }
+      return { ...base, contrast: 1 + (lo + hi) / 2 };
+    };
+    const row = (label: string, fixture: Fixture, darkL: number) => {
+      const cell = contingency(fixture, darkL);
+      write(`${label}\t${cell.c10 + cell.c11}\t${cell.c01 + cell.c11}\t${cell.c01 + cell.c10}/120`);
+    };
+    const committed = contingency(tuned("oil"), 60);
+    write(`contingency tuneSeed=1 cheekL=60\tc00=${committed.c00} c01=${committed.c01} c10=${committed.c10} c11=${committed.c11}`);
+    write("tuneSeed\tclean level-1\tdegraded level-1\tdisagreements");
+    for (const tuneSeed of [1, 2, 3, 5, 8, 13, 21, 34]) row(String(tuneSeed), tunedAt(tuneSeed), 60);
+    write("cheekL\tclean level-1\tdegraded level-1\tdisagreements");
+    const fixture = tuned("oil");
+    for (const cheekL of [40, 50, 60, 70, 80, 90, 100, 120]) row(String(cheekL), fixture, cheekL);
+  }, 600_000);
+});

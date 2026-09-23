@@ -10,6 +10,37 @@ export type Survey = {
   category: Category;
 };
 
+/**
+ * Whether a value restored from a device store can actually be handed to `recommend`.
+ *
+ * `/report` and `/care` both rebuild the report from `sessionStorage["gyeol_survey"]`,
+ * and on a fresh tab from `aru_last_result`, inside a `try { JSON.parse } catch { return
+ * null }`. The catch only covers the PARSE: a value that parses to the wrong shape went
+ * straight to `recommend`, which reads `survey.concerns`, `survey.avoid`, `survey.budget`,
+ * `survey.type` and `survey.category` without checking any of them. Eight of the ten wrong
+ * shapes in `tests/survey-shape.test.ts` throw there, inside a mount effect, so
+ * `app/error.tsx` replaces the page — taking every `/api/out` link on `/report` and every
+ * merchant button on `/care`, which is the whole of the paying path. Guarded at the read,
+ * as `lib/scan-history.ts` and `lib/store.ts` are, so the next write repairs the key.
+ *
+ * Structural only, deliberately: each field is checked for the shape the code indexes
+ * with, not for membership of `SkinType` / `Concern` / `Category`. A survey naming a
+ * category this build no longer ships is still a usable survey — `recommend` returns zero
+ * picks and `/report` renders its no-picks branch — and an enum check would send that user
+ * back to the survey for nothing.
+ */
+export function isSurvey(value: unknown): value is Survey {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const survey = value as Record<string, unknown>;
+  return (
+    typeof survey.type === "string" &&
+    typeof survey.category === "string" &&
+    Number.isFinite(survey.budget) &&
+    Array.isArray(survey.concerns) &&
+    Array.isArray(survey.avoid)
+  );
+}
+
 // An ingredient tag surfaced on the card: the ingredient and why it's here
 // (which of the user's concerns its role addresses), so the match reads as
 // "chosen for you", not generic. `forConcern` is undefined for a base benefit.

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
-import { budgetLabel, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
+import { budgetLabel, isSurvey, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { loadLastResult, saveLastResult } from "@/lib/last-result";
 import { ProductCard } from "@/app/components/product-card";
@@ -76,12 +76,18 @@ function loadInitialView(): InitialView | null {
     return { survey: saved.survey, reads: saved.reads ?? null, result: recommend(saved.survey, saved.scan ?? null) };
   }
 
-  let survey: Survey;
+  let parsed: unknown;
   try {
-    survey = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
+  // The catch above only covers the parse. A value that PARSES to the wrong shape used
+  // to go straight into recommend(), which throws at survey.concerns / survey.avoid
+  // inside this mount effect — app/error.tsx then takes the page, commerce links and
+  // all. Falling through to null lands on the path this page already has for "no survey".
+  if (!isSurvey(parsed)) return null;
+  const survey: Survey = parsed;
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
@@ -522,8 +528,17 @@ const trustChip: React.CSSProperties = { border: "1px solid var(--line)", border
 // their horizontal padding — 24px, label cut mid-word, in every locale and at every
 // width. The disclosure's own `marginTop: 4` only makes sense on a row of its own.
 const reportCommerceAction: React.CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10, marginTop: 18, padding: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 };
-const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
-const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
+// The out-link carries the filled treatment and the wider share of the row, and the
+// /care hand-off next to it the quiet one. It was the other way round: the only link on
+// this page that can earn anything was pale and on `flex: 1` while an internal
+// navigation took `--plum` and `flex: 1.3` — so at 360px "올리브영에서 제품 보기" wrapped
+// onto two lines inside the narrower box while "제품과 상담 정보 보기" sat on one line in
+// the filled one, and the row read as if /care were the action being offered. The
+// product cards' merchant CTA on this same page (`app/components/product-card.tsx`) is
+// already `--plum` on `--on-plum`; this row now matches it. (/care's merchant buttons
+// are `--paper` outlined, not filled — a different screen, left as it is.)
+const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1.3, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--plum)", color: "var(--on-plum)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
+const commerceCareBtn: React.CSSProperties = { minHeight: "var(--tap-min)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-tint)", color: "var(--ink)", borderRadius: 8, padding: "12px", fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none" };
 const privacyLink: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 12, color: "var(--text-muted)", fontSize: 13, textDecoration: "underline" };
 
 const stepTabs: React.CSSProperties = { display: "flex", alignItems: "stretch", gap: 6, marginTop: 12, marginBottom: 4 };
