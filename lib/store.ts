@@ -43,10 +43,40 @@ function uid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
 }
 
+/**
+ * `Array.isArray` at the read, the same guard and the same argument as `lib/funnel.ts`
+ * (cycle 29) and `lib/scan-history.ts` / `lib/crops.ts` / `lib/labels.ts` (cycle 30):
+ * a TRUNCATED value already self-healed through the catch, while a value that PARSES
+ * to the wrong shape was handed straight back. A `localStorage` key is not private to
+ * the code that wrote it — any script on the origin and every past version of the app
+ * can put anything there, and the value survives deploys (`docs/funnel-store-shape.md`).
+ *
+ * These three stores failed DIFFERENTLY from the ones already fixed, because `lsPush`
+ * runs `all.push(value)` OUTSIDE its try and every writer here is `async`, so the
+ * TypeError arrived as a REJECTED PROMISE rather than as a render throw. Measured on
+ * the unguarded code, five shapes that parse:
+ *
+ * - `recordCareIntent` / `recordProductUse` / `recordCheckin` rejected with
+ *   `TypeError: Cannot read properties of null (reading 'push')` on `null` and
+ *   `TypeError: all.push is not a function` on `5`, `{}`, `"abcdef"` and `false`. On
+ *   `/care` that rejection is swallowed by `void` and the merchant link opens anyway,
+ *   so the user saw a working commerce click while nothing was logged.
+ * - `careIntentCount()` threw at `.length` on `null`, inside `/privacy`'s effect,
+ *   which has no try/catch — `app/error.tsx` then takes the whole privacy page,
+ *   including the delete-my-data controls.
+ * - `getCareIntents()` threw `lsGet(...).reverse is not a function`.
+ * - `/checkin`'s effect is `Promise.all([getProductUses(), getCheckins()]).then(...)`
+ *   with no `.catch`, so `getProductUses()` rejecting left `productUses` at `null` and
+ *   the page rendered its blank loading `<main>` for the life of the install.
+ *
+ * Guarding at the READ is also what lets the next write repair the key.
+ * `tests/commerce-store-shape.test.ts`.
+ */
 function lsGet<T>(key: string): T[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
   }
@@ -54,6 +84,9 @@ function lsGet<T>(key: string): T[] {
 
 function lsPush<T>(key: string, value: T, max = 500): boolean {
   if (typeof window === "undefined") return false;
+  // `all` is an array on every path out of the guarded `lsGet`, so this push — which
+  // sits outside the try on purpose, to keep the try around the quota-bearing write —
+  // can no longer throw into an async caller.
   const all = lsGet<T>(key);
   all.push(value);
   try {
