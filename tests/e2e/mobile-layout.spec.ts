@@ -305,3 +305,56 @@ test("the report's commerce row keeps both CTAs tappable and legible", async ({ 
     await context.close();
   }
 });
+
+test("/care's paying merchant link carries the affordance its clinic rows already have", async ({ browser }) => {
+  // Found at 360px: on /care the merchant buttons and the clinic buttons are the same
+  // pale `--paper` box with a `--line` border, and it was the CLINIC rows — which earn
+  // nothing — that carried the `--plum` go-arrow, while the merchant out-link, the only
+  // thing on the page that can earn anything, carried none. The alternates behind
+  // "다른 판매처 보기" deliberately keep the arrow-less box, so this asserts exactly one
+  // arrow per product card rather than one per merchant button.
+  for (const lang of ["ko", "en"]) {
+    const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
+    await context.addInitScript(
+      ([nextLang]) => {
+        localStorage.setItem("aru.lang", nextLang as string);
+        sessionStorage.setItem(
+          "gyeol_survey",
+          JSON.stringify({ type: "지성", concerns: ["모공"], budget: 30000, avoid: [], category: "토너" }),
+        );
+      },
+      [lang] as const,
+    );
+    const page = await context.newPage();
+    await page.goto("/care");
+    await page.evaluate(() => document.fonts.ready);
+
+    const merchantButtons = page.getByRole("button").filter({ hasText: /올리브영|Olive Young/ });
+    // Auto-waiting assertion before the count, not `document.fonts.ready`: /care builds
+    // its picks in a mount effect, so a bare count() can read 0 on a slow run while the
+    // section header is already painted — which is how this case went red in one smoke
+    // run before the merchant rows existed.
+    await expect(merchantButtons.first(), `${lang}: no merchant button on /care`).toBeVisible();
+    const count = await merchantButtons.count();
+
+    // Every collapsed card shows its primary merchant, and each of those carries an arrow.
+    for (let i = 0; i < count; i += 1) {
+      await expect(
+        merchantButtons.nth(i).locator(".aru-dir-arrow"),
+        `${lang}: the primary merchant link has no go-arrow`,
+      ).toHaveCount(1);
+    }
+
+    // And it is the same arrow the clinic rows on this page use, not a new one.
+    const clinicArrow = page.getByRole("button", { name: /피부과|dermatolog/i }).first().locator(".aru-dir-arrow");
+    await expect(clinicArrow).toHaveCount(1);
+    const colour = async (l: import("@playwright/test").Locator) =>
+      l.evaluate((el) => getComputedStyle(el as HTMLElement).color);
+    expect(
+      await colour(merchantButtons.first().locator(".aru-dir-arrow")),
+      `${lang}: the merchant arrow is not the colour the clinic rows use`,
+    ).toBe(await colour(clinicArrow));
+
+    await context.close();
+  }
+});

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { downloadCardImage, ShareCard, shareCardImage, type CardRead as Read } from "@/app/components/share-card";
-import { loadLastResult } from "@/lib/last-result";
+import { isSkinReads, loadLastResult } from "@/lib/last-result";
 import type { SkinReads } from "@/lib/skin";
 import { t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
@@ -47,7 +47,13 @@ export default function Studio() {
     let scan: SkinReads | null = null;
     try {
       const raw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
-      if (raw) scan = JSON.parse(raw) as SkinReads;
+      // The `scan?.oil?.value` test below catches a store holding 5, "abc", {}, true or
+      // [], but not a PARTIAL reading: one with an oil bucket and no pores bucket passes
+      // it and then throws at scan.pores.value inside this effect.
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (isSkinReads(parsed)) scan = parsed;
+      }
     } catch {
       /* ignore */
     }

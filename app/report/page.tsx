@@ -7,7 +7,7 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { budgetLabel, isSurvey, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
-import { loadLastResult, saveLastResult } from "@/lib/last-result";
+import { isSkinReads, loadLastResult, saveLastResult } from "@/lib/last-result";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
@@ -96,7 +96,15 @@ function loadInitialView(): InitialView | null {
   } catch {}
   try {
     const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
-    if (readsRaw) reads = JSON.parse(readsRaw);
+    // Same hole the survey read had, one key over: the catch covers the parse only, and
+    // this page renders reads.oil.value / .pores / .redness / .overall and reads.signals
+    // straight out of the store, so a value that PARSES to the wrong shape throws during
+    // render and app/error.tsx takes the page — commerce links and all. A wrong shape
+    // falls back to no-reads, which is the survey-only report this page already renders.
+    if (readsRaw) {
+      const parsedReads: unknown = JSON.parse(readsRaw);
+      if (isSkinReads(parsedReads)) reads = parsedReads;
+    }
   } catch {}
 
   // Mirror the inputs so this report survives the tab session (MAU re-entry).

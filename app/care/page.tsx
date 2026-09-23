@@ -177,10 +177,29 @@ export default function CarePage() {
                   identical to the single grid this replaced. */}
               <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
                 <div id={merchantPanelId} style={{ display: "grid", gap: 7 }}>
-                  {visibleLinks.map((link) => (
-                    <button key={`${pick.sku.id}-${link.label}`} onClick={() => openCareLink(link, pick.sku.id)} style={linkBtn}>
-                      <span>{t(link.label)}</span>
-                      <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
+                  {/* The first link is the highest-priority merchant (productSearchLinks
+                      sorts by priority) and is the one shown when the list is collapsed —
+                      the only thing on this page that can earn anything. It used to be
+                      the same pale box as the alternates behind "다른 판매처 보기", with no
+                      affordance at all, while the clinic rows further down this same page
+                      — which earn nothing — carried the go-arrow. It now carries the same
+                      arrow as `clinicBtn`, one per card, and the alternates keep the
+                      quieter box so the hierarchy inside the card still reads. */}
+                  {visibleLinks.map((link, i) => (
+                    <button
+                      key={`${pick.sku.id}-${link.label}`}
+                      onClick={() => openCareLink(link, pick.sku.id)}
+                      style={i === 0 ? primaryLinkBtn : linkBtn}
+                    >
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "start", minWidth: 0 }}>
+                        <span>{t(link.label)}</span>
+                        <small style={{ color: "var(--text-muted)", fontWeight: 500 }}>{t(link.note)}</small>
+                      </span>
+                      {i === 0 && (
+                        <span className="aru-dir-arrow" aria-hidden style={{ color: "var(--plum)", fontSize: 18 }}>
+                          →
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -253,6 +272,10 @@ const badge: React.CSSProperties = { fontSize: 12, background: "transparent", co
 const warnBadge: React.CSSProperties = { fontSize: 12, background: "var(--plum-soft)", color: "var(--plum-press)", borderRadius: 8, padding: "5px 8px", fontWeight: 700 };
 const outlineBtn: React.CSSProperties = { minHeight: "var(--tap-min)", background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 16px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const linkBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)", color: "var(--ink)", padding: "9px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", textAlign: "left" };
+// Same box as `linkBtn`, laid out like `clinicBtn` below so the arrow sits at the end:
+// row instead of column, space-between instead of centre. No new colour — the arrow is
+// the `--plum` the clinic rows already use.
+const primaryLinkBtn: React.CSSProperties = { ...linkBtn, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 };
 const otherMerchantsBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: "none", background: "transparent", color: "var(--ink-soft)", padding: "8px 2px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" };
 const clinicBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--paper)", padding: "12px 14px", cursor: "pointer", width: "100%" };
 const safetyCard: React.CSSProperties = { display: "flex", gap: 10, alignItems: "flex-start", background: "color-mix(in srgb, var(--plum) 6%, var(--paper))", border: "1px solid color-mix(in srgb, var(--plum) 28%, var(--line))", borderLeft: "3px solid var(--plum)", borderRadius: 10, padding: "12px 13px" };
