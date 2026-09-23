@@ -518,21 +518,23 @@ partly done and stays here.
   still costs a published reading on a sixth of the seeds or more — but if anyone
   wants the ORIGINAL numbers back, the construction that produced them is gone and
   only a new measurement can settle it. Noted 2026-09-18.
-  **2026-09-23, cycle 31: the 조명 discrepancy is accounted for, and the last clause is
-  withdrawn — a new measurement of those rows settles nothing.**
+  **2026-09-23, cycle 31: half the 조명 discrepancy is accounted for, and the last clause is
+  withdrawn for pinned rows only.**
   `ARU_PRINT_RETAKE_SPLIT=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
-  clean and degraded level distributions behind each count. In **8 of the 12 rows the
+  clean and degraded level distributions behind each count. In **7 of the 12 rows the
   degraded level is pinned** — all 120 seeds publish the same level — and there the
   "disagreement count" is not a measurement of the condition at all but a readout of
   where `tuned()`'s bisection-at-seed-1 left the CLEAN capture relative to its own cut
   point. The identity is exact: 조명 dark redness pins at 1 against a clean split of
   `0:29 1:91` and reports **29/120**, the clean level-0 count; 조명 blown out redness
   pins at 0 against the same split and reports **91/120**, the level-1 count; 조명
-  blown out pores pins at 0 against `0:59 1:61` and reports **61/120**. All four 조명
-  rows that failed to reproduce are pinned rows, and the two directions the item
-  noticed are the two ends of one readout. That quantity moves freely between 0/120 and
-  120/120 under any change of fixture construction, so no pinned row's `n/120` should be
-  quoted, compared across re-derivations, or used to set a threshold.
+  blown out pores pins at 0 against `0:59 1:61` and reports **61/120**. Of the two 조명
+  rows the item named, dark pores (120/120 vs 4/120) is pinned and fully accounted for;
+  **dark oil (21/120 vs 71/120) is NOT pinned** (degraded split `0:82 1:38`), so this
+  identity does not explain it and it stays open. A pinned row's count follows the clean
+  split, which `tuned()` sets at seed 1, so no pinned row's `n/120` should be quoted,
+  compared across re-derivations, or used to set a threshold. (That a construction change
+  would move it is inferred from the identity; no alternative construction was run.)
   **The rule is unaffected and for a stronger reason than its count gave:** four of the
   pinned rows pin at a level the clean capture never reaches at all, so the degradation
   decides the published reading on every seed. Four rows ARE genuine per-seed
@@ -1109,7 +1111,7 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   primary source this network cannot reach. Both would have produced a doc restating the
   item.
 
-  **In 8 of the 12 rows the degraded level is pinned** — all 120 seeds publish the same
+  **In 7 of the 12 rows the degraded level is pinned** — all 120 seeds publish the same
   level — and there the "disagreement count" is not a measurement of the condition. It
   is a readout of where `tuned()`'s bisection left the CLEAN capture relative to its own
   cut point: `tuned()` bisects until the clean raw value sits on the cut **at seed 1,
@@ -1117,12 +1119,14 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   lands. The identity is exact, not approximate — 조명 dark redness pins at 1 against a
   clean split of `0:29 1:91` and reports **29/120**, the clean level-0 count; 조명 blown
   out redness pins at 0 against the same split and reports **91/120**, the level-1
-  count; 조명 blown out pores pins at 0 against `0:59 1:61` and reports **61/120**. All
-  four 조명 rows that failed to reproduce are pinned rows, and the two directions the
-  backlog noticed are the two ends of one readout. That quantity moves freely between
-  0/120 and 120/120 under any change of construction, so **the item's "only a new
-  measurement can settle it" is withdrawn**: a new measurement of a pinned row settles
-  nothing.
+  count; 조명 blown out pores pins at 0 against `0:59 1:61` and reports **61/120**. Of
+  the two 조명 rows the backlog named, dark pores is pinned and fully accounted for;
+  **dark oil (21/120 vs 71/120) is not pinned** (`0:82 1:38`) and this does not explain
+  it. So **the item's "only a new measurement can settle it" is withdrawn for pinned
+  rows only**: a new measurement of a pinned row settles nothing, and dark oil stays
+  open. *(Supervisor correction at review: the worker's draft said 8 of 12 pinned and
+  that every 조명 row that failed to reproduce was pinned; the table printed above has
+  seven `yes` rows and dark oil `no`.)*
 
   **The retake rule is unaffected, and for a stronger reason than its count gave.** Four
   of the pinned rows pin at a level the clean capture never reaches at all (조명 dark
@@ -1158,7 +1162,51 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   place above into the `[~]` form with this cycle's findings. Nothing from the rotation
   itself is missing. "Recent cycles" holds 31/30/29.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** The store fix is sound and was predicted before the worker
+  reported; the ML doc overstated its result and was corrected before merge.
+
+  *Predicted, then checked.* Before the branch existed, a throwaway vitest probe against
+  unchanged `f61614d` gave `careIntentCount(null) THREW Cannot read properties of null
+  (reading 'length')`, `recordCareIntent(null) REJECTED ... (reading 'push')`,
+  `getProductUses({}) REJECTED lsGet(...).filter is not a function`, and
+  `careIntentCount("abc") = 3` — a wrong count with no throw. The worker's measurements
+  agree. Reading `/checkin` predicted a blank page rather than the error boundary; with
+  both the store guard and the new `.catch` removed, the regression-15 spec under
+  `playwright.mobile.config.ts` fails with `/checkin rendered its blank loading shell
+  forever because its stores held null` and the dev server logs `unhandledRejection:
+  TypeError: Cannot read properties of null (reading 'filter')`, which is the defect
+  reproduced in a browser.
+
+  *Guards broken at their source lines, one at a time, against
+  `tests/commerce-store-shape.test.ts`:* `lsGet`'s `Array.isArray` → `26 failed | 23
+  passed (49)`, none of them pilot cases; `getPilotNotes`'s `Array.isArray` → `10 failed
+  | 39 passed (49)`, all named "notes"; the `participantId` type check in
+  `getCurrentPilotSession` → `1 failed | 48 passed (49)`, "reads as no session when the
+  store holds an object". Narrow in all three.
+
+  *Corrected before merge — `docs/retake-sweep-what-it-measures.md` and the two entries
+  here.* The printed SPLIT table reproduced exactly on this container (all twelve rows,
+  `Tests 12 passed (12)`), but the prose built on it did not match it. The draft said
+  "8 of the 12 rows" were pinned: the table has seven `yes`. It said "all four 조명 rows
+  that failed to reproduce are pinned rows" and called that "the whole of the 조명
+  discrepancy": the backlog named two rows, and one of them, dark oil (21/120 against
+  71/120), is `no` — degraded split `0:82 1:38`. So the identity explains dark pores and
+  not dark oil, and "only a new measurement can settle it" is withdrawn for pinned rows
+  only. "Moves freely between 0/120 and 120/120 under any change of construction" was
+  also a claim no command had produced, since no alternative construction was run; it is
+  now labelled as inferred. The mechanism and the per-attribute 반사 pores 0/120 finding
+  stand. This is a guardrail-2 miss in a doc (a count not matching the output printed
+  above it), caught at review, not at the worker's own check.
+
+  *My own error, recorded.* My first attempt at the both-fixes-removed browser run was
+  `npx playwright test <spec>` without `-c playwright.mobile.config.ts`. It printed
+  `5 failed`, which looked like the defect, but every case had failed at
+  `page.goto: Cannot navigate to invalid URL` because there was no `baseURL`. I read the
+  failure message before using the result, and re-ran with the config. A red run is not
+  evidence until its failure message names the thing under test.
+
+  *Validation on the merged tree (worker's `32b8de5` plus the doc correction):* see the
+  PR body for the literal output.
 
 - 2026-09-23 (cycle 30) — Branch `autopilot/2026-09-23-0039`. **One theme, four tracks: a
   value that is not what its type says, and what each layer does about it. The ML pipeline

@@ -339,10 +339,11 @@ describe("the 120-seed disagreement table", () => {
  * coin flip. A disagreement is `clean.level !== degraded.level`. When the degraded
  * capture's level is PINNED (the degradation is large enough that noise cannot move it
  * off one value), the count collapses to "how many of the 120 clean captures landed on
- * the other side" — a property of the noise field, not of the condition, and one that
- * any change in fixture construction moves freely between 0 and 120. That is also why
- * a single such count can be both too high and too low against the original: it is the
- * clean split being read, and the pinned degraded value decides which end it reports.
+ * the other side" — a property of the noise field, not of the condition. That is why a
+ * pinned count can be too high (dark pores, 120 against 4): it is the clean split being
+ * read, and the pinned degraded value decides which end it reports. It does NOT explain
+ * dark oil (21 against 71): that row is not pinned, and stays open.
+ * `docs/retake-sweep-what-it-measures.md`.
  *
  * `ARU_PRINT_RETAKE_SPLIT=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
  * two distributions this rests on. It changes no rule and no threshold: the retake rule
