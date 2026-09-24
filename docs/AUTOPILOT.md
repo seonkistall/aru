@@ -1066,6 +1066,196 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-24 (cycle 36) — Branch `autopilot/2026-09-24-1239`. **Walking the paying
+  journey as a user found the funnel counting the same page view twice — for every
+  saved language except English, which is the one language that cannot trigger it. The
+  cause is a remount the app performs on purpose, and the guards that were supposed to
+  make a page view fire once lived on the component instance the remount destroys. The
+  rest of the walk came back clean and is listed as checked rather than claimed.**
+
+  **Baselines, measured here on a clean tree at `45b1b41` before any edit.**
+  `node_modules` was absent, so `npm ci` first. `npx vitest run` **786 passed in 98
+  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors,
+  2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 143 tests in 1.938s ... OK**, and `npm run smoke` with the
+  chromium override at `/opt/pw-browsers/chromium-1194` printed **`Smoke test
+  passed.`** with **166 passed (5.6m)**. They match the supervisor's.
+
+  **The walk.** The two keys a completed scan leaves — `gyeol_scan` and `gyeol_reads`,
+  written at `app/scan/use-capture-analysis.ts:276-298` — seeded from a reading
+  `lib/skin.ts` actually produces, then /survey → /report (all three steps) → the
+  product cards' out-links and the /care hand-off → /care, with the back button, a
+  reload and a fresh tab at each step, at 360x800 under `ko` and `en`. The scan RESULT
+  card itself was not walked: it renders at `phase === "ready"`, which needs a camera
+  this container does not have, so the walk starts at the screen that state hands off
+  to. Measured on a **production build** (`npm run build` + `npx next start`), because
+  the dev server's StrictMode double-invokes effects and would have put its own noise
+  on exactly the counts in question.
+
+  **Bug fix — every page-view funnel event, doubled, in four of the five languages.**
+  `LanguageProvider` (`lib/i18n.tsx`) renders its children under
+  `<React.Fragment key={lang}>` and its `getServerSnapshot()` returns `"en"` so SSR
+  never flashes Korean. A client whose saved language is anything else hydrates as
+  `en`, `useSyncExternalStore` re-reads localStorage, the key changes, and React
+  unmounts and remounts the whole subtree. The remount is deliberate: `lib/i18n.tsx`'s
+  own docstring says it is there so "plain `t()` calls anywhere … pick up the new
+  language without subscribing to context", so it was not touched. *(Inferred, not
+  measured: that without the key React would bail out on a referentially identical
+  `children` element and leave those `t()` calls English. The docstring states the
+  purpose; this cycle did not test removing the key.)* What the remount also does,
+  and this part is measured, is recreate every `useRef` mount guard and re-run every
+  empty-deps `useEffect`. One `goto` per
+  row, counts read out of `aru_funnel_events_v1`:
+
+  | page | event | ko | ja | ar | en |
+  |---|---|---|---|---|---|
+  | `/` | `home_viewed` | **2** | **2** | **2** | 1 |
+  | `/scan` | `scan_opened` | **2** | **2** | **2** | 1 |
+  | `/survey` | `survey_viewed` | **2** | **2** | **2** | 1 |
+  | `/report` | `reco_viewed` | **2** | **2** | **2** | 1 |
+  | `/care` | `care_viewed` | **2** | **2** | **2** | 1 |
+  | `/checkin` | `checkin_opened` | **2** | **2** | **2** | 1 |
+  | `/#m=210` | `share_landed` | **2** | **2** | **2** | 1 |
+
+  **What it did and did not corrupt, checked rather than reasoned about.** Every row
+  above read `sessions=1`, and `summarizeFunnel`/`funnelDropoff` count DISTINCT
+  `sessionId`s per kind — so `steps` and every ratio built on it did not move. What did
+  move is every raw count: `funnelEventCount()`, `FunnelSummary.events`, the
+  `exportFunnelEvents()` CSV, anything `/api/sync` would ingest, and the rate at which
+  the `MAX_EVENTS` ring buffer evicts a device's oldest history. The bias is
+  language-correlated, which for a Korean-market product means the domestic users are
+  the inflated ones.
+
+  The fix is `recordPageView` in `lib/funnel.ts`: a module-scoped guard that lets a kind
+  through once per PATH VISIT rather than once per component mount, used by
+  `useFunnelPageView` and by the three call sites that carry their own ref
+  (`app/report/page.tsx`, `app/survey/page.tsx`, `app/components/mood-from-link.tsx`).
+  Scoped to the path and not to the session, because a genuine second view must still
+  count — under `en` a reload and a back/forward each record again, and suppressing
+  those would trade one wrong number for another. After the fix the same probe reads
+  **1 on every page in every one of ko / en / ja / ar**, and the `ko` and `en` walks are
+  identical row for row.
+
+  *Break-the-line, five edits, each re-run against the committed tree (`b3f05bc`) on a
+  freshly booted dev server and restored with `git checkout`:*
+
+  | edit | result | which named tests failed |
+  |---|---|---|
+  | base, no edit | **8 passed** | — |
+  | `useFunnelPageView` → `recordFunnelEvent` | **5 failed \| 3 passed** | the `/`, `/scan`, `/care`, `/checkin` cases and the share landing |
+  | `/report`'s `reco_viewed` → `recordFunnelEvent` | **2 failed \| 6 passed** | `/report records reco_viewed exactly once…`, `a genuine second view still counts…` |
+  | `/survey`'s `survey_viewed` → `recordFunnelEvent` | **2 failed \| 6 passed** | `/survey records survey_viewed exactly once…`, `a genuine second view still counts…` |
+  | `MoodFromLink`'s `share_landed` → `recordFunnelEvent` | **1 failed \| 7 passed** | `a share landing records share_landed and home_viewed once each…` |
+  | drop the `pageViewedHere.has(kind)` early return | **8 failed** | all eight |
+
+  `tests/e2e/funnel-page-view-once.regression-20.spec.ts`, 8 cases. The freshly booted
+  server matters and is worth writing down: a first attempt reverted each break with
+  the dev server still running, and HMR served the PREVIOUS break's code, so break 2
+  appeared to fail seven cases including ones it cannot touch. Those numbers were
+  discarded; the table above is the re-run.
+
+  **The rest of the walk, listed as checked.** All **264** `/api/out` links — 22 skus ×
+  4 merchants × 3 placements (`report_product`, `report_summary`, `care`) — requested
+  against a running server answer **302**, all to one of the four allowlisted hosts
+  (**66** each to `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
+  `www.coupang.com`, `www.google.com`), carrying the sku, merchant and placement the
+  route resolved in `utm_content`. **0** of the anchors and buttons on `/report`'s three
+  steps and on `/care` clips its own text or falls under a 44px tap target, in each of
+  `ko`, `en`, `ja`, `zh` and `ar`. `scrollWidth === clientWidth === 360` on every step,
+  reload, back, forward and fresh tab. `/report` in a fresh tab renders from
+  `aru_last_result` rather than dead-ending, and the survey's answers survive the back
+  button in both languages. `ALLOWED_HOSTS` was not touched and no affiliate id was
+  added.
+
+  **UI/UX — the compare row on `/report`'s picks step did not look like a control.**
+  It is a `<details>`, and its `<summary>` is `display: flex`, which is exactly the case
+  where Chromium paints no `::marker`; the inline style also set `listStyle: "none"`.
+  Measured before the fix on the picks step: `display` **flex**, `list-style-type`
+  **none**, **2** child spans — the label and the hint, no glyph of any kind — so the
+  one control that lets a user compare the three picks before choosing which to buy
+  rendered as a caption above the buy buttons. `.aru-details-marker`
+  (`app/globals.css`) now draws **↓** shut and **↑** open, driven off `details[open]`
+  so the glyph cannot disagree with the panel — the same affordance `/care`'s merchant
+  expander already carries. Measured after, in all five languages: glyph `"↓"` → `"↑"`,
+  marker box **308..319** in LTR and **41..52** under `ar` (the flex row puts it at the
+  inline end by itself, so unlike the forward arrows it needs no mirroring), summary box
+  **41..319 h=44** and page overflow **360/360** unchanged in both states.
+  `tests/e2e/compare-disclosure-affordance.regression-21.spec.ts`, 3 cases. *Breaks on
+  the committed tree:* dropping the `details[open]` rule → **3 failed**; dropping the
+  marker span from `app/report/page.tsx` → **3 failed**; base → **3 passed**.
+
+  **ML — the parity table's comparison census was wrong in prose and incomplete in
+  data.** `tests/index-parity.test.ts` said of `roughness_ratio` that "this group is
+  `comparison: \"divergent\"`, and every other group is `\"exact\"`". The committed
+  `ml/index-parity.json` did not support that on either count: `melanin_index` is
+  `"python-only"` (it has no second column to be exact against), and `shine_ratio`,
+  `blemish_count` and `tone_evenness` carried **no `comparison` key at all** — the key
+  was introduced for `roughness_ratio` in cycle 18 and the three that predate it were
+  never labelled. So of seven groups the label read: **2** `"exact"`, **1**
+  `"divergent"`, **1** `"python-only"`, **3** absent. Those three are labelled
+  `"exact"` now, which is what their rows already were — one value column each, already
+  asserted by both languages — and the census is **asserted in both languages** rather
+  than described, because the `melanin_index` docstring cycle 34 had to correct went
+  stale by being prose nobody executed. `python3 ml/selftest.py` goes **143 → 144**.
+  *Break on the committed tree:* removing `tone_evenness`'s label fails
+  `ml/selftest.py`'s `test_every_parity_group_declares_how_its_columns_relate`
+  (**FAILED (failures=1)**, `Ran 144 tests`) and `tests/index-parity.test.ts`'s
+  `recomputes every roughness_ratio row…` (**1 failed | 11 passed**). Chosen over the
+  other `[AI]` ML items in "Backlog > Now" for the reason cycle 35 gave and this cycle
+  re-checked: the blemish constants and `roughness_ratio`'s *which side moves* need
+  faces, the ordinal floor and `minQwkGainOverHeuristic` need a real training run, the
+  per-scan cost needs a phone, the `srgbLinear` table needs a phone profile, the
+  0.86/0.8614 pair needs the vision path measured against real readings, and the sRGB
+  breakpoint item says itself that nothing depends on moving it. **No published value
+  moved:** `lib/skin.ts` is untouched and every row's value is unchanged.
+
+  **Research — `useSyncExternalStore` and `key`, from React's own documentation
+  source.** Both passages are the mechanism above, read rather than recalled. (1)
+  `https://raw.githubusercontent.com/reactjs/react.dev/main/src/content/reference/react/useSyncExternalStore.md`,
+  **http=200, bytes=16561, sha256
+  `f4965c80f5655fa6f6fb222adeb42d5c5710a4cd17dabf62562650d694f1781e`**, fetched twice
+  and byte-identical (`cmp`). Line 359 and the two lines under it: *"The
+  `getServerSnapshot` function is similar to `getSnapshot`, but it runs only in two
+  situations: - It runs on the server when generating the HTML. - It runs on the client
+  during hydration…"* — which is why the first client render is `en` and the second is
+  the saved language. (2)
+  `https://raw.githubusercontent.com/reactjs/react.dev/main/src/content/learn/preserving-and-resetting-state.md`,
+  **http=200, bytes=55070, sha256
+  `086a8e55edfc73bdf432aa69d24861eadda6581d838636a12d109ca1316d9548`**, also
+  byte-identical on refetch. Line 1012: *"Specifying a `key` tells React to use the
+  `key` itself as part of the position, instead of their order within the parent. …
+  Every time a counter appears on the screen, its state is created. Every time it is
+  removed, its state is destroyed."* — which is why the key change destroys the subtree
+  and with it every mount guard. `reactjs.org` and `developer.mozilla.org` refuse this
+  network; `raw.githubusercontent.com` answers, as the Blockers section records.
+
+  **The `narrative` note on the RTL item is closed, with one correction.** Re-checked
+  here rather than taken on report: `app/api/analyze/route.ts:84` filters the LLM
+  `narrative` through `efficacyClean(...).ok` and substitutes `""` otherwise, and
+  `lib/skin.ts:689-693` returns the stored sentence only when `getLang() === "ko"`,
+  falling through to the `t()`-rebuilt template in every other language. The
+  correction: that path has **two** render sites, not one.
+  `grep -rn "\.narrative" app/ --include=*.tsx` returns exactly one line
+  (`app/report/page.tsx:245`), but `app/scan/result-card.tsx:93` calls
+  `localizedNarrative(reads)` with the whole reading and renders it too. Both go through
+  the same gate, so the conclusion holds on both screens; "only on `/report`" did not.
+
+  **Rotation.** Cycle 33's entry, **237 lines**, moved verbatim to the end of
+  `docs/autopilot-changelog.md`. `wc -l`: `docs/AUTOPILOT.md` **1719 → 1680**,
+  `docs/autopilot-changelog.md` **7325 → 7563**. The moved text was checked
+  byte-for-byte (the changelog ends with it exactly), and `sort -u` over both files
+  before and after gives **7728 → 7902** unique lines with `comm -23` (in the old pair,
+  not in the new) reporting **0**.
+
+  *Validation on this branch's final tree.* `npx vitest run` **786 passed in 98 files**
+  (the census assertion lands inside an existing case, so the count is unchanged);
+  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .` **0 errors, 2
+  warnings**, run on its own; `python3 ml/selftest.py` **Ran 144 tests ... OK**;
+  `npm run smoke` with the chromium override printed the literal line **`Smoke test
+  passed.`** with **177 passed (6.6m)** — the 166 of the baseline plus the eleven new cases.
+
+  *Supervisor review:* pending.
+
 - 2026-09-24 (cycle 35) — Branch `autopilot/2026-09-24-0639`. **Cycle 34 swept three
   screens under `ar` and opened an item for the six it had not touched. This is those
   six. Five blocks aligned or positioned themselves with a physical CSS keyword, and
@@ -1492,243 +1682,5 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `transform: scaleX(-1)`. It is correct to have, because a glyph has no logical form, but
   the sentence denied it existed. The sentence now names it. Same class of miss as
   cycles 31-33: a claim about another file, made without grepping it.
-
-  *Validation on the corrected tree:* see the PR body for the literal output.
-
-- 2026-09-23 (cycle 33) — Branch `autopilot/2026-09-23-1839`. **The shape check cycle 32
-  put on the survey was missing one key over, and this time the screen died during render
-  rather than in an effect. Two of the four screens that read it turned out not to break
-  at all, and that is written down with the inputs rather than guarded away. The harness
-  every blemish number in this backlog rests on was failing on the clock, not on a number.
-  And on `/care` the link that earns had less affordance than the clinic link that does
-  not.**
-
-  **Baselines, measured here on a clean tree at `a27b202` before any edit.** `node_modules`
-  was absent, so `npm ci` first. `npx vitest run` **755 passed in 97 files**,
-  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
-  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 142 tests in 2.620s ... OK**, and `npm run smoke` with the chromium override at
-  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** They match the
-  supervisor's.
-
-  **Bug fix — `gyeol_reads`, and the two screens that did NOT need guarding.** Measured
-  against the UNCHANGED code first, in Chromium at 360px, with a valid `gyeol_survey` in
-  place so cycle 32's guard never fired:
-  `tests/e2e/reads-shape.regression-17.spec.ts` under `playwright.mobile.config.ts`,
-  **13 failed | 39 passed (52)**. Twelve wrong `gyeol_reads` shapes across `/report`,
-  `/care` and `/studio`, six wrong `gyeol_scan` shapes across `/report` and `/survey`,
-  and two mirror cases. What broke:
-
-  | `gyeol_reads` holds | /report | /care | /studio |
-  |---|---|---|---|
-  | `5`, `"abcdef"`, `{}`, `true`, `[]`, string buckets | ✘ (6) | ✓ (6) | ✓ (6) |
-  | an oil bucket and nothing else | ✘ | ✓ | **✘** |
-  | everything but `overall` | ✘ | ✓ | **✘** |
-  | `signals: [5]` | ✘ | ✓ | ✓ |
-  | `extras: [5]`, `retakeReasons: [5]`, `source: "made-up"` | ✓ (3) | ✓ (3) | ✓ (3) |
-
-  So **nine of the twelve took `/report`, two took `/studio`, and none took `/care`.**
-  `/report` throws during RENDER, not inside the mount effect the survey bug lived in —
-  `analysisRows` tests `reads` for truthiness and then indexes `reads.oil.value`, so `5`
-  and `"abcdef"` sail through:
-
-  ```
-  TypeError: Cannot read properties of undefined (reading 'value')
-      at Report (app/report/page.tsx:200:55)
-  > 200 | ..."유분"), reads.oil, explain("oil", reads.oil.value)] as [string, { value: string; calm...
-  ```
-
-  Plus the two cases outside the loop: `/report` fell into `app/error.tsx` on a `reads: 5`
-  already sitting in `localStorage["aru_last_result"]`, and it mirrored a wrong-shaped
-  `reads` into that key on the way past, because `saveLastResult` runs before the render
-  that throws — the same third read cycle 32 found for the survey.
-
-  **What did not break is on record rather than guarded.** `/care` parses `reads` and
-  hands it to `careSummary(survey, _reads, _result)`, which reads neither underscored
-  parameter — those two are the baseline's two eslint warnings — so nothing on that page
-  renders a field of `reads`, and **no `/care` reads guard was added**; the twelve rows
-  above are the inputs tried. `gyeol_scan` is the same: **twelve cases, all green** —
-  `5`, `"abcdef"`, `{}`, `true`, `[]` and `{"oil":"x","redness":0,"pores":0}` on both
-  `/report` and `/survey`, so **no scan guard was added either**, which extends the
-  supervisor's `recommend()` measurement to `loadScanHint`'s property reads and
-  comparisons. `/studio`'s existing `scan?.oil?.value` test already rejects everything
-  except a PARTIAL reading, which passes it and then throws at `scan.pores.value`.
-
-  The guard is `isSkinReads` in `lib/last-result.ts`, at three reads (`/report`'s parse,
-  `/studio`'s parse, `loadLastResult`). Structural only, the rule `isSurvey` set: `source`
-  and `confidenceLabel` are checked for `typeof === "string"` and NOT for membership,
-  because a reading whose source string this build no longer knows still renders
-  (`SOURCE_LABEL[source]` is undefined and the chip comes out empty — measured, row 12).
-  All four buckets are checked because `/report` renders all four; `signals` is checked
-  element by element because `signalCheck` calls `signal.label.includes`; `extras` and
-  `retakeReasons` get `Array.isArray` and no more, because their elements were measured
-  not to break anything. It lives in `lib/last-result.ts` and not beside the type so that
-  `/care` and `/studio`, which import `SkinReads` as a type only, do not pull
-  `lib/skin.ts`'s 67,485 bytes into their client bundles for a shape check.
-  `loadLastResult` DROPS a wrong-shaped `reads` and keeps the record rather than rejecting
-  it: the survey is still good and the report still renders without a reading.
-  With the guard the same spec is **52 passed**.
-
-  *Break-the-line, three guards, three separate runs of the same 52-case spec:*
-
-  | guard removed | result | what failed |
-  |---|---|---|
-  | `app/report/page.tsx` | **10 failed \| 42 passed** | the nine `/report` reads cases and the mirror check |
-  | `app/studio/page.tsx` | **2 failed \| 50 passed** | the two partial-object `/studio` cases only |
-  | `lib/last-result.ts` | **1 failed \| 51 passed** | the mirrored-copy case only |
-
-  The third, run over all of `tests/` instead, is **3 failed | 781 passed (784)**: the two
-  named cases in `tests/skin-reads-shape.test.ts` — `drops a wrong-shaped reads and still
-  returns the survey` and `drops a partial reads that the old optional-chain test let
-  through` — plus one unrelated timeout, which became this cycle's ML item.
-  `docs/reads-shape-probe.md`.
-
-  **Research (자료조사) — the new spread in `loadLastResult`, from the specification's own
-  source.** Asked because the fix rebuilds a record as `{ ...record, reads: null }` from a
-  `JSON.parse`d value, and because `isSkinReads` uses `Number.isFinite` on a field that
-  arrives out of a device store.
-
-  ```
-  --- https://raw.githubusercontent.com/tc39/ecma262/main/spec.html
-  http=200 bytes=3087902
-  sha256 17e1fe359da75a82ae164014e1c862287cbe2ffdc8297d45bcf6068c007a69af
-  ```
-
-  **`Number.isFinite`** is "*If `number` is not a Number, return `false`*" before it is
-  anything else, so a `confidence` arriving as the string `"0.82"` is rejected rather than
-  coerced — the global `isFinite` accepts it. **PropertyDefinitionEvaluation** has a
-  ParseJSON branch that sets `isProtoSetter` to `false`, so `"__proto__"` inside a stored
-  JSON is an ordinary own data property and not a prototype assignment.
-  **CopyDataProperties**, the operation object spread runs, ends each key with "*Perform !
-  CreateDataPropertyOrThrow(`target`, `nextKey`, `propertyValue`)*" — CreateDataProperty
-  and not Set, so copying that own key forward does not invoke the
-  `Object.prototype.__proto__` setter either. Checked against the engine as well as the
-  text, node v22.22.2: `prototype unchanged: true`, `spread prototype unchanged: true`,
-  `({}).polluted after spread: undefined`, `Number.isFinite("0.82"): false` against
-  `isFinite("0.82"): true`. Both are asserted in `tests/skin-reads-shape.test.ts`.
-  *Not established:* anything about the round-trip beyond these three clauses.
-
-  **ML — the harness every blemish number rests on was failing on the clock.**
-  `tests/blemish-perturbation-tolerance.test.ts` is where both the plateau item and the
-  `srgbLinear` item get their a* error and certified radius. Its case `measures the
-  certified radius and the achieved one, at every frame size` declared no timeout, so it
-  ran against vitest's 5000 ms default (`vitest.config.ts` sets no `testTimeout`). Wall
-  time over eight verbose runs: **4844, 4845, 4864, 4880, 4908, 4962, 4989 and
-  5039 ms**. It failed three times before the fix — one of a standalone batch of eight,
-  the first attempt of a second standalone batch, and one full-suite run — The one failure whose output was captured is
-  **`Error: Test timed out in 5000ms`**, raised on the `it(...)` line and not on an
-  assertion; the other two were recorded only as a count and a name, so that holds for
-  the captured one and is an inference for the other two — raising only the clock took
-  the case to 10 of 10, which a flaky assertion would not do. No certified number was
-  ever observed to differ. That case and `keeps its error under the noise bound
-  every margin above is divided by` (3536 and 3675 ms, the next one at risk) now carry
-  `{ timeout: 120_000 }`, the convention the same file's `{ timeout: 300_000 }` case and
-  `tests/cheek-clipping-signal.test.ts:296` already use. **10 of 10 standalone runs green
-  after.** One repo-wide verbose run reported exactly three cases at or above 2500 ms —
-  those two and `cheek-clipping-signal`'s 6472 ms one, which already declared a timeout.
-  It was chosen over the `[AI]` ML items in "Now" that were read
-  for this cycle — the blemish-constant calibration and the ordinal floor need a labelled
-  export, the 0.86 cap needs real vision confidences, the share-preview fork needs an
-  owner call, and `srgbLinear` cannot land without moving `toneSpread`, which this cycle
-  is forbidden to touch; the rest of the section was not read item by item — and because a certification harness that goes red on a slow machine is what makes the next
-  cycle distrust its own evidence. *Not established:* why the case sits so close to
-  5000 ms; nothing was profiled or made faster, and the sweep is one run on this
-  container. The plateau item's product question is untouched.
-
-  **UI/UX — on `/care` the link that earns had less affordance than the link that does
-  not.** Found by running the app in Chromium at 360px and then grepping the style objects
-  rather than reading the screenshot for them. A DOM sweep of `/`, `/report`, `/care` and
-  `/checkin` in ko and en found **no horizontal overflow** (`scrollWidth 360` against
-  `clientWidth 360` on all eight) and, in ko, **no interactive element under 44x44** on any
-  of the four, so the defect is not layout. It is hierarchy: `app/care/page.tsx:255` `linkBtn`,
-  the `/api/out` merchant button, is `background: "var(--paper)"` with `1px solid
-  var(--line)` and no arrow, while `app/care/page.tsx:257` `clinicBtn` on the SAME page is
-  the same `var(--paper)` box with the same `var(--line)` border and carries a
-  `.aru-dir-arrow` `→` in `var(--plum)` at 18px. So the two rows are painted alike and the
-  one with the go-signal is the clinic link, which earns nothing. (Grepped, not assumed:
-  the filled `var(--plum)` / `var(--on-plum)` treatment is `product-card.tsx:111` and,
-  since cycle 32, `report/page.tsx:548`; `/care` uses it on neither.) The fix gives the
-  FIRST merchant link — `productSearchLinks` sorts by priority and that one is what shows
-  while the list is collapsed — the same arrow `clinicBtn` uses, one per product card,
-  laid out as `clinicBtn` lays it out (row, `space-between`). The alternates behind
-  "다른 판매처 보기" keep the quieter box, so the hierarchy inside the card still reads, and
-  no new colour was introduced. *Break-the-line:* with the arrow removed, the new case in
-  `tests/e2e/mobile-layout.spec.ts` fails **`ko: the primary merchant link has no
-  go-arrow`** — `1 failed`. *Not established:* whether the arrow moves any click; there is
-  no traffic to read, and `viralActivation` still has no baseline.
-
-  **The new case went red once, in the first full smoke run, and the test was wrong rather
-  than the page.** `Error: ko: no merchant button on /care ... Expected: > 0, Received: 0`:
-  it counted the merchant buttons straight after `document.fonts.ready`, which does not
-  wait for the mount effect that builds the picks, and the saved page snapshot shows the
-  section header painted with the product rows not yet in it. The count now runs after an
-  auto-waiting `toBeVisible()` on the first merchant button. Three consecutive runs of the
-  whole file after the change: **7 passed** each time, and the break-the-line above was
-  re-run against the corrected locator and still fails on the same message.
-
-  *Validation on the final tree.* `npx vitest run` **786 passed in 98 files**,
-  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npx eslint .` **0 errors,
-  2 warnings** (the same two, run on its own), `python3 ml/selftest.py` **Ran 142 tests in
-  2.495s ... OK**, and two consecutive `npm run smoke` runs with the chromium override,
-  the second reporting vitest leg **786 passed (98 files)**, Playwright leg **156 passed
-  (7.7m)**, then **`Smoke test passed.`** The e2e count moves 103 → 156: the 52-case
-  `reads-shape.regression-17` spec plus the one new `mobile-layout` case. The 103 is the
-  supervisor's figure, not one measured here — the baseline smoke run's per-leg counts
-  were not captured.
-
-  *Rotation.* AUTOPILOT 1688 → 1744 and the changelog 6618 → 6781, cycle 30's 162 lines
-  moved verbatim to the end of the changelog. `sort -u` over both files before and after
-  and `comm -23` old against new finds **0 lines missing**. "Recent cycles" holds 33/32/31.
-  `README.md` is unchanged: cycle 32's probe doc is not listed there either, so
-  `docs/reads-shape-probe.md` follows it.
-
-  *Scope held.* `lib/skin.ts`, `lib/consent.ts`, `public/models/visible-attributes/manifest.json`
-  and `shareUrl` are untouched; `blemishCount` and `toneSpread` report exactly what they
-  reported; `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere; no dependency added.
-
-  **Supervisor review.** Sound, and the claims audit the brief asked for held up: one
-  count in the probe doc was stale, and nothing went past its own table this time.
-
-  *Predicted before the branch existed, then checked.* A throwaway vitest on `a27b202`
-  gave `recommend(survey, scan)` the same `picks=3 top=sr1` for a valid scan, `null`, and
-  seven wrong shapes (`5`, `{}`, `"abc"`, `[]`, `true`, `{oil:"x",...}`, `{oil:null,...}`),
-  so the brief told the worker not to guard scan on a crash claim. Reading `/report`
-  then predicted three things without running them: a render-time throw at
-  `reads.oil.value`, the mirror into `aru_last_result`, and `[]` throwing too. All three are
-  in the worker's measured table, and no scan guard was added.
-
-  *Reproduced.* With the four app files put back to `a27b202` and the new spec kept,
-  `reads-shape.regression-17.spec.ts` under `-c playwright.mobile.config.ts` gives
-  `13 failed` / `39 passed (3.3m)`, the worker's pre-fix figure exactly. Against its
-  table, that is nine `/report` rows, two `/studio` rows and the two `aru_last_result`
-  cases outside the loop.
-
-  *Guards broken at their source lines against `tests/skin-reads-shape.test.ts`:*
-  - Dropping `reads.signals.every(isConfidenceSignal)` → `2 failed | 29 passed (31)`,
-    both named "signals".
-  - Dropping `isBucket(reads.overall)` → `1 failed | 30 passed (31)`, "rejects a missing
-    overall bucket".
-  - Replacing `loadLastResult`'s ternary with `return parsed as LastResult;` →
-    `3 failed | 28 passed (31)`. The probe doc said two; the third is the `__proto__`
-    case, whose first assertion is that a stored `reads: 5` comes back `null`.
-    Corrected in `docs/reads-shape-probe.md`. The entry above is right for the run it
-    reports (784 tests, before that case existed).
-
-  *Could the guard reject a real reading?* Every field `isSkinReads` requires is
-  non-optional in the `SkinReads` type, and each one (`signals`, `source`,
-  `retakeRecommended`, `retakeReasons`, `confidenceLabel`, `headline`, `Bucket.level`) was
-  first added in `c991886` (2026-07-10). `lib/last-result.ts` did not exist until
-  `7419b54` (2026-07-16), so no stored `aru_last_result` predates those fields, and
-  "accepts the reading analyzeSkin produces" covers a live reading.
-
-  *The two timeouts.* This is not a weakened test: only the clock moved, and the
-  assertions are unchanged. On this container the two cases ran in 2807ms and 1937ms. The
-  worker's 4844-5039ms is its own machine under load, so "failing on the clock" is
-  container-dependent rather than a property of the code.
-
-  *UI.* The `/care` arrow change was read, not measured here. It adds `primaryLinkBtn`,
-  a new layout on the existing `linkBtn` box, and reuses the `--plum` arrow that
-  `clinicBtn` rows already carry. No new colour, and the claim in its comment was checked
-  against the file.
 
   *Validation on the corrected tree:* see the PR body for the literal output.

@@ -349,6 +349,20 @@ reporting period, counting duplicate events in a session once. The camera
 journey and the questionnaire-only journey are never forced into a single
 linear funnel.
 
+That session-set rule is also what contained a defect found on 2026-09-24: until
+then a page-view event was recorded TWICE on every hard page load for any visitor
+whose saved language was not English, and once for English. `LanguageProvider`
+remounts its subtree when the saved language resolves after hydration — deliberately,
+so plain `t()` calls pick up the language — and the remount recreated the mount guards
+that were supposed to make each view fire once. Because every rate above counts
+distinct sessions, none of them moved; the raw counts did, which means
+`funnelEventCount()`, the event CSV export, anything ingested through `/api/funnel`
+and the rate at which the 1,000-entry ring buffer evicts old events were all inflated
+for non-English visitors and not for English ones. Page views now go through
+`recordPageView` (`lib/funnel.ts`), which admits one event per kind per path visit
+while still counting a genuine re-view after a reload or a back/forward.
+`tests/e2e/funnel-page-view-once.regression-20.spec.ts` holds both halves.
+
 | Metric | Definition | Target |
 |---|---|---|
 | Scan completion | Completed sessions among scan-started sessions | ≥ 70% |
