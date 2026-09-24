@@ -6,12 +6,14 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { moodSummary, readMoodFromHash, type MoodLevels } from "@/lib/share-link";
-import { recordFunnelEvent } from "@/lib/funnel";
+import { recordPageView } from "@/lib/funnel";
 import { t } from "@/lib/i18n/core";
 
 export function MoodFromLink() {
   const [mood, setMood] = useState<MoodLevels | null>(null);
   // StrictMode double-invokes effects in dev. Same guard as app/survey/page.tsx.
+  // The ref alone is not enough: LanguageProvider remounts this subtree at hydration
+  // for every saved language but `en`, which recreates it — hence recordPageView.
   const landingRecorded = useRef(false);
 
   useEffect(() => {
@@ -22,10 +24,10 @@ export function MoodFromLink() {
     // counted arrivals, so the loop had no denominator and no UX cycle could tell
     // whether a change to the share surface did anything. Reads the hash already
     // parsed above — no new network call, nothing extra leaves the device, and
-    // recordFunnelEvent swallows its own storage failures.
+    // recordPageView, and recordFunnelEvent beneath it, swallow their own storage failures.
     if (arrived && !landingRecorded.current) {
       landingRecorded.current = true;
-      recordFunnelEvent("share_landed");
+      recordPageView("share_landed");
     }
   }, []);
 

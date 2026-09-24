@@ -157,6 +157,71 @@ export function recordFunnelEvent(kind: FunnelEventKind, props?: FunnelProps): F
 }
 
 /**
+ * A page-view event, recorded once per visit to a path rather than once per mount.
+ *
+ * The distinction is not pedantic, it is a measured defect. `LanguageProvider`
+ * (`lib/i18n.tsx`) renders its children under `key={lang}`, and `getServerSnapshot()`
+ * returns `"en"` so that SSR never flashes Korean. A client whose saved language is
+ * anything else therefore hydrates as `en`, re-reads localStorage, changes that key,
+ * and React UNMOUNTS and REMOUNTS the whole subtree. The remount is deliberate — it is
+ * what makes plain `t()` calls pick up the saved language without subscribing to
+ * context — but it resets every `useRef` guard and re-runs every empty-deps
+ * `useEffect`, so each page-view event fired a second time.
+ *
+ * Measured on a production build at 360x800, one `goto` per row, counts read out of
+ * `aru_funnel_events_v1`:
+ *
+ *   /         home_viewed      ko 2  ja 2  ar 2  |  en 1
+ *   /scan     scan_opened      ko 2  ja 2  ar 2  |  en 1
+ *   /survey   survey_viewed    ko 2  ja 2  ar 2  |  en 1
+ *   /report   reco_viewed      ko 2  ja 2  ar 2  |  en 1
+ *   /care     care_viewed      ko 2  ja 2  ar 2  |  en 1
+ *   /checkin  checkin_opened   ko 2  ja 2  ar 2  |  en 1
+ *   /#m=210   share_landed     ko 2  ja 2  ar 2  |  en 1
+ *
+ * So the inflation is language-correlated, and `en` — the one language that cannot
+ * trigger it, because it is what the server already rendered — is the only one that
+ * was ever right. For a Korean-market product that is every domestic user.
+ *
+ * What it did and did not corrupt, both checked rather than reasoned about:
+ * `summarizeFunnel` and `funnelDropoff` count DISTINCT `sessionId`s per kind, so a
+ * duplicate inside one session does not move `steps` or any ratio built on it — the
+ * probe above read `sessions=1` on every doubled row. What it does move is every raw
+ * count: `funnelEventCount()`, `FunnelSummary.events`, the `exportFunnelEvents()` CSV,
+ * anything `/api/sync` would ingest, and the rate at which the MAX_EVENTS ring buffer
+ * evicts a device's oldest history.
+ *
+ * The guard is scoped to the path rather than to the session, because a genuine second
+ * view must still count: back from /report to /survey and forward again records a
+ * second `survey_viewed` and a second `reco_viewed` under `en` too, and suppressing
+ * those would trade one wrong number for another. The remount happens with no
+ * navigation between it and the first mount, which is exactly what this distinguishes.
+ * A reload or a fresh tab is a new document and so a new module scope, and records
+ * again — as it should.
+ *
+ * Pinned by tests/e2e/funnel-page-view-once.regression-20.spec.ts.
+ */
+const pageViewPath = { current: null as string | null };
+const pageViewedHere = new Set<FunnelEventKind>();
+
+export function recordPageView(kind: FunnelEventKind, props?: FunnelProps): FunnelEvent | null {
+  if (typeof window === "undefined") return null;
+  let path = "";
+  try {
+    path = window.location.pathname;
+  } catch {
+    /* same defensive posture as recordFunnelEvent: analytics never breaks a render */
+  }
+  if (pageViewPath.current !== path) {
+    pageViewPath.current = path;
+    pageViewedHere.clear();
+  }
+  if (pageViewedHere.has(kind)) return null;
+  pageViewedHere.add(kind);
+  return recordFunnelEvent(kind, props);
+}
+
+/**
  * The two fields every counter below actually reads.
  *
  * Both `summarizeFunnel` and `funnelDropoff` count SESSIONS per kind; neither has ever

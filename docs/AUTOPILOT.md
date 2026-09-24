@@ -686,6 +686,21 @@ partly done and stays here.
   (`mergeVisionAnalysis`) can put LLM-written text into a reading, that text is not a
   dictionary key, and no sweep here exercised it — so "no Korean leaks" is a statement
   about the strings this build composes, not about every string a user can see.
+  **2026-09-24, cycle 36: this note is closed, with one correction to the reading that
+  closed it.** Re-checked here rather than taken on report. The LLM `narrative` is
+  filtered server-side — `app/api/analyze/route.ts:84` is
+  `typeof payload.narrative === "string" && efficacyClean(payload.narrative).ok ?
+  payload.narrative : ""`, so an unclean narrative becomes the empty string before it
+  ever reaches a reading. It is rendered only through `localizedNarrative`
+  (`lib/skin.ts:689-693`), whose first line is
+  `if (getLang() === "ko" && reads.narrative && /[가-힣]/.test(reads.narrative)) return
+  reads.narrative;` — so the stored sentence is returned only under `ko`, and every
+  other language falls through to the template rebuilt from the bucket levels through
+  `t()`. **The correction:** that path has TWO render sites, not one.
+  `grep -rn "\.narrative" app/ --include=*.tsx` returns exactly one line,
+  `app/report/page.tsx:245`, but `app/scan/result-card.tsx:93` calls
+  `localizedNarrative(reads)` with the whole reading and so renders it too. Both go
+  through the same gate, so the conclusion holds on both; "only on /report" did not.
   **2026-09-24, cycle 35: the six screens are measured and the item is now `[~]` for
   the two blocks a camera-less container cannot reach.** All six rendered under `en`,
   `ja`, `zh` and `ar` at 360x800 — 24 renders, **0 Korean characters**, **0

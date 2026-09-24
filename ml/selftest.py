@@ -1362,6 +1362,45 @@ class PromotionGate(unittest.TestCase):
             model_contract.FALLBACK_ORDINAL_GATE.clear()
             model_contract.FALLBACK_ORDINAL_GATE.update(original)
 
+    def test_every_parity_group_declares_how_its_columns_relate(self):
+        """The comparison census, asserted in both languages rather than described.
+
+        `comparison` was introduced in cycle 18 for `roughness_ratio`, the one group
+        whose two columns are NOT meant to match. The three groups that predate the key
+        — shine_ratio, blemish_count, tone_evenness — carried it on neither side, so a
+        reader could not tell an unlabelled group apart from one nobody had checked,
+        and a comment in tests/index-parity.test.ts asserted in prose that every group
+        but roughness_ratio was "exact", which the table did not support: melanin_index
+        is "python-only" and three groups had no label at all. They are labelled now —
+        one value column each, asserted by this file and by the TypeScript side — and
+        the census is pinned here so the next drift fails a test instead of surviving
+        as a sentence.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            {name: group.get("comparison") for name, group in table["indices"].items()},
+            {
+                "melanin_index": "python-only",
+                "shine_ratio": "exact",
+                "blemish_count": "exact",
+                "roughness_ratio": "divergent",
+                "relative_redness": "exact",
+                "ita": "exact",
+                "tone_evenness": "exact",
+            },
+        )
+        self.assertEqual(table["primitives"]["rgb_to_lab"].get("comparison"), "tolerance")
+        # Every registry index has a group, so the census covers the registry and not
+        # just whatever happens to be in the file.
+        self.assertEqual(sorted(table["indices"]), sorted(index.id for index in skin_indices.INDICES))
+        # Exactly one group is the divergent pair, and it is the one whose rows carry
+        # two columns; every "exact" group carries one.
+        divergent = [name for name, group in table["indices"].items() if group.get("comparison") == "divergent"]
+        self.assertEqual(divergent, ["roughness_ratio"])
+        for row in table["indices"]["roughness_ratio"]["rows"]:
+            self.assertIn("app", row)
+            self.assertIn("python", row)
+
     def test_a_non_finite_score_blocks_rather_than_slipping_past_the_comparison(self):
         """`float("nan") < 0.4` is False, so NaN would otherwise clear the floor.
 

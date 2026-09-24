@@ -80,6 +80,7 @@
       "featureKey": "shine",
       "formula": "shine = tzoneSpecular + max(0, (tzoneL - cheekL) / (cheekL || 1)) * (140 / 255)",
       "covers": "formula and path",
+      "comparison": "exact",
       "rows": [
         {
           "kind": "face",
@@ -312,6 +313,7 @@
       "pythonFunction": "ml/skin_indices.py :: blemish_density",
       "formula": "blemishDensity = count / max(sampledAreaPx / faceWidthPx^2, 1e-6)",
       "covers": "formula only; validCells * stride^2 and the face-box width are not exported fields",
+      "comparison": "exact",
       "rows": [
         {
           "note": "one face at 400x480, 6 blemishes",
@@ -961,6 +963,7 @@
       "featureKey": "toneSpread",
       "formula": "toneSpread = stdev(regionLstars) / abs(mean(regionLstars)), 0 when n < 2 or abs(mean) < 1e-6",
       "covers": "formula only; the region L* inputs are not an exported field",
+      "comparison": "exact",
       "rows": [
         {
           "note": "even face, mid tone",

@@ -142,3 +142,22 @@ html[dir="rtl"] .aru-flow-steps__arrow {
     display: none;
   }
 }
+
+/* Disclosure affordance for a <details> whose <summary> is a flex row.
+   Chromium paints no ::marker on a summary with `display: flex`, so the
+   comparison row on /report carried no sign that it opened at all — it read as
+   a caption above the buy buttons. This draws the same ↓/↑ the /care merchant
+   expander uses for the same job, and swaps it from the open state so the glyph
+   never disagrees with the panel. Vertical, so it needs no RTL mirroring. */
+.aru-details-marker {
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.aru-details-marker::after {
+  content: "↓";
+}
+
+details[open] > summary .aru-details-marker::after {
+  content: "↑";
+}
