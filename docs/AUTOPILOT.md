@@ -1229,7 +1229,37 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on the final tree:* see the PR body for the literal output.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound. The claims audit held on everything checked. The one
+  correction is a README sentence that contradicted `app/globals.css`.
+
+  *Predicted by reading, before the branch existed.* Two things. First, the RTL arrow
+  glyphs are already mirrored by `html[dir="rtl"] .aru-dir-arrow, .aru-flow-steps__arrow`,
+  so cycle 33's `/care` arrow should flip correctly. Second, product cards show price only
+  through `t(budgetBand(...))`, so a currency-format defect on them is unlikely. Neither
+  prediction is contradicted: the worker found no arrow or currency defect. The two real
+  RTL defects it found were ones I had not predicted, the physical `left` in the compare
+  table's sticky column and in the routine lane.
+
+  *Re-derived here.* A throwaway vitest over the four dictionaries gives `en: entries=911
+  mismatches=0`, `ja: 907 / 0`, `zh: 907 / 0` and `ar: 911 / 0` for `{placeholder}`
+  token sets. That is the worker's 3,636 entries and 0 mismatches exactly. The twelve
+  `melanin_index` rows were recomputed from `100*log10(100/max(L*,1.0))` in a separate
+  interpreter, and every value matches to the last digit.
+
+  *Breaks re-run on the committed tree*, against `rtl-logical-inset.regression-18.spec.ts`
+  under `-c playwright.mobile.config.ts`. Putting `stickyCol` back to `left: 0` gives
+  `1 failed` / `3 passed`. Putting `RoutineHalf`'s three logical properties back to
+  `paddingLeft` / `left` / `borderLeft` gives `1 failed` / `3 passed`. Both match the
+  worker's table.
+
+  *Corrected before merge — `README.md`.* The draft said RTL "is built on CSS logical
+  properties … not on per-direction overrides". `app/globals.css:120-121` is exactly one
+  such override: `html[dir="rtl"]` mirroring the two arrow classes with
+  `transform: scaleX(-1)`. It is correct to have, because a glyph has no logical form, but
+  the sentence denied it existed. The sentence now names it. Same class of miss as
+  cycles 31-33: a claim about another file, made without grepping it.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
 
 - 2026-09-23 (cycle 33) — Branch `autopilot/2026-09-23-1839`. **The shape check cycle 32
   put on the survey was missing one key over, and this time the screen died during render
