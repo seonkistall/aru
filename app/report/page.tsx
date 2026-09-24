@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { budgetLabel, isSurvey, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
-import { recordFunnelEvent } from "@/lib/funnel";
+import { recordFunnelEvent, recordPageView } from "@/lib/funnel";
 import { isSkinReads, loadLastResult, saveLastResult } from "@/lib/last-result";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
@@ -130,7 +130,7 @@ export default function Report() {
     setResult(next?.result ?? null);
     setLoaded(true);
     /* eslint-enable react-hooks/set-state-in-effect */
-    if (next) recordFunnelEvent("reco_viewed", { scanApplied: next.result.scanApplied, picks: next.result.picks.length });
+    if (next) recordPageView("reco_viewed", { scanApplied: next.result.scanApplied, picks: next.result.picks.length });
   }, []);
 
   useEffect(() => {
@@ -324,7 +324,7 @@ export default function Report() {
 
         {step === "routine" && (
         <details open style={card}>
-          <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+          <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none", gap: 10 }}>
              <h2 style={sectionLabel}>{t("오늘부터 가볍게 시작할 루틴")}</h2>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("아침 {am} · 저녁 {pm}단계", { am: result.routine.am.length, pm: result.routine.pm.length })}</span>
           </summary>
@@ -365,9 +365,17 @@ export default function Report() {
 
             {result.picks.length >= 2 && (
               <details style={{ ...card, marginTop: 16 }}>
-                <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none" }}>
+                <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none", gap: 10 }}>
                   <span style={sectionLabel}>{t("추천 제품 비교")}</span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("예산대, 용량, 주요 성분을 비교해 보세요.")}</span>
+                  {/* The hint and the disclosure glyph travel together so the summary
+                      stays a two-item space-between row. `.aru-details-marker` draws ↓
+                      when shut and ↑ when open (app/globals.css) — a <summary> with
+                      `display: flex` gets no ::marker from the browser, so without this
+                      the row looked like a caption rather than something that opens. */}
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span>{t("예산대, 용량, 주요 성분을 비교해 보세요.")}</span>
+                    <span className="aru-details-marker" aria-hidden />
+                  </span>
                 </summary>
                 <div style={{ marginTop: 12 }}>
                   <ProductCompare picks={result.picks} />

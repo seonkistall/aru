@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FlowSteps } from "@/app/components/flow-steps";
-import { recordFunnelEvent } from "@/lib/funnel";
+import { recordFunnelEvent, recordPageView } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 import { t } from "@/lib/i18n/core";
@@ -65,7 +65,7 @@ export default function Survey() {
   useEffect(() => {
     if (!surveyViewRecorded.current) {
       surveyViewRecorded.current = true;
-      recordFunnelEvent("survey_viewed");
+      recordPageView("survey_viewed");
     }
     // sessionStorage is client-only; reading it in the initial render caused an
     // SSR hydration mismatch, so the one-time post-mount cascade is intentional.

@@ -147,8 +147,19 @@ const DENSITY_INPUTS: Array<[string, number, number, number]> = [
 
 /**
  * Inputs for the roughness_ratio rows, which are a different KIND of row and the table
- * says so: this group is `comparison: "divergent"`, and every other group is
- * `"exact"`.
+ * says so: this group is the only `comparison: "divergent"` one.
+ *
+ * This comment used to read "and every other group is `\"exact\"`", which the committed
+ * table did not support on either count. `melanin_index` is `"python-only"` — it has no
+ * second column to be exact against — and `shine_ratio`, `blemish_count` and
+ * `tone_evenness` carried no `comparison` key at all, because the key was introduced for
+ * this group in cycle 18 and the three that predate it were never labelled. They are
+ * labelled `"exact"` now, which is what their rows already were: one value column each,
+ * asserted by both languages. The census across all seven index groups is therefore
+ * five `"exact"`, one `"divergent"` and one `"python-only"`, and `primitives.rgb_to_lab`
+ * is the separate `"tolerance"` one. That census is asserted below and in
+ * `ml/selftest.py`, rather than left as prose, because the `melanin_index` docstring
+ * cycle 34 had to correct went stale by being prose nobody executed.
  *
  * The two implementations of the dryness axis do not agree, measured 2026-09-19:
  * `ml/skin_indices.py:roughness_ratio` is `region_highfreq / max(reference_highfreq,
@@ -559,6 +570,23 @@ describe("cross-language index parity table", () => {
     // a pair that DISAGREES rather than waiting for someone to decide which is right.
     expect(roughnessRows.length, "ml/index-parity.json has no roughness_ratio group").toBe(ROUGHNESS_INPUTS.length);
     expect(roughnessGroup.comparison).toBe("divergent");
+    // The census, asserted rather than described. Every group declares how its two
+    // columns are meant to relate, so "this one is the divergent one" is checkable
+    // instead of being a sentence that can go stale while the table moves.
+    expect(
+      Object.fromEntries(
+        Object.entries(parity.indices as Record<string, { comparison?: string }>).map(([id, group]) => [id, group.comparison]),
+      ),
+    ).toEqual({
+      shine_ratio: "exact",
+      tone_evenness: "exact",
+      blemish_count: "exact",
+      roughness_ratio: "divergent",
+      relative_redness: "exact",
+      melanin_index: "python-only",
+      ita: "exact",
+    });
+    expect(parity.primitives.rgb_to_lab.comparison).toBe("tolerance");
     expect(roughnessGroup.featureKey).toBe("roughnessRatio");
     for (const row of roughnessRows) {
       const computed = roughnessRatio(row.cheekHf, row.foreheadHf);
