@@ -386,10 +386,17 @@ used externally as if they proved purchases, efficacy or failure prevention.
 - EN/JA/ZH headings switch automatically to Pretendard for readability.
 - There are no runtime font CDN requests.
 - Supported languages: **English (default)**, Korean, Japanese, Simplified
-  Chinese and Arabic with a full right-to-left layout. Korean source strings
+  Chinese and Arabic with a right-to-left layout. Korean source strings
   are the message ids; stored values stay Korean-canonical and are translated
   at render time, so switching languages never rewrites data. Translation-key
   coverage is tested.
+- RTL is built on CSS logical properties (`inset-inline-start`,
+  `padding-inline-start`, `border-inline-start`, `text-align: start`), not on
+  per-direction overrides. A physical `left` / `paddingLeft` / `borderLeft` in a
+  positioned or scrollable block is the failure mode to look for: it does not follow
+  `dir`, and `tests/e2e/rtl-logical-inset.regression-18.spec.ts` measures the two on
+  `/report` that did not. Only `/report`, `/care` and `/checkin` have been measured
+  under `ar` this way — see the open backlog item in `docs/AUTOPILOT.md` for the rest.
 
 ## Repository layout
 

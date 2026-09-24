@@ -4,7 +4,7 @@ A scheduled session picks this file up every 6 hours, does one cycle, and writes
 back to it. It is the only state that survives between cycles — a fresh session
 starts with no memory of the last one.
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 ## What this is for
 
@@ -656,6 +656,22 @@ partly done and stays here.
   skin levels in server and messenger logs. Needs an owner call, not a loop decision.
 - [AI] `viralActivation` now has a denominator but no baseline. Once any real traffic
   exists, read it before changing the share surface again.
+- [AI] **The RTL sweep covered three screens; six more have never been measured under
+  `ar`.** Opened 2026-09-24 (cycle 34) by the sweep that found the two logical-property
+  defects on `/report`. What was measured: `/report`, `/care` and `/checkin` at 360x800
+  in Chromium, under each of `en`, `ja`, `zh` and `ar`, with a valid survey and a
+  reading built from the values `lib/skin.ts` actually produces. What was not:
+  `/`, `/scan`, `/survey`, `/studio`, `/privacy` and `/unsubscribe`, and on the three
+  that were swept, nothing about switching language mid-session or about a real phone.
+  The defect class is cheap to look for and was **0 for 4** on the text categories and
+  **2 for 1 screen** on the layout category, so the remaining screens are worth the same
+  pass. Grep first rather than render first: `left:`, `right:`, `paddingLeft`,
+  `marginLeft`, `borderLeft` and `textAlign: "left"/"right"` in a `.tsx` are the
+  candidates, and `tests/e2e/rtl-logical-inset.regression-18.spec.ts` is the shape a
+  finding should land in. Separate and NOT covered by any of this: the vision path
+  (`mergeVisionAnalysis`) can put LLM-written text into a reading, that text is not a
+  dictionary key, and no sweep here exercised it — so "no Korean leaks" is a statement
+  about the strings this build composes, not about every string a user can see.
 - [OWNER] **Apply to the affiliate programmes** — 쿠팡 파트너스 (self-serve, accepts a
   website or app URL as the channel), 올리브영 쇼핑 큐레이터 (in-app, 7%/3%), 네이버 쇼핑
   커넥트 (5–28%, confirm a web service counts as a channel). Until then every out-click
@@ -1005,6 +1021,215 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-24 (cycle 34) — Branch `autopilot/2026-09-24-0039`. **ARU ships five languages
+  and one of them reads right to left, so `/report` was measured under all four
+  non-Korean locales at 360px. The two categories everyone worries about — Korean text
+  leaking through and un-interpolated `{placeholders}` — came back clean, and that is
+  recorded with the pages and locales checked rather than claimed. The category nobody
+  had measured did not: on the picks step the comparison table's row labels scrolled off
+  the screen in Arabic, and on the routine step every step number sat at the far end of
+  the line it belonged to. Both are the same root cause, one CSS keyword apart.
+  Separately, `melanin_index` was the seventh registry index and the only one no
+  committed row pinned in either language.**
+
+  **Baselines, measured here on a clean tree at `0fc3adb` before any edit.** `node_modules`
+  was absent, so `npm ci` first. `npx vitest run` **786 passed in 98 files**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 142 tests in 1.414s ... OK**, and `npm run smoke` with the chromium override at
+  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** with **156 passed**.
+  They match the supervisor's.
+
+  **What the locale sweep checked, and what it found nothing in.** `/report`, `/care` and
+  `/checkin` in Chromium at 360x800, `localStorage["aru.lang"]` set to each of `en`,
+  `ja`, `zh` and `ar`, with a valid `gyeol_survey` and a `gyeol_reads` built from the
+  values `lib/skin.ts` actually produces — 12 page/locale renders, plus the picks and
+  routine steps of `/report` in each locale, 20 renders in total.
+
+  - **Un-interpolated `{placeholders}`: none, on any of the 20 renders.** Checked
+    statically as well, which is the stronger form: over the **3,636 dictionary entries**
+    in `lib/i18n/{en,ja,zh,ar}.ts` (911 / 907 / 907 / 911), the set of `{...}` tokens in
+    the Korean key equals the set in the translation on **every** entry — **0 mismatches
+    in each of the four**. A translation cannot drop or rename a parameter today.
+  - **Korean leaking into a non-Korean page: none, and the first run said otherwise
+    because the fixture was wrong.** The first pass reused `VALID_READS` from
+    `tests/e2e/reads-shape.regression-17.spec.ts` and reported four Korean strings on
+    `/report` in all four locales. They are `"오늘 피부는 안정적이에요"`, `"유분 적정"`,
+    `"모공 보통"` and `"전반 안정"` — and `lib/skin.ts` produces **none** of them.
+    `SKIN_LABELS`, `overallFor` and `headlineFor` emit a different closed set, and all
+    **17** of those strings are present in all four dictionaries. That fixture is a
+    shape fixture and is right for what it tests; it is not a corpus. Re-run with real
+    values the count is **0 Korean characters on all 20 renders**. Two static sweeps
+    agree: **391** literal `t("…")` keys across `app/` and `lib/` (every one Korean),
+    **0 missing** from each of the four dictionaries; and the catalogue fields the UI
+    passes through `t(variable)` — brand (16), name (22), category (8), texture (10),
+    highlights (44), key ingredients (28), concerns (12) and every `budgetBand` value
+    (4) — **0 missing** from each of the four.
+  - **Page-level horizontal overflow: none.** `document.documentElement.scrollWidth ===
+    clientWidth === 360` on all 20 renders, `ar` included.
+  - **Currency and number formatting: nothing wrong found.** ARU never calls
+    `Intl.NumberFormat` on a price. Prices are rendered only as bands, and both band
+    functions go through the dictionary: `budgetBand` (`lib/skus.ts`) and `budgetLabel`
+    (`lib/recommend.ts`). The four reachable bands render as `Under ₩10,000` /
+    `₩10,000 range` / `₩20,000 range` / `₩30,000 range` in `en`, `1万ウォン未満` /
+    `1万ウォン台` … in `ja`, and `أقل من 10,000 وون` / `حوالي 10,000 وون` … in `ar`. The
+    5th band `"4만원 이상"` is present in all four dictionaries and is **unreachable from
+    the current catalogue** — the dearest of the 22 SKUs is 38,000 — so it was checked
+    and not rendered. Won is the right currency in all five languages: ARU recommends
+    from a Korean catalogue at Korean merchants.
+
+  **Bug fix — the comparison table's row labels leave the screen in Arabic.** `/report`'s
+  picks step is where the commerce out-links sit. `ProductCompare`'s row-label column is
+  `position: sticky` at `left: 0` (`app/components/product-compare.tsx`), inside a
+  container that is `overflowX: auto` around a table with `minWidth: 340`. Under
+  `dir=rtl` that scroller runs the other way — `scrollLeft` goes negative — and `left`
+  never catches the column. Measured on the unchanged code, scrolled to the inline end:
+
+  | locale | before scrolling | after scrolling | viewport |
+  |---|---|---|---|
+  | `ar` | L=201 R=319 | **L=283 R=401** | 360 |
+  | `en` | L=41 R=179 | L=41 R=179 | 360 |
+
+  So in Arabic the column travelled 82px and its right edge landed **41px past a 360px
+  viewport**, taking 예산대 / 용량 / 제형 / 핵심 성분 / 제외 성분 반영 with it — the five
+  labels that say what the rows under them mean. In English it did not move. The fix is
+  `insetInlineStart: 0`, plus `textAlign: "start"` on the two cells that had
+  `textAlign: "left"`. After it, `ar` reads **L=201 R=319 both before and after**, and
+  `en` is unchanged.
+
+  **UI/UX — the routine step's numbers sat at the wrong end of every line.** Same root
+  cause, different block, recorded separately because it is a different screen state.
+  `RoutineHalf` in `app/report/page.tsx` draws a numbered rail with `paddingLeft: 40`, a
+  dotted rail at `left: 13` with `borderLeft`, and each number at `left: -40`. Arabic
+  titles right-align, so the numbers stayed on the physical left while the text they
+  number started at the right:
+
+  | | step 1 | step 2 | step 3 |
+  |---|---|---|---|
+  | `ar` before, title | L=137 R=319 | L=101 R=319 | L=114 R=319 |
+  | `ar` before, number | L=41 R=69 | L=41 R=69 | L=41 R=69 |
+  | `ar` after, title | L=97 R=279 | L=61 R=279 | L=74 R=279 |
+  | `ar` after, number | L=291 R=319 | L=291 R=319 | L=291 R=319 |
+  | `en` (unchanged), title | L=81 R=319 | L=81 R=319 | L=81 R=296 |
+  | `en` (unchanged), number | L=41 R=69 | L=41 R=69 | L=41 R=69 |
+
+  Before the fix the gap between a number and the title it numbers was 68, 32 and 45
+  pixels of empty line, varying with the title's length. After it the number sits **12px**
+  in front of the title on all three steps, which is exactly what LTR has always had
+  (69 → 81). `paddingInlineStart` / `insetInlineStart` / `borderInlineStart`; the dotted
+  rail moved from L=54 to L=304 and its dotted edge flipped from `border-left` to
+  `border-right`, measured through `getComputedStyle`.
+
+  *Break-the-line, three source edits, each re-run against the FINAL committed tree
+  (`d99ad50`) and restored with `git checkout`:*
+
+  | edit | result | which named tests failed |
+  |---|---|---|
+  | base, no edit | **4 passed** | — |
+  | `stickyCol`'s `insetInlineStart: 0` → `left: 0` | **1 failed \| 3 passed** | `…stays pinned and on-screen under Arabic` |
+  | both `stickyCol` `textAlign: "start"` → `"left"` (2 occurrences) | **2 failed \| 2 passed** | that one, plus `…still pins to the left in LTR` |
+  | `RoutineHalf`'s three logical properties → physical | **1 failed \| 3 passed** | `routine step numbers sit in front of their step under Arabic` |
+  | restored | **4 passed** | — |
+
+  `tests/e2e/rtl-logical-inset.regression-18.spec.ts`, 4 cases, `ar` and `en` for each of
+  the two blocks. The LTR cases are there because a logical property is only a fix if it
+  leaves LTR alone, and the second row above is what proves they are not decorative.
+
+  **ML — `melanin_index` had no committed row, and the docstring saying so had gone
+  stale.** No `[AI]` ML item in "Backlog > Now" could be advanced honestly this cycle
+  without a labelled export, and each is blocked for a reason already written in its own
+  entry: the 0.86 cap / 0.8614 gate pair needs the vision path's confidences measured
+  against real readings; the ordinal floor needs a first real training run; the blemish
+  constants need real photos through `/eval`; `minQwkGainOverHeuristic`'s third clause is
+  the owner's; the plateau-dominated `detectBlemishes` question is a product decision and
+  guardrail 4 of this cycle's brief forbids moving what `blemishCount` reports; the
+  `roughness_ratio` divergence's open half is "which side moves", which needs faces. So
+  this cycle's ML item came from outside that list, and it is a hole in the test surface
+  rather than a model question: **`ml/skin_indices.INDEX_BY_ID` holds 7 indices and
+  `ml/index-parity.json` held rows for 6**, so nothing anywhere pinned `melanin_index`'s
+  expression or either of its guards.
+
+  It is now pinned with **12 rows**, and the group is `"comparison": "python-only"`
+  rather than a parity group, because it cannot be one: `melanin_index` is ABSOLUTE and
+  DERIVED, `DERIVED_FROM` names `toneLstar` as the column it reads *from*, `lib/skin.ts`
+  computes no counterpart, and no export column holds the result. The rows pin both
+  guards. The low one is shared with the benchmark the module
+  cites: `ml/skin_indices.py` records that as hpicsk/regional-ccm `src/clinical.py`'s
+  `MI_L_STAR_FLOOR = 1.0`, verified in cycle 20 against that source and not re-fetched
+  here. L\* 0, 0.5 and 1.0 all read **200.0**. The high one is the single deliberate deviation from it — that
+  reference clips to `[1.0, 100.0]` and this does not — so L\* 100 reads **0.0**,
+  L\* 100.0000001 reads **-4.342944698377123e-08** and L\* 120 reads
+  **-7.918124604762482**.
+
+  *Break-the-line, two source edits to `ml/skin_indices.py:melanin_index`, each against
+  the committed tree:*
+
+  | edit | `python3 ml/selftest.py` | which named test |
+  |---|---|---|
+  | base | **Ran 142 tests … OK** | — |
+  | drop the low floor (`max(lstar, 1.0)` → `lstar`) | **Ran 142 … FAILED (errors=1)** | `test_indices_match_the_typescript_implementations_value_for_value` |
+  | clip the high end the way the cited reference does | **Ran 142 … FAILED (failures=1)**, `AssertionError: 0.0 != -4.342944698377123e-08 : above the ceiling: the reference clips to 0 here and this does not: melanin_index(100.0000001)` | the same test |
+  | restored | **Ran 142 tests … OK** | — |
+
+  The same test's docstring is corrected while it is being extended. It still said
+  "Five of the seven registry indices are covered … the other two — melanin_index and
+  ita — are name-pinned and value-unchecked", and the committed table contradicts the
+  `ita` half: cycles 19-20 gave `ita` its own case, `"comparison": "exact"` and **17
+  rows**. The set assertion in that test no longer repeats the six index ids by hand; it
+  compares against `set(skin_indices.INDEX_BY_ID)`, so the registry growing an eighth
+  index fails here instead of being silently uncovered.
+
+  **Research (자료조사) — CSS Logical Properties and Values Level 1, from the CSS Working
+  Group's own source.** Asked because the fix above turns on whether `inset-inline-start`
+  is defined to follow `direction`, and on what `text-align: start` computes to — the
+  second one is not a detail, because this cycle's first draft of the test asserted the
+  computed value would be `"right"` under RTL, and the spec says it is not.
+
+  ```
+  https://raw.githubusercontent.com/w3c/csswg-drafts/main/css-logical-1/Overview.bs
+  http=200 bytes=39421
+  sha256 9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41
+  ```
+
+  Two quotes carry the change. The module's own worked example is Arabic, and it is the
+  exact substitution made here (lines 105-109):
+
+  ```css
+  blockquote {
+      text-align: start; /* left in latin, right in arabic */
+      margin-inline-start: 0px; /* margin-left in latin, margin-right in arabic */
+      border-inline-start: 5px solid gray; /* border-left in latin, border-right in arabic */
+      padding-inline-start: 5px; /* padding-left in latin, padding-right in arabic */
+  }
+  ```
+
+  And on the inset properties (§ "Flow-Relative Offsets", lines 606-628): the propdef
+  gives `Computed value: Same as corresponding 'top'/'right'/'bottom'/'left' properties`,
+  and the prose says "These properties correspond to the 'top', 'bottom', 'left', and
+  'right' properties. The mapping depends on the element's 'writing-mode', 'direction',
+  and 'text-orientation'." That is what the browser measurement then confirmed:
+  `getComputedStyle` on the sticky cell reads `left=0px right=auto` in `en` and
+  `left=auto right=0px` in `ar`, from one declaration. `text-align` is the opposite case
+  — its propdef says `Computed value: specified keyword`, so `start` stays `start` in
+  both, which is why the spec assertion is on the keyword and not on a side.
+
+  This is a primary source for the CSS, not for what any browser ships; only Chromium
+  1194 at 360x800 was measured, and no other engine was.
+
+  **What was NOT established.** Only `/report`, `/care` and `/checkin` were swept, at one
+  viewport, in one engine, at one language per run — nothing here says anything about
+  `/scan`, `/survey`, `/studio` or `/privacy` in a non-Korean locale, about a language
+  switched mid-session, or about a real phone. The Korean-leak result is a statement
+  about the strings this build can produce: the vision path (`mergeVisionAnalysis`) can
+  put LLM text into a reading, and that text is not a dictionary key and was not
+  exercised here. And the `melanin_index` rows pin one language against itself — they
+  are a regression pin, not the parity the other six groups carry, and nothing in them
+  makes the index right.
+
+  *Validation on the final tree:* see the PR body for the literal output.
+
+  *Supervisor review:* pending.
 
 - 2026-09-23 (cycle 33) — Branch `autopilot/2026-09-23-1839`. **The shape check cycle 32
   put on the survey was missing one key over, and this time the screen died during render
@@ -1525,265 +1750,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   corrected to say only what holds. The style change itself is unaffected. Smoke covers the added `mobile-layout.spec.ts` case.
 
   *Validation on the corrected tree:* see the PR body for the literal output.
-
-- 2026-09-23 (cycle 31) — Branch `autopilot/2026-09-23-0639`. **Two of the four stores
-  cycle 30 left unguarded were costing real things: `/care` opened the merchant link and
-  recorded nothing, `/privacy` lost the page a user went there to delete their data from,
-  and `/checkin` — the landing page for every re-engagement email — rendered a blank
-  white screen for the life of the install. A third needed a different guard than the
-  other three, and the fourth did not need one at all and the backlog was wrong about
-  it. Separately, the 조명 rows of the retake sweep were never a measurement of 조명.**
-
-  **Baselines, measured here on a clean tree at `f61614d` before any edit; they match the
-  supervisor's.** `node_modules` was absent, so `npm ci` first. `npx vitest run`
-  **653 passed in 95 files**, `npx tsc --noEmit | grep -c "error TS"` **13**,
-  `npx eslint .` **0 errors, 2 warnings** (the same `_reads` / `_result` at
-  `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 142 tests in 2.057s ... OK**, and
-  `npm run smoke` with the chromium override at `/opt/pw-browsers/chromium-1194`
-  printed `Smoke test passed.` **That baseline smoke run is not clean and is not claimed
-  to be**: it takes about eleven minutes here, and the two store guards were written
-  while its Playwright leg was still running, so the tree it finished against was the
-  baseline plus those two guards. Its vitest leg (653/95) had already completed on the
-  untouched tree. The authoritative run is the final one below.
-
-  **Bug fix — three device stores guarded, one found already guarded, one deliberately
-  left.** The failure was measured against the UNCHANGED code first.
-  `tests/commerce-store-shape.test.ts` written against `f61614d`'s `lib/store.ts` and
-  `lib/pilot.ts`: **40 failed | 9 passed (49)**. The distinct throws, counted from that
-  run:
-
-  ```
-        4 AssertionError: promise rejected "TypeError: Cannot read properties of null…" instead of resolving
-        3 AssertionError: promise rejected "TypeError: all.push is not a function" instead of resolving
-        1 TypeError: lsGet(...).reverse is not a function
-        1 TypeError: all.push is not a function
-        1 TypeError: Cannot read properties of null (reading 'reverse')
-        1 TypeError: Cannot read properties of null (reading 'push')
-        1 AssertionError: promise rejected "TypeError: lsGet(...).filter is not a fun…" instead of resolving
-        1 AssertionError: careIntentCount() on null: expected [Function] to not throw an error but 'TypeError: Cannot read properties of …' was thrown
-  ```
-
-  `lib/store.ts` fails differently from the three cycle 30 fixed, which is what the
-  backlog meant by "closest to biting": `lsPush` runs `all.push(value)` OUTSIDE its try
-  and every writer is `async`, so the TypeError arrives as a rejected promise rather
-  than as a render throw. Four consequences, each traced to a call site rather than
-  asserted: `/care`'s `openCareLink` calls `void recordCareIntent(...)` and then
-  navigates, so the commerce click looked like it worked and the only record of it was
-  dropped; `/privacy`'s mount effect calls `careIntentCount()` with no try/catch, so a
-  stored `null` threw at `.length` and `app/error.tsx` took the page, delete-my-data
-  controls included; `/checkin`'s effect is `Promise.all([...]).then(...)` with no
-  `.catch`, so `productUses` stayed `null` and the component's own null branch rendered
-  an empty `<main>` forever; `/pilot` dropped a roster row from the operator's click
-  handler. The page-level consequences are reasoned from the call sites, as cycle 30's
-  crops and labels were, and are not claimed as observed — except `/checkin`, which was
-  reproduced in Chromium (below).
-
-  `getCurrentPilotSession` is the one the item said to think about, and `Array.isArray`
-  would have been the wrong guard for it: it returns an object. Its callers' truthiness
-  checks already neutralised `null`, `false` and `0`, so nothing crashed on those. What
-  they did not neutralise is a truthy non-session — on `5`, `"abcdef"` or `{"a":1}` the
-  check passes, `participantId` is `undefined`, and every consent event in that session
-  lands UNSCOPED. Participant scope is what the participant-grouped cross-validation
-  needs, so that is a silent loss in the research stream rather than a crash. The guard
-  checks the two fields the callers actually read.
-
-  **`lib/funnel-flush.ts` was already guarded and the backlog was wrong about it.**
-  `readCursor` (lines 104-112) is its only such read and already has `Array.isArray`
-  plus a per-element `typeof id === "string"` filter — stricter than the guard cycles 29
-  and 30 added. No code changed; the backlog text was corrected instead.
-  **`lib/consent.ts` was left, on purpose.** "Read as empty" there means "no consent
-  event in the audit trail", which is hard guardrail 4 and a decision rather than a
-  line. It stays in the backlog with that reason, and it is now all that is left of the
-  item.
-
-  *Break-the-line, three guards, three separate runs over the whole of `tests/`:*
-
-  | guard removed | result | what failed |
-  |---|---|---|
-  | `lib/store.ts` `lsGet` `Array.isArray` | **26 failed \| 676 passed (702)** | every wrong-shape case of the care-intent and /checkin describes, nothing else |
-  | `lib/pilot.ts` `getPilotNotes` `Array.isArray` | **10 failed \| 692 passed (702)** | the ten pilot-note wrong-shape cases only |
-  | `lib/pilot.ts` `getCurrentPilotSession` field check | **4 failed \| 698 passed (702)** | a number, an object, a string, a boolean — `null` stays green, because `JSON.parse("null")` is already null |
-
-  Each break failed only cases naming what that guard protects; the controls in each
-  describe (a real log, a real roster, a real session) stayed green in all three.
-
-  **Research (자료조사) — does a shipped store that persists an OBJECT shape-check what
-  it reads back?** Asked because `getCurrentPilotSession` is the one store here that is
-  not an array, and copying `Array.isArray` across all four reads without looking would
-  have left it open. Read from the library's own source:
-
-  ```
-  --- https://raw.githubusercontent.com/pmndrs/zustand/main/src/middleware/persist.ts
-  http=200 bytes=11972
-  sha256 db7c4f7f6ce2a54defac2212f6b0f348fa0a5323fb83f40f321d1d2ffd3fe909
-  ```
-
-  `createJSONStorage`'s read is a bare `JSON.parse(str, options?.reviver) as
-  StorageValue<S>` — no shape check, the same idiom ARU had. The hydrate path checks
-  truthiness plus one field's type (`typeof deserializedStorageValue.version ===
-  'number'`) and then `merge` does `{...currentState, ...(persistedState as object)}`.
-  **Zustand does not shape-check either.** It survives the five naked wrong shapes only
-  because of its `{state, version}` envelope: a bare `5` or `"abcdef"` has no `.state`,
-  so `merge` spreads `undefined`. Run against that exact idiom in node v22.22.2 with a
-  current state of `{participantId:"P007",sessionId:"P007-1"}`:
-
-  ```
-  null                         -> {"participantId":"P007","sessionId":"P007-1"}
-  5                            -> {"participantId":"P007","sessionId":"P007-1"}
-  {}                           -> {"participantId":"P007","sessionId":"P007-1"}
-  "abcdef"                     -> {"participantId":"P007","sessionId":"P007-1"}
-  false                        -> {"participantId":"P007","sessionId":"P007-1"}
-  {"state":"abcdef","version":0} -> {"0":"a","1":"b","2":"c","3":"d","4":"e","5":"f","participantId":"P007","sessionId":"P007-1"}
-  {"state":5,"version":0}      -> {"participantId":"P007","sessionId":"P007-1"}
-  ```
-
-  The last two rows are the finding: a WELL-FORMED envelope carrying a wrong `state`
-  spreads straight into the store — a JSON string becomes six numeric keys on
-  application state — because nothing between the parse and the spread asks what
-  `state` is. ARU's pilot session has no envelope, so the truthiness check at each call
-  site was the only thing standing there, and a field check is what replaces it.
-  `docs/funnel-store-shape.md`.
-
-  **UI/UX — `/checkin` renders instead of staying blank, proved in a browser.** This is
-  the user-visible half of the bug fix and is recorded as this cycle's UI item rather
-  than as a second one. `/checkin` is where every re-engagement email lands, and a blank
-  `<main>` costs both CTAs of its empty state (내 리포트 보기 / 피부 스캔하기) with
-  nothing on screen to say why. Two changes stand behind it and a truth table says what
-  each is worth, because either one alone is sufficient for this input and the spec
-  cannot tell them apart:
-
-  | tree | `tests/e2e/checkin-device-store-shape.regression-15.spec.ts` |
-  |---|---|
-  | guard + catch (shipped) | **5 passed (7.9s)** |
-  | guard only, catch removed | **5 passed (7.8s)** |
-  | catch only, guard removed | **5 passed (7.5s)** |
-  | NEITHER | **5 failed** — `/checkin rendered its blank loading shell forever because its stores held null`, and the same for a number, an object, a string, a boolean |
-
-  So the spec proves the defect and proves it closed; it does not isolate either fix.
-  The store guard is isolated at its source line in `tests/commerce-store-shape.test.ts`
-  instead. The `.catch` is kept anyway, because the missing catch is the reason a store
-  problem became a dead page rather than an empty one, and it would be the reason again
-  for whatever is added to that effect next.
-
-  **ML — the 조명 rows of the retake sweep were never measuring 조명.**
-  `ARU_PRINT_RETAKE_SPLIT=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
-  clean and degraded level distributions behind each of the twelve counts:
-
-  ```
-  SPLIT condition	attr	clean levels	degraded levels	degraded pinned	disagreements
-  SPLIT 조명 dark	oil	0:103 1:17 2:0	0:82 1:38 2:0	no	21/120
-  SPLIT 조명 dark	redness	0:29 1:91 2:0	0:0 1:120 2:0	yes	29/120
-  SPLIT 조명 dark	pores	0:59 1:61 2:0	0:0 1:0 2:120	yes	120/120
-  SPLIT 조명 blown out	oil	0:103 1:17 2:0	0:0 1:0 2:120	yes	120/120
-  SPLIT 조명 blown out	redness	0:29 1:91 2:0	0:120 1:0 2:0	yes	91/120
-  SPLIT 조명 blown out	pores	0:59 1:61 2:0	0:120 1:0 2:0	yes	61/120
-  SPLIT 반사	oil	0:103 1:17 2:0	0:0 1:0 2:120	yes	120/120
-  SPLIT 반사	redness	0:29 1:91 2:0	0:0 1:0 2:120	yes	120/120
-  SPLIT 반사	pores	0:59 1:61 2:0	0:59 1:61 2:0	no	0/120
-  SPLIT 피부 영역	oil	0:103 1:17 2:0	0:78 1:42 2:0	no	37/120
-  SPLIT 피부 영역	redness	0:29 1:91 2:0	0:30 1:90 2:0	no	33/120
-  SPLIT 피부 영역	pores	0:59 1:61 2:0	0:60 1:60 2:0	no	49/120
-  ```
-
-  Chosen over the two other candidate ML items because it needs no labelled export: the
-  ordinal-floor item says in its own words that the floor should be re-set against the
-  first real training run's qwk and pearson, and the ITA cut-point item is blocked on a
-  primary source this network cannot reach. Both would have produced a doc restating the
-  item.
-
-  **In 7 of the 12 rows the degraded level is pinned** — all 120 seeds publish the same
-  level — and there the "disagreement count" is not a measurement of the condition. It
-  is a readout of where `tuned()`'s bisection left the CLEAN capture relative to its own
-  cut point: `tuned()` bisects until the clean raw value sits on the cut **at seed 1,
-  the only seed it looks at**, and every other seed's noise field lands wherever it
-  lands. The identity is exact, not approximate — 조명 dark redness pins at 1 against a
-  clean split of `0:29 1:91` and reports **29/120**, the clean level-0 count; 조명 blown
-  out redness pins at 0 against the same split and reports **91/120**, the level-1
-  count; 조명 blown out pores pins at 0 against `0:59 1:61` and reports **61/120**. Of
-  the two 조명 rows the backlog named, dark pores is pinned and fully accounted for;
-  **dark oil (21/120 vs 71/120) is not pinned** (`0:82 1:38`) and this does not explain
-  it. So **the item's "only a new measurement can settle it" is withdrawn for pinned
-  rows only**: a new measurement of a pinned row settles nothing, and dark oil stays
-  open. *(Supervisor correction at review: the worker's draft said 8 of 12 pinned and
-  that every 조명 row that failed to reproduce was pinned; the table printed above has
-  seven `yes` rows and dark oil `no`.)*
-
-  **The retake rule is unaffected, and for a stronger reason than its count gave.** Four
-  of the pinned rows pin at a level the clean capture never reaches at all (조명 dark
-  pores, 조명 blown out oil, 반사 oil, 반사 redness — each 120/120), so the degradation
-  decides the published reading on every seed whatever the face is doing. Four rows are
-  genuine per-seed measurements (피부 영역 on all three attributes at 37, 33 and 49 of
-  120, and 조명 dark oil at 21/120) and are the ones worth quoting. One exception found
-  and written down rather than smoothed over: **반사 pores is 0/120**, with the degraded
-  distribution `0:59 1:61` identical to the clean one — the glint costs the pores
-  reading nothing on any seed, so "every condition costs a published reading on a sixth
-  of the seeds or more" holds per CONDITION but not per attribute. The mechanism is
-  asserted and not only printed (`tests/retake-signal-rule.test.ts` →
-  "pins the degraded level while the clean level moves, which is what the count reads").
-  Full table and arithmetic: `docs/retake-sweep-what-it-measures.md`. Nothing here
-  touches a real face; that needs the golden set, which is in BLOCKERS.
-
-  *Verification, final tree.* `npx vitest run` **704 passed (96 files)**,
-  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged; seven were added by the new
-  test's fixtures and fixed before this count, not absorbed into the baseline),
-  `npx eslint .` **0 errors, 2 warnings** (the same two), `python3 ml/selftest.py`
-  **Ran 142 tests in 2.167s ... OK**. `npm run smoke` on the final tree, with the
-  chromium override: vitest leg **704 passed (96 files)**, Playwright leg **86 passed
-  (4.6m)**, then the literal line **`Smoke test passed.`**
-  No dependency added. `lib/skin.ts`, `lib/consent.ts`, the manifest, `shareUrl`,
-  `blemishCount`, `toneSpread` and `NEXT_PUBLIC_FUNNEL_FLUSH` are untouched.
-
-  *Rotation.* AUTOPILOT.md 1374 → 1481 and the changelog 6312 → 6462; cycle 28's entry
-  moved verbatim (149 lines) to the end of the changelog's entries, which is where
-  cycles 27 and 26 went and what step 8 of "One cycle" says ("the bottom of the
-  Changelog"). Taking all lines of both files at `f61614d`, `sort -u`, and `comm -23`
-  against the new pair finds **12 lines missing**, and all twelve are the old
-  "Four device stores still read `JSON.parse(localStorage…)`" backlog item, rewritten in
-  place above into the `[~]` form with this cycle's findings. Nothing from the rotation
-  itself is missing. "Recent cycles" holds 31/30/29.
-
-  **Supervisor review.** The store fix is sound and was predicted before the worker
-  reported; the ML doc overstated its result and was corrected before merge.
-
-  *Predicted, then checked.* Before the branch existed, a throwaway vitest probe against
-  unchanged `f61614d` gave `careIntentCount(null) THREW Cannot read properties of null
-  (reading 'length')`, `recordCareIntent(null) REJECTED ... (reading 'push')`,
-  `getProductUses({}) REJECTED lsGet(...).filter is not a function`, and
-  `careIntentCount("abc") = 3` — a wrong count with no throw. The worker's measurements
-  agree. Reading `/checkin` predicted a blank page rather than the error boundary; with
-  both the store guard and the new `.catch` removed, the regression-15 spec under
-  `playwright.mobile.config.ts` fails with `/checkin rendered its blank loading shell
-  forever because its stores held null` and the dev server logs `unhandledRejection:
-  TypeError: Cannot read properties of null (reading 'filter')`, which is the defect
-  reproduced in a browser.
-
-  *Guards broken at their source lines, one at a time, against
-  `tests/commerce-store-shape.test.ts`:* `lsGet`'s `Array.isArray` → `26 failed | 23
-  passed (49)`, none of them pilot cases; `getPilotNotes`'s `Array.isArray` → `10 failed
-  | 39 passed (49)`, all named "notes"; the `participantId` type check in
-  `getCurrentPilotSession` → `1 failed | 48 passed (49)`, "reads as no session when the
-  store holds an object". Narrow in all three.
-
-  *Corrected before merge — `docs/retake-sweep-what-it-measures.md` and the two entries
-  here.* The printed SPLIT table reproduced exactly on this container (all twelve rows,
-  `Tests 12 passed (12)`), but the prose built on it did not match it. The draft said
-  "8 of the 12 rows" were pinned: the table has seven `yes`. It said "all four 조명 rows
-  that failed to reproduce are pinned rows" and called that "the whole of the 조명
-  discrepancy": the backlog named two rows, and one of them, dark oil (21/120 against
-  71/120), is `no` — degraded split `0:82 1:38`. So the identity explains dark pores and
-  not dark oil, and "only a new measurement can settle it" is withdrawn for pinned rows
-  only. "Moves freely between 0/120 and 120/120 under any change of construction" was
-  also a claim no command had produced, since no alternative construction was run; it is
-  now labelled as inferred. The mechanism and the per-attribute 반사 pores 0/120 finding
-  stand. This is a guardrail-2 miss in a doc (a count not matching the output printed
-  above it), caught at review, not at the worker's own check.
-
-  *My own error, recorded.* My first attempt at the both-fixes-removed browser run was
-  `npx playwright test <spec>` without `-c playwright.mobile.config.ts`. It printed
-  `5 failed`, which looked like the defect, but every case had failed at
-  `page.goto: Cannot navigate to invalid URL` because there was no `baseURL`. I read the
-  failure message before using the result, and re-ran with the config. A red run is not
-  evidence until its failure message names the thing under test.
-
-  *Validation on the merged tree (worker's `32b8de5` plus the doc correction):* see the
-  PR body for the literal output.

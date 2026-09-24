@@ -6779,3 +6779,265 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
 
   *Rotation.* 1325 → 1348 and 6176 → 6312; `comm -23` finds **1 line missing**, the
   `Last updated:` date. "Recent cycles" holds 30/29/28.
+
+- 2026-09-23 (cycle 31) — Branch `autopilot/2026-09-23-0639`. **Two of the four stores
+  cycle 30 left unguarded were costing real things: `/care` opened the merchant link and
+  recorded nothing, `/privacy` lost the page a user went there to delete their data from,
+  and `/checkin` — the landing page for every re-engagement email — rendered a blank
+  white screen for the life of the install. A third needed a different guard than the
+  other three, and the fourth did not need one at all and the backlog was wrong about
+  it. Separately, the 조명 rows of the retake sweep were never a measurement of 조명.**
+
+  **Baselines, measured here on a clean tree at `f61614d` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first. `npx vitest run`
+  **653 passed in 95 files**, `npx tsc --noEmit | grep -c "error TS"` **13**,
+  `npx eslint .` **0 errors, 2 warnings** (the same `_reads` / `_result` at
+  `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 142 tests in 2.057s ... OK**, and
+  `npm run smoke` with the chromium override at `/opt/pw-browsers/chromium-1194`
+  printed `Smoke test passed.` **That baseline smoke run is not clean and is not claimed
+  to be**: it takes about eleven minutes here, and the two store guards were written
+  while its Playwright leg was still running, so the tree it finished against was the
+  baseline plus those two guards. Its vitest leg (653/95) had already completed on the
+  untouched tree. The authoritative run is the final one below.
+
+  **Bug fix — three device stores guarded, one found already guarded, one deliberately
+  left.** The failure was measured against the UNCHANGED code first.
+  `tests/commerce-store-shape.test.ts` written against `f61614d`'s `lib/store.ts` and
+  `lib/pilot.ts`: **40 failed | 9 passed (49)**. The distinct throws, counted from that
+  run:
+
+  ```
+        4 AssertionError: promise rejected "TypeError: Cannot read properties of null…" instead of resolving
+        3 AssertionError: promise rejected "TypeError: all.push is not a function" instead of resolving
+        1 TypeError: lsGet(...).reverse is not a function
+        1 TypeError: all.push is not a function
+        1 TypeError: Cannot read properties of null (reading 'reverse')
+        1 TypeError: Cannot read properties of null (reading 'push')
+        1 AssertionError: promise rejected "TypeError: lsGet(...).filter is not a fun…" instead of resolving
+        1 AssertionError: careIntentCount() on null: expected [Function] to not throw an error but 'TypeError: Cannot read properties of …' was thrown
+  ```
+
+  `lib/store.ts` fails differently from the three cycle 30 fixed, which is what the
+  backlog meant by "closest to biting": `lsPush` runs `all.push(value)` OUTSIDE its try
+  and every writer is `async`, so the TypeError arrives as a rejected promise rather
+  than as a render throw. Four consequences, each traced to a call site rather than
+  asserted: `/care`'s `openCareLink` calls `void recordCareIntent(...)` and then
+  navigates, so the commerce click looked like it worked and the only record of it was
+  dropped; `/privacy`'s mount effect calls `careIntentCount()` with no try/catch, so a
+  stored `null` threw at `.length` and `app/error.tsx` took the page, delete-my-data
+  controls included; `/checkin`'s effect is `Promise.all([...]).then(...)` with no
+  `.catch`, so `productUses` stayed `null` and the component's own null branch rendered
+  an empty `<main>` forever; `/pilot` dropped a roster row from the operator's click
+  handler. The page-level consequences are reasoned from the call sites, as cycle 30's
+  crops and labels were, and are not claimed as observed — except `/checkin`, which was
+  reproduced in Chromium (below).
+
+  `getCurrentPilotSession` is the one the item said to think about, and `Array.isArray`
+  would have been the wrong guard for it: it returns an object. Its callers' truthiness
+  checks already neutralised `null`, `false` and `0`, so nothing crashed on those. What
+  they did not neutralise is a truthy non-session — on `5`, `"abcdef"` or `{"a":1}` the
+  check passes, `participantId` is `undefined`, and every consent event in that session
+  lands UNSCOPED. Participant scope is what the participant-grouped cross-validation
+  needs, so that is a silent loss in the research stream rather than a crash. The guard
+  checks the two fields the callers actually read.
+
+  **`lib/funnel-flush.ts` was already guarded and the backlog was wrong about it.**
+  `readCursor` (lines 104-112) is its only such read and already has `Array.isArray`
+  plus a per-element `typeof id === "string"` filter — stricter than the guard cycles 29
+  and 30 added. No code changed; the backlog text was corrected instead.
+  **`lib/consent.ts` was left, on purpose.** "Read as empty" there means "no consent
+  event in the audit trail", which is hard guardrail 4 and a decision rather than a
+  line. It stays in the backlog with that reason, and it is now all that is left of the
+  item.
+
+  *Break-the-line, three guards, three separate runs over the whole of `tests/`:*
+
+  | guard removed | result | what failed |
+  |---|---|---|
+  | `lib/store.ts` `lsGet` `Array.isArray` | **26 failed \| 676 passed (702)** | every wrong-shape case of the care-intent and /checkin describes, nothing else |
+  | `lib/pilot.ts` `getPilotNotes` `Array.isArray` | **10 failed \| 692 passed (702)** | the ten pilot-note wrong-shape cases only |
+  | `lib/pilot.ts` `getCurrentPilotSession` field check | **4 failed \| 698 passed (702)** | a number, an object, a string, a boolean — `null` stays green, because `JSON.parse("null")` is already null |
+
+  Each break failed only cases naming what that guard protects; the controls in each
+  describe (a real log, a real roster, a real session) stayed green in all three.
+
+  **Research (자료조사) — does a shipped store that persists an OBJECT shape-check what
+  it reads back?** Asked because `getCurrentPilotSession` is the one store here that is
+  not an array, and copying `Array.isArray` across all four reads without looking would
+  have left it open. Read from the library's own source:
+
+  ```
+  --- https://raw.githubusercontent.com/pmndrs/zustand/main/src/middleware/persist.ts
+  http=200 bytes=11972
+  sha256 db7c4f7f6ce2a54defac2212f6b0f348fa0a5323fb83f40f321d1d2ffd3fe909
+  ```
+
+  `createJSONStorage`'s read is a bare `JSON.parse(str, options?.reviver) as
+  StorageValue<S>` — no shape check, the same idiom ARU had. The hydrate path checks
+  truthiness plus one field's type (`typeof deserializedStorageValue.version ===
+  'number'`) and then `merge` does `{...currentState, ...(persistedState as object)}`.
+  **Zustand does not shape-check either.** It survives the five naked wrong shapes only
+  because of its `{state, version}` envelope: a bare `5` or `"abcdef"` has no `.state`,
+  so `merge` spreads `undefined`. Run against that exact idiom in node v22.22.2 with a
+  current state of `{participantId:"P007",sessionId:"P007-1"}`:
+
+  ```
+  null                         -> {"participantId":"P007","sessionId":"P007-1"}
+  5                            -> {"participantId":"P007","sessionId":"P007-1"}
+  {}                           -> {"participantId":"P007","sessionId":"P007-1"}
+  "abcdef"                     -> {"participantId":"P007","sessionId":"P007-1"}
+  false                        -> {"participantId":"P007","sessionId":"P007-1"}
+  {"state":"abcdef","version":0} -> {"0":"a","1":"b","2":"c","3":"d","4":"e","5":"f","participantId":"P007","sessionId":"P007-1"}
+  {"state":5,"version":0}      -> {"participantId":"P007","sessionId":"P007-1"}
+  ```
+
+  The last two rows are the finding: a WELL-FORMED envelope carrying a wrong `state`
+  spreads straight into the store — a JSON string becomes six numeric keys on
+  application state — because nothing between the parse and the spread asks what
+  `state` is. ARU's pilot session has no envelope, so the truthiness check at each call
+  site was the only thing standing there, and a field check is what replaces it.
+  `docs/funnel-store-shape.md`.
+
+  **UI/UX — `/checkin` renders instead of staying blank, proved in a browser.** This is
+  the user-visible half of the bug fix and is recorded as this cycle's UI item rather
+  than as a second one. `/checkin` is where every re-engagement email lands, and a blank
+  `<main>` costs both CTAs of its empty state (내 리포트 보기 / 피부 스캔하기) with
+  nothing on screen to say why. Two changes stand behind it and a truth table says what
+  each is worth, because either one alone is sufficient for this input and the spec
+  cannot tell them apart:
+
+  | tree | `tests/e2e/checkin-device-store-shape.regression-15.spec.ts` |
+  |---|---|
+  | guard + catch (shipped) | **5 passed (7.9s)** |
+  | guard only, catch removed | **5 passed (7.8s)** |
+  | catch only, guard removed | **5 passed (7.5s)** |
+  | NEITHER | **5 failed** — `/checkin rendered its blank loading shell forever because its stores held null`, and the same for a number, an object, a string, a boolean |
+
+  So the spec proves the defect and proves it closed; it does not isolate either fix.
+  The store guard is isolated at its source line in `tests/commerce-store-shape.test.ts`
+  instead. The `.catch` is kept anyway, because the missing catch is the reason a store
+  problem became a dead page rather than an empty one, and it would be the reason again
+  for whatever is added to that effect next.
+
+  **ML — the 조명 rows of the retake sweep were never measuring 조명.**
+  `ARU_PRINT_RETAKE_SPLIT=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
+  clean and degraded level distributions behind each of the twelve counts:
+
+  ```
+  SPLIT condition	attr	clean levels	degraded levels	degraded pinned	disagreements
+  SPLIT 조명 dark	oil	0:103 1:17 2:0	0:82 1:38 2:0	no	21/120
+  SPLIT 조명 dark	redness	0:29 1:91 2:0	0:0 1:120 2:0	yes	29/120
+  SPLIT 조명 dark	pores	0:59 1:61 2:0	0:0 1:0 2:120	yes	120/120
+  SPLIT 조명 blown out	oil	0:103 1:17 2:0	0:0 1:0 2:120	yes	120/120
+  SPLIT 조명 blown out	redness	0:29 1:91 2:0	0:120 1:0 2:0	yes	91/120
+  SPLIT 조명 blown out	pores	0:59 1:61 2:0	0:120 1:0 2:0	yes	61/120
+  SPLIT 반사	oil	0:103 1:17 2:0	0:0 1:0 2:120	yes	120/120
+  SPLIT 반사	redness	0:29 1:91 2:0	0:0 1:0 2:120	yes	120/120
+  SPLIT 반사	pores	0:59 1:61 2:0	0:59 1:61 2:0	no	0/120
+  SPLIT 피부 영역	oil	0:103 1:17 2:0	0:78 1:42 2:0	no	37/120
+  SPLIT 피부 영역	redness	0:29 1:91 2:0	0:30 1:90 2:0	no	33/120
+  SPLIT 피부 영역	pores	0:59 1:61 2:0	0:60 1:60 2:0	no	49/120
+  ```
+
+  Chosen over the two other candidate ML items because it needs no labelled export: the
+  ordinal-floor item says in its own words that the floor should be re-set against the
+  first real training run's qwk and pearson, and the ITA cut-point item is blocked on a
+  primary source this network cannot reach. Both would have produced a doc restating the
+  item.
+
+  **In 7 of the 12 rows the degraded level is pinned** — all 120 seeds publish the same
+  level — and there the "disagreement count" is not a measurement of the condition. It
+  is a readout of where `tuned()`'s bisection left the CLEAN capture relative to its own
+  cut point: `tuned()` bisects until the clean raw value sits on the cut **at seed 1,
+  the only seed it looks at**, and every other seed's noise field lands wherever it
+  lands. The identity is exact, not approximate — 조명 dark redness pins at 1 against a
+  clean split of `0:29 1:91` and reports **29/120**, the clean level-0 count; 조명 blown
+  out redness pins at 0 against the same split and reports **91/120**, the level-1
+  count; 조명 blown out pores pins at 0 against `0:59 1:61` and reports **61/120**. Of
+  the two 조명 rows the backlog named, dark pores is pinned and fully accounted for;
+  **dark oil (21/120 vs 71/120) is not pinned** (`0:82 1:38`) and this does not explain
+  it. So **the item's "only a new measurement can settle it" is withdrawn for pinned
+  rows only**: a new measurement of a pinned row settles nothing, and dark oil stays
+  open. *(Supervisor correction at review: the worker's draft said 8 of 12 pinned and
+  that every 조명 row that failed to reproduce was pinned; the table printed above has
+  seven `yes` rows and dark oil `no`.)*
+
+  **The retake rule is unaffected, and for a stronger reason than its count gave.** Four
+  of the pinned rows pin at a level the clean capture never reaches at all (조명 dark
+  pores, 조명 blown out oil, 반사 oil, 반사 redness — each 120/120), so the degradation
+  decides the published reading on every seed whatever the face is doing. Four rows are
+  genuine per-seed measurements (피부 영역 on all three attributes at 37, 33 and 49 of
+  120, and 조명 dark oil at 21/120) and are the ones worth quoting. One exception found
+  and written down rather than smoothed over: **반사 pores is 0/120**, with the degraded
+  distribution `0:59 1:61` identical to the clean one — the glint costs the pores
+  reading nothing on any seed, so "every condition costs a published reading on a sixth
+  of the seeds or more" holds per CONDITION but not per attribute. The mechanism is
+  asserted and not only printed (`tests/retake-signal-rule.test.ts` →
+  "pins the degraded level while the clean level moves, which is what the count reads").
+  Full table and arithmetic: `docs/retake-sweep-what-it-measures.md`. Nothing here
+  touches a real face; that needs the golden set, which is in BLOCKERS.
+
+  *Verification, final tree.* `npx vitest run` **704 passed (96 files)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged; seven were added by the new
+  test's fixtures and fixed before this count, not absorbed into the baseline),
+  `npx eslint .` **0 errors, 2 warnings** (the same two), `python3 ml/selftest.py`
+  **Ran 142 tests in 2.167s ... OK**. `npm run smoke` on the final tree, with the
+  chromium override: vitest leg **704 passed (96 files)**, Playwright leg **86 passed
+  (4.6m)**, then the literal line **`Smoke test passed.`**
+  No dependency added. `lib/skin.ts`, `lib/consent.ts`, the manifest, `shareUrl`,
+  `blemishCount`, `toneSpread` and `NEXT_PUBLIC_FUNNEL_FLUSH` are untouched.
+
+  *Rotation.* AUTOPILOT.md 1374 → 1481 and the changelog 6312 → 6462; cycle 28's entry
+  moved verbatim (149 lines) to the end of the changelog's entries, which is where
+  cycles 27 and 26 went and what step 8 of "One cycle" says ("the bottom of the
+  Changelog"). Taking all lines of both files at `f61614d`, `sort -u`, and `comm -23`
+  against the new pair finds **12 lines missing**, and all twelve are the old
+  "Four device stores still read `JSON.parse(localStorage…)`" backlog item, rewritten in
+  place above into the `[~]` form with this cycle's findings. Nothing from the rotation
+  itself is missing. "Recent cycles" holds 31/30/29.
+
+  **Supervisor review.** The store fix is sound and was predicted before the worker
+  reported; the ML doc overstated its result and was corrected before merge.
+
+  *Predicted, then checked.* Before the branch existed, a throwaway vitest probe against
+  unchanged `f61614d` gave `careIntentCount(null) THREW Cannot read properties of null
+  (reading 'length')`, `recordCareIntent(null) REJECTED ... (reading 'push')`,
+  `getProductUses({}) REJECTED lsGet(...).filter is not a function`, and
+  `careIntentCount("abc") = 3` — a wrong count with no throw. The worker's measurements
+  agree. Reading `/checkin` predicted a blank page rather than the error boundary; with
+  both the store guard and the new `.catch` removed, the regression-15 spec under
+  `playwright.mobile.config.ts` fails with `/checkin rendered its blank loading shell
+  forever because its stores held null` and the dev server logs `unhandledRejection:
+  TypeError: Cannot read properties of null (reading 'filter')`, which is the defect
+  reproduced in a browser.
+
+  *Guards broken at their source lines, one at a time, against
+  `tests/commerce-store-shape.test.ts`:* `lsGet`'s `Array.isArray` → `26 failed | 23
+  passed (49)`, none of them pilot cases; `getPilotNotes`'s `Array.isArray` → `10 failed
+  | 39 passed (49)`, all named "notes"; the `participantId` type check in
+  `getCurrentPilotSession` → `1 failed | 48 passed (49)`, "reads as no session when the
+  store holds an object". Narrow in all three.
+
+  *Corrected before merge — `docs/retake-sweep-what-it-measures.md` and the two entries
+  here.* The printed SPLIT table reproduced exactly on this container (all twelve rows,
+  `Tests 12 passed (12)`), but the prose built on it did not match it. The draft said
+  "8 of the 12 rows" were pinned: the table has seven `yes`. It said "all four 조명 rows
+  that failed to reproduce are pinned rows" and called that "the whole of the 조명
+  discrepancy": the backlog named two rows, and one of them, dark oil (21/120 against
+  71/120), is `no` — degraded split `0:82 1:38`. So the identity explains dark pores and
+  not dark oil, and "only a new measurement can settle it" is withdrawn for pinned rows
+  only. "Moves freely between 0/120 and 120/120 under any change of construction" was
+  also a claim no command had produced, since no alternative construction was run; it is
+  now labelled as inferred. The mechanism and the per-attribute 반사 pores 0/120 finding
+  stand. This is a guardrail-2 miss in a doc (a count not matching the output printed
+  above it), caught at review, not at the worker's own check.
+
+  *My own error, recorded.* My first attempt at the both-fixes-removed browser run was
+  `npx playwright test <spec>` without `-c playwright.mobile.config.ts`. It printed
+  `5 failed`, which looked like the defect, but every case had failed at
+  `page.goto: Cannot navigate to invalid URL` because there was no `baseURL`. I read the
+  failure message before using the result, and re-ran with the config. A red run is not
+  evidence until its failure message names the thing under test.
+
+  *Validation on the merged tree (worker's `32b8de5` plus the doc correction):* see the
+  PR body for the literal output.
