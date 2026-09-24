@@ -548,10 +548,43 @@ describe("cross-language index parity table", () => {
     const source = readFileSync(resolve(import.meta.dirname, "..", "lib", "skin.ts"), "utf8");
     expect(source).toContain("blemishDensity: blemishes.count / Math.max(blemishes.areaFace, 1e-6),");
     expect(source).toContain("return { count, areaFace: (validCells * stride * stride) / (faceW * faceW), tiedPeaks };");
+    // `>= 20`, not `> 0`: what stands between the shipped expression and a 0/0 is the
+    // early return at lib/skin.ts:965, 164 lines above it, and that return fires at a
+    // face box under 20px rather than at zero. Modelling it as `> 0` was what hid the
+    // band below from this table for seven cycles — see the group's `guardDivergence`.
+    // No committed row moves: they all sit at faceWidthPx 0, 144, 400 or 518.4.
+    expect(source).toContain("if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaFace: 0, tiedPeaks: 0 };");
     for (const row of densityRows) {
-      const areaFace = row.faceWidthPx > 0 ? row.sampledAreaPx / (row.faceWidthPx * row.faceWidthPx) : 0;
-      expect(row.count / Math.max(areaFace, 1e-6), `${row.note}`).toBe(row.value);
+      const areaFace = row.faceWidthPx >= 20 ? row.sampledAreaPx / (row.faceWidthPx * row.faceWidthPx) : 0;
+      const count = row.faceWidthPx >= 20 ? row.count : 0;
+      expect(count / Math.max(areaFace, 1e-6), `${row.note}`).toBe(row.value);
     }
+    // The band the guards disagree over, asserted on the app's side only. ml/selftest.py
+    // asserts the same rows' `python` column, so neither implementation can move while
+    // the question of which guard is right waits on real captures.
+    const guard = parity.indices.blemish_count.guardDivergence;
+    expect(guard.comparison).toBe("divergent");
+    expect(guard.rows.length).toBeGreaterThanOrEqual(5);
+    let below = 0;
+    for (const row of guard.rows as DensityRow[] & { app: number; python: number }[]) {
+      // The early return zeroes the COUNT as well as the area, so the band publishes a
+      // flat 0 rather than count/1e-6. Modelling only the area would read 3000000 here.
+      const measured = row.faceWidthPx >= 20;
+      const count = measured ? row.count : 0;
+      const areaFace = measured ? row.sampledAreaPx / (row.faceWidthPx * row.faceWidthPx) : 0;
+      expect(count / Math.max(areaFace, 1e-6), `${row.note}`).toBe(row.app);
+      if (row.faceWidthPx < 20) {
+        below += 1;
+        expect(row.app, `${row.note}`).toBe(0);
+        expect(row.python, `${row.note}`).not.toBe(0);
+      } else {
+        expect(row.app, `${row.note}`).toBe(row.python);
+      }
+    }
+    // Both sides of the floor are covered, so a row set that drifted to one side of it
+    // would stop pinning a boundary and this would go red rather than pass emptily.
+    expect(below).toBeGreaterThanOrEqual(3);
+    expect(guard.rows.length - below).toBeGreaterThanOrEqual(2);
     // The property the third argument was added for, on the two rows built to show it:
     // the same face at 3.6x the capture width reads the same density. Without this the
     // rows would pin arithmetic and not the index.

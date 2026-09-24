@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { reengageIdempotencyKey, reengageSecretsConfigured, retentionAfterWeekFour, sendReengageEmail } from "@/lib/reengage";
 import { createUnsubscribeToken } from "@/lib/server/unsubscribe-token";
+import { cronAuthorized } from "@/lib/server/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,14 +14,8 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const BATCH = 50;
 const MAX_RUN_MS = 45_000;
 
-function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return (request.headers.get("authorization") || "") === `Bearer ${secret}`;
-}
-
 export async function GET(request: Request) {
-  if (!authorized(request)) return Response.json({ ok: false, reason: "unauthorized" }, { status: 401 });
+  if (!cronAuthorized(request)) return Response.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
   const admin = await getSupabaseAdmin();
   if (!admin || !reengageSecretsConfigured()) {

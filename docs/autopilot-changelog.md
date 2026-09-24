@@ -7561,3 +7561,242 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   against the file.
 
   *Validation on the corrected tree:* see the PR body for the literal output.
+
+- 2026-09-24 (cycle 34) — Branch `autopilot/2026-09-24-0039`. **ARU ships five languages
+  and one of them reads right to left, so `/report` was measured under all four
+  non-Korean locales at 360px. The two categories everyone worries about — Korean text
+  leaking through and un-interpolated `{placeholders}` — came back clean, and that is
+  recorded with the pages and locales checked rather than claimed. The category nobody
+  had measured did not: on the picks step the comparison table's row labels scrolled off
+  the screen in Arabic, and on the routine step every step number sat at the far end of
+  the line it belonged to. Both are the same root cause, one CSS keyword apart.
+  Separately, `melanin_index` was the seventh registry index and the only one no
+  committed row pinned in either language.**
+
+  **Baselines, measured here on a clean tree at `0fc3adb` before any edit.** `node_modules`
+  was absent, so `npm ci` first. `npx vitest run` **786 passed in 98 files**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 142 tests in 1.414s ... OK**, and `npm run smoke` with the chromium override at
+  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** with **156 passed**.
+  They match the supervisor's.
+
+  **What the locale sweep checked, and what it found nothing in.** `/report`, `/care` and
+  `/checkin` in Chromium at 360x800, `localStorage["aru.lang"]` set to each of `en`,
+  `ja`, `zh` and `ar`, with a valid `gyeol_survey` and a `gyeol_reads` built from the
+  values `lib/skin.ts` actually produces — 12 page/locale renders, plus the picks and
+  routine steps of `/report` in each locale, 20 renders in total.
+
+  - **Un-interpolated `{placeholders}`: none, on any of the 20 renders.** Checked
+    statically as well, which is the stronger form: over the **3,636 dictionary entries**
+    in `lib/i18n/{en,ja,zh,ar}.ts` (911 / 907 / 907 / 911), the set of `{...}` tokens in
+    the Korean key equals the set in the translation on **every** entry — **0 mismatches
+    in each of the four**. A translation cannot drop or rename a parameter today.
+  - **Korean leaking into a non-Korean page: none, and the first run said otherwise
+    because the fixture was wrong.** The first pass reused `VALID_READS` from
+    `tests/e2e/reads-shape.regression-17.spec.ts` and reported four Korean strings on
+    `/report` in all four locales. They are `"오늘 피부는 안정적이에요"`, `"유분 적정"`,
+    `"모공 보통"` and `"전반 안정"` — and `lib/skin.ts` produces **none** of them.
+    `SKIN_LABELS`, `overallFor` and `headlineFor` emit a different closed set, and all
+    **17** of those strings are present in all four dictionaries. That fixture is a
+    shape fixture and is right for what it tests; it is not a corpus. Re-run with real
+    values the count is **0 Korean characters on all 20 renders**. Two static sweeps
+    agree: **391** literal `t("…")` keys across `app/` and `lib/` (every one Korean),
+    **0 missing** from each of the four dictionaries; and the catalogue fields the UI
+    passes through `t(variable)` — brand (16), name (22), category (8), texture (10),
+    highlights (44), key ingredients (28), concerns (12) and every `budgetBand` value
+    (4) — **0 missing** from each of the four.
+  - **Page-level horizontal overflow: none.** `document.documentElement.scrollWidth ===
+    clientWidth === 360` on all 20 renders, `ar` included.
+  - **Currency and number formatting: nothing wrong found.** ARU never calls
+    `Intl.NumberFormat` on a price. Prices are rendered only as bands, and both band
+    functions go through the dictionary: `budgetBand` (`lib/skus.ts`) and `budgetLabel`
+    (`lib/recommend.ts`). The four reachable bands render as `Under ₩10,000` /
+    `₩10,000 range` / `₩20,000 range` / `₩30,000 range` in `en`, `1万ウォン未満` /
+    `1万ウォン台` … in `ja`, and `أقل من 10,000 وون` / `حوالي 10,000 وون` … in `ar`. The
+    5th band `"4만원 이상"` is present in all four dictionaries and is **unreachable from
+    the current catalogue** — the dearest of the 22 SKUs is 38,000 — so it was checked
+    and not rendered. Won is the right currency in all five languages: ARU recommends
+    from a Korean catalogue at Korean merchants.
+
+  **Bug fix — the comparison table's row labels leave the screen in Arabic.** `/report`'s
+  picks step is where the commerce out-links sit. `ProductCompare`'s row-label column is
+  `position: sticky` at `left: 0` (`app/components/product-compare.tsx`), inside a
+  container that is `overflowX: auto` around a table with `minWidth: 340`. Under
+  `dir=rtl` that scroller runs the other way — `scrollLeft` goes negative — and `left`
+  never catches the column. Measured on the unchanged code, scrolled to the inline end:
+
+  | locale | before scrolling | after scrolling | viewport |
+  |---|---|---|---|
+  | `ar` | L=201 R=319 | **L=283 R=401** | 360 |
+  | `en` | L=41 R=179 | L=41 R=179 | 360 |
+
+  So in Arabic the column travelled 82px and its right edge landed **41px past a 360px
+  viewport**, taking 예산대 / 용량 / 제형 / 핵심 성분 / 제외 성분 반영 with it — the five
+  labels that say what the rows under them mean. In English it did not move. The fix is
+  `insetInlineStart: 0`, plus `textAlign: "start"` on the two cells that had
+  `textAlign: "left"`. After it, `ar` reads **L=201 R=319 both before and after**, and
+  `en` is unchanged.
+
+  **UI/UX — the routine step's numbers sat at the wrong end of every line.** Same root
+  cause, different block, recorded separately because it is a different screen state.
+  `RoutineHalf` in `app/report/page.tsx` draws a numbered rail with `paddingLeft: 40`, a
+  dotted rail at `left: 13` with `borderLeft`, and each number at `left: -40`. Arabic
+  titles right-align, so the numbers stayed on the physical left while the text they
+  number started at the right:
+
+  | | step 1 | step 2 | step 3 |
+  |---|---|---|---|
+  | `ar` before, title | L=137 R=319 | L=101 R=319 | L=114 R=319 |
+  | `ar` before, number | L=41 R=69 | L=41 R=69 | L=41 R=69 |
+  | `ar` after, title | L=97 R=279 | L=61 R=279 | L=74 R=279 |
+  | `ar` after, number | L=291 R=319 | L=291 R=319 | L=291 R=319 |
+  | `en` (unchanged), title | L=81 R=319 | L=81 R=319 | L=81 R=296 |
+  | `en` (unchanged), number | L=41 R=69 | L=41 R=69 | L=41 R=69 |
+
+  Before the fix the gap between a number and the title it numbers was 68, 32 and 45
+  pixels of empty line, varying with the title's length. After it the number sits **12px**
+  in front of the title on all three steps, which is exactly what LTR has always had
+  (69 → 81). `paddingInlineStart` / `insetInlineStart` / `borderInlineStart`; the dotted
+  rail moved from L=54 to L=304 and its dotted edge flipped from `border-left` to
+  `border-right`, measured through `getComputedStyle`.
+
+  *Break-the-line, three source edits, each re-run against the FINAL committed tree
+  (`d99ad50`) and restored with `git checkout`:*
+
+  | edit | result | which named tests failed |
+  |---|---|---|
+  | base, no edit | **4 passed** | — |
+  | `stickyCol`'s `insetInlineStart: 0` → `left: 0` | **1 failed \| 3 passed** | `…stays pinned and on-screen under Arabic` |
+  | both `stickyCol` `textAlign: "start"` → `"left"` (2 occurrences) | **2 failed \| 2 passed** | that one, plus `…still pins to the left in LTR` |
+  | `RoutineHalf`'s three logical properties → physical | **1 failed \| 3 passed** | `routine step numbers sit in front of their step under Arabic` |
+  | restored | **4 passed** | — |
+
+  `tests/e2e/rtl-logical-inset.regression-18.spec.ts`, 4 cases, `ar` and `en` for each of
+  the two blocks. The LTR cases are there because a logical property is only a fix if it
+  leaves LTR alone, and the second row above is what proves they are not decorative.
+
+  **ML — `melanin_index` had no committed row, and the docstring saying so had gone
+  stale.** No `[AI]` ML item in "Backlog > Now" could be advanced honestly this cycle
+  without a labelled export, and each is blocked for a reason already written in its own
+  entry: the 0.86 cap / 0.8614 gate pair needs the vision path's confidences measured
+  against real readings; the ordinal floor needs a first real training run; the blemish
+  constants need real photos through `/eval`; `minQwkGainOverHeuristic`'s third clause is
+  the owner's; the plateau-dominated `detectBlemishes` question is a product decision and
+  guardrail 4 of this cycle's brief forbids moving what `blemishCount` reports; the
+  `roughness_ratio` divergence's open half is "which side moves", which needs faces. So
+  this cycle's ML item came from outside that list, and it is a hole in the test surface
+  rather than a model question: **`ml/skin_indices.INDEX_BY_ID` holds 7 indices and
+  `ml/index-parity.json` held rows for 6**, so nothing anywhere pinned `melanin_index`'s
+  expression or either of its guards.
+
+  It is now pinned with **12 rows**, and the group is `"comparison": "python-only"`
+  rather than a parity group, because it cannot be one: `melanin_index` is ABSOLUTE and
+  DERIVED, `DERIVED_FROM` names `toneLstar` as the column it reads *from*, `lib/skin.ts`
+  computes no counterpart, and no export column holds the result. The rows pin both
+  guards. The low one is shared with the benchmark the module
+  cites: `ml/skin_indices.py` records that as hpicsk/regional-ccm `src/clinical.py`'s
+  `MI_L_STAR_FLOOR = 1.0`, verified in cycle 20 against that source and not re-fetched
+  here. L\* 0, 0.5 and 1.0 all read **200.0**. The high one is the single deliberate deviation from it — that
+  reference clips to `[1.0, 100.0]` and this does not — so L\* 100 reads **0.0**,
+  L\* 100.0000001 reads **-4.342944698377123e-08** and L\* 120 reads
+  **-7.918124604762482**.
+
+  *Break-the-line, two source edits to `ml/skin_indices.py:melanin_index`, each against
+  the committed tree:*
+
+  | edit | `python3 ml/selftest.py` | which named test |
+  |---|---|---|
+  | base | **Ran 142 tests … OK** | — |
+  | drop the low floor (`max(lstar, 1.0)` → `lstar`) | **Ran 142 … FAILED (errors=1)** | `test_indices_match_the_typescript_implementations_value_for_value` |
+  | clip the high end the way the cited reference does | **Ran 142 … FAILED (failures=1)**, `AssertionError: 0.0 != -4.342944698377123e-08 : above the ceiling: the reference clips to 0 here and this does not: melanin_index(100.0000001)` | the same test |
+  | restored | **Ran 142 tests … OK** | — |
+
+  The same test's docstring is corrected while it is being extended. It still said
+  "Five of the seven registry indices are covered … the other two — melanin_index and
+  ita — are name-pinned and value-unchecked", and the committed table contradicts the
+  `ita` half: cycles 19-20 gave `ita` its own case, `"comparison": "exact"` and **17
+  rows**. The set assertion in that test no longer repeats the six index ids by hand; it
+  compares against `set(skin_indices.INDEX_BY_ID)`, so the registry growing an eighth
+  index fails here instead of being silently uncovered.
+
+  **Research (자료조사) — CSS Logical Properties and Values Level 1, from the CSS Working
+  Group's own source.** Asked because the fix above turns on whether `inset-inline-start`
+  is defined to follow `direction`, and on what `text-align: start` computes to — the
+  second one is not a detail, because this cycle's first draft of the test asserted the
+  computed value would be `"right"` under RTL, and the spec says it is not.
+
+  ```
+  https://raw.githubusercontent.com/w3c/csswg-drafts/main/css-logical-1/Overview.bs
+  http=200 bytes=39421
+  sha256 9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41
+  ```
+
+  Two quotes carry the change. The module's own worked example is Arabic, and it is the
+  exact substitution made here (lines 105-109):
+
+  ```css
+  blockquote {
+      text-align: start; /* left in latin, right in arabic */
+      margin-inline-start: 0px; /* margin-left in latin, margin-right in arabic */
+      border-inline-start: 5px solid gray; /* border-left in latin, border-right in arabic */
+      padding-inline-start: 5px; /* padding-left in latin, padding-right in arabic */
+  }
+  ```
+
+  And on the inset properties (§ "Flow-Relative Offsets", lines 606-628): the propdef
+  gives `Computed value: Same as corresponding 'top'/'right'/'bottom'/'left' properties`,
+  and the prose says "These properties correspond to the 'top', 'bottom', 'left', and
+  'right' properties. The mapping depends on the element's 'writing-mode', 'direction',
+  and 'text-orientation'." That is what the browser measurement then confirmed:
+  `getComputedStyle` on the sticky cell reads `left=0px right=auto` in `en` and
+  `left=auto right=0px` in `ar`, from one declaration. `text-align` is the opposite case
+  — its propdef says `Computed value: specified keyword`, so `start` stays `start` in
+  both, which is why the spec assertion is on the keyword and not on a side.
+
+  This is a primary source for the CSS, not for what any browser ships; only Chromium
+  1194 at 360x800 was measured, and no other engine was.
+
+  **What was NOT established.** Only `/report`, `/care` and `/checkin` were swept, at one
+  viewport, in one engine, at one language per run — nothing here says anything about
+  `/scan`, `/survey`, `/studio` or `/privacy` in a non-Korean locale, about a language
+  switched mid-session, or about a real phone. The Korean-leak result is a statement
+  about the strings this build can produce: the vision path (`mergeVisionAnalysis`) can
+  put LLM text into a reading, and that text is not a dictionary key and was not
+  exercised here. And the `melanin_index` rows pin one language against itself — they
+  are a regression pin, not the parity the other six groups carry, and nothing in them
+  makes the index right.
+
+  *Validation on the final tree:* see the PR body for the literal output.
+
+  **Supervisor review.** Sound. The claims audit held on everything checked. The one
+  correction is a README sentence that contradicted `app/globals.css`.
+
+  *Predicted by reading, before the branch existed.* Two things. First, the RTL arrow
+  glyphs are already mirrored by `html[dir="rtl"] .aru-dir-arrow, .aru-flow-steps__arrow`,
+  so cycle 33's `/care` arrow should flip correctly. Second, product cards show price only
+  through `t(budgetBand(...))`, so a currency-format defect on them is unlikely. Neither
+  prediction is contradicted: the worker found no arrow or currency defect. The two real
+  RTL defects it found were ones I had not predicted, the physical `left` in the compare
+  table's sticky column and in the routine lane.
+
+  *Re-derived here.* A throwaway vitest over the four dictionaries gives `en: entries=911
+  mismatches=0`, `ja: 907 / 0`, `zh: 907 / 0` and `ar: 911 / 0` for `{placeholder}`
+  token sets. That is the worker's 3,636 entries and 0 mismatches exactly. The twelve
+  `melanin_index` rows were recomputed from `100*log10(100/max(L*,1.0))` in a separate
+  interpreter, and every value matches to the last digit.
+
+  *Breaks re-run on the committed tree*, against `rtl-logical-inset.regression-18.spec.ts`
+  under `-c playwright.mobile.config.ts`. Putting `stickyCol` back to `left: 0` gives
+  `1 failed` / `3 passed`. Putting `RoutineHalf`'s three logical properties back to
+  `paddingLeft` / `left` / `borderLeft` gives `1 failed` / `3 passed`. Both match the
+  worker's table.
+
+  *Corrected before merge — `README.md`.* The draft said RTL "is built on CSS logical
+  properties … not on per-direction overrides". `app/globals.css:120-121` is exactly one
+  such override: `html[dir="rtl"]` mirroring the two arrow classes with
+  `transform: scaleX(-1)`. It is correct to have, because a glyph has no logical form, but
+  the sentence denied it existed. The sentence now names it. Same class of miss as
+  cycles 31-33: a claim about another file, made without grepping it.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.

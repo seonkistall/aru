@@ -942,6 +942,52 @@ class SkinIndices(unittest.TestCase):
         self.assertEqual(skin_indices.coarse_tone_band(skin_indices.ita(50.001, 0.005)), "medium")
         self.assertEqual(skin_indices.coarse_tone_band(90.0), "light")
 
+    def test_blemish_density_guard_band_is_pinned_on_the_python_side(self):
+        """The band where this function and lib/skin.ts stop agreeing about a face box.
+
+        `blemish_density` clamps at `max(face_width_px ** 2, 1e-6)`, which only ever
+        bites at exactly zero, so every positive width gets a density. `detectBlemishes`
+        in lib/skin.ts returns `{ count: 0, areaFace: 0 }` for `faceW < 20`, so the app
+        publishes its could-not-measure 0 across a whole 20-pixel band this function
+        publishes numbers in. Same mechanism as shine_ratio (cycle 16) and
+        roughness_ratio (cycle 17), one axis over.
+
+        Measured 2026-09-24. It was invisible while the app column in
+        tests/index-parity.test.ts modelled the guard as `faceWidthPx > 0`, which is not
+        what lib/skin.ts:965 says and which agrees with THIS function inside the band.
+
+        Nothing here decides which guard is right — it turns on whether a face box under
+        20px is worth reading at all, and that is a question about real captures. This
+        asserts the Python column only; the TypeScript case asserts the app column of
+        the same rows, so neither side can move while the decision waits.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        guard = table["indices"]["blemish_count"]["guardDivergence"]
+        self.assertEqual(guard["comparison"], "divergent")
+        rows = guard["rows"]
+        self.assertGreaterEqual(len(rows), 5)
+        below = 0
+        for row in rows:
+            value = skin_indices.blemish_density(row["count"], row["sampledAreaPx"], row["faceWidthPx"])
+            self.assertAlmostEqual(value, row["python"], places=10, msg=row["note"])
+            if row["faceWidthPx"] < 20:
+                below += 1
+                # Python publishes a finite density exactly where the app publishes 0.
+                self.assertEqual(row["app"], 0, msg=row["note"])
+                self.assertGreater(row["python"], 0, msg=row["note"])
+            else:
+                self.assertEqual(row["app"], row["python"], msg=row["note"])
+        # Both sides of the 20px floor, so the rows pin a boundary rather than one side.
+        self.assertGreaterEqual(below, 3)
+        self.assertGreaterEqual(len(rows) - below, 2)
+        # The app guard this is measured against, quoted from the file that holds it, so
+        # the band cannot silently close or move while these rows stay put.
+        skin_ts = (Path(__file__).resolve().parent.parent / "lib" / "skin.ts").read_text(encoding="utf-8")
+        self.assertIn(
+            "if (!Number.isFinite(faceW) || faceW < 20 || faceH < 20) return { count: 0, areaFace: 0, tiedPeaks: 0 };",
+            skin_ts,
+        )
+
     def test_roughness_ratio_disagrees_with_the_app_and_the_table_records_where(self):
         """The one parity group whose two columns are NOT expected to match.
 

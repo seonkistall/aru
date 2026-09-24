@@ -46,7 +46,14 @@ export function ReengageOptIn({ context }: { context?: string }) {
           event.preventDefault();
           void submit();
         }}
-        style={{ display: "flex", gap: 8 }}
+        // `flexWrap` and the 200px basis, together, are what keep the field usable at
+        // 360px. The button is `flexShrink: 0` and its label is a translated sentence,
+        // so on a single line it took whatever width its locale needed and the input —
+        // `flex: 1, minWidth: 0` — absorbed the rest. Measured at 360x800 on /report:
+        // the input was 26.3px wide under `ar` and 30.8px under `ja`, against a button
+        // of 209.7px and 205.3px. Wrapping gives the address its own full-width line in
+        // every locale instead of the leftovers of the longest one.
+        style={{ display: "flex", flexWrap: "wrap", gap: 8 }}
       >
         <input
           type="email"
@@ -57,7 +64,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
           placeholder={t("이메일 주소")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={{ flex: 1, minWidth: 0, minHeight: "var(--tap-min)", fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" }}
+          style={{ flex: "1 1 200px", minWidth: 0, minHeight: "var(--tap-min)", fontSize: 14, padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)" }}
         />
         <button
           type="submit"
