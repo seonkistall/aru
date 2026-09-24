@@ -136,6 +136,12 @@ describe("both routes are gated by it", () => {
       expect(source).toContain("cronAuthorized");
       expect(source).not.toMatch(/function authorized\(/);
       expect(source).not.toContain("=== `Bearer ${secret}`");
+      // Added at supervisor review: an inline revert — the import left in place, unused,
+      // and the header compared against `Bearer ${process.env.CRON_SECRET}` with `!==` —
+      // passed every assertion above (18 passed) and only drew an eslint WARNING. The
+      // gate has to be CALLED, and no route may build the bearer string itself.
+      expect(source).toMatch(/if \(!cronAuthorized\((request|req)\)\)/);
+      expect(source).not.toContain("Bearer ${");
     }
   });
 });

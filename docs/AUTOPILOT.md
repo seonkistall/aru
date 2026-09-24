@@ -1201,7 +1201,47 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   probed at 360px; `app/unsubscribe/unsubscribe-form.tsx` was read as source and
   `/checkin` was neither read nor probed, so neither carries a measurement here.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound. The consent defect is measured, and it is left to the
+  owner as the guardrail requires. One test was too weak to catch a plausible revert, and
+  it was hardened before merge.
+
+  *Predicted by reading, before the branch existed:* three things.
+  - (1) The subscribe upsert's `revoked_at: null` undoes an unsubscribe. Confirmed by
+    the worker's `regression-22`.
+  - (2) Its `week2_sent_at/week4_sent_at: null` re-arms a mail already sent, so the
+    address would get a duplicate. **My prediction was wrong on the part that
+    mattered.** The same upsert also resets `consented_at`, and the runner gates on
+    `.lte("consented_at", now - week)` (`app/api/reengage/run/route.ts:48`). So nothing
+    re-sends until the new consent is itself two weeks old, which is ISSUE-008's
+    deliberate fresh cycle (`tests/reengage-resubscribe.regression-8.test.ts`). I had
+    not read the runner's gate.
+  - (3) The `===` bearer compare. Confirmed and fixed.
+
+  *Re-derived here.*
+  - `raw.githubusercontent.com/nodejs/node/v22.11.0/doc/api/crypto.md` re-fetched as
+    `http=200 bytes=197047`, sha256 `57101386…8868dfc`, with the quoted sentence at
+    lines 5449-5451.
+  - `grep -rn "lib/consent"` over the re-engagement path counts `0`, so this is a
+    separate third stream and nothing merged.
+  - `lib/reengage.ts:16-23` is the secrets gate §7 describes.
+
+  *Hardened before merge — `tests/cron-bearer-constant-time.test.ts`.* I tried an
+  inline revert of `/api/reengage/run`: the import left in place but unused, and the
+  header compared against `` `Bearer ${process.env.CRON_SECRET}` `` with `!==`. It
+  passed the whole file at `18 passed`, and `npx eslint` on the route gave only
+  `'cronAuthorized' is defined but never used` as a **warning**, so no gate caught it.
+  The route test now requires an actual `if (!cronAuthorized(request|req))` call, and no
+  `Bearer ${` string built in a route. With that, the same revert gives `1 failed | 17
+  passed`, "neither route still defines its own authorized()". A separate limit, stated
+  plainly: swapping `timingSafeEqual` for `Buffer.equals` inside `cronAuthorized` still
+  passes all 18. Constant-time behaviour is not observable by a functional test, and the
+  worker's doc never claimed otherwise.
+
+  *The consent decision is the owner's.* `docs/reengage-resubscribe-consent-decision.md`
+  recommends D then B. It is reachable today in one respect: the subscribe route stores
+  rows without any sending key set.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
 
   *Validation on this tree:* see the report for the literal output.
 
