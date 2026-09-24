@@ -46,7 +46,7 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 340, fontSize: 12.5 }}>
         <thead>
           <tr>
-            <th scope="col" style={{ ...cell, ...stickyCol, textAlign: "left" }} />
+            <th scope="col" style={{ ...cell, ...stickyCol, textAlign: "start" }} />
             {picks.map((p, i) => (
               <th scope="col" key={p.sku.id} style={{ ...cell, textAlign: "center", verticalAlign: "top" }}>
                 <div style={{ width: 40, height: 40, margin: "0 auto 6px" }}>
@@ -61,7 +61,7 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.label}>
-              <th scope="row" style={{ ...cell, ...stickyCol, textAlign: "left", color: "var(--text-muted)", fontWeight: 600 }}>{row.label}</th>
+              <th scope="row" style={{ ...cell, ...stickyCol, textAlign: "start", color: "var(--text-muted)", fontWeight: 600 }}>{row.label}</th>
               {picks.map((p) => (
                 <td key={p.sku.id} style={{ ...cell, textAlign: "center" }}>{row.render(p)}</td>
               ))}
@@ -77,5 +77,8 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
 }
 
 const cell: React.CSSProperties = { padding: "9px 8px", borderBottom: "1px solid var(--line)", verticalAlign: "middle" };
-const stickyCol: React.CSSProperties = { position: "sticky", left: 0, background: "var(--surface)", zIndex: 1, whiteSpace: "nowrap" };
+// `insetInlineStart`/`start`, not `left`: under Arabic (dir=rtl) the scroller
+// runs the other way, so a column pinned to the physical left unpins and slides
+// off the viewport instead of holding the row labels in place.
+const stickyCol: React.CSSProperties = { position: "sticky", insetInlineStart: 0, background: "var(--surface)", zIndex: 1, whiteSpace: "nowrap" };
 const miniTag: React.CSSProperties = { fontSize: 10.5, color: "var(--ink-soft)", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 5, padding: "2px 5px" };

@@ -4,8 +4,78 @@
     "tests/index-parity.test.ts",
     "ml/selftest.py"
   ],
-  "note": "Inputs and expected outputs for the ml/skin_indices.py indices whose values are pinned across both languages. See docs/shine-formula-decision.md.",
+  "note": "Inputs and expected outputs for the ml/skin_indices.py indices whose values are pinned across both languages, plus melanin_index, which has no app counterpart and is pinned in Python alone. See docs/shine-formula-decision.md.",
   "indices": {
+    "melanin_index": {
+      "derivedFrom": "toneLstar",
+      "pythonFunction": "ml/skin_indices.py :: melanin_index",
+      "comparison": "python-only",
+      "formula": "melanin_index = 100 * log10(100 / max(lstar, 1.0))",
+      "covers": "formula and both guards",
+      "divergence": "Not a parity group and it cannot become one: melanin_index is ABSOLUTE and DERIVED, so no export column holds it and lib/skin.ts computes no counterpart (DERIVED_FROM names toneLstar, the column it reads FROM). These rows pin one language against itself. What they hold is the two guards: the low floor, which the benchmark this module cites shares (hpicsk/regional-ccm src/clinical.py, MI_L_STAR_FLOOR = 1.0), and the HIGH end, where that reference clips to [1.0, 100.0] and this deliberately does not. docs/melanin-index-verification.md.",
+      "rows": [
+        {
+          "lstar": 0.0,
+          "value": 200.0,
+          "note": "L* 0: below the floor, so the floor decides"
+        },
+        {
+          "lstar": 0.5,
+          "value": 200.0,
+          "note": "L* 0.5: still below the floor, same value as L* 0"
+        },
+        {
+          "lstar": 1.0,
+          "value": 200.0,
+          "note": "L* 1.0: the floor itself, the darkest reading the index distinguishes"
+        },
+        {
+          "lstar": 12.5,
+          "value": 90.30899869919435,
+          "note": "a very deep reading"
+        },
+        {
+          "lstar": 25.0,
+          "value": 60.20599913279624,
+          "note": "a deep reading"
+        },
+        {
+          "lstar": 50.0,
+          "value": 30.10299956639812,
+          "note": "mid lightness"
+        },
+        {
+          "lstar": 70.0,
+          "value": 15.490195998574317,
+          "note": "the L* the withdrawn FEATURE_KEY entry named as this index's own value"
+        },
+        {
+          "lstar": 85.5,
+          "value": 6.803388527182734,
+          "note": "a light reading"
+        },
+        {
+          "lstar": 99.9,
+          "value": 0.04345117740176334,
+          "note": "just under the ceiling an 8-bit sRGB triple can reach"
+        },
+        {
+          "lstar": 100.0,
+          "value": 0.0,
+          "note": "L* 100: that ceiling itself, index exactly 0"
+        },
+        {
+          "lstar": 100.0000001,
+          "value": -4.342944698377123e-08,
+          "note": "above the ceiling: the reference clips to 0 here and this does not"
+        },
+        {
+          "lstar": 120.0,
+          "value": -7.918124604762482,
+          "note": "well above the ceiling: negative, deliberately not clamped"
+        }
+      ]
+    },
     "shine_ratio": {
       "featureKey": "shine",
       "formula": "shine = tzoneSpecular + max(0, (tzoneL - cheekL) / (cheekL || 1)) * (140 / 255)",
