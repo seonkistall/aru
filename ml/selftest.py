@@ -1000,6 +1000,48 @@ class SkinIndices(unittest.TestCase):
         self.assertEqual(smooth["app"], 0.0)
         self.assertGreater(smooth["python"], 100000.0)
 
+    def test_roughness_ratio_inputs_are_l_star_normalised(self):
+        """What the two arguments are, which the docstring used to leave out.
+
+        lib/skin.ts:1166-1169 divides each region's high-frequency energy by that
+        region's own mean L* before the ratio is taken. Nothing in this module's
+        signature says so, and the difference does not cancel: the app's form is
+        `(cheekHf/cheekL) / (foreheadHf/foreheadL)`, which is the raw-energy ratio
+        times `foreheadL/cheekL`, and the two regions differ in L* by construction —
+        that gap is what shine_index is built on.
+
+        Asserted rather than described for the reason the melanin_index docstring went
+        stale under cycle 34: prose nobody executes stops being true quietly.
+        """
+        table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
+        pairs = sorted(
+            {
+                (row["tzoneL"], row["cheekL"])
+                for row in table["indices"]["shine_ratio"]["rows"]
+                if row["tzoneL"] > 0 and row["cheekL"] > 0
+            }
+        )
+        self.assertEqual(len(pairs), 12)
+
+        worst_residual = 0.0
+        factors = []
+        for tzone_l, cheek_l in pairs:
+            factors.append(tzone_l / cheek_l)
+            for cheek_hf, forehead_hf in ((1.0, 1.0), (0.37, 0.91), (12.5, 3.25), (1e-3, 7.0)):
+                raw = skin_indices.roughness_ratio(cheek_hf, forehead_hf)
+                app = skin_indices.roughness_ratio(cheek_hf / cheek_l, forehead_hf / tzone_l)
+                predicted = raw * (tzone_l / cheek_l)
+                worst_residual = max(worst_residual, abs(app - predicted) / abs(predicted))
+        # One rounding step apart, so the factor IS the whole of the difference.
+        self.assertLess(worst_residual, 1e-15, worst_residual)
+        # And the factor is large enough to matter on rows this repository commits.
+        self.assertAlmostEqual(min(factors), 0.7142857142857143, places=15)
+        self.assertAlmostEqual(max(factors), 1.5, places=15)
+
+        doc = (skin_indices.roughness_ratio.__doc__ or "").lower()
+        for phrase in ("mean l*", "lib/skin.ts:1166-1167", "lib/skin.ts:1168-1169", "0.7142857142857143", "1.5"):
+            self.assertIn(phrase, doc, phrase)
+
 
     def test_rgb_to_lab_matches_the_typescript_implementation_within_a_measured_tolerance(self):
         """The same contract as the indices above, with the one difference that matters.

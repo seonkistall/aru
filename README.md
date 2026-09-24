@@ -391,14 +391,24 @@ used externally as if they proved purchases, efficacy or failure prevention.
   at render time, so switching languages never rewrites data. Translation-key
   coverage is tested.
 - RTL layout is built on CSS logical properties (`inset-inline-start`,
-  `padding-inline-start`, `border-inline-start`, `text-align: start`). The one
-  per-direction rule is the arrow-glyph mirror in `app/globals.css`
+  `padding-inline-start`, `border-inline-start`, `margin-inline-start`,
+  `margin-inline-end`, `text-align: start`). The one per-direction rule is the
+  arrow-glyph mirror in `app/globals.css`
   (`html[dir="rtl"] .aru-dir-arrow, .aru-flow-steps__arrow`), because a glyph has no
-  logical form. A physical `left` / `paddingLeft` / `borderLeft` in a
-  positioned or scrollable block is the failure mode to look for: it does not follow
-  `dir`, and `tests/e2e/rtl-logical-inset.regression-18.spec.ts` measures the two on
-  `/report` that did not. Only `/report`, `/care` and `/checkin` have been measured
-  under `ar` this way — see the open backlog item in `docs/AUTOPILOT.md` for the rest.
+  logical form. A physical `left` / `paddingLeft` / `marginLeft` / `borderLeft` /
+  `textAlign: "left"` is the failure mode to look for: it does not follow `dir`, and
+  `tests/e2e/rtl-logical-inset.regression-18.spec.ts` (`/report`) and
+  `…regression-19.spec.ts` (`/`, `/scan`, `/privacy` and the shared step rail) measure
+  the seven blocks that did not.
+- Nine screens have now been measured under `ar` at 360x800: `/report`, `/care` and
+  `/checkin` (cycle 34) and `/`, `/survey`, `/scan`, `/studio`, `/privacy` and
+  `/unsubscribe` (cycle 35, `docs/rtl-sweep-part-two.md`). `/scan` is the pre-camera
+  screen only — the two blocks behind `phase === "ready"` need a camera and are open
+  in `docs/AUTOPILOT.md`, as are mid-session language switching and a real phone.
+- Position over the camera image stays PHYSICAL on purpose. `app/scan/guide.tsx` puts
+  the 이마/T존, 왼볼 and 오른볼 zone boxes, the corner marks, the landmark dots and the
+  ROI rectangle on a photograph of a face; mirroring them under `ar` would move a
+  label to the wrong cheek.
 
 ## Repository layout
 

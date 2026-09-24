@@ -326,6 +326,20 @@ partly done and stays here.
   move). Still `[~]` for exactly the reason the item gave: **which side moves** is the
   question of which guard produces a usable dryness reading on a smooth forehead, and
   that needs faces, which is the golden-set blocker.
+  **2026-09-24, cycle 35: the OTHER half of the pair — what the two arguments are — is
+  now in the Python function and asserted.** The third difference cycle 17 measured
+  ("the app's inputs are each region's high-frequency energy divided by that region's
+  own mean L\*") lived only in a selftest docstring; `ml/skin_indices.py`'s own
+  docstring, which is what a Python caller reads, still said "Texture energy against a
+  smooth reference region." It does not cancel: the app's form equals the raw-energy
+  ratio times `foreheadL/cheekL`, and over the **12** distinct positive
+  `(tzoneL, cheekL)` pairs `ml/index-parity.json` commits under `shine_ratio` that
+  factor runs **0.7142857142857143 to 1.5**, i.e. **-28.6% to +50%**. The identity's
+  worst relative residual over those 12 pairs by 4 energy pairs is **2.27e-16**.
+  `selftest.test_roughness_ratio_inputs_are_l_star_normalised` asserts the arithmetic
+  and the docstring's own phrases (142 → 143 tests). `lib/skin.ts` is untouched and no
+  published value moved. **Which side moves is still undecided and still needs faces**
+  — that is unchanged, and this cycle did not touch either guard.
   **2026-09-20, cycle 22: built, measured, and taken back out — and what stopped it was
   not the table.** `lib/skin.ts` is byte-identical to main on that branch. Everything
   below is in `docs/srgb-transfer-table.md`, including the five source-line breaks the
@@ -656,7 +670,7 @@ partly done and stays here.
   skin levels in server and messenger logs. Needs an owner call, not a loop decision.
 - [AI] `viralActivation` now has a denominator but no baseline. Once any real traffic
   exists, read it before changing the share surface again.
-- [AI] **The RTL sweep covered three screens; six more have never been measured under
+- [~] [AI] **The RTL sweep covered three screens; six more have never been measured under
   `ar`.** Opened 2026-09-24 (cycle 34) by the sweep that found the two logical-property
   defects on `/report`. What was measured: `/report`, `/care` and `/checkin` at 360x800
   in Chromium, under each of `en`, `ja`, `zh` and `ar`, with a valid survey and a
@@ -672,6 +686,21 @@ partly done and stays here.
   (`mergeVisionAnalysis`) can put LLM-written text into a reading, that text is not a
   dictionary key, and no sweep here exercised it — so "no Korean leaks" is a statement
   about the strings this build composes, not about every string a user can see.
+  **2026-09-24, cycle 35: the six screens are measured and the item is now `[~]` for
+  the two blocks a camera-less container cannot reach.** All six rendered under `en`,
+  `ja`, `zh` and `ar` at 360x800 — 24 renders, **0 Korean characters**, **0
+  un-interpolated `{placeholders}`**, `scrollWidth === clientWidth === 360` on every
+  one. Five physical-keyword defects found and fixed, pinned by
+  `tests/e2e/rtl-logical-inset.regression-19.spec.ts`; full measurement in
+  `docs/rtl-sweep-part-two.md`. **What is still not measured, and was NOT changed on
+  reasoning alone:** `app/scan/scan-controls.tsx:111` (`privacyPill`'s
+  `textAlign: "right"`) and `app/scan/info-sheet.tsx:22` (a `<ul>` whose
+  list indent is set with the physical `paddingLeft: 18`). Both render only at
+  `phase === "ready"`, which needs a camera. A run with Chromium's fake-media-stream
+  flags, or a phone, would settle them; grepping did not. Also still open and outside
+  this cycle's six screens: `app/report/page.tsx:293`'s `textAlign: "right"`, which
+  cycle 34's sweep of `/report` did not touch. And mid-session language switching and
+  a real phone remain unmeasured on all nine screens.
 - [OWNER] **Apply to the affiliate programmes** — 쿠팡 파트너스 (self-serve, accepts a
   website or app URL as the channel), 올리브영 쇼핑 큐레이터 (in-app, 7%/3%), 네이버 쇼핑
   커넥트 (5–28%, confirm a web service counts as a channel). Until then every out-click
@@ -1021,6 +1050,160 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-24 (cycle 35) — Branch `autopilot/2026-09-24-0639`. **Cycle 34 swept three
+  screens under `ar` and opened an item for the six it had not touched. This is those
+  six. Five blocks aligned or positioned themselves with a physical CSS keyword, and
+  the worst of them was `/privacy`: every export and delete button on the page put its
+  Arabic label against the end of the line a reader starts from, up to 146px of empty
+  space. Everything drawn over the camera image stays physical on purpose, and that
+  decision now has the spec's own sentence behind it. Separately, the Python
+  `roughness_ratio` docstring never said what its two arguments are, and a caller who
+  believed it would be off by up to 50%.**
+
+  **Baselines, measured here on a clean tree at `f016ec1` before any edit.**
+  `node_modules` was absent, so `npm ci` first. `npx vitest run` **786 passed in 98
+  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors,
+  2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 142 tests in 2.050s ... OK**, and `npm run smoke` with the
+  chromium override at `/opt/pw-browsers/chromium-1194` printed **`Smoke test
+  passed.`** with **160 passed**. They match the supervisor's.
+
+  **What was swept.** `/`, `/survey`, `/scan`, `/studio`, `/privacy` and
+  `/unsubscribe` at 360x800 in Chromium under each of `en`, `ja`, `zh` and `ar` — 24
+  renders. `/scan` is the pre-camera `init` screen only: `ScanControls` and
+  `InfoSheet` render at `phase === "ready"`, which needs a camera this container does
+  not have, so `app/scan/scan-controls.tsx:111` and `app/scan/info-sheet.tsx:22` were
+  grepped, NOT measured, and were left unchanged rather than fixed on reasoning. The
+  grep ran first: physical `left` / `right` / `paddingLeft` / `paddingRight` /
+  `marginLeft` / `marginRight` / `borderLeft` / `borderRight` /
+  `textAlign: "left"|"right"` across `app/` and `lib/`. On all 24 renders:
+  **0 Korean characters**, **0 un-interpolated `{placeholders}`**, and
+  `scrollWidth === clientWidth === 360`. `/survey`, `/studio` and `/unsubscribe` have
+  none of those properties in their own `.tsx` at all — the grep over the four files
+  exits 1 — and measured clean.
+
+  **Bug fix — `/privacy`'s buttons, the pre-camera intro, and the step rail.** Three
+  of the five, all `text-align` or a physical margin. `outlineBtn` and `dangerBtn`
+  (`app/privacy/page.tsx:222-223`) carried `textAlign: "left"`; a bare `<button>`
+  computes `center` in this Chromium, so the keyword was deliberate, and under
+  `dir=rtl` it is the reading END. Seven buttons on the page compute a non-`center`
+  `text-align`; six of them moved, and the seventh already filled its line. Content
+  box 54…306 in `ar`:
+
+  | button | `ar` before | `ar` after | `en` before = after |
+  |---|---|---|---|
+  | تصدير التصنيفات | 54…198 | **162…306** | 54…190 |
+  | تصدير صور البحث | 54…242 | **118…306** | 54…280 |
+  | حذف بيانات البحث | 54…160 | **200…306** | 54…193 |
+  | تصدير سجل الموافقات | 54…218 | **142…306** | 54…213 |
+  | حذف سجل الموافقات | 54…181 | **179…306** | 54…179 |
+  | حذف سجل روابط المنتجات | 54…280 | **80…306** | 54…297 / 54…102 |
+
+  The pre-camera intro list on `/scan` (`app/scan/page.tsx:380`) had the same keyword:
+  in a 62…273 box every Arabic visual line started at 62 and stopped short of 273;
+  after, every line ends at 273. And `FlowSteps`' hairline divider
+  (`app/components/flow-steps.tsx:25`) carried `marginRight: 2` in a `gap: 7` row, so
+  its gutters read 7 then 9 in LTR and 9 then 7 in RTL; the divider moved 287 → 289 in
+  `ar` and both directions now read 7 then 9. Two pixels, worth the line only because
+  that rail is on `/scan`, `/survey`, `/report` and `/care`.
+
+  **UI/UX — the landing cards, which are the top of the funnel.** `HowCard`
+  (`app/page.tsx:133-151`) is a flex row of step number, mascot, text column, and it
+  had two defects at once. Its text column carried `textAlign: "left"`, so in a 38…240
+  box the Arabic titles ended at 161, 194, and 172 then 148 instead of at 240. Its
+  mascot carried `marginLeft: -6`, which tightens number→mascot in LTR and in RTL
+  lands on the side away from the number, so the two gutters swapped:
+
+  | gap | `en` before | `en` after | `ar` before | `ar` after |
+  |---|---|---|---|---|
+  | number → mascot | 6 | 6 | **12** | **6** |
+  | mascot → text column | 12 | 12 | **6** | **12** |
+
+  **What was deliberately left PHYSICAL, and why.** `app/scan/guide.tsx` in full: the
+  zone boxes (`이마/T존` at `left: 36%`, `왼볼 결` at `left: 21%`, `오른볼 결` at
+  `right: 21%`), the four corner marks, the landmark dots at `left: ${point.x}%`, the
+  ROI rectangle at `left: ${rect.left}%`, the centre line and zone label at
+  `left: 50%`, and the capture-mode pill at `top: 14; right: 14`. Those are positions
+  on a photograph of a face; mirroring them would put the `왼볼` label on the right
+  cheek. Also left alone: `app/page.tsx:57`, the hand-drawn annotation arrow anchored
+  to a mascot illustration that is not mirrored (and which carries no
+  `aru-dir-arrow`, unlike the forward arrows `app/globals.css:120-124` does mirror
+  under `html[dir="rtl"]`); `app/scan/scanning.tsx:10` and `app/scan/page.tsx:401`,
+  both symmetric `left` + `right`; `app/scan/result-card.tsx:78`, symmetric borders
+  and post-capture; and `app/components/product-card.tsx:46`, whose
+  `marginLeft: "auto"` pushes to the inline END in both directions and is not on any
+  of these six screens. Nothing in the new spec asserts anything about `guide.tsx`.
+
+  *Break-the-line, five source edits, each re-run against the committed tree
+  (`740a467`) and restored with `git checkout`:*
+
+  | edit | result | which named tests failed |
+  |---|---|---|
+  | base, no edit | **6 passed** | — |
+  | `HowCard`'s text column `"start"` → `"left"` | **2 failed \| 4 passed** | `…landing cards' titles and mascot gutters…under Arabic`, `…landing cards keep their LTR gutters` |
+  | `HowCard`'s mascot `marginInlineStart` → `marginLeft` | **1 failed \| 5 passed** | `…landing cards' titles and mascot gutters…under Arabic` |
+  | `outlineBtn` + `dangerBtn` `"start"` → `"left"` (2 occurrences) | **2 failed \| 4 passed** | `/privacy's export and delete buttons…under Arabic`, `/privacy's buttons still read from the left in LTR` |
+  | scan intro `"start"` → `"left"` | **2 failed \| 4 passed** | `…pre-camera intro list and the step rail…under Arabic`, `…pre-camera intro list and the step rail are unchanged in LTR` |
+  | `FlowSteps` `marginInlineEnd` → `marginRight` | **1 failed \| 5 passed** | `…pre-camera intro list and the step rail…under Arabic` |
+  | restored | **6 passed** | — |
+
+  `tests/e2e/rtl-logical-inset.regression-19.spec.ts`, 6 cases, `ar` and `en` for each
+  of the three blocks. As in regression-18, the LTR cases are what stops a logical
+  property being decorative. Full measurement: `docs/rtl-sweep-part-two.md`.
+
+  **The `en` / `ja` / `zh` half did not move at all.** Diffing the before and after
+  probe runs with only the `text-align` keyword itself normalised away, the only lines
+  that differ are `ar` lines.
+
+  **Research — CSS Logical Properties and Values Level 1, from the CSSWG's own
+  repository.** `www.w3.org` refuses this network, so the spec was read from its
+  source. `https://raw.githubusercontent.com/w3c/csswg-drafts/main/css-logical-1/Overview.bs`,
+  **http=200, bytes=39421, sha256
+  `9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41`**, fetched twice
+  and byte-identical (`cmp`). Three passages did work here. Line 105 is the mapping
+  itself, on an Arabic example: `text-align: start; /* left in latin, right in arabic
+  */`. Line 443 answers the flex question — *"although the [=inline-start=] margin of
+  an ''direction/rtl'' box is its right margin"* — so the mapping is a property of the
+  box, not of how its parent ordered it, which is why `marginInlineStart` on a flex
+  item in a reversed row is the right keyword. And lines 112-115 are the licence for
+  §5 above: *"Documents might need both logical and physical properties. For instance
+  the drop shadows on buttons on a page must remain consistent throughout, so their
+  offset will be chosen based on visual considerations and physical directions, and
+  not vary by writing system."*
+
+  **ML — `roughness_ratio`'s docstring never said what its arguments are.** Cycle 17
+  measured that the app's inputs are each region's high-frequency energy divided by
+  that region's own mean L\*, and recorded it in a selftest docstring; the Python
+  function a caller actually reads still said only *"Texture energy against a smooth
+  reference region."* It does not cancel: `(cheekHf/cheekL) / (foreheadHf/foreheadL)`
+  is the raw-energy ratio times `foreheadL/cheekL`, and the two regions differ in L\*
+  by construction — that gap is what `shine_index` is built on. Over the **12**
+  distinct positive `(tzoneL, cheekL)` pairs `ml/index-parity.json` commits under
+  `shine_ratio`, that factor runs **0.7142857142857143 to 1.5**, so raw energies move
+  this index by **-28.6% to +50%** on rows this repository already holds. The identity
+  holds to a worst relative residual of **2.27e-16** over those 12 pairs by 4 energy
+  pairs. `ml/skin_indices.py`'s docstring now says all of it and
+  `selftest.test_roughness_ratio_inputs_are_l_star_normalised` asserts both the
+  arithmetic and the docstring's own phrases — which is the point, because the
+  `melanin_index` docstring cycle 34 had to correct went stale by being prose nobody
+  executed. `python3 ml/selftest.py` goes **142 → 143**; reverting the docstring to
+  its one-liner fails exactly that test. Chosen over the other `[AI]` ML items in
+  "Backlog > Now" because those need what this container does not have: the ordinal
+  floor and `minQwkGainOverHeuristic` need a real training run, the blemish constants
+  and `roughness_ratio`'s *which side moves* need faces, the `srgbLinear` table needs
+  a phone profile, and the knee analysis that item asks for was already done in cycle
+  22 (`docs/srgb-transfer-table.md` §2). No published value moved: `lib/skin.ts` is
+  untouched.
+
+  *Validation on this branch's final tree.* `npx vitest run` **786 passed in 98
+  files**; `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .` **0 errors,
+  2 warnings**, run on its own; `python3 ml/selftest.py` **Ran 143 tests in 2.150s ...
+  OK**; `npm run smoke` with the chromium override printed the literal line **`Smoke
+  test passed.`** with **166 passed (6.0m)** — the 160 of the baseline plus the six
+  new cases.
+
+  *Supervisor review:* pending.
 
 - 2026-09-24 (cycle 34) — Branch `autopilot/2026-09-24-0039`. **ARU ships five languages
   and one of them reads right to left, so `/report` was measured under all four
@@ -1496,287 +1679,5 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   a new layout on the existing `linkBtn` box, and reuses the `--plum` arrow that
   `clinicBtn` rows already carry. No new colour, and the claim in its comment was checked
   against the file.
-
-  *Validation on the corrected tree:* see the PR body for the literal output.
-
-- 2026-09-23 (cycle 32) — Branch `autopilot/2026-09-23-1239`. **A malformed survey took
-  both revenue screens, and `/report` wrote it to disk on the way past so the next tab
-  session was born broken. `/api/out` was hunted for an open redirect and does not have
-  one, which is now written down with the inputs that were tried. The last unreproduced
-  retake row is answered: 71/120 is arithmetically out of reach of the splits that row
-  has. And on `/report`'s commerce row the only link that can earn anything was the pale
-  one.**
-
-  **Baselines, measured here on a clean tree at `82fd93a` before any edit; they match the
-  supervisor's.** `node_modules` was absent, so `npm ci` first. `npx vitest run`
-  **704 passed in 96 files**, `npx tsc --noEmit | grep -c "error TS"` **13**,
-  `npx eslint .` **0 errors, 2 warnings** (the same `_reads` / `_result` at
-  `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 142 tests in 1.795s ... OK**, and
-  `npm run smoke` with the chromium override at `/opt/pw-browsers/chromium-1194`:
-  vitest leg **704 passed (96 files)**, Playwright leg **86 passed (4.5m)**, then
-  **`Smoke test passed.`** That baseline smoke run is not clean and is not claimed to
-  be: it takes about eleven minutes here and its Playwright leg was still running when
-  the first edits landed, so the specs after roughly [33/86] ran against a dev server
-  that had hot-reloaded them. Its vitest leg had already completed on the untouched
-  tree, and Playwright collects spec files at startup, so the 86 is the baseline suite
-  and does not include this cycle's new spec. The authoritative run is the final one
-  below.
-
-  **Bug fix — one shape check at three reads, on the path a paying click travels.** The
-  failure was measured against the UNCHANGED code first, and in a browser. `/report` and
-  `/care` each restore the report from `sessionStorage["gyeol_survey"]` inside
-  `try { JSON.parse } catch { return null }` and hand the result to `recommend()`, which
-  indexes `survey.concerns`, `survey.avoid`, `survey.budget`, `survey.type` and
-  `survey.category` without checking one of them. The catch covers the parse and nothing
-  else. What each wrong shape does, printed from `recommend()` itself:
-
-  ```
-  null                   -> THREW Cannot read properties of null (reading 'concerns')
-  a number               -> THREW Cannot read properties of undefined (reading 'includes')
-  a string               -> THREW Cannot read properties of undefined (reading 'includes')
-  an empty object        -> THREW Cannot read properties of undefined (reading 'includes')
-  a boolean              -> THREW Cannot read properties of undefined (reading 'includes')
-  an array               -> THREW Cannot read properties of undefined (reading 'includes')
-  no avoid list          -> THREW Cannot read properties of undefined (reading 'every')
-  no concerns list       -> THREW Cannot read properties of undefined (reading 'includes')
-  concerns is a string   -> OK picks=3 relaxed=null
-  budget is a string     -> OK picks=3 relaxed=null
-  budget is null         -> OK picks=3 relaxed=budget
-  ```
-
-  Eight throw, inside a mount effect, so `app/error.tsx` replaces the page — every
-  `/api/out` link on `/report` and every merchant button on `/care` with it. The other
-  three are the quieter half: a full three-pick report scored off fields `recommend()`
-  never read, with nothing on screen to say so.
-
-  **`/report` makes it outlive the tab.** `loadInitialView` calls
-  `saveLastResult({ survey, scan, reads, ts })` on the line BEFORE
-  `recommend(survey, scan)`, so the bad value reaches
-  `localStorage["aru_last_result"]` and then `loadLastResult` — whose check was
-  `parsed.survey`, a truthiness test that `5`, `"abcdef"` and `{}` all pass — feeds it
-  back to both pages on every future visit. That is the third read, and it is why the fix
-  is three lines and not one.
-
-  *Reproduced in Chromium against `82fd93a` with only the new specs added* (the four
-  source files stashed), `tests/e2e/commerce-survey-shape.regression-16.spec.ts` under
-  `playwright.mobile.config.ts`: **17 failed, 0 passed**. Five of the messages:
-
-  ```
-  1) /report survives a survey store holding null
-     Error: /report fell into app/error.tsx on null
-     Locator:  getByText('앗, 잠깐 멈췄어요')  Expected: 0  Received: 1
-  2) /care still offers its merchant path when the survey store holds null
-     Error: /care fell into app/error.tsx on null
-  3) /report survives a survey store holding a survey whose concerns is a string
-     Error: /report fell into app/error.tsx on a survey whose concerns is a string
-  4) /care still offers its merchant path when the survey store holds a survey whose concerns is a string
-     Error: /care showed neither its picks nor its empty state on a survey whose concerns is a string
-  5) /care survives the mirrored copy a broken /report left in localStorage
-     Error: /care fell into app/error.tsx on a mirrored bad survey
-  ```
-
-  Case 3 is worth reading twice: `recommend()` does NOT throw on a concerns string, and
-  `/report` still died — `"모공".filter` is undefined in the second effect, the one that
-  asks `/api/reason` for the product copy. Case 4 is the same input on `/care`, which
-  does not have that effect and so rendered a report instead. With the guard, the same
-  spec is **17 passed (19.0s)**: `/report` reaches the `/survey` redirect it already had,
-  `/care` its own empty state, and the mirror is never written.
-
-  The guard is `isSurvey` in `lib/recommend.ts`, structural only. It checks the five
-  fields for the shape the code indexes with and NOT for membership of `SkinType` /
-  `Concern` / `Category`, because a survey naming a category this build no longer ships
-  is still a usable survey — `recommend()` returns zero picks and `/report` renders its
-  no-picks branch — while an enum check would bounce that user to the survey for nothing.
-  Both cases are asserted in `tests/survey-shape.test.ts`.
-
-  *Break-the-line, three guards, three separate runs:*
-
-  | guard removed | result | what failed |
-  |---|---|---|
-  | `app/report/page.tsx` `isSurvey` | **8 failed \| 9 passed (17)** | the eight `/report` cases only |
-  | `app/care/page.tsx` `isSurvey` | **8 failed \| 9 passed (17)** | the eight `/care` cases only |
-  | `lib/last-result.ts` `isSurvey`, back to the truthiness test | **10 failed \| 743 passed (753)** over all of `tests/` | the ten "reads as no saved result when its survey is …" cases |
-
-  The last one leaves `null` green, because `null` is falsy and the old truthiness check
-  already caught it — which is exactly the case that made the old check look adequate.
-
-  **Nothing was found in `/api/out` itself, and that is recorded rather than left for
-  the next cycle to re-hunt.** `isAllowedCommerceUrl` is `new URL(value)` then
-  `protocol === "https:"` and `ALLOWED_HOSTS.has(url.hostname)`. Thirty inputs were
-  run against that predicate in node v22.22.2 — userinfo `@`, backslash before `@`,
-  trailing dot, ideographic full stop, Cyrillic look-alikes, protocol-relative,
-  `javascript:`, `data:`, tab and newline in the host, an IPv6-shaped host, a port, a
-  fullwidth `ｗ`, mixed case. **Every ALLOW resolved to a hostname genuinely on the
-  list.** Three ALLOWs are worth knowing and none is a redirect elsewhere: a fullwidth
-  `ｗ` normalises INTO `www.google.com`, `user:pass@www.google.com` keeps credentials in
-  the `Location` header, and `www.coupang.com:8443` passes because the check reads
-  `hostname` and not `host` — all three reachable only from
-  `COMMERCE_LINK_OVERRIDES_JSON`, a server env var, never from a request. `placement` is
-  the one user-controlled value that reaches the target URL, and
-  `URLSearchParams.set` percent-encodes it: `"a\r\nSet-Cookie: x=1"` serialises to
-  `utm_content=a%0D%0ASet-Cookie%3A+x%3D1_sku_merchant`. No CRLF, no extra parameter.
-  `docs/commerce-out-allowlist-probe.md`.
-
-  **Research (자료조사) — why the backslash case goes the SAFE way, from the standard's
-  own source.** Asked because `https://www.oliveyoung.co.kr@evil.example/` is blocked
-  while `https://www.oliveyoung.co.kr\@evil.example/` is allowed, and a predicate that is
-  only accidentally right is one line from being wrong.
-
-  ```
-  --- https://raw.githubusercontent.com/whatwg/url/main/url.bs
-  http=200 bytes=166059
-  sha256 eb85ab4551eec91ca0f28367ff81eabed020cebac87f98eaac7ecbba629fa5d1
-  ```
-
-  **host state** ends the host at a backslash when the scheme is special, and `https` is
-  special: "*`c` is the EOF code point, U+002F (/), U+003F (?), or U+0023 (#)* … *`url`
-  is special and `c` is U+005C (\\)*". So the backslash terminates the host before the
-  `@` is ever read and `@evil.example` is path. **authority state**, which runs before
-  host state, is where `@` ends the userinfo: "*If `c` is U+0040 (@), then:*". Both
-  outcomes are the safe one for an exact-match allowlist, and both are properties of the
-  parser rather than of ARU's code — which is why the check is written against
-  `url.hostname` and never against the string.
-
-  **ML — 조명 dark + oil, the row cycle 31 left open, is answered as far as this
-  construction can answer it.** It is the one 조명 row that is NOT pinned
-  (degraded split `0:82 1:38`), so cycle 31's identity does not reach it and its 21/120
-  against cycle 11's written 71/120 was unexplained.
-  `ARU_PRINT_RETAKE_OIL=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
-  2x2 over the 120 seeds at the committed construction:
-
-  ```
-  OIL contingency tuneSeed=1 cheekL=60	c00=82 c01=21 c10=0 c11=17
-  ```
-
-  **The clean-1 / degraded-0 cell is empty.** No seed that reads level 1 on the clean
-  capture drops to 0 when darkened, so the count is not two splits colliding — it is
-  exactly the difference of the marginals, `38 - 17 = 21`, which is the number the sweep
-  reports. **That bounds it, and 71 is outside the bound.** With `a` clean and `b`
-  degraded level-1 seeds over the same 120, disagreements are `c01 + c10` with
-  `c01 <= min(120 - a, b)` and `c10 <= min(a, 120 - b)`, so at `a = 17, b = 38` the most
-  any rearrangement can reach is **55**. A different noise field cannot produce 71 from
-  these splits; a different fixture, cut point or analyzer is required. Two sweeps say
-  the row behaves like a real per-seed measurement and not like a pinned one:
-
-  ```
-  OIL tuneSeed	clean level-1	degraded level-1	disagreements
-  OIL 1	17	38	21/120
-  OIL 2	65	65	12/120
-  OIL 3	87	76	13/120
-  OIL 5	63	65	12/120
-  OIL 8	89	79	12/120
-  OIL 13	8	24	16/120
-  OIL 21	34	49	17/120
-  OIL 34	101	83	18/120
-  OIL cheekL	clean level-1	degraded level-1	disagreements
-  OIL 40	17	43	26/120
-  OIL 50	17	41	24/120
-  OIL 60	17	38	21/120
-  OIL 70	17	34	17/120
-  OIL 80	17	31	16/120
-  OIL 90	17	31	14/120
-  OIL 100	17	32	15/120
-  OIL 120	17	24	9/120
-  ```
-
-  Re-seeding `tuned()`'s bisection swings the CLEAN split from 17 to 101 level-1 seeds
-  while the count stays between **12 and 21**; in a pinned row the count IS the clean
-  split and would have swung with it. Darkening the capture moves the count from **9** at
-  cheekL 120 to **26** at cheekL 40 — the trend runs with the darkness, and the single
-  exception, 14 at cheekL 90 against 15 at cheekL 100, is named here rather than smoothed
-  out of the sentence. *Measured:* every
-  number above, and the 55, which is arithmetic on the measured marginals. *Inferred:*
-  that cycle 11's 71 came from a different construction rather than a different seed.
-  The bound rules out every arrangement at tuning seed 1 but **not** a different tuning
-  seed — computed from the tuning-seed table it is 110, 77, 112, 72 and 83 at seeds 2, 3,
-  5, 8 and 21 — so what argues against the seed is the measured 12-21, not the bound
-  (supervisor correction at review; the draft said "the bound rules out the seed"). *Not
-  established:* which of fixture, cut point or analyzer changed, and whether some
-  construction not tried here reaches 71; both need cycle 11's fixture, which was never
-  committed. The contingency and the bound are asserted, not only printed, so a
-  construction change fails a named test instead of quietly re-opening the question.
-  `docs/retake-sweep-what-it-measures.md`. Nothing here touches a real face; that needs
-  the golden set, which is in BLOCKERS.
-
-  **UI/UX — on `/report`'s commerce row the paying link was the pale one.** Found by
-  running the app in Chromium at 360px and reading the two style objects behind the row.
-  `buyBtn`, which is the `/api/out` link and the only thing on that page that can earn
-  anything, was `background: var(--surface-tint)` on `flex: 1`; `commerceCareBtn`, an
-  internal navigation to `/care`, was `var(--plum)` on `var(--on-plum)` at `flex: 1.3`.
-  So the money link was both the quieter of the two and the narrower, and in ko
-  "올리브영에서 제품 보기" wrapped onto two lines inside the smaller box while
-  "제품과 상담 정보 보기" sat on one line in the filled one. The product cards' merchant
-  CTA on the same page (`app/components/product-card.tsx` line 111) is already the filled
-  treatment, so this row was out of step with it. (Supervisor correction at review: the
-  draft also said both of `/care`'s merchant buttons were filled; `/care`'s `linkBtn` is
-  `background: "var(--paper)"` with a line border.) The two
-  treatments are swapped. The existing case in `tests/e2e/mobile-layout.spec.ts` checked
-  that both CTAs were tappable and legible and passed throughout, in all five locales,
-  which is how the defect survived; it now also checks that the out-link is painted like
-  the product cards' CTA (read off one of them on the same step rather than hard-coded)
-  and is not narrower than the `/care` link. *Break-the-line:* with the two style objects
-  put back, that case fails **`ko: the out-link is not painted like the product cards'
-  CTA`** — `1 failed`.
-
-  *Verification, final tree.* `npx vitest run` **755 passed (97 files)**,
-  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npx eslint .` **0 errors,
-  2 warnings** (the same two), `python3 ml/selftest.py` **Ran 142 tests in 1.670s ...
-  OK**. `npm run smoke` was run twice with the chromium override, once on the final CODE tree
-  and once on the exact tree that was pushed, after the last Markdown edit; the two trees
-  differ only in Markdown. Both runs: vitest leg **755 passed (97 files)**, Playwright
-  leg **103 passed** (4.5m and 4.6m), then the literal line **`Smoke test passed.`**
-  No dependency added. `lib/skin.ts`, `lib/consent.ts`, the manifest, `shareUrl`,
-  `blemishCount`, `toneSpread` and `NEXT_PUBLIC_FUNNEL_FLUSH` are untouched, and
-  `README.md` is unchanged because nothing a reader of it would care about moved.
-
-  *Rotation.* AUTOPILOT.md 1529 → 1642 and the changelog 6462 → 6618; cycle 29's entry
-  moved verbatim (155 lines) to the end of the changelog's entries, which is where cycles
-  28, 27 and 26 went. Byte-identical rather than asserted to be: `sha256sum` on the
-  extracted block before and after both give
-  `2ac97979b868d22788e827da6008f06e4bcb6788db0c8899d71fdd750b22394e`. Taking all lines of
-  both files at `82fd93a`, `sort -u`, and `comm -23` against the new pair finds **0 lines
-  missing** — every edit this cycle made to those two files is an insertion, and
-  `Last updated:` already read 2026-09-23. "Recent cycles" holds 32/31/30.
-
-  **Supervisor review.** The survey fix and the `/api/out` negative result are sound; the
-  ML addition overstated what its bound rules out and was corrected before merge.
-
-  *`/api/out`, predicted before the branch existed.* Reading the route while the worker
-  ran, the only request-controlled value that reaches the redirect is `placement`, since
-  `sku` and `merchant` are resolved against `SKUS` before any URL is built, and the
-  host check is an exact-match `Set` on `url.hostname`. So an open redirect was not
-  expected and none was found. The twelve quoted inputs were re-run here against the
-  same predicate and every verdict and hostname matched; `url.bs` re-fetched as
-  `http=200 bytes=166059` with the same sha256, and the special-scheme backslash clause
-  is in it. One thing the supervisor raised and then found already handled: a 쿠팡
-  파트너스 short link on `link.coupang.com` is not on `ALLOWED_HOSTS`, but
-  `docs/commerce-partnership-playbook.md` already lists it as unverified and an earlier
-  cycle made that rejection loud. Not new.
-
-  *Survey guard.* In a browser, under `-c playwright.mobile.config.ts`, with all three
-  reads unguarded (both pages' `isSurvey` line and `loadLastResult` back to its
-  truthiness check), `commerce-survey-shape.regression-16.spec.ts` gives `17 failed`,
-  each at the `app/error.tsx` assertion, which is the defect. Guards broken one at a time
-  against `tests/survey-shape.test.ts`: removing `Number.isFinite(survey.budget)` gives
-  `4 failed | 45 passed (49)`, all four named "budget". Removing the `Array.isArray`
-  clause gives `49 passed (49)`. That clause is redundant, because an array fails the field
-  checks that follow, so it is harmless and nothing depends on it. `budget` has been a
-  `number` since `lib/recommend.ts` was first committed (`7419b54`), so the new check
-  cannot reject a survey an older build saved.
-
-  *Corrected before merge.* The contingency and both sweeps reproduced exactly here
-  (`Tests 14 passed (14)`, every OIL line identical). The bound is right at tuning
-  seed 1: `min(103,38) + min(17,82) = 55`. But the draft's "Inferred" line said "the bound
-  rules out the seed", and the same bound from its own tuning-seed table is 110, 77, 112,
-  72 and 83 at seeds 2, 3, 5, 8 and 21. So 71 is arithmetically reachable at five of
-  the eight, and what argues against a different tuning seed is the measured count
-  (12-21 everywhere), not the bound. The headline and both "Inferred" lines now say that.
-  This is the second cycle running in which the prose went one step past its own table.
-
-  *UI.* The swap of `buyBtn` and `commerceCareBtn` treatments was read, not measured
-  here. The draft's claim that every other merchant CTA is already `--plum` holds for
-  `product-card.tsx` line 111 and is false for `/care`, whose `linkBtn` is
-  `var(--paper)` outlined; the code comment, the test comment and the entry above are
-  corrected to say only what holds. The style change itself is unaffected. Smoke covers the added `mobile-layout.spec.ts` case.
 
   *Validation on the corrected tree:* see the PR body for the literal output.
