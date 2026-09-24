@@ -635,31 +635,63 @@ class SkinIndices(unittest.TestCase):
         matches bit for bit. If this starts failing, one of the two implementations
         changed — regenerate the table only after deciding on purpose which is right.
 
-        Five of the seven registry indices are covered, and to different depths. The
-        shine rows and, since 2026-09-20, the relative_redness rows pin the PATH as
-        well as the formula (the TypeScript side rebuilds each frame); the
+        All seven registry indices are covered as of 2026-09-24, and to different
+        depths. The shine rows and, since 2026-09-20, the relative_redness rows pin the
+        PATH as well as the formula (the TypeScript side rebuilds each frame); the
         tone_evenness, blemish_count and roughness_ratio rows pin the formula alone,
-        because their inputs are not exported fields. The other two — melanin_index
-        and ita — are name-pinned and value-unchecked:
-        docs/shine-formula-decision.md.
+        because their inputs are not exported fields; ita got its own case and 17 rows
+        from cycles 19-20, which is what retired the sentence here that still called it
+        value-unchecked. melanin_index is the seventh and is NOT a parity row: it is
+        ABSOLUTE and DERIVED, lib/skin.ts computes no counterpart, and no export column
+        holds it, so its group is `python-only` and pins this module against itself.
+        docs/shine-formula-decision.md, docs/melanin-index-verification.md.
         """
         table = json.loads((Path(__file__).resolve().parent / "index-parity.json").read_text(encoding="utf-8"))
         indices = table["indices"]
         self.assertEqual(
             set(indices),
-            {
-                "shine_ratio",
-                "tone_evenness",
-                "blemish_count",
-                "roughness_ratio",
-                "relative_redness",
-                "ita",
-            },
+            set(skin_indices.INDEX_BY_ID),
         )
-        # Whatever is pinned has to be a real index declaring the real app field.
+        # Whatever is pinned has to be a real index declaring the real app field — or,
+        # for a DERIVED index with no app field, the column it is derived FROM.
         for index_id, group in indices.items():
             self.assertIn(index_id, skin_indices.INDEX_BY_ID)
-            self.assertEqual(skin_indices.FEATURE_KEY[index_id], group["featureKey"])
+            if index_id in skin_indices.DERIVED_FROM:
+                self.assertNotIn(index_id, skin_indices.FEATURE_KEY)
+                self.assertNotIn("featureKey", group)
+                self.assertEqual(skin_indices.DERIVED_FROM[index_id], group["derivedFrom"])
+                self.assertEqual(group["comparison"], "python-only")
+            else:
+                self.assertEqual(skin_indices.FEATURE_KEY[index_id], group["featureKey"])
+
+        # melanin_index. The seventh registry index and, until 2026-09-24, the only one
+        # with no committed row in either language, so nothing here would have noticed
+        # the expression or either guard moving. The rows are not a parity check and the
+        # group says so: there is no app counterpart to disagree with. What they hold is
+        # the two guards. The low one is shared with the benchmark this module cites and
+        # flattens everything below L* 1.0 onto one value; the high one is the single
+        # deliberate deviation from that benchmark, which clips to [1.0, 100.0] where
+        # this returns a negative number above L* 100. docs/melanin-index-verification.md.
+        melanin_rows = indices["melanin_index"]["rows"]
+        self.assertGreaterEqual(len(melanin_rows), 10)
+        self.assertEqual(indices["melanin_index"]["pythonFunction"], "ml/skin_indices.py :: melanin_index")
+        for row in melanin_rows:
+            self.assertEqual(
+                skin_indices.melanin_index(row["lstar"]),
+                row["value"],
+                f'{row["note"]}: melanin_index({row["lstar"]})',
+            )
+        by_lstar = {row["lstar"]: row["value"] for row in melanin_rows}
+        # The floor: three L* at or below 1.0 have to land on the same value, or the
+        # rows pin an expression without pinning the guard in front of it.
+        self.assertEqual(len({by_lstar[l] for l in (0.0, 0.5, 1.0)}), 1)
+        # And the high end stays unclipped, which is the whole reason the deviation is
+        # written down rather than fixed.
+        self.assertEqual(by_lstar[100.0], 0.0)
+        self.assertLess(by_lstar[120.0], 0.0)
+        self.assertLess(by_lstar[100.0000001], 0.0)
+        # Not a table of one value repeated.
+        self.assertGreaterEqual(len(set(by_lstar.values())), 9)
 
         shine_rows = indices["shine_ratio"]["rows"]
         self.assertGreaterEqual(len(shine_rows), 20)

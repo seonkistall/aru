@@ -449,12 +449,15 @@ function RoutineHalf({ label, steps, half }: { label: string; steps: RoutineStep
         <HalfIcon half={half} />
         <p style={{ ...routineHalfLabel, marginBottom: 0 }}>{label}</p>
       </div>
-      <div style={{ position: "relative", paddingLeft: 40 }}>
+      {/* Logical, not physical: under Arabic (dir=rtl) the lane reads from the
+          right, so a rail and numbers pinned to the physical left land at the far
+          end of each line instead of in front of the step they number. */}
+      <div style={{ position: "relative", paddingInlineStart: 40 }}>
         {/* dotted rail connecting the step nodes */}
-        <span aria-hidden style={{ position: "absolute", left: 13, top: 10, bottom: 14, borderLeft: "2px dotted var(--line)" }} />
+        <span aria-hidden style={{ position: "absolute", insetInlineStart: 13, top: 10, bottom: 14, borderInlineStart: "2px dotted var(--line)" }} />
         {steps.map((step, index) => (
           <div key={step.id} style={{ position: "relative", paddingBottom: index === steps.length - 1 ? 4 : 18 }}>
-            <span style={{ ...routineIndex, position: "absolute", left: -40, top: 0, fontFamily: "var(--font-display)", fontSize: 16, filter: "url(#sketch-soft)" }}>
+            <span style={{ ...routineIndex, position: "absolute", insetInlineStart: -40, top: 0, fontFamily: "var(--font-display)", fontSize: 16, filter: "url(#sketch-soft)" }}>
               {index + 1}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
