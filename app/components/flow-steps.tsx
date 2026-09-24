@@ -22,7 +22,7 @@ export function FlowSteps({ current }: { current: FlowKey }) {
       <Link href="/" aria-label={t("홈으로")} style={{ minWidth: "var(--tap-min)", minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
         {t("아루")}
       </Link>
-      <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", marginRight: 2 }} />
+      <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", marginInlineEnd: 2 }} />
       {STEPS.map((step, index) => {
         const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "next";
         const label = (

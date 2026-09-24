@@ -137,10 +137,10 @@ function HowCard({ index, pose, title, body }: { index: number; pose: "magnify" 
         <div style={{ position: "absolute", inset: 0, border: "1.8px solid var(--ink)", borderRadius: 4, filter: "url(#sketch-soft)" }} aria-hidden />
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--orange)", width: 18, textAlign: "center", flexShrink: 0 }}>{index}</span>
-          <span style={{ flexShrink: 0, marginLeft: -6 }}>
+          <span style={{ flexShrink: 0, marginInlineStart: -6 }}>
             <Xiaohei size={46} pose={pose} />
           </span>
-          <div style={{ textAlign: "left", minWidth: 0, flex: 1 }}>
+          <div style={{ textAlign: "start", minWidth: 0, flex: 1 }}>
             <h3 className="locale-display" style={{ margin: 0, display: "block", fontFamily: "var(--font-display)", fontSize: 22, color: "var(--ink)" }}>{title}</h3>
             <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 3 }}>{body}</span>
           </div>
