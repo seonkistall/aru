@@ -377,7 +377,7 @@ export default function Scan() {
               <Center>
                 <div style={{ maxWidth: 320, background: "rgba(0,0,0,.58)", borderRadius: 14, padding: "20px 18px" }}>
                   <p style={{ fontFamily: "var(--font-display)", fontSize: 25, color: "#fff", marginBottom: 12 }}>{t("30초 피부 체크, 시작해볼까요?")}</p>
-                  <div style={{ display: "grid", gap: 9, marginBottom: 16, textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 9, marginBottom: 16, textAlign: "start" }}>
                     {[
                       ["📷", "얼굴을 가이드에 맞추면 빛과 각도를 확인한 뒤 자동으로 촬영해요."],
                       ["🔒", "기본 스캔은 기기 안에서만 처리 — 사진은 전송·저장되지 않아요."],

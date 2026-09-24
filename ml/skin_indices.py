@@ -307,7 +307,31 @@ def shine_ratio(tzone_specular: float, tzone_luminance: float, cheek_luminance: 
 
 
 def roughness_ratio(region_highfreq: float, reference_highfreq: float) -> float:
-    """Texture energy against a smooth reference region. WITHIN_IMAGE but weak."""
+    """Texture energy against a smooth reference region. WITHIN_IMAGE but weak.
+
+    BOTH arguments are a region's high-frequency energy ALREADY DIVIDED BY THAT
+    REGION'S OWN MEAN L*, which is what lib/skin.ts hands its counterpart:
+    `normalizedHf = (region, meanL) => region && meanL > 1 ? region.highFreq / meanL
+    : null` at lib/skin.ts:1166-1167, called with the cheeks at `cheekL` and the
+    forehead at its own mean luminance at lib/skin.ts:1168-1169. The docstring used
+    to say only "texture energy", and a caller who read that and passed raw energies
+    would not get the app's number.
+
+    It does not cancel. Writing the app's form out,
+    `(cheekHf/cheekL) / (foreheadHf/foreheadL) == (cheekHf/foreheadHf) *
+    (foreheadL/cheekL)`, so the raw-energy ratio is the published one divided by the
+    two regions' L* ratio — and the regions differ in L* by construction, because the
+    T-zone/cheek brightness gap is the very thing `shine_index` is built on. Over the
+    12 distinct positive (tzoneL, cheekL) pairs ml/index-parity.json commits under
+    `shine_ratio`, that factor runs 0.7142857142857143 to 1.5, so raw energies move
+    this index by -28.6% to +50% on rows this repository already holds. Measured, with
+    the identity's worst relative residual over those pairs at 2.27e-16: see
+    selftest.test_roughness_ratio_inputs_are_l_star_normalised.
+
+    Separate from that, and unchanged: the epsilon clamp below still disagrees with
+    lib/skin.ts:roughnessRatio's could-not-measure 0. Which side moves is not decided
+    here; ml/index-parity.json holds both columns.
+    """
     return region_highfreq / max(reference_highfreq, 1e-6)
 
 

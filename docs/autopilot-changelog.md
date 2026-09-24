@@ -7041,3 +7041,285 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
 
   *Validation on the merged tree (worker's `32b8de5` plus the doc correction):* see the
   PR body for the literal output.
+
+- 2026-09-23 (cycle 32) — Branch `autopilot/2026-09-23-1239`. **A malformed survey took
+  both revenue screens, and `/report` wrote it to disk on the way past so the next tab
+  session was born broken. `/api/out` was hunted for an open redirect and does not have
+  one, which is now written down with the inputs that were tried. The last unreproduced
+  retake row is answered: 71/120 is arithmetically out of reach of the splits that row
+  has. And on `/report`'s commerce row the only link that can earn anything was the pale
+  one.**
+
+  **Baselines, measured here on a clean tree at `82fd93a` before any edit; they match the
+  supervisor's.** `node_modules` was absent, so `npm ci` first. `npx vitest run`
+  **704 passed in 96 files**, `npx tsc --noEmit | grep -c "error TS"` **13**,
+  `npx eslint .` **0 errors, 2 warnings** (the same `_reads` / `_result` at
+  `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 142 tests in 1.795s ... OK**, and
+  `npm run smoke` with the chromium override at `/opt/pw-browsers/chromium-1194`:
+  vitest leg **704 passed (96 files)**, Playwright leg **86 passed (4.5m)**, then
+  **`Smoke test passed.`** That baseline smoke run is not clean and is not claimed to
+  be: it takes about eleven minutes here and its Playwright leg was still running when
+  the first edits landed, so the specs after roughly [33/86] ran against a dev server
+  that had hot-reloaded them. Its vitest leg had already completed on the untouched
+  tree, and Playwright collects spec files at startup, so the 86 is the baseline suite
+  and does not include this cycle's new spec. The authoritative run is the final one
+  below.
+
+  **Bug fix — one shape check at three reads, on the path a paying click travels.** The
+  failure was measured against the UNCHANGED code first, and in a browser. `/report` and
+  `/care` each restore the report from `sessionStorage["gyeol_survey"]` inside
+  `try { JSON.parse } catch { return null }` and hand the result to `recommend()`, which
+  indexes `survey.concerns`, `survey.avoid`, `survey.budget`, `survey.type` and
+  `survey.category` without checking one of them. The catch covers the parse and nothing
+  else. What each wrong shape does, printed from `recommend()` itself:
+
+  ```
+  null                   -> THREW Cannot read properties of null (reading 'concerns')
+  a number               -> THREW Cannot read properties of undefined (reading 'includes')
+  a string               -> THREW Cannot read properties of undefined (reading 'includes')
+  an empty object        -> THREW Cannot read properties of undefined (reading 'includes')
+  a boolean              -> THREW Cannot read properties of undefined (reading 'includes')
+  an array               -> THREW Cannot read properties of undefined (reading 'includes')
+  no avoid list          -> THREW Cannot read properties of undefined (reading 'every')
+  no concerns list       -> THREW Cannot read properties of undefined (reading 'includes')
+  concerns is a string   -> OK picks=3 relaxed=null
+  budget is a string     -> OK picks=3 relaxed=null
+  budget is null         -> OK picks=3 relaxed=budget
+  ```
+
+  Eight throw, inside a mount effect, so `app/error.tsx` replaces the page — every
+  `/api/out` link on `/report` and every merchant button on `/care` with it. The other
+  three are the quieter half: a full three-pick report scored off fields `recommend()`
+  never read, with nothing on screen to say so.
+
+  **`/report` makes it outlive the tab.** `loadInitialView` calls
+  `saveLastResult({ survey, scan, reads, ts })` on the line BEFORE
+  `recommend(survey, scan)`, so the bad value reaches
+  `localStorage["aru_last_result"]` and then `loadLastResult` — whose check was
+  `parsed.survey`, a truthiness test that `5`, `"abcdef"` and `{}` all pass — feeds it
+  back to both pages on every future visit. That is the third read, and it is why the fix
+  is three lines and not one.
+
+  *Reproduced in Chromium against `82fd93a` with only the new specs added* (the four
+  source files stashed), `tests/e2e/commerce-survey-shape.regression-16.spec.ts` under
+  `playwright.mobile.config.ts`: **17 failed, 0 passed**. Five of the messages:
+
+  ```
+  1) /report survives a survey store holding null
+     Error: /report fell into app/error.tsx on null
+     Locator:  getByText('앗, 잠깐 멈췄어요')  Expected: 0  Received: 1
+  2) /care still offers its merchant path when the survey store holds null
+     Error: /care fell into app/error.tsx on null
+  3) /report survives a survey store holding a survey whose concerns is a string
+     Error: /report fell into app/error.tsx on a survey whose concerns is a string
+  4) /care still offers its merchant path when the survey store holds a survey whose concerns is a string
+     Error: /care showed neither its picks nor its empty state on a survey whose concerns is a string
+  5) /care survives the mirrored copy a broken /report left in localStorage
+     Error: /care fell into app/error.tsx on a mirrored bad survey
+  ```
+
+  Case 3 is worth reading twice: `recommend()` does NOT throw on a concerns string, and
+  `/report` still died — `"모공".filter` is undefined in the second effect, the one that
+  asks `/api/reason` for the product copy. Case 4 is the same input on `/care`, which
+  does not have that effect and so rendered a report instead. With the guard, the same
+  spec is **17 passed (19.0s)**: `/report` reaches the `/survey` redirect it already had,
+  `/care` its own empty state, and the mirror is never written.
+
+  The guard is `isSurvey` in `lib/recommend.ts`, structural only. It checks the five
+  fields for the shape the code indexes with and NOT for membership of `SkinType` /
+  `Concern` / `Category`, because a survey naming a category this build no longer ships
+  is still a usable survey — `recommend()` returns zero picks and `/report` renders its
+  no-picks branch — while an enum check would bounce that user to the survey for nothing.
+  Both cases are asserted in `tests/survey-shape.test.ts`.
+
+  *Break-the-line, three guards, three separate runs:*
+
+  | guard removed | result | what failed |
+  |---|---|---|
+  | `app/report/page.tsx` `isSurvey` | **8 failed \| 9 passed (17)** | the eight `/report` cases only |
+  | `app/care/page.tsx` `isSurvey` | **8 failed \| 9 passed (17)** | the eight `/care` cases only |
+  | `lib/last-result.ts` `isSurvey`, back to the truthiness test | **10 failed \| 743 passed (753)** over all of `tests/` | the ten "reads as no saved result when its survey is …" cases |
+
+  The last one leaves `null` green, because `null` is falsy and the old truthiness check
+  already caught it — which is exactly the case that made the old check look adequate.
+
+  **Nothing was found in `/api/out` itself, and that is recorded rather than left for
+  the next cycle to re-hunt.** `isAllowedCommerceUrl` is `new URL(value)` then
+  `protocol === "https:"` and `ALLOWED_HOSTS.has(url.hostname)`. Thirty inputs were
+  run against that predicate in node v22.22.2 — userinfo `@`, backslash before `@`,
+  trailing dot, ideographic full stop, Cyrillic look-alikes, protocol-relative,
+  `javascript:`, `data:`, tab and newline in the host, an IPv6-shaped host, a port, a
+  fullwidth `ｗ`, mixed case. **Every ALLOW resolved to a hostname genuinely on the
+  list.** Three ALLOWs are worth knowing and none is a redirect elsewhere: a fullwidth
+  `ｗ` normalises INTO `www.google.com`, `user:pass@www.google.com` keeps credentials in
+  the `Location` header, and `www.coupang.com:8443` passes because the check reads
+  `hostname` and not `host` — all three reachable only from
+  `COMMERCE_LINK_OVERRIDES_JSON`, a server env var, never from a request. `placement` is
+  the one user-controlled value that reaches the target URL, and
+  `URLSearchParams.set` percent-encodes it: `"a\r\nSet-Cookie: x=1"` serialises to
+  `utm_content=a%0D%0ASet-Cookie%3A+x%3D1_sku_merchant`. No CRLF, no extra parameter.
+  `docs/commerce-out-allowlist-probe.md`.
+
+  **Research (자료조사) — why the backslash case goes the SAFE way, from the standard's
+  own source.** Asked because `https://www.oliveyoung.co.kr@evil.example/` is blocked
+  while `https://www.oliveyoung.co.kr\@evil.example/` is allowed, and a predicate that is
+  only accidentally right is one line from being wrong.
+
+  ```
+  --- https://raw.githubusercontent.com/whatwg/url/main/url.bs
+  http=200 bytes=166059
+  sha256 eb85ab4551eec91ca0f28367ff81eabed020cebac87f98eaac7ecbba629fa5d1
+  ```
+
+  **host state** ends the host at a backslash when the scheme is special, and `https` is
+  special: "*`c` is the EOF code point, U+002F (/), U+003F (?), or U+0023 (#)* … *`url`
+  is special and `c` is U+005C (\\)*". So the backslash terminates the host before the
+  `@` is ever read and `@evil.example` is path. **authority state**, which runs before
+  host state, is where `@` ends the userinfo: "*If `c` is U+0040 (@), then:*". Both
+  outcomes are the safe one for an exact-match allowlist, and both are properties of the
+  parser rather than of ARU's code — which is why the check is written against
+  `url.hostname` and never against the string.
+
+  **ML — 조명 dark + oil, the row cycle 31 left open, is answered as far as this
+  construction can answer it.** It is the one 조명 row that is NOT pinned
+  (degraded split `0:82 1:38`), so cycle 31's identity does not reach it and its 21/120
+  against cycle 11's written 71/120 was unexplained.
+  `ARU_PRINT_RETAKE_OIL=1 npx vitest run tests/retake-signal-rule.test.ts` prints the
+  2x2 over the 120 seeds at the committed construction:
+
+  ```
+  OIL contingency tuneSeed=1 cheekL=60	c00=82 c01=21 c10=0 c11=17
+  ```
+
+  **The clean-1 / degraded-0 cell is empty.** No seed that reads level 1 on the clean
+  capture drops to 0 when darkened, so the count is not two splits colliding — it is
+  exactly the difference of the marginals, `38 - 17 = 21`, which is the number the sweep
+  reports. **That bounds it, and 71 is outside the bound.** With `a` clean and `b`
+  degraded level-1 seeds over the same 120, disagreements are `c01 + c10` with
+  `c01 <= min(120 - a, b)` and `c10 <= min(a, 120 - b)`, so at `a = 17, b = 38` the most
+  any rearrangement can reach is **55**. A different noise field cannot produce 71 from
+  these splits; a different fixture, cut point or analyzer is required. Two sweeps say
+  the row behaves like a real per-seed measurement and not like a pinned one:
+
+  ```
+  OIL tuneSeed	clean level-1	degraded level-1	disagreements
+  OIL 1	17	38	21/120
+  OIL 2	65	65	12/120
+  OIL 3	87	76	13/120
+  OIL 5	63	65	12/120
+  OIL 8	89	79	12/120
+  OIL 13	8	24	16/120
+  OIL 21	34	49	17/120
+  OIL 34	101	83	18/120
+  OIL cheekL	clean level-1	degraded level-1	disagreements
+  OIL 40	17	43	26/120
+  OIL 50	17	41	24/120
+  OIL 60	17	38	21/120
+  OIL 70	17	34	17/120
+  OIL 80	17	31	16/120
+  OIL 90	17	31	14/120
+  OIL 100	17	32	15/120
+  OIL 120	17	24	9/120
+  ```
+
+  Re-seeding `tuned()`'s bisection swings the CLEAN split from 17 to 101 level-1 seeds
+  while the count stays between **12 and 21**; in a pinned row the count IS the clean
+  split and would have swung with it. Darkening the capture moves the count from **9** at
+  cheekL 120 to **26** at cheekL 40 — the trend runs with the darkness, and the single
+  exception, 14 at cheekL 90 against 15 at cheekL 100, is named here rather than smoothed
+  out of the sentence. *Measured:* every
+  number above, and the 55, which is arithmetic on the measured marginals. *Inferred:*
+  that cycle 11's 71 came from a different construction rather than a different seed.
+  The bound rules out every arrangement at tuning seed 1 but **not** a different tuning
+  seed — computed from the tuning-seed table it is 110, 77, 112, 72 and 83 at seeds 2, 3,
+  5, 8 and 21 — so what argues against the seed is the measured 12-21, not the bound
+  (supervisor correction at review; the draft said "the bound rules out the seed"). *Not
+  established:* which of fixture, cut point or analyzer changed, and whether some
+  construction not tried here reaches 71; both need cycle 11's fixture, which was never
+  committed. The contingency and the bound are asserted, not only printed, so a
+  construction change fails a named test instead of quietly re-opening the question.
+  `docs/retake-sweep-what-it-measures.md`. Nothing here touches a real face; that needs
+  the golden set, which is in BLOCKERS.
+
+  **UI/UX — on `/report`'s commerce row the paying link was the pale one.** Found by
+  running the app in Chromium at 360px and reading the two style objects behind the row.
+  `buyBtn`, which is the `/api/out` link and the only thing on that page that can earn
+  anything, was `background: var(--surface-tint)` on `flex: 1`; `commerceCareBtn`, an
+  internal navigation to `/care`, was `var(--plum)` on `var(--on-plum)` at `flex: 1.3`.
+  So the money link was both the quieter of the two and the narrower, and in ko
+  "올리브영에서 제품 보기" wrapped onto two lines inside the smaller box while
+  "제품과 상담 정보 보기" sat on one line in the filled one. The product cards' merchant
+  CTA on the same page (`app/components/product-card.tsx` line 111) is already the filled
+  treatment, so this row was out of step with it. (Supervisor correction at review: the
+  draft also said both of `/care`'s merchant buttons were filled; `/care`'s `linkBtn` is
+  `background: "var(--paper)"` with a line border.) The two
+  treatments are swapped. The existing case in `tests/e2e/mobile-layout.spec.ts` checked
+  that both CTAs were tappable and legible and passed throughout, in all five locales,
+  which is how the defect survived; it now also checks that the out-link is painted like
+  the product cards' CTA (read off one of them on the same step rather than hard-coded)
+  and is not narrower than the `/care` link. *Break-the-line:* with the two style objects
+  put back, that case fails **`ko: the out-link is not painted like the product cards'
+  CTA`** — `1 failed`.
+
+  *Verification, final tree.* `npx vitest run` **755 passed (97 files)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npx eslint .` **0 errors,
+  2 warnings** (the same two), `python3 ml/selftest.py` **Ran 142 tests in 1.670s ...
+  OK**. `npm run smoke` was run twice with the chromium override, once on the final CODE tree
+  and once on the exact tree that was pushed, after the last Markdown edit; the two trees
+  differ only in Markdown. Both runs: vitest leg **755 passed (97 files)**, Playwright
+  leg **103 passed** (4.5m and 4.6m), then the literal line **`Smoke test passed.`**
+  No dependency added. `lib/skin.ts`, `lib/consent.ts`, the manifest, `shareUrl`,
+  `blemishCount`, `toneSpread` and `NEXT_PUBLIC_FUNNEL_FLUSH` are untouched, and
+  `README.md` is unchanged because nothing a reader of it would care about moved.
+
+  *Rotation.* AUTOPILOT.md 1529 → 1642 and the changelog 6462 → 6618; cycle 29's entry
+  moved verbatim (155 lines) to the end of the changelog's entries, which is where cycles
+  28, 27 and 26 went. Byte-identical rather than asserted to be: `sha256sum` on the
+  extracted block before and after both give
+  `2ac97979b868d22788e827da6008f06e4bcb6788db0c8899d71fdd750b22394e`. Taking all lines of
+  both files at `82fd93a`, `sort -u`, and `comm -23` against the new pair finds **0 lines
+  missing** — every edit this cycle made to those two files is an insertion, and
+  `Last updated:` already read 2026-09-23. "Recent cycles" holds 32/31/30.
+
+  **Supervisor review.** The survey fix and the `/api/out` negative result are sound; the
+  ML addition overstated what its bound rules out and was corrected before merge.
+
+  *`/api/out`, predicted before the branch existed.* Reading the route while the worker
+  ran, the only request-controlled value that reaches the redirect is `placement`, since
+  `sku` and `merchant` are resolved against `SKUS` before any URL is built, and the
+  host check is an exact-match `Set` on `url.hostname`. So an open redirect was not
+  expected and none was found. The twelve quoted inputs were re-run here against the
+  same predicate and every verdict and hostname matched; `url.bs` re-fetched as
+  `http=200 bytes=166059` with the same sha256, and the special-scheme backslash clause
+  is in it. One thing the supervisor raised and then found already handled: a 쿠팡
+  파트너스 short link on `link.coupang.com` is not on `ALLOWED_HOSTS`, but
+  `docs/commerce-partnership-playbook.md` already lists it as unverified and an earlier
+  cycle made that rejection loud. Not new.
+
+  *Survey guard.* In a browser, under `-c playwright.mobile.config.ts`, with all three
+  reads unguarded (both pages' `isSurvey` line and `loadLastResult` back to its
+  truthiness check), `commerce-survey-shape.regression-16.spec.ts` gives `17 failed`,
+  each at the `app/error.tsx` assertion, which is the defect. Guards broken one at a time
+  against `tests/survey-shape.test.ts`: removing `Number.isFinite(survey.budget)` gives
+  `4 failed | 45 passed (49)`, all four named "budget". Removing the `Array.isArray`
+  clause gives `49 passed (49)`. That clause is redundant, because an array fails the field
+  checks that follow, so it is harmless and nothing depends on it. `budget` has been a
+  `number` since `lib/recommend.ts` was first committed (`7419b54`), so the new check
+  cannot reject a survey an older build saved.
+
+  *Corrected before merge.* The contingency and both sweeps reproduced exactly here
+  (`Tests 14 passed (14)`, every OIL line identical). The bound is right at tuning
+  seed 1: `min(103,38) + min(17,82) = 55`. But the draft's "Inferred" line said "the bound
+  rules out the seed", and the same bound from its own tuning-seed table is 110, 77, 112,
+  72 and 83 at seeds 2, 3, 5, 8 and 21. So 71 is arithmetically reachable at five of
+  the eight, and what argues against a different tuning seed is the measured count
+  (12-21 everywhere), not the bound. The headline and both "Inferred" lines now say that.
+  This is the second cycle running in which the prose went one step past its own table.
+
+  *UI.* The swap of `buyBtn` and `commerceCareBtn` treatments was read, not measured
+  here. The draft's claim that every other merchant CTA is already `--plum` holds for
+  `product-card.tsx` line 111 and is false for `/care`, whose `linkBtn` is
+  `var(--paper)` outlined; the code comment, the test comment and the entry above are
+  corrected to say only what holds. The style change itself is unaffected. Smoke covers the added `mobile-layout.spec.ts` case.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
