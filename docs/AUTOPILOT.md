@@ -1203,7 +1203,43 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   test passed.`** with **166 passed (6.0m)** — the 160 of the baseline plus the six
   new cases.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and for the first time in five cycles nothing in the
+  prose needed correcting. The claims audit held on every item the supervisor re-checked.
+
+  *Predicted by reading, before the branch existed.* A grep of the six screens gave
+  three predictions. `app/scan/guide.tsx` is face geometry and must stay physical; the
+  worker left it physical and said why. `product-card.tsx`'s `marginLeft: "auto"` is not
+  a defect; the worker measured it the same way. `app/scan/info-sheet.tsx`'s
+  `paddingLeft: 18` is a likely defect. The worker did NOT fix that one, correctly: it
+  renders only at `phase === "ready"`, which needs a camera, so it could not be measured
+  here. It is recorded as open rather than fixed on reasoning, which is the rule, and my
+  prediction there stays unverified.
+
+  *Re-derived here.*
+  - The grep over `app/survey/page.tsx`, `app/studio/page.tsx`,
+    `app/unsubscribe/page.tsx` and `app/unsubscribe/unsubscribe-form.tsx` for physical
+    keywords counts `0`.
+  - `app/globals.css:120-124` is the mirror block the doc cites.
+  - `lib/skin.ts:1166-1169` is the `normalizedHf` the new `roughness_ratio` docstring
+    quotes.
+  - The 12 distinct positive `(tzoneL, cheekL)` pairs under `shine_ratio` give a ratio
+    range of `0.7142857142857143` to `1.5`, the docstring's figures exactly.
+  - README's "seven blocks" is cycle 34's two plus this cycle's five, with `/privacy`'s
+    two button styles counted as one block, as the commit message lists them.
+
+  *Breaks re-run on the committed tree* against `rtl-logical-inset.regression-19.spec.ts`
+  under `-c playwright.mobile.config.ts`:
+  - `HowCard` mascot → `marginLeft`: `1 failed`, `5 passed`, and the failure is
+    "the landing cards' titles and mascot gutters follow the reading direction under
+    Arabic".
+  - `FlowSteps` → `marginRight`: `1 failed`, `5 passed`, and the failure is "the
+    pre-camera intro list and the step rail follow the reading direction under Arabic".
+  - Both `/privacy` buttons → `"left"`: `2 failed`, `4 passed`, the Arabic case and the
+    LTR case.
+
+  All three match the worker's table row for row.
+
+  *Validation on this tree:* see the PR body for the literal output.
 
 - 2026-09-24 (cycle 34) — Branch `autopilot/2026-09-24-0039`. **ARU ships five languages
   and one of them reads right to left, so `/report` was measured under all four
