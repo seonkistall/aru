@@ -204,6 +204,28 @@ export function recordFunnelEvent(kind: FunnelEventKind, props?: FunnelProps): F
 const pageViewPath = { current: null as string | null };
 const pageViewedHere = new Set<FunnelEventKind>();
 
+function enterPageViewPath(path: string) {
+  if (pageViewPath.current !== path) {
+    pageViewPath.current = path;
+    pageViewedHere.clear();
+  }
+}
+
+/**
+ * Tell the page-view guard that the app is now on `path`, whether or not that page
+ * records a page view of its own. Called on every client navigation by
+ * `app/components/page-view-scope.tsx`, which sits in the root layout OUTSIDE
+ * `LanguageProvider` and so is never remounted by its `key={lang}` change.
+ *
+ * Without it the guard only learnt the path from pages that record: /report → /privacy
+ * (records nothing) → back to /report left the guard on /report and swallowed the
+ * second, genuine `reco_viewed`. Measured before this function existed, on the branch
+ * that introduced `recordPageView`: `afterBack={"reco_viewed":1}` under both en and ko.
+ */
+export function notePageViewNavigation(path: string) {
+  enterPageViewPath(path);
+}
+
 export function recordPageView(kind: FunnelEventKind, props?: FunnelProps): FunnelEvent | null {
   if (typeof window === "undefined") return null;
   let path = "";
@@ -212,10 +234,7 @@ export function recordPageView(kind: FunnelEventKind, props?: FunnelProps): Funn
   } catch {
     /* same defensive posture as recordFunnelEvent: analytics never breaks a render */
   }
-  if (pageViewPath.current !== path) {
-    pageViewPath.current = path;
-    pageViewedHere.clear();
-  }
+  enterPageViewPath(path);
   if (pageViewedHere.has(kind)) return null;
   pageViewedHere.add(kind);
   return recordFunnelEvent(kind, props);

@@ -360,8 +360,10 @@ distinct sessions, none of them moved; the raw counts did, which means
 and the rate at which the 1,000-entry ring buffer evicts old events were all inflated
 for non-English visitors and not for English ones. Page views now go through
 `recordPageView` (`lib/funnel.ts`), which admits one event per kind per path visit
-while still counting a genuine re-view after a reload or a back/forward.
-`tests/e2e/funnel-page-view-once.regression-20.spec.ts` holds both halves.
+while still counting a genuine re-view after a reload, a back/forward, or a detour
+through a page that records no view of its own (`/report` → `/privacy` → back);
+`app/components/page-view-scope.tsx` tells the guard about every navigation for that
+last case. `tests/e2e/funnel-page-view-once.regression-20.spec.ts` holds all of it.
 
 | Metric | Definition | Target |
 |---|---|---|

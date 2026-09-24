@@ -145,3 +145,29 @@ test("a genuine second view still counts: reload, and back/forward across /surve
 
   await context.close();
 });
+
+// Added at supervisor review. The guard above used to learn the current path only
+// from pages that record a view, so a detour through a page that records nothing —
+// /report links /privacy — left it pointing at /report, and the view on the way back
+// was swallowed: `afterBack={"reco_viewed":1}` under both en and ko on the branch as
+// first pushed. app/components/page-view-scope.tsx now tells it about every
+// navigation; the language-key remount still does not reach it.
+for (const lang of ["en", "ko"]) {
+  test(`a detour through a page that records nothing still counts the way back (${lang})`, async ({ browser }) => {
+    test.setTimeout(120_000);
+    const context = await seeded(browser, lang);
+    const page = await context.newPage();
+    await page.goto("/report");
+    await page.waitForTimeout(900);
+    expect(await counts(page)).toEqual({ reco_viewed: 1 });
+    await page.locator('a[href="/privacy"]').first().click();
+    await page.waitForURL("**/privacy");
+    await page.waitForTimeout(900);
+    expect(await counts(page)).toEqual({ reco_viewed: 1 });
+    await page.goBack();
+    await page.waitForURL("**/report");
+    await page.waitForTimeout(1200);
+    expect(await counts(page), `back from /privacy under ${lang}`).toEqual({ reco_viewed: 2 });
+    await context.close();
+  });
+}

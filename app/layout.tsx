@@ -6,6 +6,7 @@ import { LanguageProvider } from "../lib/i18n";
 import { LanguageSwitcher } from "./components/language-switcher";
 import { ServiceWorkerRegistration } from "./components/service-worker-registration";
 import { FunnelFlush } from "./components/funnel-flush";
+import { PageViewScope } from "./components/page-view-scope";
 
 // Self-hosted Korean display handwriting — used only for short brand moments.
 
@@ -47,6 +48,7 @@ export default function RootLayout({
       <body className="min-h-full">
         <ServiceWorkerRegistration />
         <FunnelFlush />
+        <PageViewScope />
         <SketchDefs />
         <LanguageProvider>
           <LanguageSwitcher />

@@ -1254,7 +1254,43 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `npm run smoke` with the chromium override printed the literal line **`Smoke test
   passed.`** with **177 passed (6.6m)** — the 166 of the baseline plus the eleven new cases.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** The defect is real and the diagnosis is right. The fix as
+  pushed introduced an under-count of its own, and that was fixed before merge.
+
+  *What was wrong with the first fix.* `recordPageView` learnt the current path only
+  from pages that record a view. `/report` links `/privacy` (`app/report/page.tsx:420`),
+  and `/privacy` records nothing. A user who went /report → /privacy → back therefore
+  left the guard still on `/report`, and the second, genuine `reco_viewed` was
+  swallowed. That contradicts the function's own docstring ("a genuine second view must
+  still count"). A throwaway Playwright probe under `-c playwright.mobile.config.ts`, with
+  counts read from `aru_funnel_events_v1`:
+  - Branch as pushed: `PROBE en first={"reco_viewed":1} afterBack={"reco_viewed":1}` and
+    `PROBE ko first={"reco_viewed":1} afterBack={"reco_viewed":1}`.
+  - `45b1b41`: `en first=1 afterBack=3` and `ko first=3 afterBack=5`.
+
+  So the base over-counted and the first fix under-counted. The worker's spec only
+  crossed /survey ↔ /report, two pages that both record, so it could not see this.
+
+  *The fix.* `notePageViewNavigation` in `lib/funnel.ts`, called on every pathname
+  change by `app/components/page-view-scope.tsx`. That component is mounted in the root
+  layout next to `FunnelFlush` and OUTSIDE `LanguageProvider`, so the `key={lang}`
+  remount never reaches it. A language remount keeps the same path and is still
+  suppressed. A detour through any page, recording or not, moves the path and so
+  re-admits the view.
+
+  *Measured.* Two cases were added to `funnel-page-view-once.regression-20.spec.ts`,
+  one each for en and ko: /report → /privacy → back must read `reco_viewed: 2`. The
+  whole spec gives `10 passed (1.3m)`, the worker's eight included. With `<PageViewScope />`
+  removed from the layout it gives `2 failed` / `8 passed`, and the two failures are the
+  new detour cases, nothing else.
+
+  *Checked and holding.* README's `MAX_EVENTS` (`lib/funnel.ts:65`, `1000`) and
+  `app/api/funnel/route.ts` both exist as described. The `comparison` census added to both
+  languages matches the committed table. The vision-narrative note is closed on evidence
+  the supervisor had re-derived before the worker started: `app/api/analyze/route.ts:84`
+  and `lib/skin.ts:689-693`.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
 
 - 2026-09-24 (cycle 35) — Branch `autopilot/2026-09-24-0639`. **Cycle 34 swept three
   screens under `ar` and opened an item for the six it had not touched. This is those
