@@ -314,6 +314,55 @@
       "formula": "blemishDensity = count / max(sampledAreaPx / faceWidthPx^2, 1e-6)",
       "covers": "formula only; validCells * stride^2 and the face-box width are not exported fields",
       "comparison": "exact",
+      "comparisonHolds": "on every row below, all of which have faceWidthPx of 0 or at least 20; guardDivergence records the band where it does not",
+      "guardDivergence": {
+        "appGuard": "lib/skin.ts:965 \u2014 detectBlemishes returns { count: 0, areaFace: 0 } when faceW < 20 || faceH < 20, so a small face box publishes the could-not-measure 0",
+        "pythonGuard": "ml/skin_indices.py:350 \u2014 max(face_width_px ** 2, 1e-6), which clamps only at zero and so admits every positive width",
+        "note": "The third instance of the epsilon-guard class, shine_ratio (cycle 16) and roughness_ratio (cycle 17) being the first two: one side clamps a denominator, the other publishes a could-not-measure 0, and they agree everywhere except the band between the two guards. Here the band is 0 < faceWidthPx < 20. It stayed invisible because every row above sits outside it AND because the app column in tests/index-parity.test.ts was computed as `faceWidthPx > 0 ? ... : 0` — a guard the shipped expression does not have, and one that happens to equal Python inside the band. Measured 2026-09-24. Which side is right is not decided here: it turns on whether a face box that small is worth reading at all, which is a question about real captures.",
+        "comparison": "divergent",
+        "rows": [
+        {
+          "note": "a face box just under the app's 20px floor",
+          "count": 3,
+          "sampledAreaPx": 50,
+          "faceWidthPx": 19.999,
+          "app": 0.0,
+          "python": 23.99760006
+        },
+        {
+          "note": "a 10px face box: the app publishes nothing, Python publishes a density",
+          "count": 3,
+          "sampledAreaPx": 50,
+          "faceWidthPx": 10.0,
+          "app": 0.0,
+          "python": 6.0
+        },
+        {
+          "note": "a 5px face box with a single sampled pixel",
+          "count": 2,
+          "sampledAreaPx": 1,
+          "faceWidthPx": 5.0,
+          "app": 0.0,
+          "python": 50.0
+        },
+        {
+          "note": "exactly at the floor, where the two meet again",
+          "count": 3,
+          "sampledAreaPx": 50,
+          "faceWidthPx": 20.0,
+          "app": 24.0,
+          "python": 24.0
+        },
+        {
+          "note": "one pixel above the floor, still agreeing",
+          "count": 3,
+          "sampledAreaPx": 50,
+          "faceWidthPx": 21.0,
+          "app": 26.459999999999997,
+          "python": 26.459999999999997
+        }
+        ]
+      },
       "rows": [
         {
           "note": "one face at 400x480, 6 blemishes",

@@ -76,7 +76,7 @@ of truth for the latest detail is [STATUS](docs/STATUS.md).
 | Mobile UI/UX | Copy regression green across locales and viewports | 9 core routes × 5 locales × 4 viewports — a 180-combination text-fit matrix plus 320px manual browser QA | Extend the same matrix for new screens or translations |
 | Android camera | Galaxy S25 Edge basic flow PASS | Permission, front-camera mirroring, quality gate, capture, retake | Lighting/reflection/occlusion/background-resume plus the iPhone Safari matrix |
 | iPhone Safari camera | Production WebKit lifecycle PASS, physical device PENDING | PR #60, merge `ece4617`, deployment `dpl_EZK8pi9EHAC75bZ2YwFKCBRZtLY9`; 5 lifecycle regressions (background, `mute`, `ended`, `pagehide`, explicit resume) green on public production | Permission/lens/rotation/capture matrix on current and previous iOS Safari hardware |
-| Email | Code and policy complete | Explicit opt-in, signed expiring unsubscribe, withdrawal exclusion, retention-cleanup tests | Real delivery, unsubscribe and cron verification on a verified domain |
+| Email | Code complete; one consent question open | Explicit opt-in, signed expiring unsubscribe, withdrawal exclusion from the send query, retention-cleanup tests | Real delivery, unsubscribe and cron verification on a verified domain — and an owner decision on whether a repeat opt-in POST may re-consent an address that unsubscribed, which today it does ([decision doc](docs/reengage-resubscribe-consent-decision.md)) |
 | Android TWA | API 36 signed AAB verified | Package, permissions, signing, lint `No issues found`, Gradle clean bundle, Digital Asset Links | Internal-track physical-device QA after the Play distribution certificate lands |
 | Google Play | Submission pack ready, Console blocked | ko/en listings, Data safety, content rating, reviewer docs, real UI assets | Developer identity, payment account, support email, App Signing, tester track |
 
@@ -335,7 +335,7 @@ retention period and deletion path are decided.
 | `GET/POST /api/funnel` | Public funnel-event ingest (the flush's endpoint; flush is off), and — behind the sync token on `GET` — the aggregate read of `funnel_events`, split by source | POST is unauthenticated by design: own 20/60s per-IP bucket run first, 32 KiB body cap, same-origin guard, 100 events max, server-side kind/prop re-validation, `metadata.source = public-funnel`, insert-only. The `GET` aggregate needs `SUPABASE_SYNC_TOKEN` and selects `kind, session_id, ts` only — never `visitor_id` | Rejects other origins, oversized and malformed bodies; drops unknown kinds and undeclared prop keys; omits the aggregate without a valid token |
 | `POST /api/reengage/subscribe` | Explicit email opt-in | Email/schema/body validation, 5/60s per IP, private DB | Feature disabled or safe error when unconfigured |
 | `POST /api/reengage/unsubscribe` | Signed unsubscribe | Token signature, expiry and state validation | Rejects tampered/expired tokens |
-| `GET /api/reengage/run` | 2-/4-week sends and retention cleanup | Cron secret, batch of 50, 45s max, withdrawal exclusion | Rejects failed auth; re-runnable within limits |
+| `GET /api/reengage/run` | 2-/4-week sends and retention cleanup | Cron secret compared in constant time, batch of 50, 45s max, withdrawal exclusion | Rejects failed auth; re-runnable within limits |
 | `GET /api/out` | Allow-listed retailer redirect and click logging | SKU/merchant/placement allowlist, UTM composition | Rejects invalid input |
 
 Operational setup and real verification steps follow the
@@ -437,7 +437,7 @@ app/
 ├─ privacy/ unsubscribe/      privacy and email unsubscribe
 └─ pilot/ ops/ eval/          research tools, blocked in production by default
 lib/
-├─ server/                    request guards, input validation, internal access, unsubscribe tokens
+├─ server/                    request guards, input validation, internal access, unsubscribe tokens, cron auth
 ├─ i18n/                      Korean-canonical ids + EN/JA/ZH/AR translations
 ├─ consent/crops/device-data  consent, retention and device-data contracts
 └─ recommend/commerce/funnel  recommendation, retailer and funnel domain logic
