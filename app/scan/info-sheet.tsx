@@ -19,7 +19,9 @@ function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
   return (
     <div style={{ marginTop: 12, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12.5, lineHeight: 1.55 }}>
       <b style={{ color: "var(--ink)" }}>{t("사진은 기기에서 먼저 확인해요. 전송과 저장은 선택한 경우에만 진행됩니다.")}</b>
-      <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+      {/* `padding-inline-start`, not `paddingLeft`: the indent has to sit at the
+          reading start, and under `dir=rtl` that is the right-hand side. */}
+      <ul style={{ margin: "8px 0 0", paddingInlineStart: 18 }}>
         <li>{t("기본 촬영은 이 기기에서 처리해요.")}</li>
         <li>{t("더 자세한 분석을 원할 때만 외부 AI 사용을 선택할 수 있어요.")}</li>
         <li>{t("연구용 저장은 파일럿 참여자에게만 별도로 안내해요.")}</li>

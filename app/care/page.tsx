@@ -146,7 +146,10 @@ export default function CarePage() {
             <p style={{ ...commerceIntro, flex: 1, marginBottom: 0 }}>
               {t("궁금한 제품의 정보와 판매처를 한눈에 비교해 보세요.")}
             </p>
-            <span style={{ marginLeft: -12 }}>
+            {/* The negative gutter has to pull the mascot TOWARD the paragraph, which
+                is the inline-start side in both directions; a physical `marginLeft`
+                pushed it 12px past the card's edge under `dir=rtl`. */}
+            <span style={{ marginInlineStart: -12 }}>
               <Xiaohei size={54} pose="carry" />
             </span>
           </div>
@@ -280,4 +283,6 @@ const otherMerchantsBtn: React.CSSProperties = { minHeight: "var(--tap-min)", di
 const clinicBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--paper)", padding: "12px 14px", cursor: "pointer", width: "100%" };
 const safetyCard: React.CSSProperties = { display: "flex", gap: 10, alignItems: "flex-start", background: "color-mix(in srgb, var(--plum) 6%, var(--paper))", border: "1px solid color-mix(in srgb, var(--plum) 28%, var(--line))", borderLeft: "3px solid var(--plum)", borderRadius: 10, padding: "12px 13px" };
 const safetyMark: React.CSSProperties = { flexShrink: 0, width: 20, height: 20, borderRadius: 999, background: "var(--plum)", color: "var(--on-plum)", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 };
-const tipList: React.CSSProperties = { margin: "12px 0 0", paddingLeft: 18, color: "var(--ink-soft)", fontSize: 13.5, lineHeight: 1.65 };
+// The indent is `padding-inline-start` so it follows the reading direction;
+// a physical `paddingLeft` puts it at the END of every line under `dir=rtl`.
+const tipList: React.CSSProperties = { margin: "12px 0 0", paddingInlineStart: 18, color: "var(--ink-soft)", fontSize: 13.5, lineHeight: 1.65 };

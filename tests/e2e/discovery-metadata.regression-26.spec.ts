@@ -77,17 +77,26 @@ for (const path of INDEXABLE) {
   });
 }
 
-for (const path of NOINDEX) {
-  test(`${path} is served noindex but still describes itself for a shared link`, async ({ page }) => {
-    const meta = await head(page, path);
-    expect(meta.status).toBe(200);
-    expect(meta.robots).toBe("noindex, nofollow");
-    expect(meta.canonical).toBe(`${ORIGIN}${path}`);
-    expect(meta.title.length).toBeGreaterThan(8);
-    expect(meta.ogTitle).toBe(meta.title);
-    expect(meta.ogImage).toBe(`${ORIGIN}/og.png`);
-  });
-}
+test.describe("noindex routes, as served", () => {
+  // `/report` client-redirects to `/survey` on a first visit with empty storage,
+  // and Next adds the new route's tags to <head> during that navigation, so an
+  // in-page read that loses the race sees two `og:url`s. A crawler or a share
+  // scraper does not run the script either, so read the served document with
+  // JavaScript off.
+  test.use({ javaScriptEnabled: false });
+
+  for (const path of NOINDEX) {
+    test(`${path} is served noindex but still describes itself for a shared link`, async ({ page }) => {
+      const meta = await head(page, path);
+      expect(meta.status).toBe(200);
+      expect(meta.robots).toBe("noindex, nofollow");
+      expect(meta.canonical).toBe(`${ORIGIN}${path}`);
+      expect(meta.title.length).toBeGreaterThan(8);
+      expect(meta.ogTitle).toBe(meta.title);
+      expect(meta.ogImage).toBe(`${ORIGIN}/og.png`);
+    });
+  }
+});
 
 /**
  * Read over plain HTTP rather than in a page: `/report` client-redirects to

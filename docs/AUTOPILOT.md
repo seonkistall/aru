@@ -484,6 +484,24 @@ partly done and stays here.
   the margin it has to clear rather than against the certified radius alone. What this item
   waits on has not changed: the noiseless fixture's zero margin, which is now an assertion
   rather than a finding, and the decision recorded in the item below it.
+  **2026-09-25, cycle 41: the acceptance criterion is a run now, not a paragraph.** The
+  sentence "either the a*-only fast path takes the table and `rgbToLab` keeps `Math.pow`,
+  or the table is built so the knee cell is exact" rested on two numbers nothing in the
+  suite re-derived. `tests/srgb-lut-knee-cell.test.ts` builds the 4096-entry table this
+  item describes, sweeps the whole 0-255 domain against `labAStar` itself, and measures
+  where the worst a* error sits: **cell 165**, the cell the knee at `0.04045 * 255 =
+  10.31475` falls inside, cell width **0.062255859375**. It lands there on the grey
+  diagonal (worst **9.005782231064074e-9** at channel **10.314453125**) and with one
+  channel varying against a held pair (worst **0.00006554712123119089** at r=**10.3125**,
+  g=b=**30**), and in the ungated 0-40 band the same cell carries it. Inside the
+  detector's own **132-220** band the table clears **1.046e-5**; outside it does not.
+  **4 passed.** Broken two ways: `N = 255` — the exact-integer table this item's own trap
+  paragraph rejects — gives **2 failed | 2 passed**, and making the knee cell exact (the
+  second of the two escapes) also gives **2 failed | 2 passed**, which is the test doing
+  its job rather than a bug. `srgbLinear` is untouched, no published field moved and no
+  labelled export was needed. **Stays open**: whether the table is worth shipping is a
+  phone-profile question this container cannot answer, and which escape to take is not
+  decided here.
 - [AI] **ARU's sRGB breakpoint is the rounded one, in both languages, and moving it is a
   decision rather than a fix.** Found 2026-09-20 (cycle 22) while deciding where to
   align the transfer table, from `colour-science/colour`'s own source — another
@@ -774,6 +792,28 @@ partly done and stays here.
   this cycle's six screens: `app/report/page.tsx:293`'s `textAlign: "right"`, which
   cycle 34's sweep of `/report` did not touch. And mid-session language switching and
   a real phone remain unmeasured on all nine screens.
+  **2026-09-25, cycle 41: the two camera-gated blocks are measured, and one of them was
+  a defect.** No camera was needed and none was used — `getUserMedia` is shimmed to a
+  canvas `captureStream()`, the pattern `tests/e2e/mobile-layout.spec.ts` already used,
+  and `/scan` reaches `phase === "ready"` the way it does on a phone. `info-sheet.tsx`'s
+  `<ul>` **was** a defect: its computed `list-style-type` is `none`, so the
+  18px is pure indent and not marker room, and under `ar` it landed at the reading END —
+  every `<li>` line ended at **327**, the `<ul>` box's own edge, as did the sibling
+  above it, so the indent was **0px** where `en` reads **18px** (list text at 51 against
+  the sibling's 33). `scan-controls.tsx`'s `privacyPill` was **not**: its Arabic string
+  renders as one line in a box that fits it exactly (**44…186.7**, line **44…186.7**),
+  so `textAlign` paints nothing. Same verdict, same reason, for
+  `app/report/page.tsx:305`'s value span — `flexShrink: 0` and box width equal to text
+  width on all three rows (**31.7/31.7**, **44.7/44.7**, **77.4/77.4**, one line each).
+  Three more defects were found by grepping wider and fixed the same way:
+  `app/care/page.tsx`'s `tipList` (the same `paddingLeft: 18`),
+  `app/components/product-card.tsx`'s price span (`marginLeft: "auto"`, which resolved
+  on the inline END under `ar`) and `app/care/page.tsx:149`'s mascot
+  (`marginLeft: -12`, which hung it **12px** past the card's inline end under `ar`).
+  Pinned by `tests/e2e/rtl-logical-inset.regression-29.spec.ts` (**9 passed**).
+  **Still open**: `app/care/page.tsx`'s `linkBtn` / `otherMerchantsBtn`
+  `textAlign: "left"` are measured and cleared but not changed, and mid-session
+  language switching and a real phone remain unmeasured on all nine screens.
 - [AI] **The English dictionary is still in every visitor's first load, and only a URL
   decision gets it out.** Opened 2026-09-25 (cycle 40), which moved ja/zh/ar behind a
   dynamic `import()` and cut `/`'s initial JS from **1050358** to **783030** bytes raw
@@ -1162,6 +1202,23 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-09-25 — a tap during the English interval is thrown away (cycle 40).**
+  `LanguageProvider` renders English until a `ja`/`zh`/`ar` dictionary chunk lands, then
+  remounts the whole subtree under `key={active}` (`lib/i18n.tsx`). Any state a visitor
+  created in between is discarded. On `/scan` that is the camera start: with the `ja`
+  chunk delayed 3000ms, a `scan-start` tap in English ended back on the start button
+  with no quality checklist (supervisor probe, cycle 41 review). Before cycle 40, the
+  same remount followed hydration directly, because the saved language came from a
+  synchronous store. That is read from the code, not measured. Options for
+  the cycle that takes it:
+  - (a) Re-render without remounting. This only works if every `t()` call site re-runs
+    on a context change; measure that first.
+  - (b) Start the dictionary fetch before hydration, which shrinks the window but does
+    not close it.
+  - (c) Hold interactive controls until `active === saved`.
+  Pin the fix with a spec that delays the chunk the way the probe did. Do not merge a
+  fix that only makes the window shorter without saying so.
+
 - [x] **2026-09-15 — `confidenceLabel` exists twice, byte-for-byte.** ~~A latent
   divergence: change one threshold and the vision-API path disagrees with the ROI path,
   silently.~~ Actioned 2026-09-16 as the contract test the finding asked for, not a
@@ -1182,6 +1239,239 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-25 (cycle 41) — Branch `autopilot/2026-09-25-1839`. **The capture screen — the
+  one screen every conversion passes through — had never been measured in a laid-out
+  browser, because reaching it needs a camera. It does not: `getUserMedia` shimmed to a
+  canvas `captureStream()` reaches `phase === "ready"` the way a phone does, and the
+  screen is clean in all five locales. Four physical-direction defects were found by
+  measuring under `ar` rather than by grepping, and three named candidates were measured
+  and cleared.**
+
+  **Baselines, re-measured here on `5f4bbe0` before any edit.** `node_modules` was
+  absent, so `npm ci` first. `npx vitest run` **Test Files 106 passed (106) / Tests 921
+  passed (921)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 146 tests in 2.675s ... OK**. They match the supervisor's, except
+  that selftest reads **146** rather than the brief's "OK" against cycle 40's 145 → 146
+  move. A baseline smoke was not run; only the post-change one below, which is green.
+
+  **UI/UX — the `ready` phase at 360x800 under ko/en/ja/zh/ar, and it is clean.**
+  Production build (`npm run build` then `npx next start`), a fresh context per locale,
+  the landmarker reaching `guideState === "ready"` in all five so the guide pill actually
+  paints. The capture button's bottom edge is **792** in every locale (top **741.5**), so
+  it is **fully above the 800px fold in all five** — it is `position: sticky; bottom: 0`,
+  which is why. `scrollWidth === clientWidth === 360` on every one. **0** Korean
+  characters in `en`, `ja`, `zh` and `ar` (**85** tokens in `ko`, which is its own
+  dictionary) and **0** un-interpolated `{placeholders}` in any of the five. The language
+  switcher follows `dir` — **267.4…350** in `en`, **10…86.8** in `ar` — and overlaps
+  nothing; the guide pill (**264.1…326** en, **274.1…326** ar) overlaps nothing.
+  **One overlap is real and is not a defect**: the sticky capture bar's opaque background
+  covers the quality panel at scroll offset 0, by **2.7px** in `ko`, **50.5** in `en`,
+  **50.5** in `ja`, **36.8** in `zh` and **50.5** in `ar`, and in `ko` it also covers the
+  privacy pill (**155.9 x 21.8**). Scrolled to the bottom the bar releases and the
+  overlap reads negative in all five (**-343.8 / -377 / -343.8 / -343.8 / -359.7**), so
+  nothing is unreachable. Recorded as measured rather than as a finding.
+
+  **Bug fix — five named candidates, decided under `ar` by painted geometry. Two were
+  defects, three were not, and grepping wider found two more.**
+
+  Defects, all four fixed with a logical property and all four measured before and after
+  on a production build at 360x800:
+  1. `app/scan/info-sheet.tsx`'s privacy `<ul>` and `app/care/page.tsx`'s `tipList`,
+     both `paddingLeft: 18`. **The list-marker reasoning does not apply here and that is
+     worth saying**: the computed `list-style-type` on both lists is `none`, read off
+     the browser, and `app/globals.css` — the app's only stylesheet, which is
+     `@import "tailwindcss"` plus ARU's own rules — contains **0** `list-style` rules,
+     so the reset comes from Tailwind's preflight. There is no marker box, and the 18px
+     is pure indent rather than marker room.
+     Before, under `ar`: the info sheet's `<li>` lines all ended at **327**, the `<ul>`
+     box's own edge, as did the `<b>` above them — indent **0px**, against **18px** in
+     `en` (text at **51**, sibling at **33**). `/care`'s tips: `<li>` lines at **321**,
+     sibling at **321**, against `en`'s **57** vs **39**. After: **309** = 327 - 18 and
+     **303** = 321 - 18, with `en` unchanged at 51 and 57.
+  2. `app/components/product-card.tsx`'s price span, `marginLeft: "auto"`. In RTL the
+     left is the inline END, so the auto margin absorbed the slack on the wrong side.
+     Measured on `/report`'s picks step, all three cards: `en` gap-at-start **25.4** /
+     gap-at-end **0**; `ar` **0** / **23.3**, with `margin-inline-start` computing to
+     **0px** and `margin-inline-end` to **23.25px**. After: `ar` **23.2** / **0**, `en`
+     unchanged.
+  3. `app/care/page.tsx:149`'s commerce mascot, `marginLeft: -12` — **not on the
+     candidate list; grepped here**. The negative gutter is meant to pull the mascot
+     toward the paragraph. Under `ar` it pulled it away: mascot **27…81** in a row of
+     **39…321**, i.e. **12px outside the card's own inline end**, with the
+     paragraph gap reading **+6** where `en` reads **-6**. After: mascot **39…93**,
+     gap **-6**, mascot-to-row-end **0** — `en`'s numbers exactly.
+
+  Measured and **not** defects, recorded as none rather than invented:
+  `app/scan/scan-controls.tsx`'s `privacyPill` `textAlign: "right"` — its Arabic string
+  is one line in a box that fits it exactly (box **44…186.7**, line **44…186.7**), so
+  the property paints nothing; in `en` it does (box **155.5…316**, two lines at
+  **160.5…316** and **259.1…316**). `app/report/page.tsx:305`'s value span
+  `textAlign: "right"` — `flexShrink: 0` and box width equal to text width on all three
+  `ar` rows (**31.7**, **44.7**, **77.4**), one line each. `app/care/page.tsx`'s
+  `linkBtn` and `otherMerchantsBtn` `textAlign: "left"` — every painted string is inside
+  a child that sets `textAlign: "start"` or is a shrink-to-fit flex item under
+  `justify-content: space-between`; in `ar` the link button's inner span runs
+  **89.2…308** flush to its content box's start edge with the arrow at **52…68.6**, and
+  the merchants button's label runs **212…319** with its arrow at **41…52.5**.
+
+  **Why cycle 34's sweep of `/report` and `/care` did not report the price span**: the
+  string `marginLeft` does not occur in `app/report/page.tsx` at all (`grep -c` reads
+  **0**); it is in `app/components/product-card.tsx`, a shared component rendered on
+  `/report`, which a per-route grep does not reach. **For the `/care` mascot no such
+  reason was found** — `marginLeft: -12` is in `app/care/page.tsx` itself and
+  `marginLeft` is on cycle 34's own candidate list. Why it was not reported is not
+  something this cycle can establish, and is recorded as unknown rather than guessed.
+
+  **Broken on purpose, six ways, every count re-run on the final tree.**
+  `tests/e2e/rtl-logical-inset.regression-29.spec.ts` is **9 passed**. Reverting all four
+  fixes to their physical keywords: **5 failed | 4 passed**. Then, one at a time and each
+  the plausible-looking thing to reach for: `paddingRight: 18` on both lists **2 failed |
+  7 passed**; `marginInlineEnd: "auto"` on the price **2 failed | 7 passed**;
+  `textAlign: "end"` on the price span instead of a logical margin **2 failed | 7
+  passed**; `marginInlineEnd: -12` on the mascot **2 failed | 7 passed**;
+  `marginInlineStart: 0` on the mascot **2 failed | 7 passed**. The fold assertion was
+  broken too, so it is not vacuous: taking `position: sticky` off the capture bar gives
+  **1 failed | 6 passed**, the failure being "the capture button fell below the fold in
+  ko".
+
+  **Research — the CSS Working Group's own drafts, from `raw.githubusercontent.com`.**
+  `w3c/csswg-drafts/main/css-logical-1/Overview.bs` **http=200**, **39421** bytes, sha256
+  `9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41`; line 108 is the
+  Arabic example this cycle's fixes are written on — `padding-inline-start: 5px; /*
+  padding-left in latin, padding-right in arabic */` — with `margin-inline-start` on line
+  106 and `text-align: start` on line 105.
+  `w3c/csswg-drafts/main/css-lists-3/Overview.bs` **http=200**, **66082** bytes, sha256
+  `417cec4088605d6c300de17bbac4c2be1ea4c3ce1eaf8d660672a5b91a32d902`; lines 493-494 say
+  an `outside` marker box must "be placed on the <a>inline-start</a> side of the box,
+  using the <a>writing mode</a> of the box indicated by 'marker-side'". That is the
+  sentence the fix was expected to rest on, and **it turned out not to apply**: the
+  computed `list-style-type` is `none`, so no marker box exists on either list. Measuring
+  the DOM rather than trusting the spec-shaped reasoning is what caught that.
+
+  **ML — the 4096-entry `srgbLinear` table's acceptance criterion, turned into a run.**
+  Chosen because it needs no labelled export, no real photo and no phone profile, and
+  because its open sentence names two numbers nothing in the suite re-derives.
+  `tests/srgb-lut-knee-cell.test.ts` builds the table the item describes, sweeps the
+  whole 0-255 domain against `labAStar` itself, and locates the worst a* error in **cell
+  165** — the cell the knee at **10.31475** falls inside, cell width
+  **0.062255859375**. Grey diagonal: **9.005782231064074e-9** at channel
+  **10.314453125**. One channel against a held pair: **0.00006554712123119089** at
+  r=**10.3125**, g=b=**30**. Inside the detector's own **132-220** band the table clears
+  **1.046e-5**; in the ungated 0-40 band it does not, and the worst is in the same cell.
+  **4 passed.** Broken two ways: `N = 255`, the exact-integer table the item's own trap
+  paragraph rejects, **2 failed | 2 passed**; making the knee cell exact — the second of
+  the item's two escapes — also **2 failed | 2 passed**, which is the test noticing the
+  fix rather than a bug in it. `srgbLinear` is untouched and no published field moved.
+  The item **stays open**: whether the table is worth shipping is a phone-profile
+  question, and which escape to take is not decided here.
+
+  **Smoke was red twice, at two different specs, and the cause is cycle 40's.** The
+  first run gave **1 failed | 228 passed** at
+  `tests/e2e/reads-shape.regression-17.spec.ts:174` ("nothing was saved at all"); the
+  second, on the committed tree, gave **1 failed | 228 passed** at
+  `tests/e2e/landing-callout-clearance.regression-11.spec.ts:9` ("ja 360px tagline",
+  `boundingBox()` returning null) with the first one green. Neither is in code this
+  branch touches: `app/page.tsx` imports none of the three changed components, and
+  `grep` for them in it returns nothing. Reproduced rather than assumed — the landing
+  spec alone, on an otherwise idle box, was **1 failed in 5 runs**. The mechanism is
+  cycle 40's: ja/zh/ar are a dynamic `import()`, so `LanguageProvider` renders English
+  first and remounts the subtree (`key={active}`, `lib/i18n.tsx:125`) when the chunk
+  lands. A non-retrying read taken after a `toBeVisible()` that passed before the
+  remount hits a detached node, and an effect-written localStorage mirror can be sampled
+  between the two phases. Both specs predate the lazy dictionaries and both assumed one
+  render. They now wait for the signal the remount has happened — `html[lang]`, set by
+  an effect from the same `active` — and poll for the mirror write instead of counting
+  two animation frames. **The hardening does not weaken either assertion**, which was
+  checked rather than claimed: pushing the hero callout up with `marginTop: -90` still
+  fails the landing spec on the collision message, and making `isSkinReads` return
+  `true` unconditionally still gives **7 failed | 45 passed** on the reads-shape file.
+  Six consecutive runs of the two files together are **53 passed**.
+  **The third run caught the same bug in this cycle's own spec**, which is the useful
+  part: **1 failed | 228 passed** at the fold test, `main [data-quality-checklist]`
+  never appearing, because its locale loop clicked `scan-start` before the remount and
+  the camera state went with the discarded tree. Same wait, same reason; five
+  consecutive runs of the file are **9 passed**, and taking `position: sticky` off the
+  capture bar still fails it on "the capture button fell below the fold in ko".
+
+  **What this does not establish.** No traffic number changed and none was measured; a
+  capture screen that lays out correctly in Arabic is a precondition for a reading, not
+  evidence of one. Everything is a local production build in one Chromium at exactly
+  360x800 — no real phone, no other viewport, no other browser's flex or bidi
+  implementation. The camera shim is a canvas, not a face: the landmarker reached
+  `guideState === "ready"` but no real capture ran, so nothing downstream of the shutter
+  was exercised. Mid-session language switching is still unmeasured on every screen. The
+  `ar` verdicts on `privacyPill`, the `/report` value span and `/care`'s two buttons are
+  statements about the strings this build composes at this width — a longer translation
+  that wraps would make `textAlign: "right"` paint, and that was not tested. And the ML
+  work measures a candidate table; it does not ship one, and says nothing about speed.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 107 passed (107) / Tests 925
+  passed (925)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**, and
+  `npm run smoke` **229 passed (10.6m)** with `Smoke test passed.` — on the fourth
+  attempt; the first three are the three failures described above, each a different
+  spec and each fixed rather than re-run away. The rotation check against `5f4bbe0`
+  (both docs concatenated, `sort -u`, `comm -23`) drops **0** lines, and cycle 38's
+  **202** lines are byte-identical at the end of the changelog (`diff` clean).
+  Full output in the report.
+
+  **Supervisor review.** The four fixes are sound. One test fix was added before merge,
+  and one finding about cycle 40 goes to the top of the next cycle.
+
+  *Predicted by reading, before the branch existed:*
+  - `product-card.tsx`'s `marginLeft: "auto"` would leave the price at the start of its
+    row under `ar`. Checked in a minimal Chromium repro (300px flex row, three spans):
+    `ltr` price at **268…300**, `rtl` with `marginLeft` at **260…292** in a row of
+    **60…360**, `rtl` with `marginInlineStart` at **60…92**. The worker measured the same
+    defect on `/report` itself.
+  - The two list `paddingLeft`s would misplace list markers under `ar`. **Wrong**: the
+    worker read `list-style-type: none` off the browser, so there is no marker, and the
+    defect is the missing 18px indent instead. The worker caught this. I did not.
+  - The ready phase could be rendered without a camera, because
+    `tests/e2e/mobile-layout.spec.ts` already shims `getUserMedia`. The worker used that.
+
+  *Broken here, two ways, on the committed tree.*
+  `tests/e2e/rtl-logical-inset.regression-29.spec.ts` is **9 passed** clean. Putting
+  `marginLeft: "auto"` back on the price gives **1 failed | 8 passed**. Using
+  `paddingInlineEnd: 18` on the scan info sheet (the plausible wrong logical property)
+  gives **2 failed | 7 passed**. Both edits were reverted.
+
+  *Smoke was red here too, at a spec this branch does not touch.* The first supervisor
+  run of `npm run smoke` on `7181994` gave **1 failed | 228 passed** at
+  `tests/e2e/discovery-metadata.regression-26.spec.ts:81` (cycle 39): "strict mode
+  violation: locator('head meta[property="og:url"]') resolved to 2 elements", one for
+  `/report` and one for `/survey`. `/report` client-redirects to `/survey` with empty
+  storage (`app/report/page.tsx:139`), and the spec read `<head>` in the page, so it
+  raced the redirect. The same file's own comment on its HTTP test already says this.
+  Reproduced on purpose: adding a 3000ms wait after `goto` fails it every time, **1
+  failed | 8 passed**. Fixed by reading the NOINDEX routes with `javaScriptEnabled:
+  false`, which is also what a crawler or a share scraper sees. With the same 3000ms wait
+  the fixed spec is **9 passed**. It still catches a real defect: flipping `/report` to
+  `index: true` in `lib/seo.ts` gives **2 failed | 14 passed**. Three clean runs of the
+  file gave **16 passed** each.
+
+  *Finding for the next cycle, from cycle 40, which I missed in its review.* The worker
+  hardened three specs against the `key={active}` remount in `lib/i18n.tsx`, and its own
+  comment says why: "Clicking before that remount starts the camera on a tree that is
+  about to be thrown away." That is a user-facing defect, not only a test race. A
+  `ja`/`zh`/`ar` visitor who taps during the English interval loses the tap. Probed here
+  with the `ja` dictionary chunk delayed by Playwright routing, on the dev server, with a
+  canvas camera:
+  - 0ms delay: `{"langAtTap":"en","langAfter":"ja","startVisibleAfter":false,"checklist":1}`.
+  - 3000ms delay: `{"langAtTap":"en","langAfter":"ja","startVisibleAfter":true,"checklist":0}`.
+    The tap started the camera, then the remount put the page back on its start button.
+  The camera does not leak: the unmount cleanup at `app/scan/page.tsx:281` calls
+  `stopCamera()`. How long the English interval lasts on a real phone network was not
+  measured. It is recorded under "Supervisor findings not yet actioned".
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 107 passed (107)
+  / Tests 925 passed (925)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `5f4bbe0` drops
+  **0** lines. Recent cycles holds 41/40/39, and cycle 38 sits after cycle 37 at the end
+  of the changelog. With the spec fix,
+  `npm run smoke` gave **229 passed (7.7m)** and `Smoke test passed.`
 
 - 2026-09-25 (cycle 40) — Branch `autopilot/2026-09-25-1239`. **Every first-time visitor
   downloaded all four locale dictionaries and could read at most one of them. Measured on
@@ -1560,205 +1850,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree:* see the PR body for the literal output.
 
-- 2026-09-25 (cycle 38) — Branch `autopilot/2026-09-25-0039`. **The two routes that
-  spend the owner's money took work from anyone who asked. Three questions about that,
-  answered by driving the real handlers with the upstream `fetch` stubbed rather than by
-  reading them: all three came back yes, two are fixed here and the third is an owner
-  decision with a cost. The 360px walk of `/report` found the mascot laid out off-screen
-  in two of five locales.**
-
-  **Baselines, measured here on a clean tree at `1663f9c` before any edit.**
-  `node_modules` was absent, so `npm ci` first. `npx vitest run` **808 passed in 100
-  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 145 tests in 2.172s ... OK**, and `npm run smoke` with the chromium override at
-  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** with **184 passed
-  (7.9m)**. They match the supervisor's.
-
-  **Question 1 — does either route accept a caller that plainly is not one of ARU's
-  pages? Yes, every shape tried, and it is fixed.** Neither `/api/analyze` nor
-  `/api/reason` looked at where a call came from.
-  `tests/llm-route-cost-exposure.regression-24.test.ts` replays seven header sets
-  against both real handlers with `globalThis.fetch` replaced by a stub that throws on
-  any URL it does not recognise, so nothing in this work could reach OpenAI or Google.
-  With the guard call deleted from both handlers, all **14** cases (seven header sets ×
-  two routes) recorded **`status=200 upstreamCalls=1`** — seven to
-  `generativelanguage.googleapis.com`, seven to `api.openai.com/v1/chat/completions`.
-  On the committed tree the same 14 are **403** with **0** upstream calls: no `Origin`,
-  a foreign `Origin`, an `Origin` whose host merely *contains* ARU's, an unparseable
-  `Origin`, `Sec-Fetch-Site: cross-site` (including with ARU's own `Origin` spoofed
-  alongside it), and `Sec-Fetch-Site: same-site`. `isForeignOriginRequest`
-  (`lib/server/request-guard.ts`) runs before the limiter and before the body is read.
-  ARU's own pages still get through and that is measured twice, not assumed: five
-  same-origin cases in the file reach the model, and a real Chromium at 360px loading
-  `/report` sends `origin=http://127.0.0.1:3102` on its `POST /api/reason` and gets
-  **`status=200`**, not 403. (Playwright's interception layer reports `sec-fetch-site`
-  and `host` as `(none)` — it does not surface `Sec-` headers or `Host`, which the
-  network stack sets after interception — so that probe shows the Origin arm passing,
-  not both arms.) The 189-spec smoke run below is green with the guard in place. It is a CSRF boundary and **not** authentication — curl can still send
-  whatever headers it likes, which is said in the code, in the doc and here.
-
-  **Question 2 — what does the limiter bound? Measured, and narrower than it reads.**
-  `createRateLimiter` allows **10** of 40 calls on one key at one instant, **40** of 40
-  when the key rotates each call, and **20** across two instances built from the same
-  policy before either refuses. `requestClientKey` reads `x-vercel-forwarded-for`, then
-  `x-forwarded-for`, then `"unknown"`. So the bound the CODE provides is 10 per client
-  key per minute per running instance, which is not a cap on spend. **It is not the only
-  layer, and that was nearly missed**: `docs/qa/2026-07-17-post-deploy-security.md`
-  records a live Vercel Firewall rule, `Provider request budget`, on the exact POST
-  paths `/api/analyze`, `/api/reason` and `/api/reengage/subscribe` — fixed window,
-  **keyed on client IP**, **20 requests per 60 seconds** — verified against production
-  on 2026-07-17 with `{}` bodies so no provider was called. That layer fixes both of the
-  app limiter's weaknesses (the key is not a header the caller sends, and the window is
-  not per instance) and is still a rate per IP rather than a budget; this cycle could
-  not re-verify it, because the rule's live state is not readable from this worker.
-  **How a deployed edge sets or strips the two forwarding headers is unknown and is
-  recorded as unknown**:
-  `vercel.com/docs/headers/request-headers` returned `http=000` from this worker and so
-  did the MDN page, and the one Vercel source file that did fetch
-  (`raw.githubusercontent.com/vercel/vercel/main/packages/next/src/index.ts`, **HTTP
-  200**, **101605 bytes**, sha256
-  `334d55f4fbff4ee4ab2bf9b86fc20fb6a9a7b6126ed5dde31dbec93f69693c25`) contains **0**
-  lines matching either header name. A real global cap needs infrastructure, so it is an
-  owner decision with its options costed — the Firewall rule bounds a rate per IP, not a
-  total — §5 of
-  [`docs/llm-route-cost-exposure.md`](llm-route-cost-exposure.md), with a BLOCKERS entry
-  above. Nothing paid, nothing database-backed and no dependency was added.
-
-  **Question 3 — can a caller buy work ARU never asks for? Yes, and the free cases are
-  closed.** `parseAnalyzeInput` checked the data-URL shape and the 1.5 MB decoded
-  ceiling and never looked at the bytes, so 1 MB of `AAAA…` under
-  `data:image/jpeg;base64,` was paid for, as was a PNG labelled `image/jpeg` and a JPEG
-  labelled `image/png` — and the label is what the upstream request tells the model it
-  is sending. It now also requires the declared type's signature at offset 0: `/9j/`
-  (`FF D8 FF`) and `iVBORw0K` (`89 50 4E 47 0D 0A`), both whole base64 groups so the
-  encoding is exact, both derived with `Buffer.from([...]).toString("base64")`. This
-  does **not** make the image a face; any real JPEG still passes, and no cycle can tell
-  a face from a wall without running a detector server-side. `tests/ai-input.test.ts`
-  asserted `AQID` — bytes `01 02 03` — was an acceptable JPEG; that case is now the
-  refusal it should have been.
-
-  **Broken on purpose, seven ways, every count re-run on the committed tree.**
-  `tests/llm-route-cost-exposure.regression-24.test.ts` is **37 passed**: deleting the
-  guard call from both routes gives **15 failed | 22 passed**; deleting only the
-  `Sec-Fetch-Site` check **4 failed | 33 passed**; weakening the host compare to
-  `origin.includes(host)` **2 failed | 35 passed**; deleting the magic-byte check
-  **4 failed | 33 passed** here and **1 failed | 4 passed** in `tests/ai-input.test.ts`;
-  weakening `startsWith` to `includes` **1 failed | 36 passed** and **1 failed | 4
-  passed**.
-
-  **Research — the Fetch Metadata spec, primary source.**
-  `https://raw.githubusercontent.com/w3c/webappsec-fetch-metadata/main/index.bs`,
-  **HTTP 200**, **22801 bytes**, sha256
-  `529f0cff7812e53ddd6ba67a7d9b359db4ffff4e744ce7561e36e6a31965b55c`. Two sentences
-  chose the guard's shape. Lines 205-207: "Valid `Sec-Fetch-Site` values include
-  `cross-site`, `same-origin`, `same-site`, and `none`. In order to support
-  forward-compatibility with as-yet-unknown request types, servers SHOULD ignore this
-  header if it contains an invalid value" — so an unrecognised value is allowed through
-  rather than refused. Lines 340-345: the `Sec-` prefix makes these "unmodifiable from
-  JavaScript. This will prevent malicious websites from convincing user agents to send
-  forged metadata along with requests" — which is the whole basis for trusting the
-  header from a browser and not from anything else. The `set-site` algorithm at lines
-  209-238 never sets `none` for a page's own `fetch()`, which is why `none` is allowed.
-  `index.src.html` in the same repository is **HTTP 404** (14 bytes); `vercel.com` and
-  `developer.mozilla.org` refused, as recorded above.
-
-  **ML — the 0.86 cap was also doing input validation.** Chosen because it is the one
-  `[AI]` item on the vision path that needed no labelled export and because the bug-fix
-  work put the route's own `readConfidence` side by side with it. `mergeVisionAnalysis`
-  clamped each vision confidence to `[0,1]` where it read the per-attribute value and
-  not where it summed the mean that becomes `next.confidence`, while `/api/analyze`
-  clamps before the payload leaves the route. So one payload published two numbers:
-  `{oil: 2, redness: 0, pores: 0}` read **0.600000 / 보통 / retake false** through the
-  function against **0.300000 / 낮음 / retake true** through the route, and `{oil: -2,
-  redness: 1, pores: 1}` diverged the other way, **0.200000** against **0.600000**. It
-  hid because `Math.min(0.86, mean * 0.9)` saturates from a mean of 0.95555… up, so
-  everything-at-5 and everything-at-1 both read **0.860000** on both paths. One clamp,
-  applied once before the value is used; the production path is unchanged because the
-  route already clamped. `tests/vision-confidence-clamp.test.ts` is **12 passed**;
-  pushing the raw value again gives **5 failed | 7 passed**, clamping only the lower
-  bound **4 failed | 8 passed**. `ml/selftest.py` is untouched at **Ran 145 tests**.
-  The backlog item **stays open**: where the cap belongs relative to the 0.8614 gate is
-  the same unanswered question and still needs real readings.
-  [`docs/vision-confidence-clamp.md`](vision-confidence-clamp.md).
-
-  **UI/UX — `/report`'s mascot was laid out off-screen in `en` and `ar`.** Probed at
-  360x800 on `/report` in all five locales. The title row is a flex row of a text column
-  and a 60px mascot with `justifyContent: space-between`. The text column had no
-  `minWidth`, so it took its max-content width — **331.5** under `en` and **332.8**
-  under `ar` against a **320** content box — and the mascot, which has no intrinsic
-  minimum, was shrunk to **width 0** and laid out at left **361.5** (`en`) and **-2.8**
-  (`ar`). `ko`, `ja` and `zh` fitted and showed it. `minWidth: 0` on the column and
-  `flexShrink: 0` on the mascot fix that, and needed a second property: alone they
-  narrow the column to 250px and push the step rail's last label out to **350.5** (`en`)
-  and **8.2** (`ar`), so the step rail's own flex container
-  (`app/components/flow-steps.tsx`) gets `flexWrap: "wrap"` — inert wherever it already
-  fits. All five locales now read mascot **width 60.0** inside the box (`en`
-  280→340, `ar` 20→80, mirrored correctly), **0** descendants outside the column, and no
-  page scroll (`docScroll` 360 = `docClient` 360).
-  `tests/e2e/report-header-fit.regression-25.spec.ts` is **5 passed**; reverting the two
-  report properties gives **5 failed** (mascot width **54.5625** under `ko` and
-  **42.84375** under `en`, against the asserted 60), and
-  reverting `flexWrap` alone gives **5 failed** on the descendant count (ko 2, en 6,
-  ja 2, zh 2, ar 6 outside the column).
-
-  **Not established.** Whether either route has ever actually been called by a third
-  party — there is no server-side request log to read, and this cycle added none.
-  Whether the guard survives a deployed edge that rewrites `Origin` or `Host`; only the
-  handler's own view was measured. How Vercel treats the two forwarding headers, per
-  question 2. Whether any real image is a face. Which side of the vision-confidence
-  divergence was the *better* number, as opposed to which one shipped. And of the
-  revenue-upstream screens only `/report` was walked at 360px this cycle: `/scan` needs
-  a camera, and `/care`'s 360px coverage is still the cycle-12 spec
-  (`tests/e2e/care-merchant-disclosure.regression-12.spec.ts`) rather than a fresh walk.
-
-  *Validation on the committed tree.* `npx vitest run` **858 passed in 102 files**,
-  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npx eslint .` **0 errors,
-  2 warnings**, `python3 ml/selftest.py` **Ran 145 tests in 2.047s ... OK**, and
-  `npm run smoke` printed **`Smoke test passed.`** with **189 passed (7.5m)** — 184 plus
-  this cycle's five. Three new test files —
-  `tests/llm-route-cost-exposure.regression-24.test.ts`,
-  `tests/vision-confidence-clamp.test.ts` and
-  `tests/e2e/report-header-fit.regression-25.spec.ts` — and nothing skipped or disabled.
-  Rotation: `docs/AUTOPILOT.md` is **1671** lines against **1662** at `1663f9c`,
-  `docs/autopilot-changelog.md` **7992** against **7802**, `comm -23` of `sort -u` over
-  both files at `1663f9c` against both files now returns **0** lines, and `cmp` on cycle
-  35's **189** moved lines is byte-identical.
-
-  **Supervisor review.** Sound. One test was hardened before merge: a plausible
-  weakening of the host compare got through it.
-
-  *Predicted by reading, before the branch existed.* A cross-site POST with no `Origin`
-  would be accepted today, the limiter is per-instance, and there is no spend cap. The
-  worker measured all three. Whether Vercel strips or overwrites `x-vercel-forwarded-for`
-  I marked unknown, and the worker also left it unknown: `vercel.com` returned `http=000`
-  and nothing was quoted from memory.
-
-  *Re-checked here.*
-  - `parseAnalyzeInput` accepts only `image/(jpeg|png)`. The client's AI crop is
-    `mimeType: "image/jpeg"` (`app/scan/camera-quality.ts:55`) through
-    `canvas.toDataURL`, so the new magic-byte check cannot refuse ARU's own capture.
-  - The Firewall numbers the doc quotes (20 per 60 s, client IP, `deny` → 429) match
-    `docs/qa/2026-07-17-post-deploy-security.md:37-54` line for line.
-
-  *Breaks re-run on the committed tree* against
-  `tests/llm-route-cost-exposure.regression-24.test.ts`:
-  - `if (!origin) return false` → `3 failed | 34 passed (37)`.
-  - `FOREIGN_FETCH_SITES` without `same-site` → `1 failed | 36 passed`.
-  - Magic-byte line removed → `5 failed | 37 passed (42)`, with `tests/ai-input.test.ts`
-    included in the run.
-  - Host compare weakened to `!host.includes(new URL(origin).hostname)` →
-    **`37 passed (37)`**. The file covered an Origin that CONTAINS ARU's host
-    (`aru.test.evil.example`) but not the other direction, where ARU's host contains a
-    shorter one. An attacker holding a name that ARU's host ends in would pass that
-    weakened compare.
-
-  *Hardened before merge.* I added an Origin of `https://ru.test` against host
-  `aru.test`. The file is now `39 passed`, and the same weakening fails exactly the two
-  new cases. Modern browsers would also be stopped by `Sec-Fetch-Site`; this pins the
-  `Origin`-only path that older browsers take.
-
-  *Owner decision carried forward.* A real spend cap needs a shared counter (KV / Upstash
-  / Supabase). The doc prices that as an owner decision and does not build it.
-
-  *Validation on the corrected tree:* see the PR body for the literal output.

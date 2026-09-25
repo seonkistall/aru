@@ -43,7 +43,10 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
             {sku.volume && <span>{sku.volume}</span>}
             {sku.texture && <span>{t(sku.texture)}</span>}
-            <span style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 800, color: "var(--ink)" }}>
+            {/* `margin-inline-start: auto` pushes the price to the row's reading END in
+                both directions; a physical `marginLeft: auto` resolves on the left,
+                which under `dir=rtl` is the end, so the price stayed at the start. */}
+            <span style={{ marginInlineStart: "auto", fontSize: 12.5, fontWeight: 800, color: "var(--ink)" }}>
               {t("예산대")} · {t(budgetBand(sku.price))}
             </span>
           </div>

@@ -14,6 +14,13 @@ test("hero callout never collides with the header tagline", async ({ browser }) 
       await context.addInitScript((nextLang) => localStorage.setItem("aru.lang", nextLang), lang);
       const page = await context.newPage();
       await page.goto("/");
+      // Since ja/zh/ar are a dynamic import(), `LanguageProvider` first renders
+      // English and remounts the subtree (`key={active}`) when the chunk lands.
+      // `boundingBox()` does not retry, so a read taken between the visibility
+      // assertion and the remount hits a detached node and returns null. Waiting
+      // for `html[lang]`, which an effect sets from the SAME `active`, is the
+      // signal that the remount this locale needs has already happened.
+      await expect(page.locator("html")).toHaveAttribute("lang", lang === "zh" ? "zh-CN" : lang);
       await page.evaluate(() => document.fonts.ready);
       await expect(page.getByTestId("header-tagline")).toBeVisible();
       await expect(page.getByTestId("hero-callout")).toBeVisible();
