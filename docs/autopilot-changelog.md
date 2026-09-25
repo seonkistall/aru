@@ -8368,3 +8368,206 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   *Validation on the corrected tree:* see the PR body for the literal output.
 
   *Validation on this tree:* see the report for the literal output.
+
+- 2026-09-25 (cycle 38) — Branch `autopilot/2026-09-25-0039`. **The two routes that
+  spend the owner's money took work from anyone who asked. Three questions about that,
+  answered by driving the real handlers with the upstream `fetch` stubbed rather than by
+  reading them: all three came back yes, two are fixed here and the third is an owner
+  decision with a cost. The 360px walk of `/report` found the mascot laid out off-screen
+  in two of five locales.**
+
+  **Baselines, measured here on a clean tree at `1663f9c` before any edit.**
+  `node_modules` was absent, so `npm ci` first. `npx vitest run` **808 passed in 100
+  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 145 tests in 2.172s ... OK**, and `npm run smoke` with the chromium override at
+  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** with **184 passed
+  (7.9m)**. They match the supervisor's.
+
+  **Question 1 — does either route accept a caller that plainly is not one of ARU's
+  pages? Yes, every shape tried, and it is fixed.** Neither `/api/analyze` nor
+  `/api/reason` looked at where a call came from.
+  `tests/llm-route-cost-exposure.regression-24.test.ts` replays seven header sets
+  against both real handlers with `globalThis.fetch` replaced by a stub that throws on
+  any URL it does not recognise, so nothing in this work could reach OpenAI or Google.
+  With the guard call deleted from both handlers, all **14** cases (seven header sets ×
+  two routes) recorded **`status=200 upstreamCalls=1`** — seven to
+  `generativelanguage.googleapis.com`, seven to `api.openai.com/v1/chat/completions`.
+  On the committed tree the same 14 are **403** with **0** upstream calls: no `Origin`,
+  a foreign `Origin`, an `Origin` whose host merely *contains* ARU's, an unparseable
+  `Origin`, `Sec-Fetch-Site: cross-site` (including with ARU's own `Origin` spoofed
+  alongside it), and `Sec-Fetch-Site: same-site`. `isForeignOriginRequest`
+  (`lib/server/request-guard.ts`) runs before the limiter and before the body is read.
+  ARU's own pages still get through and that is measured twice, not assumed: five
+  same-origin cases in the file reach the model, and a real Chromium at 360px loading
+  `/report` sends `origin=http://127.0.0.1:3102` on its `POST /api/reason` and gets
+  **`status=200`**, not 403. (Playwright's interception layer reports `sec-fetch-site`
+  and `host` as `(none)` — it does not surface `Sec-` headers or `Host`, which the
+  network stack sets after interception — so that probe shows the Origin arm passing,
+  not both arms.) The 189-spec smoke run below is green with the guard in place. It is a CSRF boundary and **not** authentication — curl can still send
+  whatever headers it likes, which is said in the code, in the doc and here.
+
+  **Question 2 — what does the limiter bound? Measured, and narrower than it reads.**
+  `createRateLimiter` allows **10** of 40 calls on one key at one instant, **40** of 40
+  when the key rotates each call, and **20** across two instances built from the same
+  policy before either refuses. `requestClientKey` reads `x-vercel-forwarded-for`, then
+  `x-forwarded-for`, then `"unknown"`. So the bound the CODE provides is 10 per client
+  key per minute per running instance, which is not a cap on spend. **It is not the only
+  layer, and that was nearly missed**: `docs/qa/2026-07-17-post-deploy-security.md`
+  records a live Vercel Firewall rule, `Provider request budget`, on the exact POST
+  paths `/api/analyze`, `/api/reason` and `/api/reengage/subscribe` — fixed window,
+  **keyed on client IP**, **20 requests per 60 seconds** — verified against production
+  on 2026-07-17 with `{}` bodies so no provider was called. That layer fixes both of the
+  app limiter's weaknesses (the key is not a header the caller sends, and the window is
+  not per instance) and is still a rate per IP rather than a budget; this cycle could
+  not re-verify it, because the rule's live state is not readable from this worker.
+  **How a deployed edge sets or strips the two forwarding headers is unknown and is
+  recorded as unknown**:
+  `vercel.com/docs/headers/request-headers` returned `http=000` from this worker and so
+  did the MDN page, and the one Vercel source file that did fetch
+  (`raw.githubusercontent.com/vercel/vercel/main/packages/next/src/index.ts`, **HTTP
+  200**, **101605 bytes**, sha256
+  `334d55f4fbff4ee4ab2bf9b86fc20fb6a9a7b6126ed5dde31dbec93f69693c25`) contains **0**
+  lines matching either header name. A real global cap needs infrastructure, so it is an
+  owner decision with its options costed — the Firewall rule bounds a rate per IP, not a
+  total — §5 of
+  [`docs/llm-route-cost-exposure.md`](llm-route-cost-exposure.md), with a BLOCKERS entry
+  above. Nothing paid, nothing database-backed and no dependency was added.
+
+  **Question 3 — can a caller buy work ARU never asks for? Yes, and the free cases are
+  closed.** `parseAnalyzeInput` checked the data-URL shape and the 1.5 MB decoded
+  ceiling and never looked at the bytes, so 1 MB of `AAAA…` under
+  `data:image/jpeg;base64,` was paid for, as was a PNG labelled `image/jpeg` and a JPEG
+  labelled `image/png` — and the label is what the upstream request tells the model it
+  is sending. It now also requires the declared type's signature at offset 0: `/9j/`
+  (`FF D8 FF`) and `iVBORw0K` (`89 50 4E 47 0D 0A`), both whole base64 groups so the
+  encoding is exact, both derived with `Buffer.from([...]).toString("base64")`. This
+  does **not** make the image a face; any real JPEG still passes, and no cycle can tell
+  a face from a wall without running a detector server-side. `tests/ai-input.test.ts`
+  asserted `AQID` — bytes `01 02 03` — was an acceptable JPEG; that case is now the
+  refusal it should have been.
+
+  **Broken on purpose, seven ways, every count re-run on the committed tree.**
+  `tests/llm-route-cost-exposure.regression-24.test.ts` is **37 passed**: deleting the
+  guard call from both routes gives **15 failed | 22 passed**; deleting only the
+  `Sec-Fetch-Site` check **4 failed | 33 passed**; weakening the host compare to
+  `origin.includes(host)` **2 failed | 35 passed**; deleting the magic-byte check
+  **4 failed | 33 passed** here and **1 failed | 4 passed** in `tests/ai-input.test.ts`;
+  weakening `startsWith` to `includes` **1 failed | 36 passed** and **1 failed | 4
+  passed**.
+
+  **Research — the Fetch Metadata spec, primary source.**
+  `https://raw.githubusercontent.com/w3c/webappsec-fetch-metadata/main/index.bs`,
+  **HTTP 200**, **22801 bytes**, sha256
+  `529f0cff7812e53ddd6ba67a7d9b359db4ffff4e744ce7561e36e6a31965b55c`. Two sentences
+  chose the guard's shape. Lines 205-207: "Valid `Sec-Fetch-Site` values include
+  `cross-site`, `same-origin`, `same-site`, and `none`. In order to support
+  forward-compatibility with as-yet-unknown request types, servers SHOULD ignore this
+  header if it contains an invalid value" — so an unrecognised value is allowed through
+  rather than refused. Lines 340-345: the `Sec-` prefix makes these "unmodifiable from
+  JavaScript. This will prevent malicious websites from convincing user agents to send
+  forged metadata along with requests" — which is the whole basis for trusting the
+  header from a browser and not from anything else. The `set-site` algorithm at lines
+  209-238 never sets `none` for a page's own `fetch()`, which is why `none` is allowed.
+  `index.src.html` in the same repository is **HTTP 404** (14 bytes); `vercel.com` and
+  `developer.mozilla.org` refused, as recorded above.
+
+  **ML — the 0.86 cap was also doing input validation.** Chosen because it is the one
+  `[AI]` item on the vision path that needed no labelled export and because the bug-fix
+  work put the route's own `readConfidence` side by side with it. `mergeVisionAnalysis`
+  clamped each vision confidence to `[0,1]` where it read the per-attribute value and
+  not where it summed the mean that becomes `next.confidence`, while `/api/analyze`
+  clamps before the payload leaves the route. So one payload published two numbers:
+  `{oil: 2, redness: 0, pores: 0}` read **0.600000 / 보통 / retake false** through the
+  function against **0.300000 / 낮음 / retake true** through the route, and `{oil: -2,
+  redness: 1, pores: 1}` diverged the other way, **0.200000** against **0.600000**. It
+  hid because `Math.min(0.86, mean * 0.9)` saturates from a mean of 0.95555… up, so
+  everything-at-5 and everything-at-1 both read **0.860000** on both paths. One clamp,
+  applied once before the value is used; the production path is unchanged because the
+  route already clamped. `tests/vision-confidence-clamp.test.ts` is **12 passed**;
+  pushing the raw value again gives **5 failed | 7 passed**, clamping only the lower
+  bound **4 failed | 8 passed**. `ml/selftest.py` is untouched at **Ran 145 tests**.
+  The backlog item **stays open**: where the cap belongs relative to the 0.8614 gate is
+  the same unanswered question and still needs real readings.
+  [`docs/vision-confidence-clamp.md`](vision-confidence-clamp.md).
+
+  **UI/UX — `/report`'s mascot was laid out off-screen in `en` and `ar`.** Probed at
+  360x800 on `/report` in all five locales. The title row is a flex row of a text column
+  and a 60px mascot with `justifyContent: space-between`. The text column had no
+  `minWidth`, so it took its max-content width — **331.5** under `en` and **332.8**
+  under `ar` against a **320** content box — and the mascot, which has no intrinsic
+  minimum, was shrunk to **width 0** and laid out at left **361.5** (`en`) and **-2.8**
+  (`ar`). `ko`, `ja` and `zh` fitted and showed it. `minWidth: 0` on the column and
+  `flexShrink: 0` on the mascot fix that, and needed a second property: alone they
+  narrow the column to 250px and push the step rail's last label out to **350.5** (`en`)
+  and **8.2** (`ar`), so the step rail's own flex container
+  (`app/components/flow-steps.tsx`) gets `flexWrap: "wrap"` — inert wherever it already
+  fits. All five locales now read mascot **width 60.0** inside the box (`en`
+  280→340, `ar` 20→80, mirrored correctly), **0** descendants outside the column, and no
+  page scroll (`docScroll` 360 = `docClient` 360).
+  `tests/e2e/report-header-fit.regression-25.spec.ts` is **5 passed**; reverting the two
+  report properties gives **5 failed** (mascot width **54.5625** under `ko` and
+  **42.84375** under `en`, against the asserted 60), and
+  reverting `flexWrap` alone gives **5 failed** on the descendant count (ko 2, en 6,
+  ja 2, zh 2, ar 6 outside the column).
+
+  **Not established.** Whether either route has ever actually been called by a third
+  party — there is no server-side request log to read, and this cycle added none.
+  Whether the guard survives a deployed edge that rewrites `Origin` or `Host`; only the
+  handler's own view was measured. How Vercel treats the two forwarding headers, per
+  question 2. Whether any real image is a face. Which side of the vision-confidence
+  divergence was the *better* number, as opposed to which one shipped. And of the
+  revenue-upstream screens only `/report` was walked at 360px this cycle: `/scan` needs
+  a camera, and `/care`'s 360px coverage is still the cycle-12 spec
+  (`tests/e2e/care-merchant-disclosure.regression-12.spec.ts`) rather than a fresh walk.
+
+  *Validation on the committed tree.* `npx vitest run` **858 passed in 102 files**,
+  `npx tsc --noEmit | grep -c "error TS"` **13** (unchanged), `npx eslint .` **0 errors,
+  2 warnings**, `python3 ml/selftest.py` **Ran 145 tests in 2.047s ... OK**, and
+  `npm run smoke` printed **`Smoke test passed.`** with **189 passed (7.5m)** — 184 plus
+  this cycle's five. Three new test files —
+  `tests/llm-route-cost-exposure.regression-24.test.ts`,
+  `tests/vision-confidence-clamp.test.ts` and
+  `tests/e2e/report-header-fit.regression-25.spec.ts` — and nothing skipped or disabled.
+  Rotation: `docs/AUTOPILOT.md` is **1671** lines against **1662** at `1663f9c`,
+  `docs/autopilot-changelog.md` **7992** against **7802**, `comm -23` of `sort -u` over
+  both files at `1663f9c` against both files now returns **0** lines, and `cmp` on cycle
+  35's **189** moved lines is byte-identical.
+
+  **Supervisor review.** Sound. One test was hardened before merge: a plausible
+  weakening of the host compare got through it.
+
+  *Predicted by reading, before the branch existed.* A cross-site POST with no `Origin`
+  would be accepted today, the limiter is per-instance, and there is no spend cap. The
+  worker measured all three. Whether Vercel strips or overwrites `x-vercel-forwarded-for`
+  I marked unknown, and the worker also left it unknown: `vercel.com` returned `http=000`
+  and nothing was quoted from memory.
+
+  *Re-checked here.*
+  - `parseAnalyzeInput` accepts only `image/(jpeg|png)`. The client's AI crop is
+    `mimeType: "image/jpeg"` (`app/scan/camera-quality.ts:55`) through
+    `canvas.toDataURL`, so the new magic-byte check cannot refuse ARU's own capture.
+  - The Firewall numbers the doc quotes (20 per 60 s, client IP, `deny` → 429) match
+    `docs/qa/2026-07-17-post-deploy-security.md:37-54` line for line.
+
+  *Breaks re-run on the committed tree* against
+  `tests/llm-route-cost-exposure.regression-24.test.ts`:
+  - `if (!origin) return false` → `3 failed | 34 passed (37)`.
+  - `FOREIGN_FETCH_SITES` without `same-site` → `1 failed | 36 passed`.
+  - Magic-byte line removed → `5 failed | 37 passed (42)`, with `tests/ai-input.test.ts`
+    included in the run.
+  - Host compare weakened to `!host.includes(new URL(origin).hostname)` →
+    **`37 passed (37)`**. The file covered an Origin that CONTAINS ARU's host
+    (`aru.test.evil.example`) but not the other direction, where ARU's host contains a
+    shorter one. An attacker holding a name that ARU's host ends in would pass that
+    weakened compare.
+
+  *Hardened before merge.* I added an Origin of `https://ru.test` against host
+  `aru.test`. The file is now `39 passed`, and the same weakening fails exactly the two
+  new cases. Modern browsers would also be stopped by `Sec-Fetch-Site`; this pins the
+  `Origin`-only path that older browsers take.
+
+  *Owner decision carried forward.* A real spend cap needs a shared counter (KV / Upstash
+  / Supabase). The doc prices that as an owner decision and does not build it.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.

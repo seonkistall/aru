@@ -177,7 +177,7 @@ unsubscribe → cleanup 30 days after unsubscribe or the 4-week send`
 | Route | Role | Failure / protection behaviour |
 |---|---|---|
 | `/` | Product intro, language switcher, camera/survey entry | Core CTAs keep 44px touch targets at 360px |
-| `/scan` | Camera quality gate, capture, on-device analysis | Permission/model/quality failure → retry or `/survey` |
+| `/scan` | Camera quality gate, capture, on-device analysis | Permission/model/quality failure → retry or `/survey`; the live-camera `ready` phase is measured at 360x800 in all five locales, capture button above the fold |
 | `/survey` | Skin concerns, preferences, budget, exclusions | View and completion events recorded separately per session |
 | `/report` | Up to 3 candidates, selection reasons, trust notes | Verified local templates on AI failure |
 | `/care` | Morning/evening routine, usage start, retailers | Retailer clicks separated from usage start |

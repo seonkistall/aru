@@ -178,6 +178,13 @@ test("/report does not mirror a wrong-shaped reads into localStorage", async ({ 
   await page.goto("/report");
   await settle(page);
 
+  // The mirror is written from an effect, and a locale chunk landing remounts the
+  // subtree and runs it again, so two animation frames after `goto` is not a
+  // guarantee that it has run once. Poll for the write rather than assume it; if it
+  // never happens this still fails, with the same message.
+  await page
+    .waitForFunction((key) => localStorage.getItem(key as string) !== null, LAST_RESULT_KEY, { timeout: 10_000 })
+    .catch(() => {});
   const mirrored = await page.evaluate((key) => localStorage.getItem(key as string), LAST_RESULT_KEY);
   expect(mirrored, "nothing was saved at all").not.toBeNull();
   const parsed = JSON.parse(mirrored as string) as { reads: unknown };
