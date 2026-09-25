@@ -488,6 +488,21 @@ partly done and stays here.
   must not be written down as verified against the standard, and if it moves it has to
   move in BOTH files in one change or it reintroduces exactly the split cycle 18 closed.
   Measurements and the fetch's sha256: `docs/srgb-transfer-table.md` §1.
+  **2026-09-25, cycle 39: the "must move in BOTH files" half now has a guard, and the
+  premise it was written on was wrong.** Measured before writing anything: moving the
+  knee in `lib/skin.ts` alone already fails `tests/index-parity.test.ts` (2 of 12),
+  moving it in `ml/ita.py` alone already fails `python3 ml/selftest.py` (failures=1),
+  and changing the 1.055 scale in `ml/ita.py` alone fails selftest (failures=3) while
+  index-parity stays 12 passed. So no move ships silently, which is not what this item
+  implied. What neither guard does is compare the two implementations to each other:
+  both check ONE language against `ml/index-parity.json`, a committed artifact, in two
+  different runners. `tests/srgb-knee-parity.test.ts` (8 passed) reads the four
+  constants out of both sources and requires them to agree, and re-derives cycle 22's
+  numbers from a run rather than a sentence: colour-science's breakpoint
+  0.040449936 from 12.92 * 0.0031308, ARU's distance 6.40000000010077e-8, the knee
+  discontinuity 2.32950731317641e-9, and 0 of 256 integer channels in the window.
+  **Stays open**: where the knee BELONGS still needs IEC 61966-2-1, which this network
+  cannot reach, and nothing here moved a constant.
 - [~] [AI] **Should `detectBlemishes` notice that a frame is plateau-dominated, instead of
   reporting a count settled by scan order?** Opened 2026-09-21 (cycle 23), from the guard
   that measured it. On the noiseless fixture one to three of the five counted cells are
@@ -754,6 +769,22 @@ partly done and stays here.
 - [OWNER] AI-Hub 71645 data application (domestic applicant, account required).
 - [OWNER] Golden set: 20–30 real photos with two-operator consensus labels, so the
   camera thresholds come from faces instead of from a synthetic frame.
+
+- [OWNER] **Per-locale URLs, or ARU stays findable only in English.** Opened 2026-09-25
+  (cycle 39) while adding the sitemap. Language is chosen client-side from
+  `localStorage` on the SAME URLs: `/scan` is the Korean page, the English page, the
+  Japanese page, the Chinese page and the Arabic page depending on what is in the
+  visitor's browser. Metadata renders server-side before any locale is known, so every
+  title and description in `lib/seo.ts` is English, and a Korean searcher — the product's
+  actual market — has nothing to match. It is also why there is no `hreflang`: an
+  alternate names a URL that serves a specific language and ARU has none to name, so
+  writing one would invent a structure that does not exist. The fix is a routing
+  decision, not a plumbing one: per-locale paths (`/ko/scan`) or a locale subdomain,
+  each page rendered server-side in that language, each with its own canonical, and the
+  switcher changed to navigate rather than re-render — across every page and every
+  internal link. Costs and what it would take: §4 of
+  [`docs/discovery-metadata.md`](discovery-metadata.md). Not attempted, and no cycle
+  should invent the URL structure on its own.
 
 ### Next
 
@@ -1125,6 +1156,194 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-25 (cycle 39) — Branch `autopilot/2026-09-25-0639`. **A search engine had no
+  statement about ARU and no way to tell one page from another. `/robots.txt` and
+  `/sitemap.xml` were both 404, and all nine reachable pages served one title and one
+  description. Four pages now stand on their own with empty storage and are in a
+  sitemap; the other eight say `noindex` and still describe themselves for a shared
+  link. Which four was measured in a browser, not chosen.**
+
+  **Baselines, measured here before any edit.** `node_modules` was absent, so `npm ci`
+  first — with it missing, `npx tsc --noEmit | grep -c "error TS"` reads **2797** and
+  `npx vitest run` cannot resolve `vite`, which is a missing install and not a red tree.
+  After `npm ci`: `npx vitest run` **Test Files 102 passed (102) / Tests 860 passed
+  (860)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 145 tests in 1.878s ... OK**. They match the supervisor's. **A baseline smoke on
+  `c49d272` was not run** — only the post-change one below, which is green; so the
+  claim here is that the tree is green after, not that it was re-verified green
+  before.
+
+  **What a crawler was actually served, measured against a production build**
+  (`npm run build` then `npx next start -p 3199`), not read off the source.
+  `/robots.txt`, `/sitemap.xml` and `/sitemap.txt` each returned
+  **`http=404 ct=text/html; charset=utf-8 bytes=14021`**. `/`, `/scan`, `/survey`,
+  `/report`, `/care`, `/checkin`, `/studio`, `/privacy` and `/unsubscribe` all returned
+  **200** with the identical `<title>` `ARU | Find skincare for your skin today`, the
+  identical description, **no** `<link rel="canonical">`, **no** `<meta name="robots">`
+  and `og:url` `https://aru-beauty.vercel.app` on all nine. `/ops`, `/pilot` and `/eval`
+  returned **404** — `proxy.ts` gates them and `internalAccessDecision` answers
+  `not-found` without `INTERNAL_TOOLS_USER`/`INTERNAL_TOOLS_PASSWORD` — so their
+  existing `noindex` tag was never reachable in that configuration. `og:image` was
+  already absolute (`https://aru-beauty.vercel.app/og.png`) on all nine; that half was
+  not broken.
+
+  **Which pages deserve an index entry was measured, not decided.** A real Chromium at
+  360x800 against the production build, a fresh context per page so localStorage is
+  empty, which is exactly what a crawler arriving cold is. `/` **754** innerText chars,
+  `/scan` **567**, `/survey` **713**, `/privacy` **1424** — those four stand on their
+  own and are the four in the sitemap. `/report` **redirects to `/survey`**; `/care`
+  renders **235** chars of "There's no report to continue from yet."; `/checkin`
+  **289** of "No products in use have been logged yet"; `/studio` **406** of
+  `PRESETS[0]`, the shipped placeholder card, because the real one is read from
+  `sessionStorage` (`app/studio/page.tsx:49`) and a crawler has none;
+  `/unsubscribe` **182** of "This link can't be used or has expired."
+  `/reco` answers **307** and lands on `/survey` too, so it gets no route-table entry
+  at all.
+
+  **The fix, on Next.js's own metadata-route conventions.** One table, `SEO_ROUTES` in
+  `lib/seo.ts`, is the single source for the sitemap, the canonicals and the
+  index/noindex split; `app/robots.ts`, `app/sitemap.ts`, and a `layout.tsx` per route
+  exporting `seoMetadata("/that-path")`. After, on the same build: `/robots.txt` is
+  **`http=200 ct=text/plain bytes=91`** and `/sitemap.xml` **`http=200
+  ct=application/xml bytes=346`** listing exactly those four `<loc>`s. Three decisions
+  are worth the words. **The noindex pages are not `Disallow`ed** — a `Disallow` stops
+  a crawler fetching the page, so it never reads the `noindex` tag it is meant to obey;
+  only `/api/` is disallowed. **No `lastModified`**, which the Next.js example uses via
+  `new Date()`: nothing here records when a page changed and a per-request stamp tells
+  a crawler the whole site changed on every crawl. **`openGraph` and `twitter` are
+  written out in full on every route**, because Next.js replaces a metadata field in a
+  child segment rather than merging it — a layout setting only `openGraph.title` ships
+  a page with no preview image at all, and that is break C below at **12 of 16** e2e
+  cases. `metadataBase` is untouched and still `https://aru-beauty.vercel.app`.
+
+  **No `hreflang`, and the reason is a URL-structure decision the loop may not make.**
+  Language is chosen client-side from `localStorage` on the SAME URLs — there are no
+  per-locale paths and no locale parameter, so there is no URL for an alternate to
+  name. Writing one would invent a structure that does not exist. What it would take is
+  per-locale paths or a subdomain, each page rendered server-side in that language,
+  each with its own canonical, and the switcher changed to navigate rather than
+  re-render — which is also the only thing that makes ARU findable in a Korean search
+  rather than only an English one. Recorded as an owner decision in §4 of
+  [`docs/discovery-metadata.md`](discovery-metadata.md) and as a backlog item, not
+  attempted.
+
+  **Broken on purpose, five ways, every count re-run on the committed tree.**
+  `tests/seo-metadata.test.ts` is **38 passed** and
+  `tests/e2e/discovery-metadata.regression-26.spec.ts` is **16 passed**. Deleting
+  `app/robots.ts` and `app/sitemap.ts`: the unit file fails to load, e2e **2 failed /
+  14 passed**. Sitemap lists every route instead of the indexable ones: **2 failed / 36
+  passed** and **1 failed / 15 passed**. A route's `openGraph` carries only
+  title/description/url: **1 failed / 37 passed** and **12 failed / 4 passed**.
+  `robots.txt` also disallows the noindex paths: **2 failed / 36 passed** and **1
+  failed / 15 passed**. `app/scan/layout.tsx` missing: **1 failed / 37 passed** and
+  **2 failed / 14 passed**. The middle two are the weaker-but-plausible ones — list
+  everything so a search engine finds it all, and disallow what you do not want indexed
+  — and both are the obvious thing to do and both are wrong.
+
+  **Research — Next.js's own documentation source, three files from `vercel/next.js` at
+  `canary` via `raw.githubusercontent.com`.** `robots.mdx` **http=200**, **4780 bytes**,
+  sha256 `e8003da970452a059001ea1817f82b7744059a00396fb99c2be68684454a17cd`;
+  `sitemap.mdx` **http=200**, **11672 bytes**, sha256
+  `c259e4972b7bbd31e2462d5538bdb29e91e26578046205e445808650d92c4a8c`;
+  `generate-metadata.mdx` **http=200**, **49181 bytes**, sha256
+  `68e0ff80fa633a99fe65ac1b6f1d7f7ededa666adc0a407a1ab43f43cf7ebe1a`. Line 20 of
+  `robots.mdx` is the `robots.ts` convention; line 42 of `sitemap.mdx` is the
+  `sitemap.ts` one, with the `lastModified: new Date()` example §3 of the doc declines
+  to copy; lines 395-396 of `generate-metadata.mdx` — "`metadataBase` allows URL-based
+  `metadata` fields defined in the **current route segment and below** to use a
+  **relative path**" — are why every layout can write `canonical: "/scan"` and still
+  serve an absolute URL, and why `metadataBase` did not have to move. `vercel.com` and
+  `developer.mozilla.org` were not re-probed; they are recorded as refusing in the
+  2026-09-15 and 2026-09-25 blocker entries.
+
+  **ML — the sRGB knee guard, and the premise it was written on turned out to be
+  wrong.** Chosen because it is the one `[AI]` item on the vision path that needs no
+  labelled export and no real photo. Cycle 22's item ends with "if it moves it has to
+  move in BOTH files in one change", and the assumption was that nothing enforced it.
+  Measured rather than assumed, and it is more than expected: moving the knee in
+  `lib/skin.ts` alone fails `tests/index-parity.test.ts` **2 failed / 10 passed**;
+  moving it in `ml/ita.py` alone fails `python3 ml/selftest.py` with **failures=1** while
+  index-parity stays **12 passed**; changing the 1.055 scale in `ml/ita.py` alone fails
+  selftest with **failures=3**, index-parity again **12 passed**. So no move ships
+  silently today, and that sentence in the backlog was not the gap it looked like.
+  What is still missing is what landed: both existing guards compare ONE language
+  against `ml/index-parity.json`, a committed artifact, in two different runners, and
+  neither compares the two implementations to each other.
+  `tests/srgb-knee-parity.test.ts` reads the four constants out of both sources and
+  requires them to agree, so the failure names the constant. It is **8 passed**; the TS
+  knee alone gives **4 failed / 4 passed**, both knees together **3 failed / 5 passed**,
+  the Python scale alone **2 failed / 6 passed**, and the TS knee moved to a value the
+  fixtures do not straddle (0.0405) **5 failed / 3 passed**. It re-derives
+  colour-science's breakpoint **0.040449936** from `12.92 * 0.0031308`, ARU's distance
+  from it **6.40000000010077e-8**, the knee discontinuity **2.32950731317641e-9** and
+  **0** of 256 integer channels inside the window — cycle 22's numbers, now carried by
+  a run rather than by a sentence. **The backlog item stays open**: where the knee
+  belongs needs IEC 61966-2-1, which this network cannot reach.
+
+  **UI/UX — the shared-link preview, and no defect found.** `public/og.png` is a real
+  PNG at **1200x630**, **40556 bytes**, sha256
+  `67c60326d910d3a818170e493a13b661e38eefe695ed79ba4e148780561749e2`, matching the
+  `width`/`height` the metadata declares, and `og:image` resolved to the absolute
+  `https://aru-beauty.vercel.app/og.png` on every page both before and after. Recorded
+  as none rather than invented. What did change: every page now carries its own
+  `og:title` and `og:description`, so a `/report` link pasted into a messenger no
+  longer reads the same line as every other link. The e2e now fetches `/og.png`, checks
+  the PNG signature bytes and reads the IHDR width and height, so a replacement image
+  of the wrong size fails instead of silently shipping a cropped preview. Per-RESULT
+  previews are still impossible and unchanged — the levels live in the URL fragment,
+  which no scraper receives; that is the 2026-09-15 blocker.
+
+  **What this does not establish, and it is the important paragraph.** Nothing was
+  submitted to any search engine — no Search Console, no ping, no IndexNow — and
+  whether Google or Naver ever crawls these URLs is not something this repository can
+  make true. No traffic number changed and none was measured: this is a precondition
+  for organic acquisition, not evidence of any. Everything is measured against a local
+  production build; whether the deployed `aru-beauty.vercel.app` serves these routes
+  was not verified. And every title is English, because metadata renders server-side
+  before any locale is known — the same gap §4 describes, with the same fix.
+  [`docs/discovery-metadata.md`](discovery-metadata.md).
+
+  *An existing guard caught this change, and its intent was kept.*
+  `tests/internal-access.test.ts` asserted the literal string `index: false` in each of
+  `app/ops`, `app/pilot` and `app/eval`'s `layout.tsx`, which this cycle moved into the
+  route table. The test now asserts the metadata those layouts actually export, which
+  is strictly stronger: flipping `/ops` to `index: true` in the table gives **4 failed /
+  41 passed** across that file and `tests/seo-metadata.test.ts` together, where the
+  string check would have stayed green.
+
+  *Validation on this tree:* see the report for the literal output.
+
+  **Supervisor review.** Sound, and no correction needed. It is the first cycle
+  that works on acquisition rather than on defects inside the product.
+
+  *Predicted by reading, before the branch existed:*
+  - `/robots.txt` and `/sitemap.xml` would 404 today, and every public page shared one
+    title. The worker measured both.
+  - `/report`, `/care`, `/checkin` and `/studio` render from device-local state, so a
+    crawler would get an empty page. The worker measured this and marked them noindex.
+  - `/ops`, `/pilot` and `/eval` were already `index: false`, and still are.
+
+  *Checked here.*
+  - The `/survey` description says "three short questions". The survey's own
+    `ready` needs `type && category && budget` (`app/survey/page.tsx:63`) and the page
+    prompts "제품 종류, 피부 타입, 예산을 선택해 주세요", so the three required answers
+    are what the text describes. Concerns and avoid are optional.
+  - `tests/internal-access.test.ts` was edited, and the edit is a strengthening, not
+    a weakening. It used to grep each layout for the string `index: false`. It now
+    asserts the metadata that layout exports, so flipping the table entry fails it too.
+
+  *Breaks run here against `tests/seo-metadata.test.ts`, each narrow:*
+  - `seoMetadata` returning `index: true` for every route → `1 failed | 37 passed
+    (38)`, the failure being "marks indexable routes index and the rest noindex".
+  - `app/report/layout.tsx` deleted (the plausible regression: `/report` would then
+    fall back to the root layout's indexable metadata) → `1 failed`, the failure being
+    "app/report/layout.tsx calls seoMetadata("/report")".
+  - The sitemap's `index` filter removed → `2 failed`, the failures being "lists
+    exactly the indexable routes…" and "lists nothing that carries a noindex tag".
+
+  *Validation on this tree:* see the PR body for the literal output.
+
 - 2026-09-25 (cycle 38) — Branch `autopilot/2026-09-25-0039`. **The two routes that
   spend the owner's money took work from anyone who asked. Three questions about that,
   answered by driving the real handlers with the upstream `fetch` stubbed rather than by
@@ -1479,229 +1698,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on the corrected tree:* see the PR body for the literal output.
 
   *Validation on this tree:* see the report for the literal output.
-
-- 2026-09-24 (cycle 36) — Branch `autopilot/2026-09-24-1239`. **Walking the paying
-  journey as a user found the funnel counting the same page view twice — for every
-  saved language except English, which is the one language that cannot trigger it. The
-  cause is a remount the app performs on purpose, and the guards that were supposed to
-  make a page view fire once lived on the component instance the remount destroys. The
-  rest of the walk came back clean and is listed as checked rather than claimed.**
-
-  **Baselines, measured here on a clean tree at `45b1b41` before any edit.**
-  `node_modules` was absent, so `npm ci` first. `npx vitest run` **786 passed in 98
-  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors,
-  2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
-  ml/selftest.py` **Ran 143 tests in 1.938s ... OK**, and `npm run smoke` with the
-  chromium override at `/opt/pw-browsers/chromium-1194` printed **`Smoke test
-  passed.`** with **166 passed (5.6m)**. They match the supervisor's.
-
-  **The walk.** The two keys a completed scan leaves — `gyeol_scan` and `gyeol_reads`,
-  written at `app/scan/use-capture-analysis.ts:276-298` — seeded from a reading
-  `lib/skin.ts` actually produces, then /survey → /report (all three steps) → the
-  product cards' out-links and the /care hand-off → /care, with the back button, a
-  reload and a fresh tab at each step, at 360x800 under `ko` and `en`. The scan RESULT
-  card itself was not walked: it renders at `phase === "ready"`, which needs a camera
-  this container does not have, so the walk starts at the screen that state hands off
-  to. Measured on a **production build** (`npm run build` + `npx next start`), because
-  the dev server's StrictMode double-invokes effects and would have put its own noise
-  on exactly the counts in question.
-
-  **Bug fix — every page-view funnel event, doubled, in four of the five languages.**
-  `LanguageProvider` (`lib/i18n.tsx`) renders its children under
-  `<React.Fragment key={lang}>` and its `getServerSnapshot()` returns `"en"` so SSR
-  never flashes Korean. A client whose saved language is anything else hydrates as
-  `en`, `useSyncExternalStore` re-reads localStorage, the key changes, and React
-  unmounts and remounts the whole subtree. The remount is deliberate: `lib/i18n.tsx`'s
-  own docstring says it is there so "plain `t()` calls anywhere … pick up the new
-  language without subscribing to context", so it was not touched. *(Inferred, not
-  measured: that without the key React would bail out on a referentially identical
-  `children` element and leave those `t()` calls English. The docstring states the
-  purpose; this cycle did not test removing the key.)* What the remount also does,
-  and this part is measured, is recreate every `useRef` mount guard and re-run every
-  empty-deps `useEffect`. One `goto` per
-  row, counts read out of `aru_funnel_events_v1`:
-
-  | page | event | ko | ja | ar | en |
-  |---|---|---|---|---|---|
-  | `/` | `home_viewed` | **2** | **2** | **2** | 1 |
-  | `/scan` | `scan_opened` | **2** | **2** | **2** | 1 |
-  | `/survey` | `survey_viewed` | **2** | **2** | **2** | 1 |
-  | `/report` | `reco_viewed` | **2** | **2** | **2** | 1 |
-  | `/care` | `care_viewed` | **2** | **2** | **2** | 1 |
-  | `/checkin` | `checkin_opened` | **2** | **2** | **2** | 1 |
-  | `/#m=210` | `share_landed` | **2** | **2** | **2** | 1 |
-
-  **What it did and did not corrupt, checked rather than reasoned about.** Every row
-  above read `sessions=1`, and `summarizeFunnel`/`funnelDropoff` count DISTINCT
-  `sessionId`s per kind — so `steps` and every ratio built on it did not move. What did
-  move is every raw count: `funnelEventCount()`, `FunnelSummary.events`, the
-  `exportFunnelEvents()` CSV, anything `/api/sync` would ingest, and the rate at which
-  the `MAX_EVENTS` ring buffer evicts a device's oldest history. The bias is
-  language-correlated, which for a Korean-market product means the domestic users are
-  the inflated ones.
-
-  The fix is `recordPageView` in `lib/funnel.ts`: a module-scoped guard that lets a kind
-  through once per PATH VISIT rather than once per component mount, used by
-  `useFunnelPageView` and by the three call sites that carry their own ref
-  (`app/report/page.tsx`, `app/survey/page.tsx`, `app/components/mood-from-link.tsx`).
-  Scoped to the path and not to the session, because a genuine second view must still
-  count — under `en` a reload and a back/forward each record again, and suppressing
-  those would trade one wrong number for another. After the fix the same probe reads
-  **1 on every page in every one of ko / en / ja / ar**, and the `ko` and `en` walks are
-  identical row for row.
-
-  *Break-the-line, five edits, each re-run against the committed tree (`b3f05bc`) on a
-  freshly booted dev server and restored with `git checkout`:*
-
-  | edit | result | which named tests failed |
-  |---|---|---|
-  | base, no edit | **8 passed** | — |
-  | `useFunnelPageView` → `recordFunnelEvent` | **5 failed \| 3 passed** | the `/`, `/scan`, `/care`, `/checkin` cases and the share landing |
-  | `/report`'s `reco_viewed` → `recordFunnelEvent` | **2 failed \| 6 passed** | `/report records reco_viewed exactly once…`, `a genuine second view still counts…` |
-  | `/survey`'s `survey_viewed` → `recordFunnelEvent` | **2 failed \| 6 passed** | `/survey records survey_viewed exactly once…`, `a genuine second view still counts…` |
-  | `MoodFromLink`'s `share_landed` → `recordFunnelEvent` | **1 failed \| 7 passed** | `a share landing records share_landed and home_viewed once each…` |
-  | drop the `pageViewedHere.has(kind)` early return | **8 failed** | all eight |
-
-  `tests/e2e/funnel-page-view-once.regression-20.spec.ts`, 8 cases. The freshly booted
-  server matters and is worth writing down: a first attempt reverted each break with
-  the dev server still running, and HMR served the PREVIOUS break's code, so break 2
-  appeared to fail seven cases including ones it cannot touch. Those numbers were
-  discarded; the table above is the re-run.
-
-  **The rest of the walk, listed as checked.** All **264** `/api/out` links — 22 skus ×
-  4 merchants × 3 placements (`report_product`, `report_summary`, `care`) — requested
-  against a running server answer **302**, all to one of the four allowlisted hosts
-  (**66** each to `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
-  `www.coupang.com`, `www.google.com`), carrying the sku, merchant and placement the
-  route resolved in `utm_content`. **0** of the anchors and buttons on `/report`'s three
-  steps and on `/care` clips its own text or falls under a 44px tap target, in each of
-  `ko`, `en`, `ja`, `zh` and `ar`. `scrollWidth === clientWidth === 360` on every step,
-  reload, back, forward and fresh tab. `/report` in a fresh tab renders from
-  `aru_last_result` rather than dead-ending, and the survey's answers survive the back
-  button in both languages. `ALLOWED_HOSTS` was not touched and no affiliate id was
-  added.
-
-  **UI/UX — the compare row on `/report`'s picks step did not look like a control.**
-  It is a `<details>`, and its `<summary>` is `display: flex`, which is exactly the case
-  where Chromium paints no `::marker`; the inline style also set `listStyle: "none"`.
-  Measured before the fix on the picks step: `display` **flex**, `list-style-type`
-  **none**, **2** child spans — the label and the hint, no glyph of any kind — so the
-  one control that lets a user compare the three picks before choosing which to buy
-  rendered as a caption above the buy buttons. `.aru-details-marker`
-  (`app/globals.css`) now draws **↓** shut and **↑** open, driven off `details[open]`
-  so the glyph cannot disagree with the panel — the same affordance `/care`'s merchant
-  expander already carries. Measured after, in all five languages: glyph `"↓"` → `"↑"`,
-  marker box **308..319** in LTR and **41..52** under `ar` (the flex row puts it at the
-  inline end by itself, so unlike the forward arrows it needs no mirroring), summary box
-  **41..319 h=44** and page overflow **360/360** unchanged in both states.
-  `tests/e2e/compare-disclosure-affordance.regression-21.spec.ts`, 3 cases. *Breaks on
-  the committed tree:* dropping the `details[open]` rule → **3 failed**; dropping the
-  marker span from `app/report/page.tsx` → **3 failed**; base → **3 passed**.
-
-  **ML — the parity table's comparison census was wrong in prose and incomplete in
-  data.** `tests/index-parity.test.ts` said of `roughness_ratio` that "this group is
-  `comparison: \"divergent\"`, and every other group is `\"exact\"`". The committed
-  `ml/index-parity.json` did not support that on either count: `melanin_index` is
-  `"python-only"` (it has no second column to be exact against), and `shine_ratio`,
-  `blemish_count` and `tone_evenness` carried **no `comparison` key at all** — the key
-  was introduced for `roughness_ratio` in cycle 18 and the three that predate it were
-  never labelled. So of seven groups the label read: **2** `"exact"`, **1**
-  `"divergent"`, **1** `"python-only"`, **3** absent. Those three are labelled
-  `"exact"` now, which is what their rows already were — one value column each, already
-  asserted by both languages — and the census is **asserted in both languages** rather
-  than described, because the `melanin_index` docstring cycle 34 had to correct went
-  stale by being prose nobody executed. `python3 ml/selftest.py` goes **143 → 144**.
-  *Break on the committed tree:* removing `tone_evenness`'s label fails
-  `ml/selftest.py`'s `test_every_parity_group_declares_how_its_columns_relate`
-  (**FAILED (failures=1)**, `Ran 144 tests`) and `tests/index-parity.test.ts`'s
-  `recomputes every roughness_ratio row…` (**1 failed | 11 passed**). Chosen over the
-  other `[AI]` ML items in "Backlog > Now" for the reason cycle 35 gave and this cycle
-  re-checked: the blemish constants and `roughness_ratio`'s *which side moves* need
-  faces, the ordinal floor and `minQwkGainOverHeuristic` need a real training run, the
-  per-scan cost needs a phone, the `srgbLinear` table needs a phone profile, the
-  0.86/0.8614 pair needs the vision path measured against real readings, and the sRGB
-  breakpoint item says itself that nothing depends on moving it. **No published value
-  moved:** `lib/skin.ts` is untouched and every row's value is unchanged.
-
-  **Research — `useSyncExternalStore` and `key`, from React's own documentation
-  source.** Both passages are the mechanism above, read rather than recalled. (1)
-  `https://raw.githubusercontent.com/reactjs/react.dev/main/src/content/reference/react/useSyncExternalStore.md`,
-  **http=200, bytes=16561, sha256
-  `f4965c80f5655fa6f6fb222adeb42d5c5710a4cd17dabf62562650d694f1781e`**, fetched twice
-  and byte-identical (`cmp`). Line 359 and the two lines under it: *"The
-  `getServerSnapshot` function is similar to `getSnapshot`, but it runs only in two
-  situations: - It runs on the server when generating the HTML. - It runs on the client
-  during hydration…"* — which is why the first client render is `en` and the second is
-  the saved language. (2)
-  `https://raw.githubusercontent.com/reactjs/react.dev/main/src/content/learn/preserving-and-resetting-state.md`,
-  **http=200, bytes=55070, sha256
-  `086a8e55edfc73bdf432aa69d24861eadda6581d838636a12d109ca1316d9548`**, also
-  byte-identical on refetch. Line 1012: *"Specifying a `key` tells React to use the
-  `key` itself as part of the position, instead of their order within the parent. …
-  Every time a counter appears on the screen, its state is created. Every time it is
-  removed, its state is destroyed."* — which is why the key change destroys the subtree
-  and with it every mount guard. `reactjs.org` and `developer.mozilla.org` refuse this
-  network; `raw.githubusercontent.com` answers, as the Blockers section records.
-
-  **The `narrative` note on the RTL item is closed, with one correction.** Re-checked
-  here rather than taken on report: `app/api/analyze/route.ts:84` filters the LLM
-  `narrative` through `efficacyClean(...).ok` and substitutes `""` otherwise, and
-  `lib/skin.ts:689-693` returns the stored sentence only when `getLang() === "ko"`,
-  falling through to the `t()`-rebuilt template in every other language. The
-  correction: that path has **two** render sites, not one.
-  `grep -rn "\.narrative" app/ --include=*.tsx` returns exactly one line
-  (`app/report/page.tsx:245`), but `app/scan/result-card.tsx:93` calls
-  `localizedNarrative(reads)` with the whole reading and renders it too. Both go through
-  the same gate, so the conclusion holds on both screens; "only on `/report`" did not.
-
-  **Rotation.** Cycle 33's entry, **237 lines**, moved verbatim to the end of
-  `docs/autopilot-changelog.md`. `wc -l`: `docs/AUTOPILOT.md` **1719 → 1680**,
-  `docs/autopilot-changelog.md` **7325 → 7563**. The moved text was checked
-  byte-for-byte (the changelog ends with it exactly), and `sort -u` over both files
-  before and after gives **7728 → 7902** unique lines with `comm -23` (in the old pair,
-  not in the new) reporting **0**.
-
-  *Validation on this branch's final tree.* `npx vitest run` **786 passed in 98 files**
-  (the census assertion lands inside an existing case, so the count is unchanged);
-  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .` **0 errors, 2
-  warnings**, run on its own; `python3 ml/selftest.py` **Ran 144 tests ... OK**;
-  `npm run smoke` with the chromium override printed the literal line **`Smoke test
-  passed.`** with **177 passed (6.6m)** — the 166 of the baseline plus the eleven new cases.
-
-  **Supervisor review.** The defect is real and the diagnosis is right. The fix as
-  pushed introduced an under-count of its own, and that was fixed before merge.
-
-  *What was wrong with the first fix.* `recordPageView` learnt the current path only
-  from pages that record a view. `/report` links `/privacy` (`app/report/page.tsx:420`),
-  and `/privacy` records nothing. A user who went /report → /privacy → back therefore
-  left the guard still on `/report`, and the second, genuine `reco_viewed` was
-  swallowed. That contradicts the function's own docstring ("a genuine second view must
-  still count"). A throwaway Playwright probe under `-c playwright.mobile.config.ts`, with
-  counts read from `aru_funnel_events_v1`:
-  - Branch as pushed: `PROBE en first={"reco_viewed":1} afterBack={"reco_viewed":1}` and
-    `PROBE ko first={"reco_viewed":1} afterBack={"reco_viewed":1}`.
-  - `45b1b41`: `en first=1 afterBack=3` and `ko first=3 afterBack=5`.
-
-  So the base over-counted and the first fix under-counted. The worker's spec only
-  crossed /survey ↔ /report, two pages that both record, so it could not see this.
-
-  *The fix.* `notePageViewNavigation` in `lib/funnel.ts`, called on every pathname
-  change by `app/components/page-view-scope.tsx`. That component is mounted in the root
-  layout next to `FunnelFlush` and OUTSIDE `LanguageProvider`, so the `key={lang}`
-  remount never reaches it. A language remount keeps the same path and is still
-  suppressed. A detour through any page, recording or not, moves the path and so
-  re-admits the view.
-
-  *Measured.* Two cases were added to `funnel-page-view-once.regression-20.spec.ts`,
-  one each for en and ko: /report → /privacy → back must read `reco_viewed: 2`. The
-  whole spec gives `10 passed (1.3m)`, the worker's eight included. With `<PageViewScope />`
-  removed from the layout it gives `2 failed` / `8 passed`, and the two failures are the
-  new detour cases, nothing else.
-
-  *Checked and holding.* README's `MAX_EVENTS` (`lib/funnel.ts:65`, `1000`) and
-  `app/api/funnel/route.ts` both exist as described. The `comparison` census added to both
-  languages matches the committed table. The vision-narrative note is closed on evidence
-  the supervisor had re-derived before the worker started: `app/api/analyze/route.ts:84`
-  and `lib/skin.ts:689-693`.
-
-  *Validation on the corrected tree:* see the PR body for the literal output.

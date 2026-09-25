@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
+import { seoMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+// Research-only surface. `proxy.ts` already answers 404 or 401 here in
+// production; the noindex tag is the second layer, for any deploy that has
+// `INTERNAL_TOOLS_USER` set.
+export const metadata: Metadata = seoMetadata("/pilot");
 
-export default function PilotLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return children;
 }
