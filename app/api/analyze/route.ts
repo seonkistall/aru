@@ -3,7 +3,7 @@ import { efficacyClean } from "@/lib/recommend";
 import { SKIN_LABELS, type SkinAttr, type SkinLevel } from "@/lib/skin";
 import { openAiVisionUserContent } from "@/lib/vision-payload";
 import { parseAnalyzeInput } from "@/lib/server/ai-input";
-import { createRateLimiter, fetchWithTimeout, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
+import { createRateLimiter, fetchWithTimeout, isForeignOriginRequest, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 
 const ATTRS = ["oil", "redness", "pores"] as const satisfies readonly SkinAttr[];
 
@@ -59,6 +59,11 @@ async function callOpenAI(image: string): Promise<Record<string, unknown> | null
 }
 
 export async function POST(req: Request) {
+  // Before the limiter, and before the 2.1 MB body is read: a cross-site caller costs
+  // this route nothing at all, not even a limiter bucket. See `isForeignOriginRequest`
+  // for what this does and does not stop, and `docs/llm-route-cost-exposure.md` for the
+  // measurements that made it necessary.
+  if (isForeignOriginRequest(req)) return NextResponse.json({ ok: false, reason: "forbidden origin" }, { status: 403 });
   if (!analyzeLimit(requestClientKey(req))) return NextResponse.json({ ok: false, reason: "rate limited" }, { status: 429 });
   let body: unknown;
   try {

@@ -18,7 +18,7 @@ const STEPS: Array<{ key: FlowKey; label: string; href: string }> = [
 export function FlowSteps({ current }: { current: FlowKey }) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
   return (
-    <nav className="aru-flow-steps" aria-label={t("진행 단계")} style={{ display: "flex", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
+    <nav className="aru-flow-steps" aria-label={t("진행 단계")} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, margin: "2px 0 14px" }}>
       <Link href="/" aria-label={t("홈으로")} style={{ minWidth: "var(--tap-min)", minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1, color: "var(--ink)", textDecoration: "none", paddingBottom: 2 }}>
         {t("아루")}
       </Link>
