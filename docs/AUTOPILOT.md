@@ -1290,7 +1290,43 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   both files at `1663f9c` against both files now returns **0** lines, and `cmp` on cycle
   35's **189** moved lines is byte-identical.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound. One test was hardened before merge: a plausible
+  weakening of the host compare got through it.
+
+  *Predicted by reading, before the branch existed.* A cross-site POST with no `Origin`
+  would be accepted today, the limiter is per-instance, and there is no spend cap. The
+  worker measured all three. Whether Vercel strips or overwrites `x-vercel-forwarded-for`
+  I marked unknown, and the worker also left it unknown: `vercel.com` returned `http=000`
+  and nothing was quoted from memory.
+
+  *Re-checked here.*
+  - `parseAnalyzeInput` accepts only `image/(jpeg|png)`. The client's AI crop is
+    `mimeType: "image/jpeg"` (`app/scan/camera-quality.ts:55`) through
+    `canvas.toDataURL`, so the new magic-byte check cannot refuse ARU's own capture.
+  - The Firewall numbers the doc quotes (20 per 60 s, client IP, `deny` → 429) match
+    `docs/qa/2026-07-17-post-deploy-security.md:37-54` line for line.
+
+  *Breaks re-run on the committed tree* against
+  `tests/llm-route-cost-exposure.regression-24.test.ts`:
+  - `if (!origin) return false` → `3 failed | 34 passed (37)`.
+  - `FOREIGN_FETCH_SITES` without `same-site` → `1 failed | 36 passed`.
+  - Magic-byte line removed → `5 failed | 37 passed (42)`, with `tests/ai-input.test.ts`
+    included in the run.
+  - Host compare weakened to `!host.includes(new URL(origin).hostname)` →
+    **`37 passed (37)`**. The file covered an Origin that CONTAINS ARU's host
+    (`aru.test.evil.example`) but not the other direction, where ARU's host contains a
+    shorter one. An attacker holding a name that ARU's host ends in would pass that
+    weakened compare.
+
+  *Hardened before merge.* I added an Origin of `https://ru.test` against host
+  `aru.test`. The file is now `39 passed`, and the same weakening fails exactly the two
+  new cases. Modern browsers would also be stopped by `Sec-Fetch-Site`; this pins the
+  `Origin`-only path that older browsers take.
+
+  *Owner decision carried forward.* A real spend cap needs a shared counter (KV / Upstash
+  / Supabase). The doc prices that as an owner decision and does not build it.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
 
 - 2026-09-24 (cycle 37) — Branch `autopilot/2026-09-24-1839`. **Three questions about the
   re-engagement path, answered by driving the real route handlers against a fake

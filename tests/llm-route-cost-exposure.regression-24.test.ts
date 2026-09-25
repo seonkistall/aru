@@ -108,6 +108,11 @@ describe("a caller that is not one of ARU's own pages cannot spend the API budge
     ["Sec-Fetch-Site: cross-site with ARU's own Origin spoofed", headers({ origin: ORIGIN, "sec-fetch-site": "cross-site" })],
     ["Sec-Fetch-Site: same-site (a sibling subdomain)", headers({ origin: "https://other.aru.test", "sec-fetch-site": "same-site" })],
     ["an Origin whose host merely CONTAINS ARU's", headers({ origin: "https://aru.test.evil.example" })],
+    // Added at supervisor review: the other direction. ARU's host CONTAINING the Origin's
+    // host is just as foreign. Weakening the compare to `host.includes(originHostname)`
+    // passed every case above (37 passed); an attacker holding a shorter name that ARU's
+    // host ends in would have got through it.
+    ["an Origin whose host is merely CONTAINED in ARU's", headers({ origin: "https://ru.test" })],
     ["an Origin that is not a URL", headers({ origin: "null" })],
   ];
 
