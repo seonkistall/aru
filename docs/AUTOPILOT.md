@@ -1314,7 +1314,35 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree:* see the report for the literal output.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and no correction needed. It is the first cycle
+  that works on acquisition rather than on defects inside the product.
+
+  *Predicted by reading, before the branch existed:*
+  - `/robots.txt` and `/sitemap.xml` would 404 today, and every public page shared one
+    title. The worker measured both.
+  - `/report`, `/care`, `/checkin` and `/studio` render from device-local state, so a
+    crawler would get an empty page. The worker measured this and marked them noindex.
+  - `/ops`, `/pilot` and `/eval` were already `index: false`, and still are.
+
+  *Checked here.*
+  - The `/survey` description says "three short questions". The survey's own
+    `ready` needs `type && category && budget` (`app/survey/page.tsx:63`) and the page
+    prompts "제품 종류, 피부 타입, 예산을 선택해 주세요", so the three required answers
+    are what the text describes. Concerns and avoid are optional.
+  - `tests/internal-access.test.ts` was edited, and the edit is a strengthening, not
+    a weakening. It used to grep each layout for the string `index: false`. It now
+    asserts the metadata that layout exports, so flipping the table entry fails it too.
+
+  *Breaks run here against `tests/seo-metadata.test.ts`, each narrow:*
+  - `seoMetadata` returning `index: true` for every route → `1 failed | 37 passed
+    (38)`, the failure being "marks indexable routes index and the rest noindex".
+  - `app/report/layout.tsx` deleted (the plausible regression: `/report` would then
+    fall back to the root layout's indexable metadata) → `1 failed`, the failure being
+    "app/report/layout.tsx calls seoMetadata("/report")".
+  - The sitemap's `index` filter removed → `2 failed`, the failures being "lists
+    exactly the indexable routes…" and "lists nothing that carries a noindex tag".
+
+  *Validation on this tree:* see the PR body for the literal output.
 
 - 2026-09-25 (cycle 38) — Branch `autopilot/2026-09-25-0039`. **The two routes that
   spend the owner's money took work from anyone who asked. Three questions about that,
