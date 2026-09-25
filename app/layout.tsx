@@ -7,30 +7,20 @@ import { LanguageSwitcher } from "./components/language-switcher";
 import { ServiceWorkerRegistration } from "./components/service-worker-registration";
 import { FunnelFlush } from "./components/funnel-flush";
 import { PageViewScope } from "./components/page-view-scope";
+import { SITE_URL, seoMetadata } from "../lib/seo";
 
 // Self-hosted Korean display handwriting — used only for short brand moments.
 
 // Metadata follows the product default language (English); the in-app
 // experience localizes itself after load.
+//
+// This block is the DEFAULT for every route. Each route that has its own
+// `layout.tsx` replaces it with `seoMetadata("/that-path")`; `/` has no layout
+// of its own, so it is served from here — from the same `SEO_ROUTES` entry the
+// sitemap reads, so the two cannot drift.
 export const metadata: Metadata = {
-  title: "ARU | Find skincare for your skin today",
-  description:
-    "Check your skin with the AI camera and a short questionnaire, then explore product options and a simple K-beauty routine.",
-  metadataBase: new URL("https://aru-beauty.vercel.app"),
-  openGraph: {
-    title: "ARU | Find skincare for your skin today",
-    description: "Explore your skin today and review product options and a skincare routine together.",
-    url: "https://aru-beauty.vercel.app",
-    siteName: "ARU",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "ARU today's skin report" }],
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "ARU | Find skincare for your skin today",
-    description: "Explore your skin and build a simple K-beauty routine with ARU.",
-    images: ["/og.png"],
-  },
+  ...seoMetadata("/"),
+  metadataBase: new URL(SITE_URL),
 };
 
 export const viewport: Viewport = {

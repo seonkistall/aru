@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { internalAccessDecision } from "@/lib/server/internal-access";
+import { seoMetadata } from "@/lib/seo";
 
 const root = resolve(import.meta.dirname, "..");
 const prodEnv = {
@@ -52,11 +53,18 @@ describe("internal route boundary", () => {
     expect(source).toContain("WWW-Authenticate");
   });
 
+  /**
+   * Cycle 39 moved the decision out of each layout's source and into the one
+   * route table in `lib/seo.ts`, so grepping the layout for "index: false" no
+   * longer sees it. Assert the metadata each layout actually exports instead,
+   * which is what a crawler is served and is a stronger check than the string
+   * was: it fails if the table ever flips one of these to indexable.
+   */
   it("marks every internal route noindex", () => {
     for (const route of ["ops", "pilot", "eval"]) {
       const source = readFileSync(resolve(root, `app/${route}/layout.tsx`), "utf8");
-      expect(source).toContain("index: false");
-      expect(source).toContain("follow: false");
+      expect(source).toContain(`seoMetadata("/${route}")`);
+      expect(seoMetadata(`/${route}`).robots).toEqual({ index: false, follow: false });
     }
   });
 });

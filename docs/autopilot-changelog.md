@@ -7990,3 +7990,229 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   All three match the worker's table row for row.
 
   *Validation on this tree:* see the PR body for the literal output.
+
+- 2026-09-24 (cycle 36) — Branch `autopilot/2026-09-24-1239`. **Walking the paying
+  journey as a user found the funnel counting the same page view twice — for every
+  saved language except English, which is the one language that cannot trigger it. The
+  cause is a remount the app performs on purpose, and the guards that were supposed to
+  make a page view fire once lived on the component instance the remount destroys. The
+  rest of the walk came back clean and is listed as checked rather than claimed.**
+
+  **Baselines, measured here on a clean tree at `45b1b41` before any edit.**
+  `node_modules` was absent, so `npm ci` first. `npx vitest run` **786 passed in 98
+  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors,
+  2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 143 tests in 1.938s ... OK**, and `npm run smoke` with the
+  chromium override at `/opt/pw-browsers/chromium-1194` printed **`Smoke test
+  passed.`** with **166 passed (5.6m)**. They match the supervisor's.
+
+  **The walk.** The two keys a completed scan leaves — `gyeol_scan` and `gyeol_reads`,
+  written at `app/scan/use-capture-analysis.ts:276-298` — seeded from a reading
+  `lib/skin.ts` actually produces, then /survey → /report (all three steps) → the
+  product cards' out-links and the /care hand-off → /care, with the back button, a
+  reload and a fresh tab at each step, at 360x800 under `ko` and `en`. The scan RESULT
+  card itself was not walked: it renders at `phase === "ready"`, which needs a camera
+  this container does not have, so the walk starts at the screen that state hands off
+  to. Measured on a **production build** (`npm run build` + `npx next start`), because
+  the dev server's StrictMode double-invokes effects and would have put its own noise
+  on exactly the counts in question.
+
+  **Bug fix — every page-view funnel event, doubled, in four of the five languages.**
+  `LanguageProvider` (`lib/i18n.tsx`) renders its children under
+  `<React.Fragment key={lang}>` and its `getServerSnapshot()` returns `"en"` so SSR
+  never flashes Korean. A client whose saved language is anything else hydrates as
+  `en`, `useSyncExternalStore` re-reads localStorage, the key changes, and React
+  unmounts and remounts the whole subtree. The remount is deliberate: `lib/i18n.tsx`'s
+  own docstring says it is there so "plain `t()` calls anywhere … pick up the new
+  language without subscribing to context", so it was not touched. *(Inferred, not
+  measured: that without the key React would bail out on a referentially identical
+  `children` element and leave those `t()` calls English. The docstring states the
+  purpose; this cycle did not test removing the key.)* What the remount also does,
+  and this part is measured, is recreate every `useRef` mount guard and re-run every
+  empty-deps `useEffect`. One `goto` per
+  row, counts read out of `aru_funnel_events_v1`:
+
+  | page | event | ko | ja | ar | en |
+  |---|---|---|---|---|---|
+  | `/` | `home_viewed` | **2** | **2** | **2** | 1 |
+  | `/scan` | `scan_opened` | **2** | **2** | **2** | 1 |
+  | `/survey` | `survey_viewed` | **2** | **2** | **2** | 1 |
+  | `/report` | `reco_viewed` | **2** | **2** | **2** | 1 |
+  | `/care` | `care_viewed` | **2** | **2** | **2** | 1 |
+  | `/checkin` | `checkin_opened` | **2** | **2** | **2** | 1 |
+  | `/#m=210` | `share_landed` | **2** | **2** | **2** | 1 |
+
+  **What it did and did not corrupt, checked rather than reasoned about.** Every row
+  above read `sessions=1`, and `summarizeFunnel`/`funnelDropoff` count DISTINCT
+  `sessionId`s per kind — so `steps` and every ratio built on it did not move. What did
+  move is every raw count: `funnelEventCount()`, `FunnelSummary.events`, the
+  `exportFunnelEvents()` CSV, anything `/api/sync` would ingest, and the rate at which
+  the `MAX_EVENTS` ring buffer evicts a device's oldest history. The bias is
+  language-correlated, which for a Korean-market product means the domestic users are
+  the inflated ones.
+
+  The fix is `recordPageView` in `lib/funnel.ts`: a module-scoped guard that lets a kind
+  through once per PATH VISIT rather than once per component mount, used by
+  `useFunnelPageView` and by the three call sites that carry their own ref
+  (`app/report/page.tsx`, `app/survey/page.tsx`, `app/components/mood-from-link.tsx`).
+  Scoped to the path and not to the session, because a genuine second view must still
+  count — under `en` a reload and a back/forward each record again, and suppressing
+  those would trade one wrong number for another. After the fix the same probe reads
+  **1 on every page in every one of ko / en / ja / ar**, and the `ko` and `en` walks are
+  identical row for row.
+
+  *Break-the-line, five edits, each re-run against the committed tree (`b3f05bc`) on a
+  freshly booted dev server and restored with `git checkout`:*
+
+  | edit | result | which named tests failed |
+  |---|---|---|
+  | base, no edit | **8 passed** | — |
+  | `useFunnelPageView` → `recordFunnelEvent` | **5 failed \| 3 passed** | the `/`, `/scan`, `/care`, `/checkin` cases and the share landing |
+  | `/report`'s `reco_viewed` → `recordFunnelEvent` | **2 failed \| 6 passed** | `/report records reco_viewed exactly once…`, `a genuine second view still counts…` |
+  | `/survey`'s `survey_viewed` → `recordFunnelEvent` | **2 failed \| 6 passed** | `/survey records survey_viewed exactly once…`, `a genuine second view still counts…` |
+  | `MoodFromLink`'s `share_landed` → `recordFunnelEvent` | **1 failed \| 7 passed** | `a share landing records share_landed and home_viewed once each…` |
+  | drop the `pageViewedHere.has(kind)` early return | **8 failed** | all eight |
+
+  `tests/e2e/funnel-page-view-once.regression-20.spec.ts`, 8 cases. The freshly booted
+  server matters and is worth writing down: a first attempt reverted each break with
+  the dev server still running, and HMR served the PREVIOUS break's code, so break 2
+  appeared to fail seven cases including ones it cannot touch. Those numbers were
+  discarded; the table above is the re-run.
+
+  **The rest of the walk, listed as checked.** All **264** `/api/out` links — 22 skus ×
+  4 merchants × 3 placements (`report_product`, `report_summary`, `care`) — requested
+  against a running server answer **302**, all to one of the four allowlisted hosts
+  (**66** each to `www.oliveyoung.co.kr`, `search.shopping.naver.com`,
+  `www.coupang.com`, `www.google.com`), carrying the sku, merchant and placement the
+  route resolved in `utm_content`. **0** of the anchors and buttons on `/report`'s three
+  steps and on `/care` clips its own text or falls under a 44px tap target, in each of
+  `ko`, `en`, `ja`, `zh` and `ar`. `scrollWidth === clientWidth === 360` on every step,
+  reload, back, forward and fresh tab. `/report` in a fresh tab renders from
+  `aru_last_result` rather than dead-ending, and the survey's answers survive the back
+  button in both languages. `ALLOWED_HOSTS` was not touched and no affiliate id was
+  added.
+
+  **UI/UX — the compare row on `/report`'s picks step did not look like a control.**
+  It is a `<details>`, and its `<summary>` is `display: flex`, which is exactly the case
+  where Chromium paints no `::marker`; the inline style also set `listStyle: "none"`.
+  Measured before the fix on the picks step: `display` **flex**, `list-style-type`
+  **none**, **2** child spans — the label and the hint, no glyph of any kind — so the
+  one control that lets a user compare the three picks before choosing which to buy
+  rendered as a caption above the buy buttons. `.aru-details-marker`
+  (`app/globals.css`) now draws **↓** shut and **↑** open, driven off `details[open]`
+  so the glyph cannot disagree with the panel — the same affordance `/care`'s merchant
+  expander already carries. Measured after, in all five languages: glyph `"↓"` → `"↑"`,
+  marker box **308..319** in LTR and **41..52** under `ar` (the flex row puts it at the
+  inline end by itself, so unlike the forward arrows it needs no mirroring), summary box
+  **41..319 h=44** and page overflow **360/360** unchanged in both states.
+  `tests/e2e/compare-disclosure-affordance.regression-21.spec.ts`, 3 cases. *Breaks on
+  the committed tree:* dropping the `details[open]` rule → **3 failed**; dropping the
+  marker span from `app/report/page.tsx` → **3 failed**; base → **3 passed**.
+
+  **ML — the parity table's comparison census was wrong in prose and incomplete in
+  data.** `tests/index-parity.test.ts` said of `roughness_ratio` that "this group is
+  `comparison: \"divergent\"`, and every other group is `\"exact\"`". The committed
+  `ml/index-parity.json` did not support that on either count: `melanin_index` is
+  `"python-only"` (it has no second column to be exact against), and `shine_ratio`,
+  `blemish_count` and `tone_evenness` carried **no `comparison` key at all** — the key
+  was introduced for `roughness_ratio` in cycle 18 and the three that predate it were
+  never labelled. So of seven groups the label read: **2** `"exact"`, **1**
+  `"divergent"`, **1** `"python-only"`, **3** absent. Those three are labelled
+  `"exact"` now, which is what their rows already were — one value column each, already
+  asserted by both languages — and the census is **asserted in both languages** rather
+  than described, because the `melanin_index` docstring cycle 34 had to correct went
+  stale by being prose nobody executed. `python3 ml/selftest.py` goes **143 → 144**.
+  *Break on the committed tree:* removing `tone_evenness`'s label fails
+  `ml/selftest.py`'s `test_every_parity_group_declares_how_its_columns_relate`
+  (**FAILED (failures=1)**, `Ran 144 tests`) and `tests/index-parity.test.ts`'s
+  `recomputes every roughness_ratio row…` (**1 failed | 11 passed**). Chosen over the
+  other `[AI]` ML items in "Backlog > Now" for the reason cycle 35 gave and this cycle
+  re-checked: the blemish constants and `roughness_ratio`'s *which side moves* need
+  faces, the ordinal floor and `minQwkGainOverHeuristic` need a real training run, the
+  per-scan cost needs a phone, the `srgbLinear` table needs a phone profile, the
+  0.86/0.8614 pair needs the vision path measured against real readings, and the sRGB
+  breakpoint item says itself that nothing depends on moving it. **No published value
+  moved:** `lib/skin.ts` is untouched and every row's value is unchanged.
+
+  **Research — `useSyncExternalStore` and `key`, from React's own documentation
+  source.** Both passages are the mechanism above, read rather than recalled. (1)
+  `https://raw.githubusercontent.com/reactjs/react.dev/main/src/content/reference/react/useSyncExternalStore.md`,
+  **http=200, bytes=16561, sha256
+  `f4965c80f5655fa6f6fb222adeb42d5c5710a4cd17dabf62562650d694f1781e`**, fetched twice
+  and byte-identical (`cmp`). Line 359 and the two lines under it: *"The
+  `getServerSnapshot` function is similar to `getSnapshot`, but it runs only in two
+  situations: - It runs on the server when generating the HTML. - It runs on the client
+  during hydration…"* — which is why the first client render is `en` and the second is
+  the saved language. (2)
+  `https://raw.githubusercontent.com/reactjs/react.dev/main/src/content/learn/preserving-and-resetting-state.md`,
+  **http=200, bytes=55070, sha256
+  `086a8e55edfc73bdf432aa69d24861eadda6581d838636a12d109ca1316d9548`**, also
+  byte-identical on refetch. Line 1012: *"Specifying a `key` tells React to use the
+  `key` itself as part of the position, instead of their order within the parent. …
+  Every time a counter appears on the screen, its state is created. Every time it is
+  removed, its state is destroyed."* — which is why the key change destroys the subtree
+  and with it every mount guard. `reactjs.org` and `developer.mozilla.org` refuse this
+  network; `raw.githubusercontent.com` answers, as the Blockers section records.
+
+  **The `narrative` note on the RTL item is closed, with one correction.** Re-checked
+  here rather than taken on report: `app/api/analyze/route.ts:84` filters the LLM
+  `narrative` through `efficacyClean(...).ok` and substitutes `""` otherwise, and
+  `lib/skin.ts:689-693` returns the stored sentence only when `getLang() === "ko"`,
+  falling through to the `t()`-rebuilt template in every other language. The
+  correction: that path has **two** render sites, not one.
+  `grep -rn "\.narrative" app/ --include=*.tsx` returns exactly one line
+  (`app/report/page.tsx:245`), but `app/scan/result-card.tsx:93` calls
+  `localizedNarrative(reads)` with the whole reading and renders it too. Both go through
+  the same gate, so the conclusion holds on both screens; "only on `/report`" did not.
+
+  **Rotation.** Cycle 33's entry, **237 lines**, moved verbatim to the end of
+  `docs/autopilot-changelog.md`. `wc -l`: `docs/AUTOPILOT.md` **1719 → 1680**,
+  `docs/autopilot-changelog.md` **7325 → 7563**. The moved text was checked
+  byte-for-byte (the changelog ends with it exactly), and `sort -u` over both files
+  before and after gives **7728 → 7902** unique lines with `comm -23` (in the old pair,
+  not in the new) reporting **0**.
+
+  *Validation on this branch's final tree.* `npx vitest run` **786 passed in 98 files**
+  (the census assertion lands inside an existing case, so the count is unchanged);
+  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .` **0 errors, 2
+  warnings**, run on its own; `python3 ml/selftest.py` **Ran 144 tests ... OK**;
+  `npm run smoke` with the chromium override printed the literal line **`Smoke test
+  passed.`** with **177 passed (6.6m)** — the 166 of the baseline plus the eleven new cases.
+
+  **Supervisor review.** The defect is real and the diagnosis is right. The fix as
+  pushed introduced an under-count of its own, and that was fixed before merge.
+
+  *What was wrong with the first fix.* `recordPageView` learnt the current path only
+  from pages that record a view. `/report` links `/privacy` (`app/report/page.tsx:420`),
+  and `/privacy` records nothing. A user who went /report → /privacy → back therefore
+  left the guard still on `/report`, and the second, genuine `reco_viewed` was
+  swallowed. That contradicts the function's own docstring ("a genuine second view must
+  still count"). A throwaway Playwright probe under `-c playwright.mobile.config.ts`, with
+  counts read from `aru_funnel_events_v1`:
+  - Branch as pushed: `PROBE en first={"reco_viewed":1} afterBack={"reco_viewed":1}` and
+    `PROBE ko first={"reco_viewed":1} afterBack={"reco_viewed":1}`.
+  - `45b1b41`: `en first=1 afterBack=3` and `ko first=3 afterBack=5`.
+
+  So the base over-counted and the first fix under-counted. The worker's spec only
+  crossed /survey ↔ /report, two pages that both record, so it could not see this.
+
+  *The fix.* `notePageViewNavigation` in `lib/funnel.ts`, called on every pathname
+  change by `app/components/page-view-scope.tsx`. That component is mounted in the root
+  layout next to `FunnelFlush` and OUTSIDE `LanguageProvider`, so the `key={lang}`
+  remount never reaches it. A language remount keeps the same path and is still
+  suppressed. A detour through any page, recording or not, moves the path and so
+  re-admits the view.
+
+  *Measured.* Two cases were added to `funnel-page-view-once.regression-20.spec.ts`,
+  one each for en and ko: /report → /privacy → back must read `reco_viewed: 2`. The
+  whole spec gives `10 passed (1.3m)`, the worker's eight included. With `<PageViewScope />`
+  removed from the layout it gives `2 failed` / `8 passed`, and the two failures are the
+  new detour cases, nothing else.
+
+  *Checked and holding.* README's `MAX_EVENTS` (`lib/funnel.ts:65`, `1000`) and
+  `app/api/funnel/route.ts` both exist as described. The `comparison` census added to both
+  languages matches the committed table. The vision-narrative note is closed on evidence
+  the supervisor had re-derived before the worker started: `app/api/analyze/route.ts:84`
+  and `lib/skin.ts:689-693`.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
