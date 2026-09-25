@@ -1333,7 +1333,44 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree:* see the report for the literal output.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and no correction needed.
+
+  *Predicted by reading, before the branch existed:*
+  - `lib/i18n/core.ts` statically imported all four dictionaries, so every route's first
+    load carried all of them. Measured on `382c59f` by the supervisor's own `npm run
+    build`: one chunk, `1e3h7wv-_iggr.js`, **350267** bytes raw and **110980** gzip -9,
+    holding ja, zh, ar and en strings and referenced from `index.html`, `care.html`,
+    `checkin.html` and others. The worker's **350267** matches.
+  - Lazy-loading the non-active locales would change how `t()` resolves at hydration,
+    so a `ja`/`zh`/`ar` visitor would see another language for longer. The worker
+    measured and wrote this down under "What this does not establish".
+
+  *Checked here, on the branch's own build.*
+  - `/` loads **13** scripts, **783030** bytes raw and **240097** gzip -9, which are
+    the worker's after-numbers. The ja, zh and ar chunks (`3vh1arlq7tb9w.js` **91598**,
+    `0w-v6oeh9hnwt.js` **77031**, `0z0y7r1klw98k.js` **100181** raw) are not referenced
+    from `index.html`. The en chunk `0cci9sokwswu9.js` (**82434** raw, **28266** gzip
+    -9) is.
+  - The hydration fallback is English, not the Korean source. `active` falls back to
+    `getServerSnapshot()` (`lib/i18n.tsx:105`), which is the English SSR value, so a
+    missing dictionary never shows the Korean source strings on the page.
+  - Nothing server-side reads a dictionary. `lib/reengage.ts` imports only the `Lang`
+    type and carries its own `EMAIL_COPY`, and nothing under `app/api` imports i18n.
+    `lib/i18n/all` is imported only from `tests/`.
+
+  *Broken here, two ways, on the committed tree.* Adding `import "./i18n/all"` to
+  `lib/i18n.tsx` fails `tests/i18n-lazy-dict.test.ts` at **1 failed | 11 passed**, on
+  "is imported only from tests". Putting back one static import, `JA` only (weaker than
+  the worker's four), fails it at **3 failed | 9 passed**. Both edits were reverted.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 106 passed (106)
+  / Tests 921 passed (921)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. The rotation check against `382c59f` (both docs, `sort -u`,
+  `comm -23`) drops **0** lines. `npm run smoke` first
+  failed before any test body ran: `Error: Timed out waiting 120000ms from
+  config.webServer`, after `Slow filesystem detected. The benchmark took 3691ms`, on a
+  container that had just restarted. The one re-run gave **220 passed (7.5m)** and
+  `Smoke test passed.`
 
 - 2026-09-25 (cycle 39) — Branch `autopilot/2026-09-25-0639`. **A search engine had no
   statement about ARU and no way to tell one page from another. `/robots.txt` and
