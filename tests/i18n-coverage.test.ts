@@ -5,6 +5,9 @@ import { EN } from "@/lib/i18n/en";
 import { JA } from "@/lib/i18n/ja";
 import { ZH } from "@/lib/i18n/zh";
 import { AR } from "@/lib/i18n/ar";
+// Dictionaries load per locale in the browser (lib/i18n/core.ts); this test
+// switches language synchronously, so it registers all four up front.
+import "@/lib/i18n/all";
 import { setCurrentLang } from "@/lib/i18n/core";
 import { buildReportTrust, type ReportTrustInput } from "@/lib/report-trust";
 import { moodSummary } from "@/lib/share-link";

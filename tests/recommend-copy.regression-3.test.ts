@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { recommend, type Survey } from "@/lib/recommend";
+// Dictionaries load per locale in the browser (lib/i18n/core.ts); this test
+// switches language synchronously, so it registers all four up front.
+import "@/lib/i18n/all";
 import { setCurrentLang, type Lang } from "@/lib/i18n/core";
 
 const creamSurvey: Survey = {

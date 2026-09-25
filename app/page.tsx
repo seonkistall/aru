@@ -22,7 +22,12 @@ export default function Home() {
   useFunnelPageView("home_viewed");
   return (
     <main className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      <header className="flex items-center justify-between px-6 pt-7" style={{ paddingInlineEnd: 118 }}>
+      {/* The 106px inline-end reservation keeps the header text clear of the
+          fixed language pill (app/components/language-switcher.tsx), and the
+          12px gap keeps the tagline's first line off the wordmark: with the
+          reservation alone the two boxes abut, and the painted glyphs came
+          within 1.7px in ar and 4.4px in zh. */}
+      <header className="flex items-center justify-between px-6 pt-7" style={{ paddingInlineEnd: 106, columnGap: 12 }}>
         <span style={{ fontFamily: "var(--font-display)", fontSize: 32, lineHeight: 1 }}>{t("아루")}</span>
         <span data-testid="header-tagline" style={{ fontFamily: "var(--font-display)", fontSize: 19, lineHeight: 1.5, color: "var(--muted)", textAlign: "end" }}>{t("아름다움을, 매일의 루틴으로")}</span>
       </header>

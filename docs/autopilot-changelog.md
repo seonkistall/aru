@@ -8216,3 +8216,155 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   and `lib/skin.ts:689-693`.
 
   *Validation on the corrected tree:* see the PR body for the literal output.
+
+- 2026-09-24 (cycle 37) — Branch `autopilot/2026-09-24-1839`. **Three questions about the
+  re-engagement path, answered by driving the real route handlers against a fake
+  Supabase rather than by reading the upsert. One is a consent decision and was measured
+  and handed to the owner; one turned out not to be a defect at all, and saying so is the
+  result; one was a real weakness and is fixed. The 360px walk of the same surfaces found
+  the opt-in's email field collapsed to 26.3px in Arabic.**
+
+  **Baselines, measured here on a clean tree at `3084b65` before any edit.**
+  `node_modules` was absent, so `npm ci` first. `npx vitest run` **786 passed in 98
+  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 144 tests in 2.216s ... OK**, and `npm run smoke` with the chromium override at
+  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** with **179 passed
+  (8.1m)**. They match the supervisor's.
+
+  **Question 1 — does a POST undo an unsubscribe? Yes, and it is a consent decision, so
+  it was not fixed.** `tests/reengage-revoked-resubscribe.regression-22.test.ts` drives
+  `POST /api/reengage/subscribe`, `POST /api/reengage/unsubscribe` and `GET
+  /api/reengage/run` against a fake `reengage_contacts` that applies each filter the way
+  Postgres would. Subscribe → unsubscribe → subscribe leaves one row reading `consent:
+  true`, `revoked_at: null`, `retention_until: null`; age the new `consented_at` past two
+  weeks and the runner mails it. There is no double opt-in — `parseSubscribeInput`
+  (`lib/server/reengage-input.ts:19`) wants a valid address and `consent === true` in one
+  body and never proves the sender owns the address — so any POST can do this to any
+  address, and afterwards nothing in the table records that a withdrawal happened.
+  `4 passed` on the UNCHANGED tree, which is the point: it pins current behaviour so the
+  owner's answer has to come here to change it. The four options, their costs, and what
+  has to be checked against the statute are in
+  [`docs/reengage-resubscribe-consent-decision.md`](reengage-resubscribe-consent-decision.md),
+  with a BLOCKERS entry above. `reengage_contacts.consent` is a third stream, separate
+  from `lib/consent.ts`'s two: `grep -rn "lib/consent" app/api/reengage/
+  app/components/reengage-optin.tsx app/unsubscribe/ lib/reengage.ts` returns **0** lines,
+  and `lib/consent.ts` was not touched.
+
+  **Question 2 — does re-subscribing re-send a mail already sent? Not the way it looks.**
+  The same upsert does write `week2_sent_at: null` / `week4_sent_at: null`, but it writes
+  `consented_at` as NOW in the same statement, and the runner gates on `consented_at <=
+  now - 2 weeks` (`app/api/reengage/run/route.ts:48`). Measured: **nothing is sent on the
+  next tick**, and the repeat mail arrives only once the NEW consent is itself two weeks
+  old. That is ISSUE-008's deliberate "a renewed consent starts a fresh cycle", already
+  pinned by `tests/reengage-resubscribe.regression-8.test.ts`; changing it would change
+  what re-subscribing means, so both halves — the silence inside two weeks and the send
+  after — are now pinned and nothing was changed.
+
+  **Question 3 — the CRON bearer, fixed.** `/api/reengage/run` and `/api/reengage` each
+  carried a byte-identical `authorized()` comparing the header with `===`. Both now call
+  `cronAuthorized` (`lib/server/cron-auth.ts`), which SHA-256s each side to 32 bytes and
+  compares with `crypto.timingSafeEqual`. The hashing is not decoration: Node's own docs
+  say the arguments "must have the same byte length. An error is thrown if `a` and `b`
+  have different byte lengths", so the obvious version of this fix turns every
+  wrong-length header into a 500, and a length pre-check would leak the secret's length.
+  `tests/cron-bearer-constant-time.test.ts` is **18 passed**. Broken two ways on purpose:
+  with `timingSafeEqual` on the raw header it is **11 failed | 7 passed**, including both
+  routes' wrong-length cases; with the routes reverted to their own `authorized()` it is
+  **1 failed | 17 passed**. One case is recorded rather than asserted as a bypass: a
+  trailing space is stripped by `Request`'s own Headers layer before either comparison
+  sees it, so `===` accepted it too — verified with `node -e` on both forms.
+
+  **Research — Node's `crypto.timingSafeEqual`, primary source.**
+  `https://raw.githubusercontent.com/nodejs/node/v22.11.0/doc/api/crypto.md`, **HTTP
+  200**, **197047 bytes**, sha256
+  **`57101386b505d8e574cf522b551edc91dd125ac5140b2738d56f320ac8868dfc`**. Lines 5449-5451:
+  "`a` and `b` must both be `Buffer`s, `TypedArray`s, or `DataView`s, and they / must have
+  the same byte length. An error is thrown if `a` and `b` have / different byte lengths."
+  That sentence is what chose the hash-first shape over a raw compare. Korean statutory
+  text for the §5 legal column could not be fetched — `law.go.kr` is not on the egress
+  allowlist — so no PIPA or 정보통신망법 wording is quoted from memory anywhere.
+
+  **ML — a third instance of the epsilon-guard class, in blemish density.** Chosen because
+  it needs no labelled export and it extends the `[~]` roughness_ratio item's own defect
+  class with the same artifacts; it is an extension of that item, not the item. The app
+  and Python agree on every committed row and disagree across a whole band nobody had
+  looked at: `detectBlemishes` returns `{ count: 0, areaFace: 0 }` for `faceW < 20`
+  (`lib/skin.ts:965`) while `blemish_density` clamps at `max(face_width_px ** 2, 1e-6)`
+  (`ml/skin_indices.py:350`), which only bites at zero. At a 19.999px face box the app
+  publishes **0** and Python publishes **23.99760006**; at 10px, **0** against **6.0**; at
+  20px both read **24.0**. It stayed invisible because the app column in
+  `tests/index-parity.test.ts` modelled the guard as `faceWidthPx > 0` — not what
+  `lib/skin.ts:965` says, and a model that happens to equal Python inside the band. A
+  `guardDivergence` block with **5** rows now sits under the `blemish_count` group,
+  **49 insertions and 0 deletions** to `ml/index-parity.json`, each language asserting its
+  own column. `ml/selftest.py` goes **144 → 145 tests**. Nothing about what
+  `blemishCount` / `blemishDensity` reports was changed and `lib/skin.ts` is untouched;
+  which guard is right needs real captures. Broken on purpose: modelling the guard as
+  `> 0` again gives `expected 23.99760006 to be +0`, and moving the app's floor to
+  `faceW < 1` reddens both languages.
+
+  **UI/UX — the opt-in's email field at 360px.** Probed at 360x800 on `/report` in all
+  five locales. The form put the address input and the submit button on one flex line
+  with the button `flexShrink: 0` and its label a translated sentence, so the input took
+  the leftovers: `emailW=26.3` under `ar` and `30.8` under `ja`, against buttons of
+  `209.7` and `205.3`; `en` 71.6, `ko` 100.7, `zh` 120.0. At 26px no part of a typed
+  address is visible, on the only sign-up field the retention loop has. `flexWrap: "wrap"`
+  plus a 200px flex-basis on the input, and all five read **244.0** with no horizontal
+  page scroll (`docScroll` 360 = `docClient` 360) and the button still 44px tall on its
+  own line. `tests/e2e/reengage-optin-field-width.regression-23.spec.ts` pins a 200px
+  floor per locale: **5 passed**; with the two style properties reverted, **all five fail**
+  at 100.7 / 71.6 / 30.8 / 120 / 26.3.
+
+  **Not established.** Whether any of question 1 is reachable in production today beyond
+  the storing half — `reengageSecretsConfigured` (`lib/reengage.ts:16-23`) still gates
+  sending on five variables. The statutory wording, per the blocker. Whether the subscribe
+  rate limiter's client key is the right granularity for an address-targeted abuse case
+  rather than a volume one — not measured. Which side of the blemish-density guard is
+  right. And of the three re-engagement surfaces only the opt-in form was
+  probed at 360px; `app/unsubscribe/unsubscribe-form.tsx` was read as source and
+  `/checkin` was neither read nor probed, so neither carries a measurement here.
+
+  **Supervisor review.** Sound. The consent defect is measured, and it is left to the
+  owner as the guardrail requires. One test was too weak to catch a plausible revert, and
+  it was hardened before merge.
+
+  *Predicted by reading, before the branch existed:* three things.
+  - (1) The subscribe upsert's `revoked_at: null` undoes an unsubscribe. Confirmed by
+    the worker's `regression-22`.
+  - (2) Its `week2_sent_at/week4_sent_at: null` re-arms a mail already sent, so the
+    address would get a duplicate. **My prediction was wrong on the part that
+    mattered.** The same upsert also resets `consented_at`, and the runner gates on
+    `.lte("consented_at", now - week)` (`app/api/reengage/run/route.ts:48`). So nothing
+    re-sends until the new consent is itself two weeks old, which is ISSUE-008's
+    deliberate fresh cycle (`tests/reengage-resubscribe.regression-8.test.ts`). I had
+    not read the runner's gate.
+  - (3) The `===` bearer compare. Confirmed and fixed.
+
+  *Re-derived here.*
+  - `raw.githubusercontent.com/nodejs/node/v22.11.0/doc/api/crypto.md` re-fetched as
+    `http=200 bytes=197047`, sha256 `57101386…8868dfc`, with the quoted sentence at
+    lines 5449-5451.
+  - `grep -rn "lib/consent"` over the re-engagement path counts `0`, so this is a
+    separate third stream and nothing merged.
+  - `lib/reengage.ts:16-23` is the secrets gate §7 describes.
+
+  *Hardened before merge — `tests/cron-bearer-constant-time.test.ts`.* I tried an
+  inline revert of `/api/reengage/run`: the import left in place but unused, and the
+  header compared against `` `Bearer ${process.env.CRON_SECRET}` `` with `!==`. It
+  passed the whole file at `18 passed`, and `npx eslint` on the route gave only
+  `'cronAuthorized' is defined but never used` as a **warning**, so no gate caught it.
+  The route test now requires an actual `if (!cronAuthorized(request|req))` call, and no
+  `Bearer ${` string built in a route. With that, the same revert gives `1 failed | 17
+  passed`, "neither route still defines its own authorized()". A separate limit, stated
+  plainly: swapping `timingSafeEqual` for `Buffer.equals` inside `cronAuthorized` still
+  passes all 18. Constant-time behaviour is not observable by a functional test, and the
+  worker's doc never claimed otherwise.
+
+  *The consent decision is the owner's.* `docs/reengage-resubscribe-consent-decision.md`
+  recommends D then B. It is reachable today in one respect: the subscribe route stores
+  rows without any sending key set.
+
+  *Validation on the corrected tree:* see the PR body for the literal output.
+
+  *Validation on this tree:* see the report for the literal output.
