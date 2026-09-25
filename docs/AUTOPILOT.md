@@ -1202,6 +1202,23 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-09-25 — a tap during the English interval is thrown away (cycle 40).**
+  `LanguageProvider` renders English until a `ja`/`zh`/`ar` dictionary chunk lands, then
+  remounts the whole subtree under `key={active}` (`lib/i18n.tsx`). Any state a visitor
+  created in between is discarded. On `/scan` that is the camera start: with the `ja`
+  chunk delayed 3000ms, a `scan-start` tap in English ended back on the start button
+  with no quality checklist (supervisor probe, cycle 41 review). Before cycle 40, the
+  same remount followed hydration directly, because the saved language came from a
+  synchronous store. That is read from the code, not measured. Options for
+  the cycle that takes it:
+  - (a) Re-render without remounting. This only works if every `t()` call site re-runs
+    on a context change; measure that first.
+  - (b) Start the dictionary fetch before hydration, which shrinks the window but does
+    not close it.
+  - (c) Hold interactive controls until `active === saved`.
+  Pin the fix with a spec that delays the chunk the way the probe did. Do not merge a
+  fix that only makes the window shorter without saying so.
+
 - [x] **2026-09-15 — `confidenceLabel` exists twice, byte-for-byte.** ~~A latent
   divergence: change one threshold and the vision-API path disagrees with the ROI path,
   silently.~~ Actioned 2026-09-16 as the contract test the finding asked for, not a
@@ -1400,7 +1417,61 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **202** lines are byte-identical at the end of the changelog (`diff` clean).
   Full output in the report.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** The four fixes are sound. One test fix was added before merge,
+  and one finding about cycle 40 goes to the top of the next cycle.
+
+  *Predicted by reading, before the branch existed:*
+  - `product-card.tsx`'s `marginLeft: "auto"` would leave the price at the start of its
+    row under `ar`. Checked in a minimal Chromium repro (300px flex row, three spans):
+    `ltr` price at **268…300**, `rtl` with `marginLeft` at **260…292** in a row of
+    **60…360**, `rtl` with `marginInlineStart` at **60…92**. The worker measured the same
+    defect on `/report` itself.
+  - The two list `paddingLeft`s would misplace list markers under `ar`. **Wrong**: the
+    worker read `list-style-type: none` off the browser, so there is no marker, and the
+    defect is the missing 18px indent instead. The worker caught this. I did not.
+  - The ready phase could be rendered without a camera, because
+    `tests/e2e/mobile-layout.spec.ts` already shims `getUserMedia`. The worker used that.
+
+  *Broken here, two ways, on the committed tree.*
+  `tests/e2e/rtl-logical-inset.regression-29.spec.ts` is **9 passed** clean. Putting
+  `marginLeft: "auto"` back on the price gives **1 failed | 8 passed**. Using
+  `paddingInlineEnd: 18` on the scan info sheet (the plausible wrong logical property)
+  gives **2 failed | 7 passed**. Both edits were reverted.
+
+  *Smoke was red here too, at a spec this branch does not touch.* The first supervisor
+  run of `npm run smoke` on `7181994` gave **1 failed | 228 passed** at
+  `tests/e2e/discovery-metadata.regression-26.spec.ts:81` (cycle 39): "strict mode
+  violation: locator('head meta[property="og:url"]') resolved to 2 elements", one for
+  `/report` and one for `/survey`. `/report` client-redirects to `/survey` with empty
+  storage (`app/report/page.tsx:139`), and the spec read `<head>` in the page, so it
+  raced the redirect. The same file's own comment on its HTTP test already says this.
+  Reproduced on purpose: adding a 3000ms wait after `goto` fails it every time, **1
+  failed | 8 passed**. Fixed by reading the NOINDEX routes with `javaScriptEnabled:
+  false`, which is also what a crawler or a share scraper sees. With the same 3000ms wait
+  the fixed spec is **9 passed**. It still catches a real defect: flipping `/report` to
+  `index: true` in `lib/seo.ts` gives **2 failed | 14 passed**. Three clean runs of the
+  file gave **16 passed** each.
+
+  *Finding for the next cycle, from cycle 40, which I missed in its review.* The worker
+  hardened three specs against the `key={active}` remount in `lib/i18n.tsx`, and its own
+  comment says why: "Clicking before that remount starts the camera on a tree that is
+  about to be thrown away." That is a user-facing defect, not only a test race. A
+  `ja`/`zh`/`ar` visitor who taps during the English interval loses the tap. Probed here
+  with the `ja` dictionary chunk delayed by Playwright routing, on the dev server, with a
+  canvas camera:
+  - 0ms delay: `{"langAtTap":"en","langAfter":"ja","startVisibleAfter":false,"checklist":1}`.
+  - 3000ms delay: `{"langAtTap":"en","langAfter":"ja","startVisibleAfter":true,"checklist":0}`.
+    The tap started the camera, then the remount put the page back on its start button.
+  The camera does not leak: the unmount cleanup at `app/scan/page.tsx:281` calls
+  `stopCamera()`. How long the English interval lasts on a real phone network was not
+  measured. It is recorded under "Supervisor findings not yet actioned".
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 107 passed (107)
+  / Tests 925 passed (925)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `5f4bbe0` drops
+  **0** lines. Recent cycles holds 41/40/39, and cycle 38 sits after cycle 37 at the end
+  of the changelog. With the spec fix,
+  `npm run smoke` gave **229 passed (7.7m)** and `Smoke test passed.`
 
 - 2026-09-25 (cycle 40) — Branch `autopilot/2026-09-25-1239`. **Every first-time visitor
   downloaded all four locale dictionaries and could read at most one of them. Measured on
