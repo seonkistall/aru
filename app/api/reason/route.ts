@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { reasonClean } from "@/lib/claim-filter";
 import { parseReasonInput } from "@/lib/server/ai-input";
-import { createRateLimiter, fetchWithTimeout, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
+import { createRateLimiter, fetchWithTimeout, isForeignOriginRequest, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 
 type Item = {
   brand: string;
@@ -23,6 +23,10 @@ const LANG_NAMES: Record<string, string> = {
 };
 
 export async function POST(req: Request) {
+  // Same guard, same position, same reason as `/api/analyze`. The body shape is the
+  // route's existing one, so `app/report/page.tsx` treats a 403 exactly as it already
+  // treats a 429: the template reasons stay on screen.
+  if (isForeignOriginRequest(req)) return NextResponse.json({ reasons: [], reason: "forbidden origin" }, { status: 403 });
   if (!reasonLimit(requestClientKey(req))) return NextResponse.json({ reasons: [], reason: "rate limited" }, { status: 429 });
   let body: unknown;
   try { body = await readBoundedJson(req, 32_768); }

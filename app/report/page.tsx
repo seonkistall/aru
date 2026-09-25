@@ -218,15 +218,27 @@ export default function Report() {
   return (
     <main className="px-5 pt-9" style={{ background: "var(--paper)", minHeight: "100dvh", paddingBottom: 48 }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
+        {/*
+          `minWidth: 0` on the text column and `flexShrink: 0` on the mascot, measured
+          2026-09-25 at 360x800. Without them the text column took its max-content width
+          — 331.5px under `en` and 332.8px under `ar` against a 320px content box — and
+          the mascot, which has no intrinsic minimum of its own, was shrunk to width 0
+          and laid out at left 361.5 (`en`) / -2.8 (`ar`). So on the report screen the
+          mascot was absent in exactly the two locales whose title is longest, and the
+          title itself was clipped by the ~12px it overhung. `ko`, `ja` and `zh` were
+          inside the box and unchanged.
+        */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <p style={eyebrow}>{t("오늘의 피부 리포트")}</p>
             <FlowSteps current="report" />
             <h1 style={headlineStyle}>
               {stepIndex === 0 ? (reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })) : stepTitles[step]}
             </h1>
           </div>
-          <Xiaohei size={60} pose="magnify" />
+          <div style={{ flexShrink: 0 }}>
+            <Xiaohei size={60} pose="magnify" />
+          </div>
         </div>
         <div style={stepTabs} role="tablist" aria-label={t("진행 단계")}>
           {steps.map((s, i) => (

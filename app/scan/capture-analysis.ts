@@ -199,11 +199,20 @@ export function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): S
   const confidenceValues: number[] = [];
   for (const attr of ATTRS) {
     const level = payload.labels?.[attr];
-    const confidence = payload.confidence?.[attr];
-    if (typeof confidence === "number" && Number.isFinite(confidence)) confidenceValues.push(confidence);
+    const raw = payload.confidence?.[attr];
+    // Clamped to [0,1] ONCE, before it is used for anything. It used to be clamped only
+    // where the per-attribute value is read, two lines down, while the aggregate below
+    // took the raw number — so a payload reporting confidence 2 for one attribute and 0
+    // for the other two published 0.600 / 보통 / no retake here and 0.300 / 낮음 /
+    // retake through `/api/analyze`, whose `readConfidence` clamps first. Both figures
+    // are in `docs/vision-confidence-clamp.md`; the route's is the one that shipped.
+    // Nothing a real caller can send changes: every value reaching this function from
+    // the route is already in range, so this is a no-op on the production path.
+    const confidence = typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : null;
+    if (confidence !== null) confidenceValues.push(confidence);
     if (level !== 0 && level !== 1 && level !== 2) continue;
     const current = next[attr];
-    const modelConfidence = typeof confidence === "number" && Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.52;
+    const modelConfidence = confidence ?? 0.52;
     if (modelConfidence < 0.62 && modelConfidence < (current.confidence ?? 0.6)) continue;
     next[attr] = {
       value: SKIN_LABELS[attr][level],
