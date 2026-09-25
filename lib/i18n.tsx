@@ -11,7 +11,15 @@
  */
 
 import React, { createContext, useContext, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
-import { isLang, LANG_STORAGE_KEY, setCurrentLang, type Lang } from "./i18n/core";
+import {
+  isDictReady,
+  isLang,
+  LANG_STORAGE_KEY,
+  loadDict,
+  setCurrentLang,
+  subscribeDicts,
+  type Lang,
+} from "./i18n/core";
 
 // html[lang] must update before the swapped text paints — the CJK wrapping CSS
 // keys off html[lang], so a plain useEffect leaves ja/zh text one frame under
@@ -58,9 +66,19 @@ function getServerSnapshot(): Lang {
   return "en";
 }
 
-type LangContextValue = { lang: Lang; setLang: (lang: Lang) => void };
+// The server renders English and lib/i18n/core.ts imports that dictionary
+// statically, so the server — and therefore the hydration render — is never
+// waiting on a chunk.
+function getServerDictReady(): boolean {
+  return true;
+}
 
-const LangContext = createContext<LangContextValue>({ lang: "ko", setLang: () => {} });
+// `lang` is what is on screen; `saved` is what the visitor chose and may be one
+// chunk ahead of it. The picker reads `saved` so a tap registers immediately;
+// everything that renders text reads `lang`.
+type LangContextValue = { lang: Lang; saved: Lang; setLang: (lang: Lang) => void };
+
+const LangContext = createContext<LangContextValue>({ lang: "ko", saved: "ko", setLang: () => {} });
 
 export function useLanguage(): LangContextValue {
   return useContext(LangContext);
@@ -79,21 +97,32 @@ function setLang(next: Lang) {
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const lang = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const saved = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // ja/zh/ar dictionaries arrive over the network (lib/i18n/core.ts). Reading
+  // the registry through a store means the tree re-renders when one lands
+  // instead of painting Korean message ids while the chunk is still in flight.
+  const ready = useSyncExternalStore(subscribeDicts, () => isDictReady(saved), getServerDictReady);
+  const active = ready ? saved : getServerSnapshot();
 
   // Keep the singleton in sync before children render.
-  setCurrentLang(lang);
+  setCurrentLang(active);
+
+  useEffect(() => {
+    if (!isDictReady(saved)) void loadDict(saved);
+  }, [saved]);
 
   useIsomorphicLayoutEffect(() => {
-    document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
+    document.documentElement.lang = active === "zh" ? "zh-CN" : active;
     // Arabic is the only RTL language we ship; dir must flip with it so flex
-    // rows, text alignment, and scroll direction follow the script.
-    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-  }, [lang]);
+    // rows, text alignment, and scroll direction follow the script. It follows
+    // the language actually on screen, not the saved one, so the page never
+    // sits in RTL with Latin text while the Arabic chunk loads.
+    document.documentElement.dir = active === "ar" ? "rtl" : "ltr";
+  }, [active]);
 
   return (
-    <LangContext.Provider value={{ lang, setLang }}>
-      <React.Fragment key={lang}>{children}</React.Fragment>
+    <LangContext.Provider value={{ lang: active, saved, setLang }}>
+      <React.Fragment key={active}>{children}</React.Fragment>
     </LangContext.Provider>
   );
 }

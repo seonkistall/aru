@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { mergeVisionAnalysis } from "@/app/scan/capture-analysis";
 import { headlineFor, localizedNarrative, narrativeFor, overallFor, type Bucket, type SkinReads } from "@/lib/skin";
+// Dictionaries load per locale in the browser (lib/i18n/core.ts); this test
+// switches language synchronously, so it registers all four up front.
+import "@/lib/i18n/all";
 import { getLang, setCurrentLang } from "@/lib/i18n/core";
 
 /**

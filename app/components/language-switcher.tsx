@@ -10,7 +10,7 @@ import { supportsFlagEmoji } from "../../lib/flag-support";
  * app in the chosen language.
  */
 export function LanguageSwitcher() {
-  const { lang, setLang } = useLang();
+  const { saved, setLang } = useLang();
   const [open, setOpen] = useState(false);
   const [flags, setFlags] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -33,7 +33,7 @@ export function LanguageSwitcher() {
     return () => window.removeEventListener("pointerdown", onDown);
   }, [open]);
 
-  const current = LANGS.find((l) => l.code === lang) ?? LANGS[0];
+  const current = LANGS.find((l) => l.code === saved) ?? LANGS[0];
 
   const pick = (code: Lang) => {
     setLang(code);
@@ -85,7 +85,7 @@ export function LanguageSwitcher() {
               key={l.code}
               type="button"
               role="option"
-              aria-selected={l.code === lang}
+              aria-selected={l.code === saved}
               onClick={() => pick(l.code)}
               style={{
                 display: "block",
@@ -97,8 +97,8 @@ export function LanguageSwitcher() {
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
-                color: l.code === lang ? "var(--orange, #e8590c)" : "var(--ink, #222)",
-                fontWeight: l.code === lang ? 700 : 400,
+                color: l.code === saved ? "var(--orange, #e8590c)" : "var(--ink, #222)",
+                fontWeight: l.code === saved ? 700 : 400,
               }}
             >
               {flags && <span aria-hidden style={{ marginInlineEnd: 6 }}>{l.flag}</span>}

@@ -211,6 +211,16 @@ there is no `hreflang` — see §4 of
 [`docs/discovery-metadata.md`](docs/discovery-metadata.md) for the measurements
 and for what per-locale URLs would take.
 
+Each visitor downloads one locale dictionary, not five. Korean needs none — the
+Korean source strings are the message ids — and Japanese, Chinese and Arabic are a
+dynamic `import()` each in [`lib/i18n/core.ts`](lib/i18n/core.ts), resolved before
+`LanguageProvider` renders that language so no wrong-language text paints on the way.
+English stays a static import because the server renders English and the hydration
+render has to match it. Measured on a production build at `382c59f`: the four
+dictionaries shared one chunk of 350267 bytes that `/` loaded, and `/`'s initial
+JavaScript was 1050358 bytes raw / 322373 gzipped against 783030 / 240097 after.
+Getting English out too needs per-locale URLs, the same decision as above.
+
 ## System architecture
 
 ```mermaid

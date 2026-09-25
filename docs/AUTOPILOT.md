@@ -355,6 +355,19 @@ partly done and stays here.
   guard is right is the same kind of question this item's pair asks and needs the same
   real captures, so nothing was changed: `lib/skin.ts` is untouched and what
   `blemishCount` / `blemishDensity` reports did not move.
+  **2026-09-25, cycle 40: a FOURTH instance, in the shine denominator, and the first that
+  is not a band.** `denominator = cheek_luminance if cheek_luminance else 1.0`
+  (`ml/skin_indices.py`) and `cheekL || 1` (`lib/skin.ts:740`) agree on **0.0**, on
+  **-0.0** and on every sub-epsilon positive value — both give **1490196077.7862747** at
+  a cheek of **1e-7** — and disagree only on NaN, which Python treats as truthy and
+  JavaScript as falsy: Python returns `tzone_specular` (**0.1** on the probe pair) and the
+  app returns **NaN**. Unlike the first three it is **not reachable from a capture today**
+  and that is measured: `sampleRegion` returns null when `collected.length === 0` and
+  otherwise divides by `kept`, which is `sorted.slice(...)` only when the trim would leave
+  at least 20 and `sorted` itself otherwise, so `kept` is never empty. Both sides pinned,
+  neither changed: `ml/selftest.py` goes **145 → 146** tests and
+  `tests/shine-guard-nonfinite.test.ts` is **3 passed**. Which side is right is undecided,
+  the same as the other three.
   **2026-09-20, cycle 22: built, measured, and taken back out — and what stopped it was
   not the table.** `lib/skin.ts` is byte-identical to main on that branch. Everything
   below is in `docs/srgb-transfer-table.md`, including the five source-line breaks the
@@ -761,6 +774,20 @@ partly done and stays here.
   this cycle's six screens: `app/report/page.tsx:293`'s `textAlign: "right"`, which
   cycle 34's sweep of `/report` did not touch. And mid-session language switching and
   a real phone remain unmeasured on all nine screens.
+- [AI] **The English dictionary is still in every visitor's first load, and only a URL
+  decision gets it out.** Opened 2026-09-25 (cycle 40), which moved ja/zh/ar behind a
+  dynamic `import()` and cut `/`'s initial JS from **1050358** to **783030** bytes raw
+  (**322373** to **240097** gzipped). English could not follow: `getServerSnapshot()` in
+  `lib/i18n.tsx` returns `"en"`, so the server HTML is English and the hydration render
+  has to produce the same text — a lazy EN would paint Korean message ids against English
+  markup. So a Korean visitor still downloads **82434** bytes raw / **28343** gzipped of
+  English they will never read. The fix is the same per-locale-URL decision the item
+  below describes: once a route knows its language on the server, the server renders that
+  language, the hydration render matches it, and every dictionary including English
+  becomes per-locale. Nothing smaller works, and no cycle should invent the URL structure
+  on its own. Also unmeasured and cheap to do: `/` is the only route whose initial JS was
+  counted, before or after.
+
 - [OWNER] **Apply to the affiliate programmes** — 쿠팡 파트너스 (self-serve, accepts a
   website or app URL as the channel), 올리브영 쇼핑 큐레이터 (in-app, 7%/3%), 네이버 쇼핑
   커넥트 (5–28%, confirm a web service counts as a channel). Until then every out-click
@@ -1156,6 +1183,158 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-25 (cycle 40) — Branch `autopilot/2026-09-25-1239`. **Every first-time visitor
+  downloaded all four locale dictionaries and could read at most one of them. Measured on
+  a production build: one chunk, `1e3h7wv-_iggr.js`, was **350267** bytes, of which
+  **349333** were the four dictionaries, and `/` loaded it. Japanese, Chinese and Arabic
+  are now a dynamic `import()` each and `/`'s initial JS drops from **1050358** to
+  **783030** bytes raw, **322373** to **240097** gzipped. English stays static, and the
+  reason is the hydration contract, not an oversight.**
+
+  **Baselines, re-measured here on `382c59f` before any edit.** `node_modules` was
+  absent, so `npm ci` first — `npm run build` reads `sh: 1: next: not found` and exits
+  **127** without it. After: `npx vitest run` **Test Files 104 passed (104) / Tests 906
+  passed (906)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 145 tests in 2.625s ... OK**. They match the supervisor's. A
+  baseline smoke was not run; only the post-change one below, which is green.
+
+  **What `/` actually downloaded, on `npm run build` at `382c59f`.** Next.js 16.2.9 with
+  Turbopack prints no first-load column, so the number was taken from the prerendered
+  `.next/server/app/index.html`: **13** script files, **1050358** bytes raw, **322373**
+  gzipped (each file gzipped at level 9 and summed). Grepping `.next/static/chunks` for
+  one string out of each dictionary (`Turn camera back on`, `カメラをもう一度オンにする`,
+  `重新打开摄像头`, `إعادة تشغيل الكاميرا`) put **all four in the same chunk**,
+  `1e3h7wv-_iggr.js`, **350267** bytes raw / **110807** gzipped. Measured as byte spans
+  from each dictionary's first value to its last: EN **81102** raw / **27538** gzip, JA
+  **91405** / **29123**, ZH **76838** / **27072**, AR **99988** / **29483** — **349333**
+  of the chunk's 350267 bytes. The source is **368003** bytes over the four files per
+  `wc -c`. So the supervisor's read was right and the chunk is, to 99.7%, dictionaries.
+
+  **The fix, and why English is not part of it.** `lib/i18n/core.ts` keeps `import { EN }`
+  and moves JA/ZH/AR behind `loadDict(lang)`, one literal `import("./ja")` per case;
+  `registerDict` fills a mutable registry and notifies subscribers; `t()` is untouched
+  and still synchronous, still falling back to the Korean message id. English **cannot**
+  be lazy without changing what the server renders: `getServerSnapshot()` in
+  `lib/i18n.tsx` returns `"en"`, so the server HTML is English and the hydration render
+  must produce the same text or it paints Korean source strings against English markup.
+  That is the honest limit of this cycle — a Korean visitor still downloads the English
+  dictionary, **82434** bytes raw / **28343** gzipped in its own chunk, and removing that
+  needs the per-locale-URL decision already filed as `[OWNER]`.
+  `LanguageProvider` renders `active = ready ? saved : "en"`, where `ready` comes from a
+  second `useSyncExternalStore` over the dictionary registry, so the saved language
+  appears only once its chunk has landed. `html[lang]`, `dir` and the remount `key` all
+  follow `active`, not `saved`, so Arabic never paints Latin text in RTL. The picker
+  reads a new `saved` field off the context so a tap registers before the chunk arrives.
+
+  **After, on the same kind of build.** `/` loads **13** script files, **783030** bytes
+  raw / **240097** gzipped — **-267328** raw and **-82276** gzip, both **-25.5%**. EN is
+  its own chunk (**82434** / **28343**) and `/` loads it; JA (**91598** / **29315**), ZH
+  (**77031** / **27238**) and AR (**100181** / **29636**) are three more chunks and `/`
+  loads none of them.
+
+  **Hydration was measured before and after, not reasoned about**, at 360x800 against
+  `npx next start`, sampling the `<h1>` every animation frame from before the app's own
+  scripts run, one fresh context per language. **Before**: no saved choice and `en` paint
+  English and stay; `ko` goes English → Korean at **390.4ms**; `ja` English → English →
+  Japanese at **385.8ms**; `zh` → Chinese at **398.5ms**; `ar` English → Arabic at
+  **428.7ms**. **After**: the same language sequence in every case — `ko` at **422ms**,
+  `ja` at **405.9ms**, `zh` at **401.8ms**, `ar` at **474.5ms**. No Korean frame anywhere,
+  before or after; the first paint is English in all ten runs. What changed is **`ar`
+  gained one intermediate English state** (the shape `ja` and `zh` already had) and the
+  settle is later by **31.6ms** (ko), **20.1ms** (ja), **3.3ms** (zh) and **45.8ms** (ar)
+  — on localhost, which is the weakest part of this measurement: a real network moves
+  those numbers and this container cannot produce one.
+
+  **Broken on purpose, three ways on the i18n change.** `tests/i18n-lazy-dict.test.ts` is
+  **12 passed** and `tests/e2e/i18n-dictionary-split.regression-27.spec.ts` **10 passed**.
+  Putting the four static imports back: **4 failed | 8 passed**. Collapsing the switch to
+  one `import(./${lang})` with a template literal — the DRY refactor: **1 failed | 11 passed**, and *that one
+  is the weaker-but-plausible case in both directions*, because building it measured
+  **783878** bytes of initial JS against **783030**, i.e. **Turbopack 16.2.9 splits the
+  template form too**. The literal paths are what Next.js's doc guarantees, not the only
+  thing that works, and both the code comment and the test say so. Third: rendering the
+  saved language without waiting for its dictionary (`active = saved`) gives **1 failed |
+  11 passed** on the unit file and **3 failed | 7 passed** on the e2e — `ja`, `zh` and
+  `ar` all fail "settles on its own language with no Korean on screen on the way", which
+  is the per-frame sampler doing its job.
+
+  **Research — Next.js's own docs from `raw.githubusercontent.com/vercel/next.js/canary`.**
+  `docs/01-app/02-guides/lazy-loading.mdx` **http=200**, **10617** bytes, sha256
+  `0a8f49a0cd5e2cff43d8e29b7aa4d1a75e3b0ccf6d98789bddcfb01d4a554d1b`; line 239: "In
+  `import('path/to/component')`, the path must be explicitly written. It can't be a
+  template string nor a variable." That sentence chose the switch over a template
+  literal. `docs/01-app/03-api-reference/05-config/01-next-config-js/optimizePackageImports.mdx`
+  **http=200**, **1384** bytes, sha256
+  `c93fc1c9205326ccdcdbd47f1e7a9aaad2d070f3be4dd9d75331cc2a6359c7b1`, was read and
+  **ruled out**: it "will only load the modules you are actually using" for packages that
+  "export hundreds or thousands of modules", and each dictionary is one named export of
+  one object, so it has nothing to prune. `docs/01-app/03-api-reference/06-cli/next.mdx`
+  **http=200**, **25860** bytes, sha256
+  `5be90c3fa7fee222265b3aedf6a84a37924c164c4c256f3251df3f4133cb6740`. `vercel.com` and
+  `developer.mozilla.org` were not probed this cycle; they are recorded as refusing in
+  the 2026-09-15 and 2026-09-25 blocker entries.
+
+  **ML — a fourth instance of the epsilon-guard class, at the boundary the first three
+  did not reach.** Chosen because it needs no labelled export and extends the
+  `roughness_ratio` `[~]` item's own defect class, the way cycle 37's blemish-density
+  instance did. `denominator = cheek_luminance if cheek_luminance else 1.0`
+  (`ml/skin_indices.py`) and `cheekL || 1` (`lib/skin.ts:740`) agree on **0.0**, on
+  **-0.0** and on every sub-epsilon positive value — at a cheek of **1e-7** both give
+  **1490196077.7862747** — and part company on NaN, which is truthy in Python and falsy
+  in JavaScript: Python returns `tzone_specular` (**0.1** on the probe pair) and the app
+  returns **NaN**. Unlike the first three this is not a band, and it is **not reachable
+  from a capture today**, which is measured rather than assumed: `sampleRegion` returns
+  null when `collected.length === 0` and otherwise divides by `kept`, which is
+  `sorted.slice(...)` only when the trim would leave at least 20 and `sorted` itself
+  otherwise, so it is never empty. Both sides are pinned and neither is changed:
+  `ml/selftest.py` goes **145 → 146** tests and `tests/shine-guard-nonfinite.test.ts` is
+  **3 passed**. Broken two ways: swapping the Python `max`'s arguments to
+  `max((tzone - cheek) / denominator, 0.0)` — a pure tidy-up to read — gives **FAILED
+  (failures=1)**; giving the app the 1e-6 epsilon the other indices use gives **2 failed
+  | 32 passed** across `tests/shine-guard-nonfinite.test.ts`,
+  `tests/index-parity.test.ts` and `tests/skin-index-contract.test.ts`. **Which side is
+  right is not decided here**, and the item stays open.
+
+  **UI/UX — the landing header's tagline touched the wordmark in four of five locales.**
+  Found at 360x800 on the production build, measuring painted glyph rects rather than
+  boxes. `app/page.tsx`'s header reserved 118px for the fixed language pill and nothing
+  else, so `justify-between` gave the tagline every remaining pixel and the two boxes
+  abutted at exactly **0.0px** in `en`, `ja`, `zh` and `ar` (**53.1px** in `ko`, whose
+  tagline fits on one line). The painted first line came within **1.7px** of the wordmark
+  in `ar`, **4.4px** in `zh`, **10.3px** in `ja` and **29.9px** in `en`. The reservation
+  is now **106px** with a **12px** `columnGap`, which keeps the tagline box at the same
+  **155.3px** so nothing rewraps — header height stays **85px** (60 in `ko`) and the
+  primary CTA does not move (`ctaTop` **536.8 / 612.2 / 628.4 / 579.8 / 602.2** before and
+  after). Glyph gaps become **13.7 / 16.4 / 22.3 / 41.9 / 65.1** and the pill still clears
+  the header text by **13.4px** at worst (`en`).
+  `tests/e2e/landing-header-clearance.regression-28.spec.ts` is **5 passed**. Broken two
+  ways: reverting to the reservation alone fails **all 5**, the first on the geometry
+  floor at `worstGlyphGap=1.015625`; adding the gap *without* cutting the reservation —
+  the obvious fix — also fails all 5, but **only on the 106px pin**: the geometry floor
+  still passes, because that edit buys the clearance out of the tagline's own width
+  instead of out of the reservation. That second one is caught by a constant, not by a
+  measurement, and is worth saying plainly.
+
+  *The primary CTA was checked and was not a defect.* It sits fully above the 800px fold
+  in all five locales, bottom edge **611.3 / 686.7 / 702.9 / 654.3 / 676.7**, with
+  `scrollWidth === clientWidth === 360` on every one. Recorded as none rather than
+  invented.
+
+  **What this does not establish.** No traffic number changed and none was measured;
+  a smaller first load is a precondition for keeping a visitor, not evidence of one. All
+  byte counts are from a local production build — what Vercel's edge serves, with its own
+  compression, was not measured. The hydration timings are localhost, so the window in
+  which a `ja`/`zh`/`ar` visitor sees English is longer in the field than the numbers
+  above and by how much is unknown. The English dictionary is still in every visitor's
+  first load and will be until ARU has per-locale URLs. And `/` is the only route whose
+  initial JS was counted, before or after; the other routes import the same core and were
+  not measured one by one.
+
+  *Validation on this tree:* see the report for the literal output.
+
+  *Supervisor review:* pending.
+
 - 2026-09-25 (cycle 39) — Branch `autopilot/2026-09-25-0639`. **A search engine had no
   statement about ARU and no way to tell one page from another. `/robots.txt` and
   `/sitemap.xml` were both 404, and all nine reachable pages served one title and one
@@ -1546,155 +1725,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   / Supabase). The doc prices that as an owner decision and does not build it.
 
   *Validation on the corrected tree:* see the PR body for the literal output.
-
-- 2026-09-24 (cycle 37) — Branch `autopilot/2026-09-24-1839`. **Three questions about the
-  re-engagement path, answered by driving the real route handlers against a fake
-  Supabase rather than by reading the upsert. One is a consent decision and was measured
-  and handed to the owner; one turned out not to be a defect at all, and saying so is the
-  result; one was a real weakness and is fixed. The 360px walk of the same surfaces found
-  the opt-in's email field collapsed to 26.3px in Arabic.**
-
-  **Baselines, measured here on a clean tree at `3084b65` before any edit.**
-  `node_modules` was absent, so `npm ci` first. `npx vitest run` **786 passed in 98
-  files**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 144 tests in 2.216s ... OK**, and `npm run smoke` with the chromium override at
-  `/opt/pw-browsers/chromium-1194` printed **`Smoke test passed.`** with **179 passed
-  (8.1m)**. They match the supervisor's.
-
-  **Question 1 — does a POST undo an unsubscribe? Yes, and it is a consent decision, so
-  it was not fixed.** `tests/reengage-revoked-resubscribe.regression-22.test.ts` drives
-  `POST /api/reengage/subscribe`, `POST /api/reengage/unsubscribe` and `GET
-  /api/reengage/run` against a fake `reengage_contacts` that applies each filter the way
-  Postgres would. Subscribe → unsubscribe → subscribe leaves one row reading `consent:
-  true`, `revoked_at: null`, `retention_until: null`; age the new `consented_at` past two
-  weeks and the runner mails it. There is no double opt-in — `parseSubscribeInput`
-  (`lib/server/reengage-input.ts:19`) wants a valid address and `consent === true` in one
-  body and never proves the sender owns the address — so any POST can do this to any
-  address, and afterwards nothing in the table records that a withdrawal happened.
-  `4 passed` on the UNCHANGED tree, which is the point: it pins current behaviour so the
-  owner's answer has to come here to change it. The four options, their costs, and what
-  has to be checked against the statute are in
-  [`docs/reengage-resubscribe-consent-decision.md`](reengage-resubscribe-consent-decision.md),
-  with a BLOCKERS entry above. `reengage_contacts.consent` is a third stream, separate
-  from `lib/consent.ts`'s two: `grep -rn "lib/consent" app/api/reengage/
-  app/components/reengage-optin.tsx app/unsubscribe/ lib/reengage.ts` returns **0** lines,
-  and `lib/consent.ts` was not touched.
-
-  **Question 2 — does re-subscribing re-send a mail already sent? Not the way it looks.**
-  The same upsert does write `week2_sent_at: null` / `week4_sent_at: null`, but it writes
-  `consented_at` as NOW in the same statement, and the runner gates on `consented_at <=
-  now - 2 weeks` (`app/api/reengage/run/route.ts:48`). Measured: **nothing is sent on the
-  next tick**, and the repeat mail arrives only once the NEW consent is itself two weeks
-  old. That is ISSUE-008's deliberate "a renewed consent starts a fresh cycle", already
-  pinned by `tests/reengage-resubscribe.regression-8.test.ts`; changing it would change
-  what re-subscribing means, so both halves — the silence inside two weeks and the send
-  after — are now pinned and nothing was changed.
-
-  **Question 3 — the CRON bearer, fixed.** `/api/reengage/run` and `/api/reengage` each
-  carried a byte-identical `authorized()` comparing the header with `===`. Both now call
-  `cronAuthorized` (`lib/server/cron-auth.ts`), which SHA-256s each side to 32 bytes and
-  compares with `crypto.timingSafeEqual`. The hashing is not decoration: Node's own docs
-  say the arguments "must have the same byte length. An error is thrown if `a` and `b`
-  have different byte lengths", so the obvious version of this fix turns every
-  wrong-length header into a 500, and a length pre-check would leak the secret's length.
-  `tests/cron-bearer-constant-time.test.ts` is **18 passed**. Broken two ways on purpose:
-  with `timingSafeEqual` on the raw header it is **11 failed | 7 passed**, including both
-  routes' wrong-length cases; with the routes reverted to their own `authorized()` it is
-  **1 failed | 17 passed**. One case is recorded rather than asserted as a bypass: a
-  trailing space is stripped by `Request`'s own Headers layer before either comparison
-  sees it, so `===` accepted it too — verified with `node -e` on both forms.
-
-  **Research — Node's `crypto.timingSafeEqual`, primary source.**
-  `https://raw.githubusercontent.com/nodejs/node/v22.11.0/doc/api/crypto.md`, **HTTP
-  200**, **197047 bytes**, sha256
-  **`57101386b505d8e574cf522b551edc91dd125ac5140b2738d56f320ac8868dfc`**. Lines 5449-5451:
-  "`a` and `b` must both be `Buffer`s, `TypedArray`s, or `DataView`s, and they / must have
-  the same byte length. An error is thrown if `a` and `b` have / different byte lengths."
-  That sentence is what chose the hash-first shape over a raw compare. Korean statutory
-  text for the §5 legal column could not be fetched — `law.go.kr` is not on the egress
-  allowlist — so no PIPA or 정보통신망법 wording is quoted from memory anywhere.
-
-  **ML — a third instance of the epsilon-guard class, in blemish density.** Chosen because
-  it needs no labelled export and it extends the `[~]` roughness_ratio item's own defect
-  class with the same artifacts; it is an extension of that item, not the item. The app
-  and Python agree on every committed row and disagree across a whole band nobody had
-  looked at: `detectBlemishes` returns `{ count: 0, areaFace: 0 }` for `faceW < 20`
-  (`lib/skin.ts:965`) while `blemish_density` clamps at `max(face_width_px ** 2, 1e-6)`
-  (`ml/skin_indices.py:350`), which only bites at zero. At a 19.999px face box the app
-  publishes **0** and Python publishes **23.99760006**; at 10px, **0** against **6.0**; at
-  20px both read **24.0**. It stayed invisible because the app column in
-  `tests/index-parity.test.ts` modelled the guard as `faceWidthPx > 0` — not what
-  `lib/skin.ts:965` says, and a model that happens to equal Python inside the band. A
-  `guardDivergence` block with **5** rows now sits under the `blemish_count` group,
-  **49 insertions and 0 deletions** to `ml/index-parity.json`, each language asserting its
-  own column. `ml/selftest.py` goes **144 → 145 tests**. Nothing about what
-  `blemishCount` / `blemishDensity` reports was changed and `lib/skin.ts` is untouched;
-  which guard is right needs real captures. Broken on purpose: modelling the guard as
-  `> 0` again gives `expected 23.99760006 to be +0`, and moving the app's floor to
-  `faceW < 1` reddens both languages.
-
-  **UI/UX — the opt-in's email field at 360px.** Probed at 360x800 on `/report` in all
-  five locales. The form put the address input and the submit button on one flex line
-  with the button `flexShrink: 0` and its label a translated sentence, so the input took
-  the leftovers: `emailW=26.3` under `ar` and `30.8` under `ja`, against buttons of
-  `209.7` and `205.3`; `en` 71.6, `ko` 100.7, `zh` 120.0. At 26px no part of a typed
-  address is visible, on the only sign-up field the retention loop has. `flexWrap: "wrap"`
-  plus a 200px flex-basis on the input, and all five read **244.0** with no horizontal
-  page scroll (`docScroll` 360 = `docClient` 360) and the button still 44px tall on its
-  own line. `tests/e2e/reengage-optin-field-width.regression-23.spec.ts` pins a 200px
-  floor per locale: **5 passed**; with the two style properties reverted, **all five fail**
-  at 100.7 / 71.6 / 30.8 / 120 / 26.3.
-
-  **Not established.** Whether any of question 1 is reachable in production today beyond
-  the storing half — `reengageSecretsConfigured` (`lib/reengage.ts:16-23`) still gates
-  sending on five variables. The statutory wording, per the blocker. Whether the subscribe
-  rate limiter's client key is the right granularity for an address-targeted abuse case
-  rather than a volume one — not measured. Which side of the blemish-density guard is
-  right. And of the three re-engagement surfaces only the opt-in form was
-  probed at 360px; `app/unsubscribe/unsubscribe-form.tsx` was read as source and
-  `/checkin` was neither read nor probed, so neither carries a measurement here.
-
-  **Supervisor review.** Sound. The consent defect is measured, and it is left to the
-  owner as the guardrail requires. One test was too weak to catch a plausible revert, and
-  it was hardened before merge.
-
-  *Predicted by reading, before the branch existed:* three things.
-  - (1) The subscribe upsert's `revoked_at: null` undoes an unsubscribe. Confirmed by
-    the worker's `regression-22`.
-  - (2) Its `week2_sent_at/week4_sent_at: null` re-arms a mail already sent, so the
-    address would get a duplicate. **My prediction was wrong on the part that
-    mattered.** The same upsert also resets `consented_at`, and the runner gates on
-    `.lte("consented_at", now - week)` (`app/api/reengage/run/route.ts:48`). So nothing
-    re-sends until the new consent is itself two weeks old, which is ISSUE-008's
-    deliberate fresh cycle (`tests/reengage-resubscribe.regression-8.test.ts`). I had
-    not read the runner's gate.
-  - (3) The `===` bearer compare. Confirmed and fixed.
-
-  *Re-derived here.*
-  - `raw.githubusercontent.com/nodejs/node/v22.11.0/doc/api/crypto.md` re-fetched as
-    `http=200 bytes=197047`, sha256 `57101386…8868dfc`, with the quoted sentence at
-    lines 5449-5451.
-  - `grep -rn "lib/consent"` over the re-engagement path counts `0`, so this is a
-    separate third stream and nothing merged.
-  - `lib/reengage.ts:16-23` is the secrets gate §7 describes.
-
-  *Hardened before merge — `tests/cron-bearer-constant-time.test.ts`.* I tried an
-  inline revert of `/api/reengage/run`: the import left in place but unused, and the
-  header compared against `` `Bearer ${process.env.CRON_SECRET}` `` with `!==`. It
-  passed the whole file at `18 passed`, and `npx eslint` on the route gave only
-  `'cronAuthorized' is defined but never used` as a **warning**, so no gate caught it.
-  The route test now requires an actual `if (!cronAuthorized(request|req))` call, and no
-  `Bearer ${` string built in a route. With that, the same revert gives `1 failed | 17
-  passed`, "neither route still defines its own authorized()". A separate limit, stated
-  plainly: swapping `timingSafeEqual` for `Buffer.equals` inside `cronAuthorized` still
-  passes all 18. Constant-time behaviour is not observable by a functional test, and the
-  worker's doc never claimed otherwise.
-
-  *The consent decision is the owner's.* `docs/reengage-resubscribe-consent-decision.md`
-  recommends D then B. It is reachable today in one respect: the subscribe route stores
-  rows without any sending key set.
-
-  *Validation on the corrected tree:* see the PR body for the literal output.
-
-  *Validation on this tree:* see the report for the literal output.

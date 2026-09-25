@@ -620,6 +620,36 @@ class SkinIndices(unittest.TestCase):
         self.assertEqual(skin_indices.shine_ratio(0.25, 100.0, 140.0), 0.25)
         self.assertAlmostEqual(skin_indices.roughness_ratio(0.8 * 0.4, 0.2 * 0.4), 4.0)
 
+    def test_shine_denominator_guard_agrees_with_the_app_except_on_a_non_finite_cheek(self):
+        """The fourth instance of the epsilon-guard class, and the first that is NOT
+        a band: the two guards agree on every finite cheek luminance and part company
+        only at NaN.
+
+        `denominator = cheek_luminance if cheek_luminance else 1.0` here and
+        `cheekL || 1` in lib/skin.ts:740 are the same guard on 0, on -0.0 and on any
+        positive value below the other indices' 1e-6 epsilon. They differ on NaN,
+        because NaN is truthy in Python and falsy in JavaScript: Python divides by NaN
+        and `max(0.0, nan)` keeps the 0.0, so this returns `tzone_specular`, while the
+        app divides by 1 and publishes NaN.
+
+        NOT reachable from a capture today, and that is measured rather than assumed:
+        `sampleRegion` (lib/skin.ts) returns null on an empty region and otherwise
+        divides by `kept.length`, where `kept` is `sorted.slice(...)` when the trimmed
+        set would hold at least 20 and `sorted` itself otherwise — never empty. So
+        `cheekL` is a mean over at least one pixel. This pins the disagreement so it
+        stays a decision rather than a surprise; which side is right is not decided
+        here.
+        """
+        for cheek in (0.0, -0.0, 1e-7, 1e-6, 1e-3):
+            with self.subTest(cheek=cheek):
+                self.assertTrue(math.isfinite(skin_indices.shine_ratio(0.1, 200.0, cheek)))
+        self.assertAlmostEqual(skin_indices.shine_ratio(0.1, 200.0, 0.0), 0.1 + 200.0 * (140.0 / 255.0), places=12)
+        self.assertAlmostEqual(skin_indices.shine_ratio(0.1, 200.0, -0.0), 0.1 + 200.0 * (140.0 / 255.0), places=12)
+        # The divergence, as a number: Python keeps the specular term, the app gets NaN.
+        self.assertEqual(skin_indices.shine_ratio(0.1, 200.0, float("nan")), 0.1)
+        self.assertTrue(math.isnan(max(float("nan"), 0.0)))
+        self.assertFalse(math.isnan(max(0.0, float("nan"))))
+
     def test_indices_match_the_typescript_implementations_value_for_value(self):
         """The cross-language check that did not exist, and whose absence is why two
         implementations could be two formulas under one name with every test green.
