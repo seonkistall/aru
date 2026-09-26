@@ -123,7 +123,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   // (c) of the lost-tap fix. While `active !== saved` the tree on screen is the
   // one key={active} is about to throw away, so every piece of React state a
-  // visitor creates in it — the camera on /scan, six survey answers, the
+  // visitor creates in it — the camera on /scan, the five survey answers, the
   // /privacy delete confirmation — is discarded at the remount. Hold the
   // document for exactly that interval instead of accepting actions that cannot
   // survive: `inert` makes hit-testing act as `pointer-events: none` and text

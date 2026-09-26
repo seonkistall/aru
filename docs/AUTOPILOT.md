@@ -1344,14 +1344,15 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   **What else the remount can lose, grepped across every route.** Every one of these is
   plain React state inside the keyed subtree, so the remount discards it:
-  `app/survey/page.tsx` holds all six answers in `useState` and writes them to
-  sessionStorage exactly once, at `app/survey/page.tsx:102` on submit (`grep -c
-  'setItem'` on that file is **1**) — answer the survey during the interval and every
-  answer goes; `app/scan/page.tsx` (**17** `useState`, **0** `setItem`) loses the camera
-  and, downstream of it, both consent checkboxes; `app/privacy/page.tsx` (**6** / **0**)
-  loses the `deleteState === "confirm"` step of the delete-everything flow;
-  `app/checkin/page.tsx` (**7** / **0**) and `app/care/page.tsx` (**4** / **0**) lose
-  whatever is half-answered; `app/report/page.tsx` loses `stepIndex`, which is the defect
+  `app/survey/page.tsx` holds all **five** fields of the object it saves
+  (`{ type, concerns, category, budget, avoid }`, `app/survey/page.tsx:100`) in `useState`
+  and writes them to sessionStorage exactly once, on submit at
+  `app/survey/page.tsx:102` — `grep -c 'setItem'` on that file is **1** — so answering the
+  survey during the interval loses every answer; `app/scan/page.tsx` (`grep -c '= useState'`
+  **16**, `grep -c 'setItem'` **0**) loses the camera and, downstream of it, both consent
+  checkboxes; `app/privacy/page.tsx` (**5** / **0**) loses the `deleteState === "confirm"`
+  step of the delete-everything flow; `app/checkin/page.tsx` (**6** / **0**) and
+  `app/care/page.tsx` (**3** / **0**) lose whatever is half-answered; `app/report/page.tsx` loses `stepIndex`, which is the defect
   fixed under UI/UX below. The language switcher does **not** lose its tap: `setLang`
   writes localStorage before anything remounts.
 
@@ -1486,8 +1487,12 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree:* `npx vitest run` **Test Files 108 passed (108) / Tests 929
   passed (929)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
-  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.092s ... OK**, and
-  `npm run smoke` **232 passed (8.0m)** with `Smoke test passed.` — on the first attempt.
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.091s ... OK**, and
+  `npm run smoke` **232 passed (8.0m)** with `Smoke test passed.` — on the first attempt,
+  and again at **232 passed (8.0m)** after two wrong numbers in this entry and one code
+  comment were corrected (the survey saves **five** fields, not six, and the per-file
+  counts now name `grep -c '= useState'` rather than a `useState` grep that also caught
+  the import line).
   Rotation: `docs/AUTOPILOT.md` **1852 → 1920** lines and
   `docs/autopilot-changelog.md` **8573 → 8762**; cycle 39's **188** lines are
   byte-identical at the end of the changelog (`diff` clean against the extract). The
