@@ -161,3 +161,18 @@ html[dir="rtl"] .aru-flow-steps__arrow {
 details[open] > summary .aru-details-marker::after {
   content: "↑";
 }
+
+/* The dictionary for ja/zh/ar arrives over the network, so LanguageProvider
+   renders English first and remounts the subtree when the chunk lands
+   (key={active}, lib/i18n.tsx). Any action started in between is discarded, so
+   the provider marks <body> inert for that interval. HTML's inert section asks
+   that inert content be "visually obscured in some way"; this is that cue —
+   the controls dim so the page does not look ready while it is not. Opacity
+   does not reflow, and no ko or en visitor ever matches the selector. */
+body[data-aru-lang-pending] button,
+body[data-aru-lang-pending] a[href],
+body[data-aru-lang-pending] input,
+body[data-aru-lang-pending] select,
+body[data-aru-lang-pending] summary {
+  opacity: 0.55;
+}

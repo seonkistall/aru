@@ -285,6 +285,8 @@ export function useCaptureAnalysis({
           })
         );
         sessionStorage.setItem(DEVICE_DATA_KEY.reads, JSON.stringify(final));
+        // A new reading is a new report: /report opens on its first step again.
+        sessionStorage.removeItem(DEVICE_DATA_KEY.reportStep);
       } catch {
         /* result still renders from in-memory `final` below */
       }

@@ -10,7 +10,7 @@
  * without subscribing to context.
  */
 
-import React, { createContext, useContext, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import {
   isDictReady,
   isLang,
@@ -60,6 +60,16 @@ function getSnapshot(): Lang {
   return memoryLang;
 }
 
+// (b) of the lost-tap fix: start the dictionary fetch when this module is first
+// evaluated instead of waiting for LanguageProvider's effect to run after
+// hydration. It shortens the English interval; it cannot close it, because the
+// dictionary is a second network round trip after the bundle that asks for it.
+// ko and en are already ready, so this is a no-op for them.
+if (typeof window !== "undefined") {
+  const initial = getSnapshot();
+  if (!isDictReady(initial)) void loadDict(initial);
+}
+
 function getServerSnapshot(): Lang {
   // SSR paints in the product default (English) so first visits don't flash
   // Korean; clients with a saved choice re-render once after hydration.
@@ -107,9 +117,47 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   // Keep the singleton in sync before children render.
   setCurrentLang(active);
 
+  // loadDict resolves either way: on a failed chunk fetch it drops its cached
+  // promise and resolves with the dictionary still missing. Remember that, so the
+  // hold below lets go and the visitor keeps a usable English page instead of an
+  // inert one that nothing will ever release.
+  const [unavailable, setUnavailable] = useState<Lang | null>(null);
   useEffect(() => {
-    if (!isDictReady(saved)) void loadDict(saved);
+    if (isDictReady(saved)) return;
+    let live = true;
+    void loadDict(saved).then(() => {
+      if (live && !isDictReady(saved)) setUnavailable(saved);
+    });
+    return () => {
+      live = false;
+    };
   }, [saved]);
+
+  // (c) of the lost-tap fix. While `active !== saved` the tree on screen is the
+  // one key={active} is about to throw away, so every piece of React state a
+  // visitor creates in it — the camera on /scan, the five survey answers, the
+  // /privacy delete confirmation — is discarded at the remount. Hold the
+  // document for exactly that interval instead of accepting actions that cannot
+  // survive: `inert` makes hit-testing act as `pointer-events: none` and text
+  // selection as `user-select: none` (HTML, "A node ... can be inert"), and it
+  // needs no wrapper element, so the ko/en path renders and lays out exactly as
+  // before. The spec adds that authors "should not specify elements as inert
+  // unless the content they represent are also visually obscured in some way";
+  // the CSS rule keyed on data-aru-lang-pending in app/globals.css is that cue,
+  // dimming the controls without moving anything.
+  const holding = active !== saved && unavailable !== saved;
+  useIsomorphicLayoutEffect(() => {
+    if (!holding) return;
+    const body = document.body;
+    body.setAttribute("inert", "");
+    body.setAttribute("aria-busy", "true");
+    body.setAttribute("data-aru-lang-pending", "");
+    return () => {
+      body.removeAttribute("inert");
+      body.removeAttribute("aria-busy");
+      body.removeAttribute("data-aru-lang-pending");
+    };
+  }, [holding]);
 
   useIsomorphicLayoutEffect(() => {
     document.documentElement.lang = active === "zh" ? "zh-CN" : active;

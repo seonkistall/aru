@@ -221,6 +221,16 @@ dictionaries shared one chunk of 350267 bytes that `/` loaded, and `/`'s initial
 JavaScript was 1050358 bytes raw / 322373 gzipped against 783030 / 240097 after.
 Getting English out too needs per-locale URLs, the same decision as above.
 
+While that one chunk is in flight a ja/zh/ar visitor sees English, and the subtree is
+remounted when the dictionary lands, so any state created in between would be discarded.
+Measured at 360x800 on a production build, the interval runs from about 350ms unthrottled
+to about 4.1s under an emulated latency-562.5ms / 180000-B/s profile. For exactly that
+interval the page is held: `<body>` carries `inert`, `aria-busy` and a
+`data-aru-lang-pending` attribute that dims the controls, so a tap is refused rather than
+accepted and thrown away. Korean and English visitors never enter it and their first paint
+and geometry are unchanged. If the dictionary chunk fails to load, the hold lets go and the
+page stays usable in English rather than staying inert.
+
 ## System architecture
 
 ```mermaid
