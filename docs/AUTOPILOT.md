@@ -1545,6 +1545,8 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **1** line: the finding's `- [ ]` became `- [x]` (`docs/AUTOPILOT.md:1225`). Cycle 39
   sits after cycle 38 at the end of the changelog. `npm run smoke` on
   the fixed tree gave **234 passed (7.0m)** and `Smoke test passed.` on the first run.
+  After merging the worker's later comment-and-docs commit `72c9bea`, it gave **234
+  passed (7.0m)** and `Smoke test passed.` again.
 
 - 2026-09-25 (cycle 41) — Branch `autopilot/2026-09-25-1839`. **The capture screen — the
   one screen every conversion passes through — had never been measured in a laid-out
