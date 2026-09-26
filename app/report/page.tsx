@@ -420,7 +420,22 @@ export default function Report() {
               </details>
             )}
 
-            {top && (
+            {/*
+              Zero picks is a REACHABLE state, and until this cycle the picks step had
+              nothing in it. `recommend()` never leaves `survey.category`
+              (`lib/recommend.ts`): every relaxation step filters `inCategory`, so a
+              stored survey naming a category the catalogue no longer ships returns
+              `picks: []`. That is the state `isSurvey` was deliberately written to
+              keep — `tests/survey-shape.test.ts` asserts it and its comment says
+              "/report renders its no-picks branch" — and there was no such branch:
+              the product grid rendered nothing, the compare block needs two picks,
+              and this whole section was behind `top &&`, so the ONE hand-off to
+              /care went with the merchant links. Measured on a production build at
+              360x800, `aru_last_result` seeded with a dropped category and no
+              sessionStorage: 4 /api/out links and 9 anchors on the picks step became
+              0 and 4, in all five locales.
+            */}
+            {top ? (
               <section style={reportCommerceAction}>
                 <a
                   href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_summary") : top.sku.buyUrl}
@@ -435,6 +450,19 @@ export default function Report() {
                 </a>
                 <Link href="/care" style={commerceCareBtn}>{t("제품과 상담 정보 보기")}</Link>
                 <CommerceDisclosure style={{ width: "100%", marginTop: 4 }} />
+              </section>
+            ) : (
+              /*
+                No product on screen, so no affiliate disclosure either — the heading
+                row above already reads "{category} · 0개", and no sentence is invented
+                here because every string on this page has to be an existing
+                translation key. /survey is the way out (it offers only categories the
+                catalogue stocks) and /care still has the clinic links and its own
+                empty state, so neither link is a dead end.
+              */
+              <section data-testid="report-picks-empty" style={reportCommerceAction}>
+                <Link href="/survey" style={buyBtn}>{t("설문으로 시작하기")}</Link>
+                <Link href="/care" style={commerceCareBtn}>{t("제품과 상담 정보 보기")}</Link>
               </section>
             )}
           </>

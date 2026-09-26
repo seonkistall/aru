@@ -8760,3 +8760,191 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
 
   *Validation on this tree:* see the PR body for the literal output.
 
+- 2026-09-25 (cycle 40) — Branch `autopilot/2026-09-25-1239`. **Every first-time visitor
+  downloaded all four locale dictionaries and could read at most one of them. Measured on
+  a production build: one chunk, `1e3h7wv-_iggr.js`, was **350267** bytes, of which
+  **349333** were the four dictionaries, and `/` loaded it. Japanese, Chinese and Arabic
+  are now a dynamic `import()` each and `/`'s initial JS drops from **1050358** to
+  **783030** bytes raw, **322373** to **240097** gzipped. English stays static, and the
+  reason is the hydration contract, not an oversight.**
+
+  **Baselines, re-measured here on `382c59f` before any edit.** `node_modules` was
+  absent, so `npm ci` first — `npm run build` reads `sh: 1: next: not found` and exits
+  **127** without it. After: `npx vitest run` **Test Files 104 passed (104) / Tests 906
+  passed (906)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 145 tests in 2.625s ... OK**. They match the supervisor's. A
+  baseline smoke was not run; only the post-change one below, which is green.
+
+  **What `/` actually downloaded, on `npm run build` at `382c59f`.** Next.js 16.2.9 with
+  Turbopack prints no first-load column, so the number was taken from the prerendered
+  `.next/server/app/index.html`: **13** script files, **1050358** bytes raw, **322373**
+  gzipped (each file gzipped at level 9 and summed). Grepping `.next/static/chunks` for
+  one string out of each dictionary (`Turn camera back on`, `カメラをもう一度オンにする`,
+  `重新打开摄像头`, `إعادة تشغيل الكاميرا`) put **all four in the same chunk**,
+  `1e3h7wv-_iggr.js`, **350267** bytes raw / **110807** gzipped. Measured as byte spans
+  from each dictionary's first value to its last: EN **81102** raw / **27538** gzip, JA
+  **91405** / **29123**, ZH **76838** / **27072**, AR **99988** / **29483** — **349333**
+  of the chunk's 350267 bytes. The source is **368003** bytes over the four files per
+  `wc -c`. So the supervisor's read was right and the chunk is, to 99.7%, dictionaries.
+
+  **The fix, and why English is not part of it.** `lib/i18n/core.ts` keeps `import { EN }`
+  and moves JA/ZH/AR behind `loadDict(lang)`, one literal `import("./ja")` per case;
+  `registerDict` fills a mutable registry and notifies subscribers; `t()` is untouched
+  and still synchronous, still falling back to the Korean message id. English **cannot**
+  be lazy without changing what the server renders: `getServerSnapshot()` in
+  `lib/i18n.tsx` returns `"en"`, so the server HTML is English and the hydration render
+  must produce the same text or it paints Korean source strings against English markup.
+  That is the honest limit of this cycle — a Korean visitor still downloads the English
+  dictionary, **82434** bytes raw / **28343** gzipped in its own chunk, and removing that
+  needs the per-locale-URL decision already filed as `[OWNER]`.
+  `LanguageProvider` renders `active = ready ? saved : "en"`, where `ready` comes from a
+  second `useSyncExternalStore` over the dictionary registry, so the saved language
+  appears only once its chunk has landed. `html[lang]`, `dir` and the remount `key` all
+  follow `active`, not `saved`, so Arabic never paints Latin text in RTL. The picker
+  reads a new `saved` field off the context so a tap registers before the chunk arrives.
+
+  **After, on the same kind of build.** `/` loads **13** script files, **783030** bytes
+  raw / **240097** gzipped — **-267328** raw and **-82276** gzip, both **-25.5%**. EN is
+  its own chunk (**82434** / **28343**) and `/` loads it; JA (**91598** / **29315**), ZH
+  (**77031** / **27238**) and AR (**100181** / **29636**) are three more chunks and `/`
+  loads none of them.
+
+  **Hydration was measured before and after, not reasoned about**, at 360x800 against
+  `npx next start`, sampling the `<h1>` every animation frame from before the app's own
+  scripts run, one fresh context per language. **Before**: no saved choice and `en` paint
+  English and stay; `ko` goes English → Korean at **390.4ms**; `ja` English → English →
+  Japanese at **385.8ms**; `zh` → Chinese at **398.5ms**; `ar` English → Arabic at
+  **428.7ms**. **After**: the same language sequence in every case — `ko` at **422ms**,
+  `ja` at **405.9ms**, `zh` at **401.8ms**, `ar` at **474.5ms**. No Korean frame anywhere,
+  before or after; the first paint is English in all ten runs. What changed is **`ar`
+  gained one intermediate English state** (the shape `ja` and `zh` already had) and the
+  settle is later by **31.6ms** (ko), **20.1ms** (ja), **3.3ms** (zh) and **45.8ms** (ar)
+  — on localhost, which is the weakest part of this measurement: a real network moves
+  those numbers and this container cannot produce one.
+
+  **Broken on purpose, three ways on the i18n change.** `tests/i18n-lazy-dict.test.ts` is
+  **12 passed** and `tests/e2e/i18n-dictionary-split.regression-27.spec.ts` **10 passed**.
+  Putting the four static imports back: **4 failed | 8 passed**. Collapsing the switch to
+  one `import(./${lang})` with a template literal — the DRY refactor: **1 failed | 11 passed**, and *that one
+  is the weaker-but-plausible case in both directions*, because building it measured
+  **783878** bytes of initial JS against **783030**, i.e. **Turbopack 16.2.9 splits the
+  template form too**. The literal paths are what Next.js's doc guarantees, not the only
+  thing that works, and both the code comment and the test say so. Third: rendering the
+  saved language without waiting for its dictionary (`active = saved`) gives **1 failed |
+  11 passed** on the unit file and **3 failed | 7 passed** on the e2e — `ja`, `zh` and
+  `ar` all fail "settles on its own language with no Korean on screen on the way", which
+  is the per-frame sampler doing its job.
+
+  **Research — Next.js's own docs from `raw.githubusercontent.com/vercel/next.js/canary`.**
+  `docs/01-app/02-guides/lazy-loading.mdx` **http=200**, **10617** bytes, sha256
+  `0a8f49a0cd5e2cff43d8e29b7aa4d1a75e3b0ccf6d98789bddcfb01d4a554d1b`; line 239: "In
+  `import('path/to/component')`, the path must be explicitly written. It can't be a
+  template string nor a variable." That sentence chose the switch over a template
+  literal. `docs/01-app/03-api-reference/05-config/01-next-config-js/optimizePackageImports.mdx`
+  **http=200**, **1384** bytes, sha256
+  `c93fc1c9205326ccdcdbd47f1e7a9aaad2d070f3be4dd9d75331cc2a6359c7b1`, was read and
+  **ruled out**: it "will only load the modules you are actually using" for packages that
+  "export hundreds or thousands of modules", and each dictionary is one named export of
+  one object, so it has nothing to prune. `docs/01-app/03-api-reference/06-cli/next.mdx`
+  **http=200**, **25860** bytes, sha256
+  `5be90c3fa7fee222265b3aedf6a84a37924c164c4c256f3251df3f4133cb6740`. `vercel.com` and
+  `developer.mozilla.org` were not probed this cycle; they are recorded as refusing in
+  the 2026-09-15 and 2026-09-25 blocker entries.
+
+  **ML — a fourth instance of the epsilon-guard class, at the boundary the first three
+  did not reach.** Chosen because it needs no labelled export and extends the
+  `roughness_ratio` `[~]` item's own defect class, the way cycle 37's blemish-density
+  instance did. `denominator = cheek_luminance if cheek_luminance else 1.0`
+  (`ml/skin_indices.py`) and `cheekL || 1` (`lib/skin.ts:740`) agree on **0.0**, on
+  **-0.0** and on every sub-epsilon positive value — at a cheek of **1e-7** both give
+  **1490196077.7862747** — and part company on NaN, which is truthy in Python and falsy
+  in JavaScript: Python returns `tzone_specular` (**0.1** on the probe pair) and the app
+  returns **NaN**. Unlike the first three this is not a band, and it is **not reachable
+  from a capture today**, which is measured rather than assumed: `sampleRegion` returns
+  null when `collected.length === 0` and otherwise divides by `kept`, which is
+  `sorted.slice(...)` only when the trim would leave at least 20 and `sorted` itself
+  otherwise, so it is never empty. Both sides are pinned and neither is changed:
+  `ml/selftest.py` goes **145 → 146** tests and `tests/shine-guard-nonfinite.test.ts` is
+  **3 passed**. Broken two ways: swapping the Python `max`'s arguments to
+  `max((tzone - cheek) / denominator, 0.0)` — a pure tidy-up to read — gives **FAILED
+  (failures=1)**; giving the app the 1e-6 epsilon the other indices use gives **2 failed
+  | 32 passed** across `tests/shine-guard-nonfinite.test.ts`,
+  `tests/index-parity.test.ts` and `tests/skin-index-contract.test.ts`. **Which side is
+  right is not decided here**, and the item stays open.
+
+  **UI/UX — the landing header's tagline touched the wordmark in four of five locales.**
+  Found at 360x800 on the production build, measuring painted glyph rects rather than
+  boxes. `app/page.tsx`'s header reserved 118px for the fixed language pill and nothing
+  else, so `justify-between` gave the tagline every remaining pixel and the two boxes
+  abutted at exactly **0.0px** in `en`, `ja`, `zh` and `ar` (**53.1px** in `ko`, whose
+  tagline fits on one line). The painted first line came within **1.7px** of the wordmark
+  in `ar`, **4.4px** in `zh`, **10.3px** in `ja` and **29.9px** in `en`. The reservation
+  is now **106px** with a **12px** `columnGap`, which keeps the tagline box at the same
+  **155.3px** so nothing rewraps — header height stays **85px** (60 in `ko`) and the
+  primary CTA does not move (`ctaTop` **536.8 / 612.2 / 628.4 / 579.8 / 602.2** before and
+  after). Glyph gaps become **13.7 / 16.4 / 22.3 / 41.9 / 65.1** and the pill still clears
+  the header text by **13.4px** at worst (`en`).
+  `tests/e2e/landing-header-clearance.regression-28.spec.ts` is **5 passed**. Broken two
+  ways: reverting to the reservation alone fails **all 5**, the first on the geometry
+  floor at `worstGlyphGap=1.015625`; adding the gap *without* cutting the reservation —
+  the obvious fix — also fails all 5, but **only on the 106px pin**: the geometry floor
+  still passes, because that edit buys the clearance out of the tagline's own width
+  instead of out of the reservation. That second one is caught by a constant, not by a
+  measurement, and is worth saying plainly.
+
+  *The primary CTA was checked and was not a defect.* It sits fully above the 800px fold
+  in all five locales, bottom edge **611.3 / 686.7 / 702.9 / 654.3 / 676.7**, with
+  `scrollWidth === clientWidth === 360` on every one. Recorded as none rather than
+  invented.
+
+  **What this does not establish.** No traffic number changed and none was measured;
+  a smaller first load is a precondition for keeping a visitor, not evidence of one. All
+  byte counts are from a local production build — what Vercel's edge serves, with its own
+  compression, was not measured. The hydration timings are localhost, so the window in
+  which a `ja`/`zh`/`ar` visitor sees English is longer in the field than the numbers
+  above and by how much is unknown. The English dictionary is still in every visitor's
+  first load and will be until ARU has per-locale URLs. And `/` is the only route whose
+  initial JS was counted, before or after; the other routes import the same core and were
+  not measured one by one.
+
+  *Validation on this tree:* see the report for the literal output.
+
+  **Supervisor review.** Sound, and no correction needed.
+
+  *Predicted by reading, before the branch existed:*
+  - `lib/i18n/core.ts` statically imported all four dictionaries, so every route's first
+    load carried all of them. Measured on `382c59f` by the supervisor's own `npm run
+    build`: one chunk, `1e3h7wv-_iggr.js`, **350267** bytes raw and **110980** gzip -9,
+    holding ja, zh, ar and en strings and referenced from `index.html`, `care.html`,
+    `checkin.html` and others. The worker's **350267** matches.
+  - Lazy-loading the non-active locales would change how `t()` resolves at hydration,
+    so a `ja`/`zh`/`ar` visitor would see another language for longer. The worker
+    measured and wrote this down under "What this does not establish".
+
+  *Checked here, on the branch's own build.*
+  - `/` loads **13** scripts, **783030** bytes raw and **240097** gzip -9, which are
+    the worker's after-numbers. The ja, zh and ar chunks (`3vh1arlq7tb9w.js` **91598**,
+    `0w-v6oeh9hnwt.js` **77031**, `0z0y7r1klw98k.js` **100181** raw) are not referenced
+    from `index.html`. The en chunk `0cci9sokwswu9.js` (**82434** raw, **28266** gzip
+    -9) is.
+  - The hydration fallback is English, not the Korean source. `active` falls back to
+    `getServerSnapshot()` (`lib/i18n.tsx:105`), which is the English SSR value, so a
+    missing dictionary never shows the Korean source strings on the page.
+  - Nothing server-side reads a dictionary. `lib/reengage.ts` imports only the `Lang`
+    type and carries its own `EMAIL_COPY`, and nothing under `app/api` imports i18n.
+    `lib/i18n/all` is imported only from `tests/`.
+
+  *Broken here, two ways, on the committed tree.* Adding `import "./i18n/all"` to
+  `lib/i18n.tsx` fails `tests/i18n-lazy-dict.test.ts` at **1 failed | 11 passed**, on
+  "is imported only from tests". Putting back one static import, `JA` only (weaker than
+  the worker's four), fails it at **3 failed | 9 passed**. Both edits were reverted.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 106 passed (106)
+  / Tests 921 passed (921)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. The rotation check against `382c59f` (both docs, `sort -u`,
+  `comm -23`) drops **0** lines. `npm run smoke` first
+  failed before any test body ran: `Error: Timed out waiting 120000ms from
+  config.webServer`, after `Slow filesystem detected. The benchmark took 3691ms`, on a
+  container that had just restarted. The one re-run gave **220 passed (7.5m)** and
+  `Smoke test passed.`

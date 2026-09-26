@@ -261,6 +261,29 @@ partly done and stays here.
   URLs. What the cycle *could* fix without a network is the override path those URLs
   will arrive through — see the 2026-09-15 (cycle 2) entry in
   [`docs/autopilot-changelog.md`](autopilot-changelog.md); it was silently discarding them.
+- [x] [AI] **`/report`'s first screen shows 6 Korean characters in `en`, `ja`, `zh` and `ar`,
+  and the fix is a translation key.** Measured 2026-09-26 (cycle 43) on a production build
+  at 360x800, a fresh context per locale with only localStorage seeded: the leaking node is
+  the trust chip `노출 여유 확인`, from `signalCheck`'s fallback branch in
+  `lib/report-trust.ts`, which composes `${signal.label} 확인` / `${signal.label} 보류` at
+  runtime. Of the **14** strings that function can return, **12** are dictionary keys in
+  all four locales and the **2** for the `노출 여유` signal are in none:
+  `grep -cF '  "노출 여유 확인":' lib/i18n/{en,ja,zh,ar}.ts` is **0** each, against **1**
+  each for `조명 확인`, `반사 확인`, `피부 영역 확인` and their `보류` forms. The `보류`
+  half is reachable too — `노출 여유` fails whenever `cheekClipped >= CHEEK_CLIP_LIMIT` —
+  and was not measured on screen. Not fixed in cycle 43 because that cycle's brief forbade
+  adding or removing a translation key; composing the chip from `t(label)` and a separate
+  `확인` would need two more keys and would change what the other three chips render, so
+  the cheap fix is the two missing entries.
+  **Closed in the cycle 43 supervisor review.** The two entries were added to all four
+  dictionaries, following their neighbours (`Lighting OK` / `Lighting pending`), and the
+  base phrase each dictionary already had for `노출 여유`. The translation-coverage test
+  only sees `t("...")` literals, so a composed chip passed it. The new
+  `tests/report-trust-chip-keys.test.ts` reads the labels and details out of
+  `buildSignals`, runs every combination through `buildReportTrust`, and requires every
+  resulting chip to be a key in `en`, `ja`, `zh` and `ar`. It gives **5 passed**. Without
+  the new entries it gives **4 failed | 1 passed**. With only `ja`'s `노출 여유 보류`
+  removed it gives **1 failed | 4 passed**.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
@@ -407,6 +430,28 @@ partly done and stays here.
   answer it. The behaviour now has a guard either way
   (`tests/blemish-tie-break.test.ts`).
 
+  **2026-09-26, cycle 43: what a capture has to be to land in the divergent window, and
+  the headline number is not the guard's.** Chosen because it needs no labelled export and
+  is not the sRGB knee item cycles 41 and 42 both worked. Two results, both arithmetic.
+  (1) The window is **not** the set `highFreq === 0`, so a fix phrased as "is the forehead
+  perfectly smooth" would miss a capture that is inside it. `highFreq` is the mean of
+  `|L - mean(4 neighbours)|` over `lum(r,g,b) = 0.299r + 0.587g + 0.114b`, so it reads
+  luminance only: a 1px checkerboard of `(60,60,176)` and `(63,81,60)` — distinct colours
+  whose exact luminance numerator `299r + 587g + 114b` is **73224** for both — gives
+  `highFreq` **1.4210854715202004e-14**, which is the float error and not 0, against
+  **0** for the flat frame. Region mean L* **73.22399999999999**, so `foreheadHf` is
+  **1.9407372876655204e-16**, inside the `<= 1e-6` window, with the region's luminance
+  texture **5.188544138981456e-13** and mean blue **118.8944246737841**: flat in
+  luminance, not in colour. (2) The committed row's "python: 320000.0 app: 0" magnitude is
+  a property of the OTHER region, not of the epsilon — here both regions are in the window
+  together and the Python form returns **1.9407372876655204e-10**, which is also exactly
+  its own ceiling `cheekHf / 1e-6`. So no `n/1e-6` disagreement should be quoted as if the
+  clamp produced it. `tests/roughness-ratio-divergent-window.test.ts` **4 passed**, broken
+  three ways: widening the app's guard to `foreheadHf >= 0` **2 failed | 2 passed**;
+  accumulating the signed difference instead of `Math.abs` **2 failed | 2 passed**;
+  making `highFreq` a sum instead of a mean **1 failed | 3 passed**. No constant moved and
+  the item **stays `[~]`**: which side moves still needs a usable dryness reading on a
+  genuinely smooth forehead, which needs faces.
 - [AI] **Is a 4096-entry interpolated table for `srgbLinear` actually faster than
   `Math.pow(., 2.4)`?** This is what is left of "the remaining win in a scan is the
   sRGB transfer curve" after cycle 18 measured it — that item is closed, with its
@@ -1293,6 +1338,223 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-26 (cycle 43) — Branch `autopilot/2026-09-26-0639`. **The returning visitor's
+  path, measured the way a returning visitor arrives: a fresh context with ONLY
+  localStorage seeded, no sessionStorage, 360x800, production build, five locales, seven
+  record states, 165 screen measurements. No error boundary, no overflow and no
+  un-interpolated placeholder anywhere. Two real defects: `/report`'s picks step — the
+  only screen with merchant links on it — becomes an empty dead step for a record whose
+  category the catalogue no longer ships, which is the state `isSurvey` was deliberately
+  written to keep and which an existing test says renders "its no-picks branch"; and 6
+  Korean characters on `/report`'s first screen in all four non-Korean locales, whose fix
+  is a translation key this cycle may not add.**
+
+  **Baselines, re-measured here on `4cfaa3a` before any edit.** `node_modules` was absent,
+  so `npm ci` first. `npx vitest run` **Test Files 108 passed (108) / Tests 929 passed
+  (929)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 146 tests in 2.482s ... OK**. All four match the supervisor's. A baseline smoke was
+  not run; only the post-change one below, which is green.
+
+  **The sweep.** `npm run build` then `npx next start -p 3199`, one fresh Playwright
+  context per cell at 360x800, `addInitScript` writing `aru.lang` and
+  `aru_last_result` into localStorage and **nothing into sessionStorage** — the empty
+  sessionStorage is what sends `/report` and `/care` down the saved-result fallback in the
+  first place. Five locales x seven states x `/`, `/report` step 1, `/report` picks step,
+  `/care`, `/checkin`. **165** measurements (the picks step does not exist in the two
+  states that have no report, which is 10 of the 175 cells). Across all 165:
+  **0** error boundaries, **0** uncaught page errors, **0** cells where
+  `scrollWidth !== clientWidth` or `clientWidth !== 360`, **0** un-interpolated
+  `{placeholder}` tokens.
+
+  **The record's shape has never changed, so "the shapes older builds wrote" is about its
+  contents.** `git log --oneline -- lib/last-result.ts` is **3** commits, and
+  `LastResult = { survey, scan, reads, ts }` is byte-identical in the first of them
+  (`git show c458b04:lib/last-result.ts`). What moved is the READ: cycle 32 replaced a
+  `parsed.survey` truthiness check with `isSurvey`, cycle 33 added `isSkinReads`. So the
+  two legacy states measured are the two records those cycles were written for — a truthy
+  non-survey and a wrong-shaped `reads` — and not an invented envelope.
+
+  **Picks are recomputed, not stored, which is what makes state (iv) reachable at all.**
+  `loadInitialView` calls `recommend(saved.survey, saved.scan ?? null)`
+  (`app/report/page.tsx`), and `recommend` never leaves `survey.category`: `inCategory` is
+  filtered once and all four relaxation steps filter it again, so an unstocked category
+  returns `picks: []`. The record cannot carry a pick or a sku id — it carries the category
+  that selects them. `grep -o 'category: "[^"]*"' lib/skus.ts | sort | uniq -c` gives 8
+  categories with 2-4 SKUs each and `CATEGORIES` in `app/survey/page.tsx` lists the same
+  8, so zero picks is **not** reachable from a fresh survey today; a stored record is the
+  only way in, which is exactly what `tests/survey-shape.test.ts`'s "accepts a survey
+  naming a category this build no longer ships" keeps.
+
+  **The defect: that step had no branch, and the comment claiming it does is in the tree.**
+  `tests/survey-shape.test.ts:106-112` and the `isSurvey` docstring in `lib/recommend.ts`
+  both rest on "/report renders its no-picks branch". Measured with `앰플` as the stored
+  category, ko: the picks step went from **4** `/api/out` links, **9** anchors and **8**
+  buttons to **0**, **4** and **5**. The product grid renders nothing, the compare
+  `<details>` needs two picks, and the whole commerce section sat behind `top &&` — so the
+  step lost the four merchant links **and** the one `/care` hand-off on it. Same counts in
+  all five locales. Fixed by giving the section an else: `/survey` on the filled treatment
+  and `/care` beside it, no `CommerceDisclosure` (no affiliate link is on screen to
+  disclose), and no new sentence — every string on that page has to be an existing key, and
+  the heading row already reads "{category} · 0개".
+
+  **What the fix does not claim.** The intro paragraph above the grid ("추천 기준") still
+  says up to three options will be shown, at zero, because saying anything else needs a
+  key. `/care` with the same record degrades and does not die: **8** buttons to **2**, with
+  **4** anchors either way, because the clinic links do not depend on picks.
+
+  **Pinned, and broken three ways on the final tree.**
+  `tests/e2e/return-path-no-picks.regression-31.spec.ts` is **6 passed** — the dropped
+  category, the current record, the same record 60 days old, the pre-cycle-32 truthy
+  non-survey, the pre-cycle-33 wrong-shaped `reads`, and nothing stored. Removing the else
+  entirely, i.e. the tree before this cycle: **1 failed | 5 passed**. Keeping the empty
+  state but dropping its `/care` link — the plausible half-fix: **1 failed | 5 passed**.
+  Inverting the condition so the empty state takes the step that HAS picks, which is the
+  failure path of what was added rather than its happy path: **4 failed | 2 passed**.
+
+  **The second defect, measured and not fixed, because the fix is a key.** 6 Korean
+  characters on `/report`'s first screen in `en`, `ja`, `zh` and `ar`, in every state whose
+  `reads` survives validation. Extracted with a text-node walk: one node,
+  `노출 여유 확인`, the trust chip out of `signalCheck` in `lib/report-trust.ts`. **12** of
+  the **14** strings that function can return are keys in all four locales and the **2**
+  for `노출 여유` are in none. Filed under Backlog > Now with the greps; not fixed because
+  this cycle's brief forbade adding a translation key, and no rendering trick fixes it
+  without changing what the other three chips say.
+
+  **Two things that looked like leaks and are not.** With the stored category `앰플`, the
+  echoed text is the record's own string: `앰플 · 0 items` and the 추천 기준 sentence, 2
+  characters each, because `t()` returns its key. With a stored product use naming a sku
+  the catalogue dropped, `/checkin` echoes the stored `name`. Both are synthetic values no
+  build wrote: every real category and every real SKU name IS a key
+  (`grep -cF` on the first three `name:` values in `lib/skus.ts` is **1** in `en` and `ja`).
+  And `/checkin` handles the missing sku without a defect — `sku?.category ?? "세럼"` — so
+  the card renders with a fallback visual.
+
+  **Nothing reads `ts`, so state (ii) is state (i).** `grep -rn "loadLastResult()\|hasLastResult()" app/ lib/`
+  outside `lib/last-result.ts` is **4** lines, and
+  `grep -rnE "saved\.ts|loadLastResult\(\)[^;]*\.ts\b|lastResult[^;]*\.ts\b" app/ lib/`
+  is **0** against the single writer at `app/report/page.tsx:111`; so a 60-day-old
+  record shows the banner and reaches 4 merchant links exactly like a fresh one. Recorded
+  rather than changed: a "N days ago" label needs a string that does not exist.
+
+  **Research — WebKit's own source, because `webkit.org` is refused here.** Both attempts
+  printed verbatim `curl: (56) CONNECT tunnel failed, response 403` and
+  `webkit.org http=000`. `ResourceLoadStatisticsStore.cpp` from
+  `raw.githubusercontent.com/WebKit/WebKit/main` **http=200**, **175527** bytes, sha256
+  `0881c73d0a61e093991671abfa70b0289323945d3d44ae0b22cbebb6a2958169`; its header
+  **http=200**, **26484** bytes, sha256
+  `e8728be27979385a8d8d1f468e4459237a038b6aefd51063fe22c5e5d54d5af0`. Lines 73-74 are
+  `operatingDatesWindowLong { 30 }` and `operatingDatesWindowShort { 7 }`, both commented
+  `// days`. The finding that matters for ARU is that **the famous 7 days is the short
+  window and a plain first-party site does not get it**: `shouldRemoveAllButCookiesFor`
+  (:2832-2852) picks `Short` only when the domain's `dataRemovalFrequency` is `Short`, and
+  the **2** call sites that hand it to `setIsScheduledForAllScriptWrittenStorageRemoval`
+  (:1371, and :2059 through the local assigned at :2054, out of **7** lines that
+  `grep -c "DataRemovalFrequency::Short"` finds) are both keyed on link decoration from a
+  prevalent resource. Removal itself is enabled
+  by default — the member initialiser at `ResourceLoadStatisticsStore.h:426` is
+  `FirstPartyWebsiteDataRemovalMode::AllButCookies` — and appends the domain to
+  `domainsToDeleteAllScriptWrittenStorageFor` (:2906-2913), cookies untouched. The
+  exemption list (:786-798, :2895-2901) is app-bound ∪ managed ∪ persisted domains ∪
+  `m_standaloneApplicationDomain`, whose own comment names home screen web applications.
+  Quotes, both hashes and the labelled inferences —
+  including that ARU's own paid-traffic channel is the one whose returning visitors lose
+  the record first — are in
+  [`docs/webkit-script-storage-cap.md`](webkit-script-storage-cap.md).
+
+  **ML — the `roughness_ratio` divergent window, sized without faces.** Chosen because it
+  needs no labelled export and is not the sRGB LUT/knee item cycles 41 and 42 both worked.
+  The window is **not** `highFreq === 0`: a 1px checkerboard of `(60,60,176)` and
+  `(63,81,60)`, distinct colours whose exact luminance numerator `299r + 587g + 114b` is
+  **73224** for both, gives `highFreq` **1.4210854715202004e-14** against **0** for the
+  flat frame, `foreheadHf` **1.9407372876655204e-16** at a region mean L* of
+  **73.22399999999999** — flat in luminance (texture **5.188544138981456e-13**) and not in
+  colour (mean blue **118.8944246737841**). And the committed row's `320000.0` magnitude
+  belongs to the other region, not to the epsilon: with both regions in the window the
+  Python form returns **1.9407372876655204e-10**, exactly its own ceiling
+  `cheekHf / 1e-6`. `tests/roughness-ratio-divergent-window.test.ts` **4 passed**; broken
+  three ways at **2 failed | 2 passed**, **2 failed | 2 passed** and **1 failed | 3
+  passed**. No constant moved and the item stays `[~]`. Full paragraph on the item itself.
+
+  **What this does not establish.** No traffic number changed and none was measured: a step
+  that is no longer dead is a defect closed, not a conversion. Zero picks is not reachable
+  from today's catalogue, so this fix is insurance against a category being dropped and
+  against a hand-edited store, not a live leak — the reason it was worth doing is that the
+  guard which permits the state, and a test that names the branch, were both already in the
+  tree. One Chromium at exactly 360x800 against a local production build: no real phone, no
+  real network, no throttling this cycle. The seven states are the ones the record's own
+  history and the catalogue make reachable; a record whose `scan` is wrong-shaped was NOT
+  measured, and reading `shouldApplyScan` — `Boolean(scan && !scan.retakeRecommended &&
+  (scan.confidence ?? 0.7) >= 0.58)` — says a truthy non-object `scan` would set
+  `scanApplied` true with no camera data behind it. That is read from the code, not run,
+  and nobody has measured what the report then claims. The `노출 여유` leak is measured in
+  its `확인` form only. The WebKit note is read from `main` at the hashes above, not from
+  any shipped iOS, and nothing was measured on a device. The ML result is about which
+  captures are in the window and how big the disagreement is; it does not say which side
+  should move.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 109 passed (109) / Tests 933
+  passed (933)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.747s ... OK**, and
+  `npm run smoke` **240 passed (11.1m)** with `Smoke test passed.` — whose own steps
+  re-ran lint at **2 problems (0 errors, 2 warnings)**, vitest at **109 passed (109) /
+  933 passed (933)** and selftest at **Ran 146 tests in 2.705s ... OK** on the same tree.
+  **It took three smoke attempts and the two failures were mine, not the tree's.** The
+  first reached **240 passed (14.0m)** in its e2e phase and never printed the verdict,
+  because it was killed on purpose: comment-only edits had landed mid-run and the rule is
+  to measure the final tree. That kill used a `pkill -f` pattern which also matched the
+  killing shell, so the run's `npm run dev` server on port 3102 was orphaned; the second
+  attempt attached to it (`reuseExistingServer: true`,
+  `playwright.mobile.config.ts`) and lost it mid-suite — **117 failed | 123 passed
+  (12.8m)**, every failure `net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3102/...`
+  from spec 210 onward, and **0** of them a product defect. The third ran with 3102 and
+  3199 confirmed free and has **0** `ERR_CONNECTION_REFUSED` lines. Recorded because a
+  reader comparing e2e totals across cycles would otherwise see a red run and no reason.
+  Rotation: `docs/AUTOPILOT.md` **1972 → 1999** lines and
+  `docs/autopilot-changelog.md` **8762 → 8950**; cycle 40's **188** lines are
+  byte-identical at the end of the changelog (`diff` clean against the extract), and the
+  concatenated-`sort -u`-`comm -23` check against `4cfaa3a` drops **0** lines. No backlog
+  item was ticked `[x]` this cycle, so nothing moved to "Closed backlog items".
+
+  **Supervisor review.** Sound. The worker disproved one of my predictions. Two things
+  were added before merge.
+
+  *My error, recorded.* I predicted that an unknown stored category could not empty the
+  picks, because `sku.category === survey.category` is a **+2** score term
+  (`lib/recommend.ts:151`). That was wrong. `inCategory` (`lib/recommend.ts:402`) filters
+  the pool, and every relaxation step (:421, :424, :429, :437) starts from it. The worker
+  read the whole function and I read one line. My other predictions held: picks are
+  recomputed, not stored, and `lib/last-result.ts` has **3** commits with an unchanged
+  record shape.
+
+  *Added 1: the Korean leak is fixed here.* The worker measured it and was right not to
+  fix it, because its brief forbade new keys. That rule was a scope limit in my brief,
+  not an owner rule, and the Korean string is already the rendered key. Only its
+  translations were missing. The two entries are now in all four dictionaries, and
+  `tests/report-trust-chip-keys.test.ts` pins every chip `buildReportTrust` can return
+  (see the backlog item for the break counts). Of the 10 `확인`/`보류` chips the four
+  signals can produce, only the 2 for `노출 여유` had been missing in all four locales
+  (checked with `grep -F` per locale).
+
+  *Added 2: regression-31 did not catch a hidden empty state.* Its link checks were
+  `toHaveCount(1)`. Setting the empty state's section to `display: none` gave **6
+  passed**. They are now `toBeVisible()`, and the same break gives **1 failed | 5
+  passed**. The other break, linking the empty state to `/scan` instead of `/survey`,
+  already failed: **1 failed | 5 passed**. Clean is **6 passed**.
+
+  *Research checked against the source.* `ResourceLoadStatisticsStore.cpp`, fetched
+  here: **http 200**, **175527** bytes, the same sha256. Lines 73-74 read
+  `operatingDatesWindowLong { 30 }; // days` and `operatingDatesWindowShort { 7 }; //
+  days`. `grep -c "DataRemovalFrequency::Short"` gives **7**. The note also says these
+  are days the browser ran, not calendar days (`docs/webkit-script-storage-cap.md:98`).
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 110 passed (110)
+  / Tests 938 passed (938)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `4cfaa3a` drops
+  **0** lines. Recent cycles holds 43/42/41, and cycle 40 sits after cycle 39 at the end
+  of the changelog. `npm run smoke` gave
+  **240 passed (8.3m)** and `Smoke test passed.`
+
 - 2026-09-26 (cycle 42) — Branch `autopilot/2026-09-26-0039`. **A visitor whose saved
   language is ja, zh or ar spends between a third of a second and four seconds looking at
   an interactive-looking English page that is about to be thrown away, and until this
@@ -1781,192 +2043,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **0** lines. Recent cycles holds 41/40/39, and cycle 38 sits after cycle 37 at the end
   of the changelog. With the spec fix,
   `npm run smoke` gave **229 passed (7.7m)** and `Smoke test passed.`
-
-- 2026-09-25 (cycle 40) — Branch `autopilot/2026-09-25-1239`. **Every first-time visitor
-  downloaded all four locale dictionaries and could read at most one of them. Measured on
-  a production build: one chunk, `1e3h7wv-_iggr.js`, was **350267** bytes, of which
-  **349333** were the four dictionaries, and `/` loaded it. Japanese, Chinese and Arabic
-  are now a dynamic `import()` each and `/`'s initial JS drops from **1050358** to
-  **783030** bytes raw, **322373** to **240097** gzipped. English stays static, and the
-  reason is the hydration contract, not an oversight.**
-
-  **Baselines, re-measured here on `382c59f` before any edit.** `node_modules` was
-  absent, so `npm ci` first — `npm run build` reads `sh: 1: next: not found` and exits
-  **127** without it. After: `npx vitest run` **Test Files 104 passed (104) / Tests 906
-  passed (906)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
-  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
-  ml/selftest.py` **Ran 145 tests in 2.625s ... OK**. They match the supervisor's. A
-  baseline smoke was not run; only the post-change one below, which is green.
-
-  **What `/` actually downloaded, on `npm run build` at `382c59f`.** Next.js 16.2.9 with
-  Turbopack prints no first-load column, so the number was taken from the prerendered
-  `.next/server/app/index.html`: **13** script files, **1050358** bytes raw, **322373**
-  gzipped (each file gzipped at level 9 and summed). Grepping `.next/static/chunks` for
-  one string out of each dictionary (`Turn camera back on`, `カメラをもう一度オンにする`,
-  `重新打开摄像头`, `إعادة تشغيل الكاميرا`) put **all four in the same chunk**,
-  `1e3h7wv-_iggr.js`, **350267** bytes raw / **110807** gzipped. Measured as byte spans
-  from each dictionary's first value to its last: EN **81102** raw / **27538** gzip, JA
-  **91405** / **29123**, ZH **76838** / **27072**, AR **99988** / **29483** — **349333**
-  of the chunk's 350267 bytes. The source is **368003** bytes over the four files per
-  `wc -c`. So the supervisor's read was right and the chunk is, to 99.7%, dictionaries.
-
-  **The fix, and why English is not part of it.** `lib/i18n/core.ts` keeps `import { EN }`
-  and moves JA/ZH/AR behind `loadDict(lang)`, one literal `import("./ja")` per case;
-  `registerDict` fills a mutable registry and notifies subscribers; `t()` is untouched
-  and still synchronous, still falling back to the Korean message id. English **cannot**
-  be lazy without changing what the server renders: `getServerSnapshot()` in
-  `lib/i18n.tsx` returns `"en"`, so the server HTML is English and the hydration render
-  must produce the same text or it paints Korean source strings against English markup.
-  That is the honest limit of this cycle — a Korean visitor still downloads the English
-  dictionary, **82434** bytes raw / **28343** gzipped in its own chunk, and removing that
-  needs the per-locale-URL decision already filed as `[OWNER]`.
-  `LanguageProvider` renders `active = ready ? saved : "en"`, where `ready` comes from a
-  second `useSyncExternalStore` over the dictionary registry, so the saved language
-  appears only once its chunk has landed. `html[lang]`, `dir` and the remount `key` all
-  follow `active`, not `saved`, so Arabic never paints Latin text in RTL. The picker
-  reads a new `saved` field off the context so a tap registers before the chunk arrives.
-
-  **After, on the same kind of build.** `/` loads **13** script files, **783030** bytes
-  raw / **240097** gzipped — **-267328** raw and **-82276** gzip, both **-25.5%**. EN is
-  its own chunk (**82434** / **28343**) and `/` loads it; JA (**91598** / **29315**), ZH
-  (**77031** / **27238**) and AR (**100181** / **29636**) are three more chunks and `/`
-  loads none of them.
-
-  **Hydration was measured before and after, not reasoned about**, at 360x800 against
-  `npx next start`, sampling the `<h1>` every animation frame from before the app's own
-  scripts run, one fresh context per language. **Before**: no saved choice and `en` paint
-  English and stay; `ko` goes English → Korean at **390.4ms**; `ja` English → English →
-  Japanese at **385.8ms**; `zh` → Chinese at **398.5ms**; `ar` English → Arabic at
-  **428.7ms**. **After**: the same language sequence in every case — `ko` at **422ms**,
-  `ja` at **405.9ms**, `zh` at **401.8ms**, `ar` at **474.5ms**. No Korean frame anywhere,
-  before or after; the first paint is English in all ten runs. What changed is **`ar`
-  gained one intermediate English state** (the shape `ja` and `zh` already had) and the
-  settle is later by **31.6ms** (ko), **20.1ms** (ja), **3.3ms** (zh) and **45.8ms** (ar)
-  — on localhost, which is the weakest part of this measurement: a real network moves
-  those numbers and this container cannot produce one.
-
-  **Broken on purpose, three ways on the i18n change.** `tests/i18n-lazy-dict.test.ts` is
-  **12 passed** and `tests/e2e/i18n-dictionary-split.regression-27.spec.ts` **10 passed**.
-  Putting the four static imports back: **4 failed | 8 passed**. Collapsing the switch to
-  one `import(./${lang})` with a template literal — the DRY refactor: **1 failed | 11 passed**, and *that one
-  is the weaker-but-plausible case in both directions*, because building it measured
-  **783878** bytes of initial JS against **783030**, i.e. **Turbopack 16.2.9 splits the
-  template form too**. The literal paths are what Next.js's doc guarantees, not the only
-  thing that works, and both the code comment and the test say so. Third: rendering the
-  saved language without waiting for its dictionary (`active = saved`) gives **1 failed |
-  11 passed** on the unit file and **3 failed | 7 passed** on the e2e — `ja`, `zh` and
-  `ar` all fail "settles on its own language with no Korean on screen on the way", which
-  is the per-frame sampler doing its job.
-
-  **Research — Next.js's own docs from `raw.githubusercontent.com/vercel/next.js/canary`.**
-  `docs/01-app/02-guides/lazy-loading.mdx` **http=200**, **10617** bytes, sha256
-  `0a8f49a0cd5e2cff43d8e29b7aa4d1a75e3b0ccf6d98789bddcfb01d4a554d1b`; line 239: "In
-  `import('path/to/component')`, the path must be explicitly written. It can't be a
-  template string nor a variable." That sentence chose the switch over a template
-  literal. `docs/01-app/03-api-reference/05-config/01-next-config-js/optimizePackageImports.mdx`
-  **http=200**, **1384** bytes, sha256
-  `c93fc1c9205326ccdcdbd47f1e7a9aaad2d070f3be4dd9d75331cc2a6359c7b1`, was read and
-  **ruled out**: it "will only load the modules you are actually using" for packages that
-  "export hundreds or thousands of modules", and each dictionary is one named export of
-  one object, so it has nothing to prune. `docs/01-app/03-api-reference/06-cli/next.mdx`
-  **http=200**, **25860** bytes, sha256
-  `5be90c3fa7fee222265b3aedf6a84a37924c164c4c256f3251df3f4133cb6740`. `vercel.com` and
-  `developer.mozilla.org` were not probed this cycle; they are recorded as refusing in
-  the 2026-09-15 and 2026-09-25 blocker entries.
-
-  **ML — a fourth instance of the epsilon-guard class, at the boundary the first three
-  did not reach.** Chosen because it needs no labelled export and extends the
-  `roughness_ratio` `[~]` item's own defect class, the way cycle 37's blemish-density
-  instance did. `denominator = cheek_luminance if cheek_luminance else 1.0`
-  (`ml/skin_indices.py`) and `cheekL || 1` (`lib/skin.ts:740`) agree on **0.0**, on
-  **-0.0** and on every sub-epsilon positive value — at a cheek of **1e-7** both give
-  **1490196077.7862747** — and part company on NaN, which is truthy in Python and falsy
-  in JavaScript: Python returns `tzone_specular` (**0.1** on the probe pair) and the app
-  returns **NaN**. Unlike the first three this is not a band, and it is **not reachable
-  from a capture today**, which is measured rather than assumed: `sampleRegion` returns
-  null when `collected.length === 0` and otherwise divides by `kept`, which is
-  `sorted.slice(...)` only when the trim would leave at least 20 and `sorted` itself
-  otherwise, so it is never empty. Both sides are pinned and neither is changed:
-  `ml/selftest.py` goes **145 → 146** tests and `tests/shine-guard-nonfinite.test.ts` is
-  **3 passed**. Broken two ways: swapping the Python `max`'s arguments to
-  `max((tzone - cheek) / denominator, 0.0)` — a pure tidy-up to read — gives **FAILED
-  (failures=1)**; giving the app the 1e-6 epsilon the other indices use gives **2 failed
-  | 32 passed** across `tests/shine-guard-nonfinite.test.ts`,
-  `tests/index-parity.test.ts` and `tests/skin-index-contract.test.ts`. **Which side is
-  right is not decided here**, and the item stays open.
-
-  **UI/UX — the landing header's tagline touched the wordmark in four of five locales.**
-  Found at 360x800 on the production build, measuring painted glyph rects rather than
-  boxes. `app/page.tsx`'s header reserved 118px for the fixed language pill and nothing
-  else, so `justify-between` gave the tagline every remaining pixel and the two boxes
-  abutted at exactly **0.0px** in `en`, `ja`, `zh` and `ar` (**53.1px** in `ko`, whose
-  tagline fits on one line). The painted first line came within **1.7px** of the wordmark
-  in `ar`, **4.4px** in `zh`, **10.3px** in `ja` and **29.9px** in `en`. The reservation
-  is now **106px** with a **12px** `columnGap`, which keeps the tagline box at the same
-  **155.3px** so nothing rewraps — header height stays **85px** (60 in `ko`) and the
-  primary CTA does not move (`ctaTop` **536.8 / 612.2 / 628.4 / 579.8 / 602.2** before and
-  after). Glyph gaps become **13.7 / 16.4 / 22.3 / 41.9 / 65.1** and the pill still clears
-  the header text by **13.4px** at worst (`en`).
-  `tests/e2e/landing-header-clearance.regression-28.spec.ts` is **5 passed**. Broken two
-  ways: reverting to the reservation alone fails **all 5**, the first on the geometry
-  floor at `worstGlyphGap=1.015625`; adding the gap *without* cutting the reservation —
-  the obvious fix — also fails all 5, but **only on the 106px pin**: the geometry floor
-  still passes, because that edit buys the clearance out of the tagline's own width
-  instead of out of the reservation. That second one is caught by a constant, not by a
-  measurement, and is worth saying plainly.
-
-  *The primary CTA was checked and was not a defect.* It sits fully above the 800px fold
-  in all five locales, bottom edge **611.3 / 686.7 / 702.9 / 654.3 / 676.7**, with
-  `scrollWidth === clientWidth === 360` on every one. Recorded as none rather than
-  invented.
-
-  **What this does not establish.** No traffic number changed and none was measured;
-  a smaller first load is a precondition for keeping a visitor, not evidence of one. All
-  byte counts are from a local production build — what Vercel's edge serves, with its own
-  compression, was not measured. The hydration timings are localhost, so the window in
-  which a `ja`/`zh`/`ar` visitor sees English is longer in the field than the numbers
-  above and by how much is unknown. The English dictionary is still in every visitor's
-  first load and will be until ARU has per-locale URLs. And `/` is the only route whose
-  initial JS was counted, before or after; the other routes import the same core and were
-  not measured one by one.
-
-  *Validation on this tree:* see the report for the literal output.
-
-  **Supervisor review.** Sound, and no correction needed.
-
-  *Predicted by reading, before the branch existed:*
-  - `lib/i18n/core.ts` statically imported all four dictionaries, so every route's first
-    load carried all of them. Measured on `382c59f` by the supervisor's own `npm run
-    build`: one chunk, `1e3h7wv-_iggr.js`, **350267** bytes raw and **110980** gzip -9,
-    holding ja, zh, ar and en strings and referenced from `index.html`, `care.html`,
-    `checkin.html` and others. The worker's **350267** matches.
-  - Lazy-loading the non-active locales would change how `t()` resolves at hydration,
-    so a `ja`/`zh`/`ar` visitor would see another language for longer. The worker
-    measured and wrote this down under "What this does not establish".
-
-  *Checked here, on the branch's own build.*
-  - `/` loads **13** scripts, **783030** bytes raw and **240097** gzip -9, which are
-    the worker's after-numbers. The ja, zh and ar chunks (`3vh1arlq7tb9w.js` **91598**,
-    `0w-v6oeh9hnwt.js` **77031**, `0z0y7r1klw98k.js` **100181** raw) are not referenced
-    from `index.html`. The en chunk `0cci9sokwswu9.js` (**82434** raw, **28266** gzip
-    -9) is.
-  - The hydration fallback is English, not the Korean source. `active` falls back to
-    `getServerSnapshot()` (`lib/i18n.tsx:105`), which is the English SSR value, so a
-    missing dictionary never shows the Korean source strings on the page.
-  - Nothing server-side reads a dictionary. `lib/reengage.ts` imports only the `Lang`
-    type and carries its own `EMAIL_COPY`, and nothing under `app/api` imports i18n.
-    `lib/i18n/all` is imported only from `tests/`.
-
-  *Broken here, two ways, on the committed tree.* Adding `import "./i18n/all"` to
-  `lib/i18n.tsx` fails `tests/i18n-lazy-dict.test.ts` at **1 failed | 11 passed**, on
-  "is imported only from tests". Putting back one static import, `JA` only (weaker than
-  the worker's four), fails it at **3 failed | 9 passed**. Both edits were reverted.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 106 passed (106)
-  / Tests 921 passed (921)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **OK**. The rotation check against `382c59f` (both docs, `sort -u`,
-  `comm -23`) drops **0** lines. `npm run smoke` first
-  failed before any test body ran: `Error: Timed out waiting 120000ms from
-  config.webServer`, after `Slow filesystem detected. The benchmark took 3691ms`, on a
-  container that had just restarted. The one re-run gave **220 passed (7.5m)** and
-  `Smoke test passed.`
