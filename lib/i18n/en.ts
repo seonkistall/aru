@@ -850,6 +850,8 @@ export const EN: Record<string, string> = {
   "반사 보류": "Glare pending",
   "피부 영역 확인": "Skin area OK",
   "피부 영역 보류": "Skin area pending",
+  "노출 여유 확인": "Exposure headroom OK",
+  "노출 여유 보류": "Exposure headroom pending",
   "올리브영": "Olive Young",
   "네이버 쇼핑": "Naver Shopping",
   "쿠팡": "Coupang",

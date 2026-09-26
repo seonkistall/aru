@@ -94,7 +94,7 @@ test("a saved result whose category the catalogue dropped keeps a live picks ste
   // The banner is the entry point, and it has to be there for the rest to be reachable.
   await page.goto("/");
   await settle(page);
-  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toBeVisible();
 
   await page.goto("/report");
   await settle(page);
@@ -107,8 +107,10 @@ test("a saved result whose category the catalogue dropped keeps a live picks ste
   // What must NOT happen is the step becoming a dead end. Both ways out are links.
   // Scoped to the empty state: `/report` already carries other `/survey` links
   // (FlowSteps), so a bare count would pass with no empty state at all.
-  await expect(page.locator('[data-testid="report-picks-empty"] a[href="/survey"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="report-picks-empty"] a[href="/care"]')).toHaveCount(1);
+  // Visible, not merely present: a count passed with the empty state set to
+  // `display: none` (supervisor, cycle 43 review).
+  await expect(page.locator('[data-testid="report-picks-empty"] a[href="/survey"]')).toBeVisible();
+  await expect(page.locator('[data-testid="report-picks-empty"] a[href="/care"]')).toBeVisible();
   // Still the report, not a blank screen.
   await expect(page.getByRole("tab", { name: /살펴볼 제품 후보/ })).toBeVisible();
 
@@ -125,7 +127,7 @@ test("a saved result in the current shape still reaches four merchant links", as
 
   await page.goto("/");
   await settle(page);
-  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toBeVisible();
   await expect(page.locator('[data-testid="return-banner"] a[href="/scan"]')).toHaveCount(1);
 
   await page.goto("/report");
@@ -151,7 +153,7 @@ test("the same record 60 days old behaves identically, because nothing reads ts"
 
   await page.goto("/");
   await settle(page);
-  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toBeVisible();
 
   await page.goto("/report");
   await settle(page);
@@ -189,7 +191,7 @@ test("a pre-cycle-33 record with a wrong-shaped reads keeps the report and its l
 
   await page.goto("/");
   await settle(page);
-  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="return-banner"] a[href="/report"]')).toBeVisible();
 
   await page.goto("/report");
   await settle(page);

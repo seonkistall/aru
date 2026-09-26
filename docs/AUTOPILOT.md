@@ -261,7 +261,7 @@ partly done and stays here.
   URLs. What the cycle *could* fix without a network is the override path those URLs
   will arrive through — see the 2026-09-15 (cycle 2) entry in
   [`docs/autopilot-changelog.md`](autopilot-changelog.md); it was silently discarding them.
-- [AI] **`/report`'s first screen shows 6 Korean characters in `en`, `ja`, `zh` and `ar`,
+- [x] [AI] **`/report`'s first screen shows 6 Korean characters in `en`, `ja`, `zh` and `ar`,
   and the fix is a translation key.** Measured 2026-09-26 (cycle 43) on a production build
   at 360x800, a fresh context per locale with only localStorage seeded: the leaking node is
   the trust chip `노출 여유 확인`, from `signalCheck`'s fallback branch in
@@ -275,6 +275,15 @@ partly done and stays here.
   adding or removing a translation key; composing the chip from `t(label)` and a separate
   `확인` would need two more keys and would change what the other three chips render, so
   the cheap fix is the two missing entries.
+  **Closed in the cycle 43 supervisor review.** The two entries were added to all four
+  dictionaries, following their neighbours (`Lighting OK` / `Lighting pending`), and the
+  base phrase each dictionary already had for `노출 여유`. The translation-coverage test
+  only sees `t("...")` literals, so a composed chip passed it. The new
+  `tests/report-trust-chip-keys.test.ts` reads the labels and details out of
+  `buildSignals`, runs every combination through `buildReportTrust`, and requires every
+  resulting chip to be a key in `en`, `ja`, `zh` and `ar`. It gives **5 passed**. Without
+  the new entries it gives **4 failed | 1 passed**. With only `ja`'s `노출 여유 보류`
+  removed it gives **1 failed | 4 passed**.
 - [AI] Validate the blemish-detection constants (`BLEMISH` in `lib/skin.ts`) against
   real photos through `/eval`, and replace them with calibrated values. They were
   chosen on a synthetic face.
@@ -1507,7 +1516,44 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   concatenated-`sort -u`-`comm -23` check against `4cfaa3a` drops **0** lines. No backlog
   item was ticked `[x]` this cycle, so nothing moved to "Closed backlog items".
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound. The worker disproved one of my predictions. Two things
+  were added before merge.
+
+  *My error, recorded.* I predicted that an unknown stored category could not empty the
+  picks, because `sku.category === survey.category` is a **+2** score term
+  (`lib/recommend.ts:151`). That was wrong. `inCategory` (`lib/recommend.ts:402`) filters
+  the pool, and every relaxation step (:421, :424, :429, :437) starts from it. The worker
+  read the whole function and I read one line. My other predictions held: picks are
+  recomputed, not stored, and `lib/last-result.ts` has **3** commits with an unchanged
+  record shape.
+
+  *Added 1: the Korean leak is fixed here.* The worker measured it and was right not to
+  fix it, because its brief forbade new keys. That rule was a scope limit in my brief,
+  not an owner rule, and the Korean string is already the rendered key. Only its
+  translations were missing. The two entries are now in all four dictionaries, and
+  `tests/report-trust-chip-keys.test.ts` pins every chip `buildReportTrust` can return
+  (see the backlog item for the break counts). Of the 10 `확인`/`보류` chips the four
+  signals can produce, only the 2 for `노출 여유` had been missing in all four locales
+  (checked with `grep -F` per locale).
+
+  *Added 2: regression-31 did not catch a hidden empty state.* Its link checks were
+  `toHaveCount(1)`. Setting the empty state's section to `display: none` gave **6
+  passed**. They are now `toBeVisible()`, and the same break gives **1 failed | 5
+  passed**. The other break, linking the empty state to `/scan` instead of `/survey`,
+  already failed: **1 failed | 5 passed**. Clean is **6 passed**.
+
+  *Research checked against the source.* `ResourceLoadStatisticsStore.cpp`, fetched
+  here: **http 200**, **175527** bytes, the same sha256. Lines 73-74 read
+  `operatingDatesWindowLong { 30 }; // days` and `operatingDatesWindowShort { 7 }; //
+  days`. `grep -c "DataRemovalFrequency::Short"` gives **7**. The note also says these
+  are days the browser ran, not calendar days (`docs/webkit-script-storage-cap.md:98`).
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 110 passed (110)
+  / Tests 938 passed (938)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `4cfaa3a` drops
+  **0** lines. Recent cycles holds 43/42/41, and cycle 40 sits after cycle 39 at the end
+  of the changelog. `npm run smoke` gave
+  **240 passed (8.3m)** and `Smoke test passed.`
 
 - 2026-09-26 (cycle 42) — Branch `autopilot/2026-09-26-0039`. **A visitor whose saved
   language is ja, zh or ar spends between a third of a second and four seconds looking at
