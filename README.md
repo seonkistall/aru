@@ -316,6 +316,13 @@ no runtime CDN dependency. `postinstall` and `npm run assets:mediapipe` copy
 the package assets, and tests plus smoke checks guard against missing files,
 wrong paths and bad responses.
 
+These URLs carry no content hash, so the service worker caches them by name and
+serves them stale-while-revalidate: a returning visitor gets the cached copy
+immediately and the replacement on their next visit. Bumping the vendored
+MediaPipe version therefore reaches warm caches one visit late, not never — it
+was never, until `public/sw.js` was cache-first with no revalidation. Behaviour
+and the failure paths are pinned by `tests/sw-mediapipe-revalidate.test.ts`.
+
 `npm run test:ios-safari` checks the inline/muted/autoplay contract, KO/EN/JA/ZH
 recovery copy, background, `mute`, `ended`, `pagehide`, explicit restart,
 overflow and touch targets on Playwright WebKit 26.5 with an iPhone 17 Pro
@@ -491,7 +498,7 @@ lib/
 public/
 ├─ vendor/mediapipe/          self-hosted model, WASM and JS
 ├─ .well-known/assetlinks.json
-└─ sw.js                      PWA cache and offline fallback
+└─ sw.js                      PWA offline fallback; MediaPipe stale-while-revalidate
 android/                      com.seonkistall.aru Bubblewrap TWA
 supabase/schema.sql           tables, RLS, privileges, Storage baseline
 ml/                           offline calibration/training/evaluation
