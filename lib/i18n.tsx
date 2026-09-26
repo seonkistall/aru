@@ -10,7 +10,7 @@
  * without subscribing to context.
  */
 
-import React, { createContext, useContext, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import {
   isDictReady,
   isLang,
@@ -117,8 +117,20 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   // Keep the singleton in sync before children render.
   setCurrentLang(active);
 
+  // loadDict resolves either way: on a failed chunk fetch it drops its cached
+  // promise and resolves with the dictionary still missing. Remember that, so the
+  // hold below lets go and the visitor keeps a usable English page instead of an
+  // inert one that nothing will ever release.
+  const [unavailable, setUnavailable] = useState<Lang | null>(null);
   useEffect(() => {
-    if (!isDictReady(saved)) void loadDict(saved);
+    if (isDictReady(saved)) return;
+    let live = true;
+    void loadDict(saved).then(() => {
+      if (live && !isDictReady(saved)) setUnavailable(saved);
+    });
+    return () => {
+      live = false;
+    };
   }, [saved]);
 
   // (c) of the lost-tap fix. While `active !== saved` the tree on screen is the
@@ -133,7 +145,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   // unless the content they represent are also visually obscured in some way";
   // the CSS rule keyed on data-aru-lang-pending in app/globals.css is that cue,
   // dimming the controls without moving anything.
-  const holding = active !== saved;
+  const holding = active !== saved && unavailable !== saved;
   useIsomorphicLayoutEffect(() => {
     if (!holding) return;
     const body = document.body;

@@ -1495,7 +1495,51 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   it is accounted for: the `- [ ]` checkbox of the lost-tap finding, which this cycle
   ticked to `- [x]`.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** The design is right. Two defects were fixed before merge, one
+  of them severe.
+
+  *Predicted by reading, before the branch existed:* option (a) was not feasible,
+  because **28** files under `app/` call `t(` and only **4** subscribe to the language
+  context. The worker rejected (a) on the same grep. The `inert` route (c) was the
+  realistic one.
+
+  *Defect 1, severe: a failed dictionary fetch left the whole page inert for good.*
+  `loadDict` catches a failed chunk fetch, drops its cached promise and resolves with
+  the dictionary still missing (`lib/i18n/core.ts`). Nothing retries, so `active`
+  stayed `en`, `saved` stayed `ja`, and `holding = active !== saved` never became false.
+  Probed with the `ja` chunk aborted by Playwright routing, 8000ms after load:
+  `{"aborted":1,"inert":true,"pending":true,"lang":"en","firstLinkClickable":false}`.
+  The language switcher was inert too, so the visitor could not even pick English. On
+  `02c7123` the same visitor had a working English page. **Fix:** `LanguageProvider`
+  records a locale whose `loadDict` settled without a dictionary, and the hold ends for
+  it (`holding = active !== saved && unavailable !== saved`). The new spec case aborts
+  the chunk and asserts the hold lifts and `scan-start` opens the camera. Reverting the
+  release fails it: **1 failed | 4 passed**.
+
+  *Defect 2: the stored `/report` step outlived its report.* `aru_report_step_v1` was
+  written by `goStep` and never cleared, so a visitor who left a report on step 3 and
+  then answered the survey again landed on step 3 of the new report, past the picks
+  step that carries the merchant links. **Fix:** the survey submit
+  (`app/survey/page.tsx`) and the scan save (`app/scan/use-capture-analysis.ts`) now
+  remove it. The new spec case seeds step `"2"`, submits the survey and asserts step 1 is
+  selected and the key is gone. Dropping the survey's removal fails it: **1 failed | 4
+  passed**. The scan-side removal has no e2e test, because a real capture needs a face
+  the canvas camera cannot supply.
+
+  *One failure not explained.* The first run of the spec after these edits gave **1
+  failed | 4 passed**: the worker's own first case timed out waiting for `inert` to
+  appear. It did not recur in 2 warm runs or 3 runs forced cold by touching
+  `lib/i18n.tsx` (**5 passed** each). The worker's tree forced cold gave **3 passed**.
+  The mechanism is not established. The new release only fires when `loadDict` has
+  settled without a dictionary, so if the chunk really failed in that run, releasing
+  was correct.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 108 passed (108)
+  / Tests 929 passed (929)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `02c7123` drops
+  **1** line: the finding's `- [ ]` became `- [x]` (`docs/AUTOPILOT.md:1225`). Cycle 39
+  sits after cycle 38 at the end of the changelog. `npm run smoke` on
+  the fixed tree gave **234 passed (7.0m)** and `Smoke test passed.` on the first run.
 
 - 2026-09-25 (cycle 41) — Branch `autopilot/2026-09-25-1839`. **The capture screen — the
   one screen every conversion passes through — had never been measured in a laid-out

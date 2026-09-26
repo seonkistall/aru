@@ -100,6 +100,9 @@ export default function Survey() {
     const survey: SurveyT = { type, concerns, category, budget, avoid };
     try {
       sessionStorage.setItem(DEVICE_DATA_KEY.survey, JSON.stringify(survey));
+      // A new survey is a new report: open it on its first step, not on the step
+      // the previous report was left on.
+      sessionStorage.removeItem(DEVICE_DATA_KEY.reportStep);
     } catch {
       setSaveErr(t("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요."));
       return;

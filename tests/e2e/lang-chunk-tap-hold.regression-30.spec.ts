@@ -162,6 +162,45 @@ test.describe("a tap during the English interval", () => {
     await expect(page.locator("[data-quality-checklist]").first()).toBeVisible({ timeout: 20_000 });
   });
 
+  // Supervisor, cycle 42 review. loadDict swallows a failed chunk fetch and
+  // resolves with the dictionary still missing, so `active !== saved` can hold
+  // forever. Before the release below, aborting the ja chunk left <body> inert 8s
+  // later with no link clickable: a dead page, where the English one had been
+  // usable. The hold must let go and leave a working English page.
+  test("lets go when the ja dictionary fails to load, leaving a usable English page", async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem("aru.lang", "ja");
+      } catch {
+        /* private mode */
+      }
+    });
+    await page.addInitScript(CANVAS_CAMERA);
+    let aborted = 0;
+    await page.route("**/_next/static/**/*.js", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      if (!body.includes(JA_MARKER)) {
+        await route.fulfill({ response, body });
+        return;
+      }
+      aborted += 1;
+      await route.abort("failed");
+    });
+
+    await page.goto("/scan");
+    await expect(page.locator('[data-testid="scan-start"]')).toBeVisible();
+    await expect
+      .poll(async () => page.evaluate(() => document.body.hasAttribute("inert")), { timeout: 20_000 })
+      .toBe(false);
+    expect(aborted).toBeGreaterThan(0);
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
+    expect(await page.evaluate(() => document.body.hasAttribute("data-aru-lang-pending"))).toBe(false);
+
+    await tapCentre(page, '[data-testid="scan-start"]');
+    await expect(page.locator("[data-quality-checklist]").first()).toBeVisible({ timeout: 20_000 });
+  });
+
   test("never happens for ko, which waits for no chunk", async ({ page }) => {
     await page.addInitScript(() => {
       try {
@@ -254,4 +293,29 @@ test("a language switch on /report keeps the picks step and its links", async ({
     }));
     expect(box.scrollWidth, `${code} must not overflow 360px`).toBe(box.clientWidth);
   }
+});
+
+// Supervisor, cycle 42 review. The stored step outlives the report it belongs
+// to unless a new one clears it: a visitor who left /report on the routine step
+// and then answered the survey again would land on step 3 of the NEW report,
+// past the picks step that carries the merchant links.
+test("a new survey opens /report on its first step, not the one the last report was left on", async ({ page }) => {
+  await page.addInitScript(
+    ([survey, reads]) => {
+      localStorage.setItem("aru.lang", "ko");
+      sessionStorage.setItem("gyeol_survey", survey);
+      sessionStorage.setItem("gyeol_reads", reads);
+      sessionStorage.setItem("aru_report_step_v1", "2");
+    },
+    [VALID_SURVEY, REAL_READS] as const,
+  );
+  await page.goto("/survey");
+  const submit = page.getByRole("button", { name: "내 스킨케어 결과 보기" });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await page.waitForURL("**/report");
+  const tabs = page.locator('[role="tab"]');
+  await expect(tabs).toHaveCount(3);
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+  expect(await page.evaluate(() => sessionStorage.getItem("aru_report_step_v1"))).toBeNull();
 });
