@@ -192,6 +192,126 @@ the browser store, and it is owner-blocked (see BLOCKERS in
 putting the record in a cookie sends it to the server on every request, which is a
 different privacy posture and not a plumbing change.
 
+## 2026-09-26 (cycle 44): does installing to the Home Screen carry the saved result over?
+
+The exemption above names `m_standaloneApplicationDomain`, whose own comment names home
+screen web applications, and the obvious move from it is a "add ARU to your Home Screen"
+nudge. That only pays if the installed web app can still read the `aru_last_result`
+Safari wrote. This section is that question, and the answer is: **the source says where
+the store lives, and where it lives says no.** The last step is inference, labelled as
+such.
+
+### Sources fetched here
+
+`webkit.org` is still refused on this network. Both attempts printed verbatim:
+
+```
+curl: (56) CONNECT tunnel failed, response 403
+webkit.org http=000
+```
+
+| file | URL | status | bytes | sha256 |
+|---|---|---|---|---|
+| `WebsiteDataStoreCocoa.mm` | `raw.githubusercontent.com/WebKit/WebKit/main/Source/WebKit/UIProcess/WebsiteData/Cocoa/WebsiteDataStoreCocoa.mm` | 200 | 48997 | `6aecf0fc50acb7c1e1c6a01b0f1c40eef6537583bf8d85c97d0fe2436687d2c2` |
+| `WebsiteDataStore.cpp` | `.../Source/WebKit/UIProcess/WebsiteData/WebsiteDataStore.cpp` | 200 | 141751 | `3973c36717ebcc851c5953f9a264794d07985f2b957f3f5380c6b6df7fa8a884` |
+| `WebsiteDataStoreConfiguration.h` | `.../Source/WebKit/UIProcess/WebsiteData/WebsiteDataStoreConfiguration.h` | 200 | 24449 | not hashed |
+| `EventNames.json` | `.../Source/WebCore/dom/EventNames.json` | 200 | 12279 | `1c60b7af9225aba0d61a2df10fb61d998246d6b7b97172b191aba4a08563ae26` |
+
+`Source/WebKit/UIProcess/Cocoa/WebsiteDataStoreCocoa.mm` — the path guessed first — is
+**http=404, 14 bytes**; the file is under `WebsiteData/Cocoa/`, which is the row above.
+`api.github.com` is refused for this repository (**http=403**), so the tree could not be
+listed and each path was fetched by name.
+
+### Quoted
+
+`WebsiteDataStore.cpp:2534-2540`, the platform switch that names the directory:
+
+```cpp
+String WebsiteDataStore::defaultLocalStorageDirectory(const String& baseDataDirectory)
+{
+#if PLATFORM(PLAYSTATION)
+    return websiteDataDirectoryFileSystemRepresentation("local"_s, baseDataDirectory);
+#elif USE(GLIB)
+    return websiteDataDirectoryFileSystemRepresentation("localstorage"_s, baseDataDirectory);
+#else
+    return websiteDataDirectoryFileSystemRepresentation("LocalStorage"_s, baseDataDirectory);
+```
+
+`WebsiteDataStoreCocoa.mm:587-598`, which is where that name is anchored on Apple
+platforms — and the whole of the answer:
+
+```objc
+String WebsiteDataStore::websiteDataDirectoryFileSystemRepresentation(const String& directoryName, const String&, ShouldCreateDirectory shouldCreateDirectory)
+{
+    static NeverDestroyed<RetainPtr<NSURL>> websiteDataURL = [] {
+        RetainPtr url = [[NSFileManager defaultManager] URLForDirectory:NSLibraryDirectory inDomain:NSUserDomainMask appropriateForURL:nullptr create:NO error:nullptr];
+        if (!url)
+            RELEASE_ASSERT_NOT_REACHED();
+
+        url = [url URLByAppendingPathComponent:@"WebKit" isDirectory:YES];
+        if (!WebKit::processHasContainer())
+            url = [url URLByAppendingPathComponent:applicationOrProcessIdentifier().get() isDirectory:YES];
+
+        return [url URLByAppendingPathComponent:@"WebsiteData" isDirectory:YES];
+    }();
+```
+
+`WebsiteDataStoreConfiguration.h:251-252` and `:372`, and its one consumer at
+`WebsiteDataStoreCocoa.mm:234`:
+
+```cpp
+    const URL& standaloneApplicationURL() const LIFETIME_BOUND { return m_standaloneApplicationURL; }
+    void setStandaloneApplicationURL(URL&& url) { m_standaloneApplicationURL = WTF::move(url); }
+```
+
+```objc
+    parameters.networkSessionParameters.resourceLoadStatisticsParameters.standaloneApplicationDomain = WebCore::RegistrableDomain { m_configuration->standaloneApplicationURL() };
+```
+
+### What that establishes, and what is inference
+
+**Fact.** The default persistent LocalStorage directory is `NSLibraryDirectory` in
+`NSUserDomainMask` + `WebKit` + `WebsiteData` + `LocalStorage`, and the per-application
+path component (`applicationOrProcessIdentifier()`, itself `[NSBundle mainBundle].bundleIdentifier`
+at `:121`) is appended **only when `!WebKit::processHasContainer()`**. The source's own
+branch is the statement that a containerised process needs no further separation,
+because the container already is the separation.
+
+**Fact.** `standaloneApplicationURL` is a property of a `WebsiteDataStoreConfiguration`
+that the **embedding application sets on itself**. The ITP exemption this note's earlier
+sections found is therefore keyed on what the host app declares, not on anything Safari
+hands to a web app.
+
+**Inference,** and the step WebKit's tree does not take in words: a Home Screen web app
+on iOS is a separate host process with its own container, so `NSLibraryDirectory` in
+`NSUserDomainMask` resolves somewhere else than it does for Safari, and the
+`aru_last_result` Safari holds is **not** readable from the installed app. Nothing in
+the WebKit repository says "Home Screen web apps do not share localStorage with Safari";
+what it says is the path rule, and the container claim about Home Screen web apps comes
+from outside the tree.
+
+**Fact, and the second reason the nudge is weak.** `Source/WebCore/dom/EventNames.json`
+is WebKit's event-name registry: **338** names, `beforeunload` among them, **0**
+occurrences of `beforeinstallprompt` and **0** of `appinstalled`
+(`grep -c -i` on the fetched file). So on the only platform this note's storage cap
+applies to, an install affordance can never be a real prompt — only a line of text
+telling someone to use the Share sheet.
+
+### The decision, 2026-09-26 (cycle 44): not built
+
+Under the inference above, installing does not carry the record, so the nudge does not
+buy back what this note says is at risk. It is worse than neutral: a returning visitor
+who follows it opens an installed app with no saved result while Safari still has one —
+manufacturing exactly the dead return path cycles 32, 33 and 43 were spent closing. And
+the affordance would have to sit on `/report` after the picks, which is the only screen
+in the product with merchant links on it.
+
+**What would change this:** a measurement on a real iOS device, or an Apple statement,
+showing `localStorage` written in Safari is readable from the same site added to the
+Home Screen. Until one of those exists, the nudge is not worth a line of code, and the
+cap stays a thing to survive (the re-engage email, a server-side record) rather than a
+thing to install around.
+
 ## What this note does not establish
 
 No measurement on a real iPhone or in a real Safari: everything above is read from

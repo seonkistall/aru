@@ -68,3 +68,6 @@ next-env.d.ts
 
 # scan cost benchmark scratch builds (ARU_PRINT_SCAN_COST)
 /tests/.scan-cost-tmp/
+
+# blemish constant sensitivity scratch builds
+/tests/.blemish-const-tmp/

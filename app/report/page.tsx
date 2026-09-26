@@ -7,7 +7,7 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { budgetLabel, isSurvey, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent, recordPageView } from "@/lib/funnel";
-import { isSkinReads, loadLastResult, saveLastResult } from "@/lib/last-result";
+import { isScanReads, isSkinReads, loadLastResult, saveLastResult } from "@/lib/last-result";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
 import { ScanHistoryStrip } from "@/app/components/scan-history-strip";
@@ -92,7 +92,15 @@ function loadInitialView(): InitialView | null {
   let reads: SkinReads | null = null;
   try {
     const scanRaw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
-    if (scanRaw) scan = JSON.parse(scanRaw);
+    // Same hole again, one key over, and the one that does not announce itself: a
+    // wrong-shaped `scan` does not throw, it makes `shouldApplyScan` true (it is a
+    // truthiness test plus two optional fields), so the picks are the survey-only picks
+    // and every reason on them opens "카메라에서 확인한 피부 특징과 ...". Structural
+    // check, then fall back to no-scan, which is the copy this page already has.
+    if (scanRaw) {
+      const parsedScan: unknown = JSON.parse(scanRaw);
+      if (isScanReads(parsedScan)) scan = parsedScan;
+    }
   } catch {}
   try {
     const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);

@@ -8948,3 +8948,236 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   config.webServer`, after `Slow filesystem detected. The benchmark took 3691ms`, on a
   container that had just restarted. The one re-run gave **220 passed (7.5m)** and
   `Smoke test passed.`
+
+- 2026-09-25 (cycle 41) — Branch `autopilot/2026-09-25-1839`. **The capture screen — the
+  one screen every conversion passes through — had never been measured in a laid-out
+  browser, because reaching it needs a camera. It does not: `getUserMedia` shimmed to a
+  canvas `captureStream()` reaches `phase === "ready"` the way a phone does, and the
+  screen is clean in all five locales. Four physical-direction defects were found by
+  measuring under `ar` rather than by grepping, and three named candidates were measured
+  and cleared.**
+
+  **Baselines, re-measured here on `5f4bbe0` before any edit.** `node_modules` was
+  absent, so `npm ci` first. `npx vitest run` **Test Files 106 passed (106) / Tests 921
+  passed (921)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 146 tests in 2.675s ... OK**. They match the supervisor's, except
+  that selftest reads **146** rather than the brief's "OK" against cycle 40's 145 → 146
+  move. A baseline smoke was not run; only the post-change one below, which is green.
+
+  **UI/UX — the `ready` phase at 360x800 under ko/en/ja/zh/ar, and it is clean.**
+  Production build (`npm run build` then `npx next start`), a fresh context per locale,
+  the landmarker reaching `guideState === "ready"` in all five so the guide pill actually
+  paints. The capture button's bottom edge is **792** in every locale (top **741.5**), so
+  it is **fully above the 800px fold in all five** — it is `position: sticky; bottom: 0`,
+  which is why. `scrollWidth === clientWidth === 360` on every one. **0** Korean
+  characters in `en`, `ja`, `zh` and `ar` (**85** tokens in `ko`, which is its own
+  dictionary) and **0** un-interpolated `{placeholders}` in any of the five. The language
+  switcher follows `dir` — **267.4…350** in `en`, **10…86.8** in `ar` — and overlaps
+  nothing; the guide pill (**264.1…326** en, **274.1…326** ar) overlaps nothing.
+  **One overlap is real and is not a defect**: the sticky capture bar's opaque background
+  covers the quality panel at scroll offset 0, by **2.7px** in `ko`, **50.5** in `en`,
+  **50.5** in `ja`, **36.8** in `zh` and **50.5** in `ar`, and in `ko` it also covers the
+  privacy pill (**155.9 x 21.8**). Scrolled to the bottom the bar releases and the
+  overlap reads negative in all five (**-343.8 / -377 / -343.8 / -343.8 / -359.7**), so
+  nothing is unreachable. Recorded as measured rather than as a finding.
+
+  **Bug fix — five named candidates, decided under `ar` by painted geometry. Two were
+  defects, three were not, and grepping wider found two more.**
+
+  Defects, all four fixed with a logical property and all four measured before and after
+  on a production build at 360x800:
+  1. `app/scan/info-sheet.tsx`'s privacy `<ul>` and `app/care/page.tsx`'s `tipList`,
+     both `paddingLeft: 18`. **The list-marker reasoning does not apply here and that is
+     worth saying**: the computed `list-style-type` on both lists is `none`, read off
+     the browser, and `app/globals.css` — the app's only stylesheet, which is
+     `@import "tailwindcss"` plus ARU's own rules — contains **0** `list-style` rules,
+     so the reset comes from Tailwind's preflight. There is no marker box, and the 18px
+     is pure indent rather than marker room.
+     Before, under `ar`: the info sheet's `<li>` lines all ended at **327**, the `<ul>`
+     box's own edge, as did the `<b>` above them — indent **0px**, against **18px** in
+     `en` (text at **51**, sibling at **33**). `/care`'s tips: `<li>` lines at **321**,
+     sibling at **321**, against `en`'s **57** vs **39**. After: **309** = 327 - 18 and
+     **303** = 321 - 18, with `en` unchanged at 51 and 57.
+  2. `app/components/product-card.tsx`'s price span, `marginLeft: "auto"`. In RTL the
+     left is the inline END, so the auto margin absorbed the slack on the wrong side.
+     Measured on `/report`'s picks step, all three cards: `en` gap-at-start **25.4** /
+     gap-at-end **0**; `ar` **0** / **23.3**, with `margin-inline-start` computing to
+     **0px** and `margin-inline-end` to **23.25px**. After: `ar` **23.2** / **0**, `en`
+     unchanged.
+  3. `app/care/page.tsx:149`'s commerce mascot, `marginLeft: -12` — **not on the
+     candidate list; grepped here**. The negative gutter is meant to pull the mascot
+     toward the paragraph. Under `ar` it pulled it away: mascot **27…81** in a row of
+     **39…321**, i.e. **12px outside the card's own inline end**, with the
+     paragraph gap reading **+6** where `en` reads **-6**. After: mascot **39…93**,
+     gap **-6**, mascot-to-row-end **0** — `en`'s numbers exactly.
+
+  Measured and **not** defects, recorded as none rather than invented:
+  `app/scan/scan-controls.tsx`'s `privacyPill` `textAlign: "right"` — its Arabic string
+  is one line in a box that fits it exactly (box **44…186.7**, line **44…186.7**), so
+  the property paints nothing; in `en` it does (box **155.5…316**, two lines at
+  **160.5…316** and **259.1…316**). `app/report/page.tsx:305`'s value span
+  `textAlign: "right"` — `flexShrink: 0` and box width equal to text width on all three
+  `ar` rows (**31.7**, **44.7**, **77.4**), one line each. `app/care/page.tsx`'s
+  `linkBtn` and `otherMerchantsBtn` `textAlign: "left"` — every painted string is inside
+  a child that sets `textAlign: "start"` or is a shrink-to-fit flex item under
+  `justify-content: space-between`; in `ar` the link button's inner span runs
+  **89.2…308** flush to its content box's start edge with the arrow at **52…68.6**, and
+  the merchants button's label runs **212…319** with its arrow at **41…52.5**.
+
+  **Why cycle 34's sweep of `/report` and `/care` did not report the price span**: the
+  string `marginLeft` does not occur in `app/report/page.tsx` at all (`grep -c` reads
+  **0**); it is in `app/components/product-card.tsx`, a shared component rendered on
+  `/report`, which a per-route grep does not reach. **For the `/care` mascot no such
+  reason was found** — `marginLeft: -12` is in `app/care/page.tsx` itself and
+  `marginLeft` is on cycle 34's own candidate list. Why it was not reported is not
+  something this cycle can establish, and is recorded as unknown rather than guessed.
+
+  **Broken on purpose, six ways, every count re-run on the final tree.**
+  `tests/e2e/rtl-logical-inset.regression-29.spec.ts` is **9 passed**. Reverting all four
+  fixes to their physical keywords: **5 failed | 4 passed**. Then, one at a time and each
+  the plausible-looking thing to reach for: `paddingRight: 18` on both lists **2 failed |
+  7 passed**; `marginInlineEnd: "auto"` on the price **2 failed | 7 passed**;
+  `textAlign: "end"` on the price span instead of a logical margin **2 failed | 7
+  passed**; `marginInlineEnd: -12` on the mascot **2 failed | 7 passed**;
+  `marginInlineStart: 0` on the mascot **2 failed | 7 passed**. The fold assertion was
+  broken too, so it is not vacuous: taking `position: sticky` off the capture bar gives
+  **1 failed | 6 passed**, the failure being "the capture button fell below the fold in
+  ko".
+
+  **Research — the CSS Working Group's own drafts, from `raw.githubusercontent.com`.**
+  `w3c/csswg-drafts/main/css-logical-1/Overview.bs` **http=200**, **39421** bytes, sha256
+  `9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41`; line 108 is the
+  Arabic example this cycle's fixes are written on — `padding-inline-start: 5px; /*
+  padding-left in latin, padding-right in arabic */` — with `margin-inline-start` on line
+  106 and `text-align: start` on line 105.
+  `w3c/csswg-drafts/main/css-lists-3/Overview.bs` **http=200**, **66082** bytes, sha256
+  `417cec4088605d6c300de17bbac4c2be1ea4c3ce1eaf8d660672a5b91a32d902`; lines 493-494 say
+  an `outside` marker box must "be placed on the <a>inline-start</a> side of the box,
+  using the <a>writing mode</a> of the box indicated by 'marker-side'". That is the
+  sentence the fix was expected to rest on, and **it turned out not to apply**: the
+  computed `list-style-type` is `none`, so no marker box exists on either list. Measuring
+  the DOM rather than trusting the spec-shaped reasoning is what caught that.
+
+  **ML — the 4096-entry `srgbLinear` table's acceptance criterion, turned into a run.**
+  Chosen because it needs no labelled export, no real photo and no phone profile, and
+  because its open sentence names two numbers nothing in the suite re-derives.
+  `tests/srgb-lut-knee-cell.test.ts` builds the table the item describes, sweeps the
+  whole 0-255 domain against `labAStar` itself, and locates the worst a* error in **cell
+  165** — the cell the knee at **10.31475** falls inside, cell width
+  **0.062255859375**. Grey diagonal: **9.005782231064074e-9** at channel
+  **10.314453125**. One channel against a held pair: **0.00006554712123119089** at
+  r=**10.3125**, g=b=**30**. Inside the detector's own **132-220** band the table clears
+  **1.046e-5**; in the ungated 0-40 band it does not, and the worst is in the same cell.
+  **4 passed.** Broken two ways: `N = 255`, the exact-integer table the item's own trap
+  paragraph rejects, **2 failed | 2 passed**; making the knee cell exact — the second of
+  the item's two escapes — also **2 failed | 2 passed**, which is the test noticing the
+  fix rather than a bug in it. `srgbLinear` is untouched and no published field moved.
+  The item **stays open**: whether the table is worth shipping is a phone-profile
+  question, and which escape to take is not decided here.
+
+  **Smoke was red twice, at two different specs, and the cause is cycle 40's.** The
+  first run gave **1 failed | 228 passed** at
+  `tests/e2e/reads-shape.regression-17.spec.ts:174` ("nothing was saved at all"); the
+  second, on the committed tree, gave **1 failed | 228 passed** at
+  `tests/e2e/landing-callout-clearance.regression-11.spec.ts:9` ("ja 360px tagline",
+  `boundingBox()` returning null) with the first one green. Neither is in code this
+  branch touches: `app/page.tsx` imports none of the three changed components, and
+  `grep` for them in it returns nothing. Reproduced rather than assumed — the landing
+  spec alone, on an otherwise idle box, was **1 failed in 5 runs**. The mechanism is
+  cycle 40's: ja/zh/ar are a dynamic `import()`, so `LanguageProvider` renders English
+  first and remounts the subtree (`key={active}`, `lib/i18n.tsx:125`) when the chunk
+  lands. A non-retrying read taken after a `toBeVisible()` that passed before the
+  remount hits a detached node, and an effect-written localStorage mirror can be sampled
+  between the two phases. Both specs predate the lazy dictionaries and both assumed one
+  render. They now wait for the signal the remount has happened — `html[lang]`, set by
+  an effect from the same `active` — and poll for the mirror write instead of counting
+  two animation frames. **The hardening does not weaken either assertion**, which was
+  checked rather than claimed: pushing the hero callout up with `marginTop: -90` still
+  fails the landing spec on the collision message, and making `isSkinReads` return
+  `true` unconditionally still gives **7 failed | 45 passed** on the reads-shape file.
+  Six consecutive runs of the two files together are **53 passed**.
+  **The third run caught the same bug in this cycle's own spec**, which is the useful
+  part: **1 failed | 228 passed** at the fold test, `main [data-quality-checklist]`
+  never appearing, because its locale loop clicked `scan-start` before the remount and
+  the camera state went with the discarded tree. Same wait, same reason; five
+  consecutive runs of the file are **9 passed**, and taking `position: sticky` off the
+  capture bar still fails it on "the capture button fell below the fold in ko".
+
+  **What this does not establish.** No traffic number changed and none was measured; a
+  capture screen that lays out correctly in Arabic is a precondition for a reading, not
+  evidence of one. Everything is a local production build in one Chromium at exactly
+  360x800 — no real phone, no other viewport, no other browser's flex or bidi
+  implementation. The camera shim is a canvas, not a face: the landmarker reached
+  `guideState === "ready"` but no real capture ran, so nothing downstream of the shutter
+  was exercised. Mid-session language switching is still unmeasured on every screen. The
+  `ar` verdicts on `privacyPill`, the `/report` value span and `/care`'s two buttons are
+  statements about the strings this build composes at this width — a longer translation
+  that wraps would make `textAlign: "right"` paint, and that was not tested. And the ML
+  work measures a candidate table; it does not ship one, and says nothing about speed.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 107 passed (107) / Tests 925
+  passed (925)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**, and
+  `npm run smoke` **229 passed (10.6m)** with `Smoke test passed.` — on the fourth
+  attempt; the first three are the three failures described above, each a different
+  spec and each fixed rather than re-run away. The rotation check against `5f4bbe0`
+  (both docs concatenated, `sort -u`, `comm -23`) drops **0** lines, and cycle 38's
+  **202** lines are byte-identical at the end of the changelog (`diff` clean).
+  Full output in the report.
+
+  **Supervisor review.** The four fixes are sound. One test fix was added before merge,
+  and one finding about cycle 40 goes to the top of the next cycle.
+
+  *Predicted by reading, before the branch existed:*
+  - `product-card.tsx`'s `marginLeft: "auto"` would leave the price at the start of its
+    row under `ar`. Checked in a minimal Chromium repro (300px flex row, three spans):
+    `ltr` price at **268…300**, `rtl` with `marginLeft` at **260…292** in a row of
+    **60…360**, `rtl` with `marginInlineStart` at **60…92**. The worker measured the same
+    defect on `/report` itself.
+  - The two list `paddingLeft`s would misplace list markers under `ar`. **Wrong**: the
+    worker read `list-style-type: none` off the browser, so there is no marker, and the
+    defect is the missing 18px indent instead. The worker caught this. I did not.
+  - The ready phase could be rendered without a camera, because
+    `tests/e2e/mobile-layout.spec.ts` already shims `getUserMedia`. The worker used that.
+
+  *Broken here, two ways, on the committed tree.*
+  `tests/e2e/rtl-logical-inset.regression-29.spec.ts` is **9 passed** clean. Putting
+  `marginLeft: "auto"` back on the price gives **1 failed | 8 passed**. Using
+  `paddingInlineEnd: 18` on the scan info sheet (the plausible wrong logical property)
+  gives **2 failed | 7 passed**. Both edits were reverted.
+
+  *Smoke was red here too, at a spec this branch does not touch.* The first supervisor
+  run of `npm run smoke` on `7181994` gave **1 failed | 228 passed** at
+  `tests/e2e/discovery-metadata.regression-26.spec.ts:81` (cycle 39): "strict mode
+  violation: locator('head meta[property="og:url"]') resolved to 2 elements", one for
+  `/report` and one for `/survey`. `/report` client-redirects to `/survey` with empty
+  storage (`app/report/page.tsx:139`), and the spec read `<head>` in the page, so it
+  raced the redirect. The same file's own comment on its HTTP test already says this.
+  Reproduced on purpose: adding a 3000ms wait after `goto` fails it every time, **1
+  failed | 8 passed**. Fixed by reading the NOINDEX routes with `javaScriptEnabled:
+  false`, which is also what a crawler or a share scraper sees. With the same 3000ms wait
+  the fixed spec is **9 passed**. It still catches a real defect: flipping `/report` to
+  `index: true` in `lib/seo.ts` gives **2 failed | 14 passed**. Three clean runs of the
+  file gave **16 passed** each.
+
+  *Finding for the next cycle, from cycle 40, which I missed in its review.* The worker
+  hardened three specs against the `key={active}` remount in `lib/i18n.tsx`, and its own
+  comment says why: "Clicking before that remount starts the camera on a tree that is
+  about to be thrown away." That is a user-facing defect, not only a test race. A
+  `ja`/`zh`/`ar` visitor who taps during the English interval loses the tap. Probed here
+  with the `ja` dictionary chunk delayed by Playwright routing, on the dev server, with a
+  canvas camera:
+  - 0ms delay: `{"langAtTap":"en","langAfter":"ja","startVisibleAfter":false,"checklist":1}`.
+  - 3000ms delay: `{"langAtTap":"en","langAfter":"ja","startVisibleAfter":true,"checklist":0}`.
+    The tap started the camera, then the remount put the page back on its start button.
+  The camera does not leak: the unmount cleanup at `app/scan/page.tsx:281` calls
+  `stopCamera()`. How long the English interval lasts on a real phone network was not
+  measured. It is recorded under "Supervisor findings not yet actioned".
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 107 passed (107)
+  / Tests 925 passed (925)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `5f4bbe0` drops
+  **0** lines. Recent cycles holds 41/40/39, and cycle 38 sits after cycle 37 at the end
+  of the changelog. With the spec fix,
+  `npm run smoke` gave **229 passed (7.7m)** and `Smoke test passed.`
