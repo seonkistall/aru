@@ -186,6 +186,70 @@ said "the bound rules out the seed". Nothing here identifies what else differed.
 analyzer changed, and whether some construction not tried here reaches 71. Both need
 cycle 11's fixture, which was never committed.
 
+## A third knob: a fixture near its cut rather than on it (2026-09-26, cycle 45)
+
+The section above moved the two knobs the re-derivation exposes one at a time, and both
+of them keep the clean capture ON its cut point — re-seeding the bisection re-bisects.
+The knob that gives that up had not been moved: a construction that lands NEAR the cut,
+which is what a fixture written rather than bisected would do. `tuned("oil")` returns
+`contrast`; this offsets it by `delta` and leaves everything else alone.
+
+`ARU_PRINT_RETAKE_DARKOIL=1 npx vitest run tests/retake-signal-rule.test.ts`, 120 seeds
+per cell:
+
+```
+DARKOIL delta	clean shine (seed 1)	disagreements at cheekL 60
+DARKOIL -0.02	0.039002	0/120
+DARKOIL -0.01	0.044481	1/120
+DARKOIL -0.005	0.046953	6/120
+DARKOIL -0.002	0.049089	14/120
+DARKOIL -0.001	0.049656	22/120
+DARKOIL 0	0.049980	21/120
+DARKOIL 0.001	0.050422	9/120
+DARKOIL 0.002	0.050687	14/120
+DARKOIL 0.005	0.052913	18/120
+DARKOIL 0.01	0.055301	1/120
+DARKOIL 0.02	0.061003	0/120
+DARKOIL 0.04	0.071852	0/120
+```
+
+**The count is a ridge over the cut, not a slope.** A disagreement needs the clean and
+the darkened capture to straddle the cut, so once the offset carries both clear of it
+the count is 0/120 — at `delta -0.02` (clean shine 0.039002) and at `+0.02` and `+0.04`
+(0.061003, 0.071852). The peak, 22/120 at `delta -0.001`, is one seed above the
+committed construction's 21/120.
+
+The two knobs together, 7 offsets x 4 darknesses, the last column being the sweep's own
+조명 dark:
+
+```
+DARKOIL delta	cheekL 20	cheekL 30	cheekL 40	cheekL 60
+DARKOIL -0.005	30/120	23/120	11/120	6/120
+DARKOIL -0.002	43/120	32/120	25/120	14/120
+DARKOIL -0.001	42/120	38/120	27/120	22/120
+DARKOIL 0	39/120	35/120	26/120	21/120
+DARKOIL 0.001	17/120	18/120	13/120	9/120
+DARKOIL 0.002	20/120	16/120	24/120	14/120
+DARKOIL 0.005	39/120	23/120	30/120	18/120
+DARKOIL max 43/120 at delta -0.002 cheekL 20
+```
+
+**71/120 is a majority of the seeds; nothing in this family produces one.** 43/120 is
+35.8% and it is the largest of the 28 cells — at a face darker (cheekL 20) than any
+condition the sweep names, and under the 55 that cycle 32's marginals bound the
+committed construction to. The grid also reproduces cycle 32 where they overlap: `delta
+0`, cheekL 40 reads **26/120** there and here.
+
+Asserted rather than left to the print, at four corners of the grid with 24 seeds —
+`(delta, cheekL)` of `(-0.002, 20)`, `(-0.002, 60)`, `(0, 20)`, `(0, 60)` read **7, 2, 8
+and 3 of 24**, each below half — in `tests/retake-signal-rule.test.ts` -> "never puts a
+majority of seeds in disagreement, which is what 71/120 would be".
+
+*Measured:* every number above. *Inferred, unchanged from cycle 32:* cycle 11's 71/120
+came from a construction differing in kind rather than in the setting of a knob. *Not
+established:* which one; whether a construction outside this family reaches 71; and
+anything at all about a real face. The item stays open.
+
 ## What this does not answer
 
 Nothing here touches a real face. The fixtures are synthetic frames with seeded

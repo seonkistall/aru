@@ -530,3 +530,103 @@ describe("조명 dark + oil, the one unpinned row whose count did not reproduce"
     for (const cheekL of [40, 50, 60, 70, 80, 90, 100, 120]) row(String(cheekL), fixture, cheekL);
   }, 600_000);
 });
+
+/**
+ * A third knob on the same open row, and the first joint sweep of two of them.
+ *
+ * Cycle 32 (`docs/retake-sweep-what-it-measures.md` §조명 dark + oil) moved the two
+ * knobs the re-derivation exposes ONE AT A TIME — the bisection's tuning seed, and how
+ * dark the degraded capture is — and neither reached cycle 11's written 71/120. Both of
+ * those keep the clean capture ON its cut point, because re-seeding re-bisects. The
+ * knob nobody had moved is the one that gives that up: a construction that lands NEAR
+ * the cut instead of on it, which is what a differently-written fixture would do.
+ *
+ * It does not reach 71 either, and the reason is visible in the grid: disagreements
+ * need the clean and degraded captures to straddle the cut, so the count collapses to
+ * 0/120 as soon as the offset carries both of them clear of it — 0.039 shine at
+ * `delta -0.02` and 0.072 at `+0.04` both read 0/120, against 21/120 at the committed
+ * construction. The count is a ridge over the cut, not a slope, on either knob.
+ *
+ * Measured with `ARU_PRINT_RETAKE_DARKOIL=1 npx vitest run
+ * tests/retake-signal-rule.test.ts`, 120 seeds per cell:
+ *
+ *   - offset alone, at cheekL 60, over `delta` -0.02..+0.04: max **22/120**
+ *   - darkness alone, at the committed offset (`delta 0`), cheekL 20..60: **39/120** at
+ *     cheekL 20 and **35/120** at 30. Cycle 32 stopped at cheekL 40 — where this grid
+ *     reads **26/120**, the same number it did
+ *   - the two together, 7 offsets x 4 darknesses: max **43/120**, at `delta -0.002`,
+ *     cheekL 20 — a face darker than any of the conditions the sweep names
+ *
+ * 71/120 is a MAJORITY of the seeds (59.2%). Nothing in this fixture family produces a
+ * majority: 43/120 is 35.8%, and that is the largest of 28 cells. It is also under the
+ * 55 that cycle 32's marginals bound the committed construction to. *Inferred, and
+ * unchanged from cycle 32:* cycle 11's number came from a construction that differs in
+ * kind, not in the setting of a knob. *Not established:* which one — that still needs
+ * cycle 11's fixture, which was never committed — and nothing here touches a real face.
+ */
+describe("the dark-oil count under a fixture that is near its cut rather than on it", () => {
+  it("prints the joint grid over both construction knobs", () => {
+    if (!process.env.ARU_PRINT_RETAKE_DARKOIL) return;
+    const write = (line: string) => process.stdout.write(`DARKOIL ${line}\n`);
+    const base = tuned("oil");
+    const count = (fixture: Fixture, cheekL: number) => {
+      let disagreements = 0;
+      for (let seed = 1; seed <= 120; seed += 1) {
+        const clean = analyzeSkin(noisyFrame(fixture, REFERENCE_CHEEK_L, seed, 0), landmarks(CHEEK_OK))!;
+        const degraded = analyzeSkin(noisyFrame(fixture, cheekL, seed, 0), landmarks(CHEEK_OK))!;
+        if (clean.oil.value !== degraded.oil.value) disagreements += 1;
+      }
+      return disagreements;
+    };
+    write("delta\tclean shine (seed 1)\tdisagreements at cheekL 60");
+    for (const delta of [-0.02, -0.01, -0.005, -0.002, -0.001, 0, 0.001, 0.002, 0.005, 0.01, 0.02, 0.04]) {
+      const fixture: Fixture = { ...base, contrast: base.contrast + delta };
+      const shine = analyzeSkin(noisyFrame(fixture, REFERENCE_CHEEK_L, 1, 0), landmarks(CHEEK_OK))!.raw.shine;
+      write(`${delta}\t${shine.toFixed(6)}\t${count(fixture, 60)}/120`);
+    }
+    write("delta\tcheekL 20\tcheekL 30\tcheekL 40\tcheekL 60");
+    let best = { delta: 0, cheekL: 0, disagreements: -1 };
+    for (const delta of [-0.005, -0.002, -0.001, 0, 0.001, 0.002, 0.005]) {
+      const fixture: Fixture = { ...base, contrast: base.contrast + delta };
+      const cells = [20, 30, 40, 60].map((cheekL) => {
+        const disagreements = count(fixture, cheekL);
+        if (disagreements > best.disagreements) best = { delta, cheekL, disagreements };
+        return `${disagreements}/120`;
+      });
+      write(`${delta}\t${cells.join("\t")}`);
+    }
+    write(`max ${best.disagreements}/120 at delta ${best.delta} cheekL ${best.cheekL}`);
+  }, 900_000);
+
+  /**
+   * The conclusion, asserted rather than printed, on the four corners of that grid that
+   * matter: the committed offset and the one the 120-seed grid peaks at, each against
+   * cheekL 60 (the sweep's own 조명 dark) and cheekL 20 (darker than anything it names).
+   * Twenty-four seeds, not 120 — the claim is not the fraction, it is that a majority
+   * never happens, and 71/120 is a majority.
+   */
+  it("never puts a majority of seeds in disagreement, which is what 71/120 would be", () => {
+    const base = tuned("oil");
+    const SEEDS = 24;
+    const counts: number[] = [];
+    for (const delta of [-0.002, 0]) {
+      const fixture: Fixture = { ...base, contrast: base.contrast + delta };
+      for (const cheekL of [20, 60]) {
+        let disagreements = 0;
+        for (let seed = 1; seed <= SEEDS; seed += 1) {
+          const clean = analyzeSkin(noisyFrame(fixture, REFERENCE_CHEEK_L, seed, 0), landmarks(CHEEK_OK))!;
+          const degraded = analyzeSkin(noisyFrame(fixture, cheekL, seed, 0), landmarks(CHEEK_OK))!;
+          if (clean.oil.value !== degraded.oil.value) disagreements += 1;
+        }
+        counts.push(disagreements);
+      }
+    }
+    // Pinned as a vector, in the order (delta, cheekL) = (-0.002, 20), (-0.002, 60),
+    // (0, 20), (0, 60). The 120-seed grid reads 43, 14, 39 and 21 at the same corners.
+    expect(counts).toEqual([7, 2, 8, 3]);
+    for (const disagreements of counts) {
+      // 71/120 is 59.2% of the seeds. Half of 24 is 12.
+      expect(disagreements, `${disagreements}/${SEEDS} is a majority`).toBeLessThan(SEEDS / 2);
+    }
+  }, 120_000);
+});

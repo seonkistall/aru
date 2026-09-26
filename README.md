@@ -316,12 +316,22 @@ no runtime CDN dependency. `postinstall` and `npm run assets:mediapipe` copy
 the package assets, and tests plus smoke checks guard against missing files,
 wrong paths and bad responses.
 
-These URLs carry no content hash, so the service worker caches them by name and
-serves them stale-while-revalidate: a returning visitor gets the cached copy
-immediately and the replacement on their next visit. Bumping the vendored
-MediaPipe version therefore reaches warm caches one visit late, not never — it
-was never, until `public/sw.js` was cache-first with no revalidation. Behaviour
-and the failure paths are pinned by `tests/sw-mediapipe-revalidate.test.ts`.
+The WASM runtime goes into a directory named after the installed
+`@mediapipe/tasks-vision` version, and the same script writes
+`app/scan/mediapipe-version.ts`, which `app/scan/landmarker-config.ts` builds
+the URL from — one read of the package for both, so an upgrade moves the URL
+and a warm cache cannot answer the new JS bundle with the old runtime. The two
+halves have no version handshake to fall back on: the bundle calls Emscripten
+exports straight off whatever module the loader hands it. Old versions are
+removed from `public/` by the copy script and from a visitor's cache by
+`public/sw.js`.
+
+The model URL carries no version (the model is not shipped by the package), so
+the service worker caches it by name and serves it stale-while-revalidate: a
+returning visitor gets the cached copy immediately and a replaced file on their
+next visit, rather than never, which is what cache-first with no revalidation
+gave them. Behaviour and the failure paths are pinned by
+`tests/sw-mediapipe-revalidate.test.ts` and `tests/mediapipe-assets.test.ts`.
 
 `npm run test:ios-safari` checks the inline/muted/autoplay contract, KO/EN/JA/ZH
 recovery copy, background, `mute`, `ended`, `pagehide`, explicit restart,
@@ -496,7 +506,7 @@ lib/
 ├─ consent/crops/device-data  consent, retention and device-data contracts
 └─ recommend/commerce/funnel  recommendation, retailer and funnel domain logic
 public/
-├─ vendor/mediapipe/          self-hosted model, WASM and JS
+├─ vendor/mediapipe/          self-hosted model; WASM under <version>/wasm
 ├─ .well-known/assetlinks.json
 └─ sw.js                      PWA offline fallback; MediaPipe stale-while-revalidate
 android/                      com.seonkistall.aru Bubblewrap TWA
