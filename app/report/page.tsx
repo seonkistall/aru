@@ -114,6 +114,17 @@ function loadInitialView(): InitialView | null {
 
 type ReportStep = "analysis" | "picks" | "routine";
 
+/** 0-2, or 0 when nothing is stored or storage is unreadable. */
+function readStoredStep(): number {
+  try {
+    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.reportStep);
+    const n = raw === null ? 0 : Number.parseInt(raw, 10);
+    return Number.isInteger(n) && n >= 0 && n <= 2 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default function Report() {
   const router = useRouter();
   const [initial, setInitial] = useState<InitialView | null>(null);
@@ -128,6 +139,13 @@ export default function Report() {
     const next = loadInitialView();
     setInitial(next);
     setResult(next?.result ?? null);
+    // A language switch remounts the whole subtree (key={active} in
+    // lib/i18n.tsx), so a step held only in React state was thrown away: with
+    // the picks step open, switching en->ar put the visitor back on step 1 of 3
+    // and took all four merchant links off screen with it. Restoring it here
+    // rather than during render keeps the hydration contract the comment above
+    // describes.
+    setStepIndex(readStoredStep());
     setLoaded(true);
     /* eslint-enable react-hooks/set-state-in-effect */
     if (next) recordPageView("reco_viewed", { scanApplied: next.result.scanApplied, picks: next.result.picks.length });
@@ -197,7 +215,14 @@ export default function Report() {
     routine: t("오늘부터 가볍게 시작할 루틴"),
   };
   const goStep = (next: number) => {
-    setStepIndex(Math.max(0, Math.min(steps.length - 1, next)));
+    const clamped = Math.max(0, Math.min(steps.length - 1, next));
+    setStepIndex(clamped);
+    try {
+      sessionStorage.setItem(DEVICE_DATA_KEY.reportStep, String(clamped));
+    } catch {
+      // storage unavailable (private mode) — the step still works for this
+      // render, it just will not survive a language switch
+    }
     window.scrollTo({ top: 0 });
   };
   const top = result.picks[0];

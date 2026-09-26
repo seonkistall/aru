@@ -22,6 +22,7 @@ const expected = [
   "gyeol_scan",
   "gyeol_reads",
   "gyeol_survey",
+  "aru_report_step_v1",
 ];
 const root = resolve(import.meta.dirname, "..");
 

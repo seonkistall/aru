@@ -20,6 +20,11 @@ export const DEVICE_DATA_KEY = {
   scan: "gyeol_scan",
   reads: "gyeol_reads",
   survey: "gyeol_survey",
+  // Which of /report's three steps the visitor is on. Session-scoped and
+  // registered here for the same reason as the funnel cursor: "delete my
+  // device data" has to clear everything ARU puts in a browser, including a
+  // view position.
+  reportStep: "aru_report_step_v1",
 } as const;
 
 type DeviceDataArea = "local" | "session";
@@ -45,6 +50,7 @@ export const DEVICE_DATA_KEYS = [
   { key: DEVICE_DATA_KEY.scan, area: "session", group: "scan" },
   { key: DEVICE_DATA_KEY.reads, area: "session", group: "scan" },
   { key: DEVICE_DATA_KEY.survey, area: "session", group: "survey" },
+  { key: DEVICE_DATA_KEY.reportStep, area: "session", group: "preferences" },
 ] as const satisfies readonly DeviceDataEntry[];
 
 type DeviceStorageArea = Pick<Storage, "getItem" | "removeItem">;

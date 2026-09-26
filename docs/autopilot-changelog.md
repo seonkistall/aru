@@ -8571,3 +8571,192 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   / Supabase). The doc prices that as an owner decision and does not build it.
 
   *Validation on the corrected tree:* see the PR body for the literal output.
+
+- 2026-09-25 (cycle 39) — Branch `autopilot/2026-09-25-0639`. **A search engine had no
+  statement about ARU and no way to tell one page from another. `/robots.txt` and
+  `/sitemap.xml` were both 404, and all nine reachable pages served one title and one
+  description. Four pages now stand on their own with empty storage and are in a
+  sitemap; the other eight say `noindex` and still describe themselves for a shared
+  link. Which four was measured in a browser, not chosen.**
+
+  **Baselines, measured here before any edit.** `node_modules` was absent, so `npm ci`
+  first — with it missing, `npx tsc --noEmit | grep -c "error TS"` reads **2797** and
+  `npx vitest run` cannot resolve `vite`, which is a missing install and not a red tree.
+  After `npm ci`: `npx vitest run` **Test Files 102 passed (102) / Tests 860 passed
+  (860)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 145 tests in 1.878s ... OK**. They match the supervisor's. **A baseline smoke on
+  `c49d272` was not run** — only the post-change one below, which is green; so the
+  claim here is that the tree is green after, not that it was re-verified green
+  before.
+
+  **What a crawler was actually served, measured against a production build**
+  (`npm run build` then `npx next start -p 3199`), not read off the source.
+  `/robots.txt`, `/sitemap.xml` and `/sitemap.txt` each returned
+  **`http=404 ct=text/html; charset=utf-8 bytes=14021`**. `/`, `/scan`, `/survey`,
+  `/report`, `/care`, `/checkin`, `/studio`, `/privacy` and `/unsubscribe` all returned
+  **200** with the identical `<title>` `ARU | Find skincare for your skin today`, the
+  identical description, **no** `<link rel="canonical">`, **no** `<meta name="robots">`
+  and `og:url` `https://aru-beauty.vercel.app` on all nine. `/ops`, `/pilot` and `/eval`
+  returned **404** — `proxy.ts` gates them and `internalAccessDecision` answers
+  `not-found` without `INTERNAL_TOOLS_USER`/`INTERNAL_TOOLS_PASSWORD` — so their
+  existing `noindex` tag was never reachable in that configuration. `og:image` was
+  already absolute (`https://aru-beauty.vercel.app/og.png`) on all nine; that half was
+  not broken.
+
+  **Which pages deserve an index entry was measured, not decided.** A real Chromium at
+  360x800 against the production build, a fresh context per page so localStorage is
+  empty, which is exactly what a crawler arriving cold is. `/` **754** innerText chars,
+  `/scan` **567**, `/survey` **713**, `/privacy` **1424** — those four stand on their
+  own and are the four in the sitemap. `/report` **redirects to `/survey`**; `/care`
+  renders **235** chars of "There's no report to continue from yet."; `/checkin`
+  **289** of "No products in use have been logged yet"; `/studio` **406** of
+  `PRESETS[0]`, the shipped placeholder card, because the real one is read from
+  `sessionStorage` (`app/studio/page.tsx:49`) and a crawler has none;
+  `/unsubscribe` **182** of "This link can't be used or has expired."
+  `/reco` answers **307** and lands on `/survey` too, so it gets no route-table entry
+  at all.
+
+  **The fix, on Next.js's own metadata-route conventions.** One table, `SEO_ROUTES` in
+  `lib/seo.ts`, is the single source for the sitemap, the canonicals and the
+  index/noindex split; `app/robots.ts`, `app/sitemap.ts`, and a `layout.tsx` per route
+  exporting `seoMetadata("/that-path")`. After, on the same build: `/robots.txt` is
+  **`http=200 ct=text/plain bytes=91`** and `/sitemap.xml` **`http=200
+  ct=application/xml bytes=346`** listing exactly those four `<loc>`s. Three decisions
+  are worth the words. **The noindex pages are not `Disallow`ed** — a `Disallow` stops
+  a crawler fetching the page, so it never reads the `noindex` tag it is meant to obey;
+  only `/api/` is disallowed. **No `lastModified`**, which the Next.js example uses via
+  `new Date()`: nothing here records when a page changed and a per-request stamp tells
+  a crawler the whole site changed on every crawl. **`openGraph` and `twitter` are
+  written out in full on every route**, because Next.js replaces a metadata field in a
+  child segment rather than merging it — a layout setting only `openGraph.title` ships
+  a page with no preview image at all, and that is break C below at **12 of 16** e2e
+  cases. `metadataBase` is untouched and still `https://aru-beauty.vercel.app`.
+
+  **No `hreflang`, and the reason is a URL-structure decision the loop may not make.**
+  Language is chosen client-side from `localStorage` on the SAME URLs — there are no
+  per-locale paths and no locale parameter, so there is no URL for an alternate to
+  name. Writing one would invent a structure that does not exist. What it would take is
+  per-locale paths or a subdomain, each page rendered server-side in that language,
+  each with its own canonical, and the switcher changed to navigate rather than
+  re-render — which is also the only thing that makes ARU findable in a Korean search
+  rather than only an English one. Recorded as an owner decision in §4 of
+  [`docs/discovery-metadata.md`](discovery-metadata.md) and as a backlog item, not
+  attempted.
+
+  **Broken on purpose, five ways, every count re-run on the committed tree.**
+  `tests/seo-metadata.test.ts` is **38 passed** and
+  `tests/e2e/discovery-metadata.regression-26.spec.ts` is **16 passed**. Deleting
+  `app/robots.ts` and `app/sitemap.ts`: the unit file fails to load, e2e **2 failed /
+  14 passed**. Sitemap lists every route instead of the indexable ones: **2 failed / 36
+  passed** and **1 failed / 15 passed**. A route's `openGraph` carries only
+  title/description/url: **1 failed / 37 passed** and **12 failed / 4 passed**.
+  `robots.txt` also disallows the noindex paths: **2 failed / 36 passed** and **1
+  failed / 15 passed**. `app/scan/layout.tsx` missing: **1 failed / 37 passed** and
+  **2 failed / 14 passed**. The middle two are the weaker-but-plausible ones — list
+  everything so a search engine finds it all, and disallow what you do not want indexed
+  — and both are the obvious thing to do and both are wrong.
+
+  **Research — Next.js's own documentation source, three files from `vercel/next.js` at
+  `canary` via `raw.githubusercontent.com`.** `robots.mdx` **http=200**, **4780 bytes**,
+  sha256 `e8003da970452a059001ea1817f82b7744059a00396fb99c2be68684454a17cd`;
+  `sitemap.mdx` **http=200**, **11672 bytes**, sha256
+  `c259e4972b7bbd31e2462d5538bdb29e91e26578046205e445808650d92c4a8c`;
+  `generate-metadata.mdx` **http=200**, **49181 bytes**, sha256
+  `68e0ff80fa633a99fe65ac1b6f1d7f7ededa666adc0a407a1ab43f43cf7ebe1a`. Line 20 of
+  `robots.mdx` is the `robots.ts` convention; line 42 of `sitemap.mdx` is the
+  `sitemap.ts` one, with the `lastModified: new Date()` example §3 of the doc declines
+  to copy; lines 395-396 of `generate-metadata.mdx` — "`metadataBase` allows URL-based
+  `metadata` fields defined in the **current route segment and below** to use a
+  **relative path**" — are why every layout can write `canonical: "/scan"` and still
+  serve an absolute URL, and why `metadataBase` did not have to move. `vercel.com` and
+  `developer.mozilla.org` were not re-probed; they are recorded as refusing in the
+  2026-09-15 and 2026-09-25 blocker entries.
+
+  **ML — the sRGB knee guard, and the premise it was written on turned out to be
+  wrong.** Chosen because it is the one `[AI]` item on the vision path that needs no
+  labelled export and no real photo. Cycle 22's item ends with "if it moves it has to
+  move in BOTH files in one change", and the assumption was that nothing enforced it.
+  Measured rather than assumed, and it is more than expected: moving the knee in
+  `lib/skin.ts` alone fails `tests/index-parity.test.ts` **2 failed / 10 passed**;
+  moving it in `ml/ita.py` alone fails `python3 ml/selftest.py` with **failures=1** while
+  index-parity stays **12 passed**; changing the 1.055 scale in `ml/ita.py` alone fails
+  selftest with **failures=3**, index-parity again **12 passed**. So no move ships
+  silently today, and that sentence in the backlog was not the gap it looked like.
+  What is still missing is what landed: both existing guards compare ONE language
+  against `ml/index-parity.json`, a committed artifact, in two different runners, and
+  neither compares the two implementations to each other.
+  `tests/srgb-knee-parity.test.ts` reads the four constants out of both sources and
+  requires them to agree, so the failure names the constant. It is **8 passed**; the TS
+  knee alone gives **4 failed / 4 passed**, both knees together **3 failed / 5 passed**,
+  the Python scale alone **2 failed / 6 passed**, and the TS knee moved to a value the
+  fixtures do not straddle (0.0405) **5 failed / 3 passed**. It re-derives
+  colour-science's breakpoint **0.040449936** from `12.92 * 0.0031308`, ARU's distance
+  from it **6.40000000010077e-8**, the knee discontinuity **2.32950731317641e-9** and
+  **0** of 256 integer channels inside the window — cycle 22's numbers, now carried by
+  a run rather than by a sentence. **The backlog item stays open**: where the knee
+  belongs needs IEC 61966-2-1, which this network cannot reach.
+
+  **UI/UX — the shared-link preview, and no defect found.** `public/og.png` is a real
+  PNG at **1200x630**, **40556 bytes**, sha256
+  `67c60326d910d3a818170e493a13b661e38eefe695ed79ba4e148780561749e2`, matching the
+  `width`/`height` the metadata declares, and `og:image` resolved to the absolute
+  `https://aru-beauty.vercel.app/og.png` on every page both before and after. Recorded
+  as none rather than invented. What did change: every page now carries its own
+  `og:title` and `og:description`, so a `/report` link pasted into a messenger no
+  longer reads the same line as every other link. The e2e now fetches `/og.png`, checks
+  the PNG signature bytes and reads the IHDR width and height, so a replacement image
+  of the wrong size fails instead of silently shipping a cropped preview. Per-RESULT
+  previews are still impossible and unchanged — the levels live in the URL fragment,
+  which no scraper receives; that is the 2026-09-15 blocker.
+
+  **What this does not establish, and it is the important paragraph.** Nothing was
+  submitted to any search engine — no Search Console, no ping, no IndexNow — and
+  whether Google or Naver ever crawls these URLs is not something this repository can
+  make true. No traffic number changed and none was measured: this is a precondition
+  for organic acquisition, not evidence of any. Everything is measured against a local
+  production build; whether the deployed `aru-beauty.vercel.app` serves these routes
+  was not verified. And every title is English, because metadata renders server-side
+  before any locale is known — the same gap §4 describes, with the same fix.
+  [`docs/discovery-metadata.md`](discovery-metadata.md).
+
+  *An existing guard caught this change, and its intent was kept.*
+  `tests/internal-access.test.ts` asserted the literal string `index: false` in each of
+  `app/ops`, `app/pilot` and `app/eval`'s `layout.tsx`, which this cycle moved into the
+  route table. The test now asserts the metadata those layouts actually export, which
+  is strictly stronger: flipping `/ops` to `index: true` in the table gives **4 failed /
+  41 passed** across that file and `tests/seo-metadata.test.ts` together, where the
+  string check would have stayed green.
+
+  *Validation on this tree:* see the report for the literal output.
+
+  **Supervisor review.** Sound, and no correction needed. It is the first cycle
+  that works on acquisition rather than on defects inside the product.
+
+  *Predicted by reading, before the branch existed:*
+  - `/robots.txt` and `/sitemap.xml` would 404 today, and every public page shared one
+    title. The worker measured both.
+  - `/report`, `/care`, `/checkin` and `/studio` render from device-local state, so a
+    crawler would get an empty page. The worker measured this and marked them noindex.
+  - `/ops`, `/pilot` and `/eval` were already `index: false`, and still are.
+
+  *Checked here.*
+  - The `/survey` description says "three short questions". The survey's own
+    `ready` needs `type && category && budget` (`app/survey/page.tsx:63`) and the page
+    prompts "제품 종류, 피부 타입, 예산을 선택해 주세요", so the three required answers
+    are what the text describes. Concerns and avoid are optional.
+  - `tests/internal-access.test.ts` was edited, and the edit is a strengthening, not
+    a weakening. It used to grep each layout for the string `index: false`. It now
+    asserts the metadata that layout exports, so flipping the table entry fails it too.
+
+  *Breaks run here against `tests/seo-metadata.test.ts`, each narrow:*
+  - `seoMetadata` returning `index: true` for every route → `1 failed | 37 passed
+    (38)`, the failure being "marks indexable routes index and the rest noindex".
+  - `app/report/layout.tsx` deleted (the plausible regression: `/report` would then
+    fall back to the root layout's indexable metadata) → `1 failed`, the failure being
+    "app/report/layout.tsx calls seoMetadata("/report")".
+  - The sitemap's `index` filter removed → `2 failed`, the failures being "lists
+    exactly the indexable routes…" and "lists nothing that carries a noindex tag".
+
+  *Validation on this tree:* see the PR body for the literal output.
+
