@@ -19,7 +19,10 @@ export function ReturnBanner() {
   if (!show) return null;
 
   return (
-    <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
+    // `/` carries 5 `a[href="/scan"]` in total once this renders, so
+    // tests/e2e/return-path-no-picks.regression-31.spec.ts needs a hook to address the
+    // banner's own two links rather than the landing page's other CTAs.
+    <div data-testid="return-banner" style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
       <Link href="/report" style={primary}>
         {t("지난 결과 이어보기 →")}
       </Link>

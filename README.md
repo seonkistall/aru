@@ -58,6 +58,13 @@ recommendation flow can also be completed with the questionnaire alone.
   [docs/share-return-path-decision.md](docs/share-return-path-decision.md)
   (five options with what each costs; `shareUrl` is still unused because `/studio` holds
   edited copy rather than the levels `moodShareUrl` needs — an owner decision)
+- Whether a returning iPhone visitor still has a saved result to return to:
+  [docs/webkit-script-storage-cap.md](docs/webkit-script-storage-cap.md)
+  (read from WebKit's own source, because `webkit.org` is blocked here — the widely
+  quoted 7-day cap on script-writable storage is the SHORT window and a plain
+  first-party site gets the 30-day one; what reaches the short window is a
+  link-decorated navigation from a prevalent resource, i.e. the kind of link a paid
+  campaign uses)
 - Server-side funnel telemetry:
   [docs/funnel-flush-design.md](docs/funnel-flush-design.md)
   (the flush path exists and is off — `NEXT_PUBLIC_FUNNEL_FLUSH`; §8 is the ingest
