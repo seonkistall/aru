@@ -1493,7 +1493,7 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   comment were corrected (the survey saves **five** fields, not six, and the per-file
   counts now name `grep -c '= useState'` rather than a `useState` grep that also caught
   the import line).
-  Rotation: `docs/AUTOPILOT.md` **1852 → 1920** lines and
+  Rotation: `docs/AUTOPILOT.md` **1852 → 1925** lines and
   `docs/autopilot-changelog.md` **8573 → 8762**; cycle 39's **188** lines are
   byte-identical at the end of the changelog (`diff` clean against the extract). The
   concatenated-`sort -u`-`comm -23` check against `02c7123` drops exactly **1** line, and
