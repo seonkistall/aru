@@ -50,9 +50,10 @@ self.addEventListener("fetch", (event) => {
         const revalidate = fetch(event.request)
           .then(async (response) => {
             // `status === 200`, not `response.ok`: these files are served with
-            // `Accept-Ranges: bytes`, and `cache.put` rejects outright on a 206. `.ok`
-            // accepts one, so a ranged request for the 11 MB wasm would have thrown
-            // inside respondWith and failed the request rather than the write.
+            // `Accept-Ranges: bytes`, `.ok` is true for a 206, and `cache.put` rejects
+            // outright on one. The `.catch` on the put already keeps that rejection off
+            // the response, so the status check is the second of two layers: it skips a
+            // write that would fail rather than letting it fail.
             if (response.status === 200) await cache.put(event.request, response.clone()).catch(() => {});
             return response;
           })

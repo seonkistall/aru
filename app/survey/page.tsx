@@ -9,6 +9,7 @@ import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
 import { t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { isScanReads } from "@/lib/last-result";
 
 const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성", "중성"];
 const CONCERNS: Concern[] = ["모공", "블랙헤드", "붉은기", "건조", "수분부족", "유분", "트러블", "잡티", "칙칙함", "각질", "탄력", "민감"];
@@ -34,7 +35,13 @@ function loadScanHint(): ScanHint {
   try {
   const raw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
     if (!raw) return null;
-    const scan = JSON.parse(raw) as ScanReads;
+    const parsed: unknown = JSON.parse(raw);
+    // The same guard /report and /care read this key through (isScanReads, lib/last-result.ts):
+    // a wrong-shaped value is not a reading, so there is no hint to give. Without it
+    // `{ "confidence": 0.9 }` produced "사진에서 뚜렷하게 보이는 항목이 적어…", a sentence
+    // about a photo with no data behind it.
+    if (!isScanReads(parsed)) return null;
+    const scan: ScanReads = parsed;
     if (!scan || scan.retakeRecommended || (scan.confidence ?? 0) < 0.58) {
       return { concerns: [], text: t("촬영 조건이 충분하지 않아 사진은 참고만 할게요. 설문 답변을 중심으로 정리해요.") };
     }

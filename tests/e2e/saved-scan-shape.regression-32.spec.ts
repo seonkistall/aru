@@ -232,3 +232,37 @@ test("the sessionStorage path is guarded too, not just the saved record", async 
 
   await context.close();
 });
+
+// Supervisor, cycle 44 review. /survey reads the same sessionStorage key for its scan
+// hint (loadScanHint, app/survey/page.tsx) and had no guard: `{ "confidence": 0.9 }`
+// gave "사진에서 뚜렷하게 보이는 항목이 적어…", a line about a photo with no data behind it.
+for (const [name, scan] of [
+  ["an object with only a confidence", { confidence: 0.9 }],
+  ["a string", "x"],
+] as const) {
+  test(`/survey gives no photo hint for a session scan that is ${name}`, async ({ page }) => {
+    await page.addInitScript(
+      ([raw]) => {
+        localStorage.setItem("aru.lang", "ko");
+        sessionStorage.setItem("gyeol_scan", raw);
+      },
+      [JSON.stringify(scan)] as const,
+    );
+    await page.goto("/survey");
+    await expect(page.getByRole("button", { name: "내 스킨케어 결과 보기" })).toBeVisible();
+    await expect(page.getByText("사진에서", { exact: false })).toHaveCount(0);
+    await expect(page.getByText("촬영 조건이 충분하지 않아", { exact: false })).toHaveCount(0);
+  });
+}
+
+test("/survey still gives the photo hint for a session scan a capture wrote", async ({ page }) => {
+  await page.addInitScript(
+    ([raw]) => {
+      localStorage.setItem("aru.lang", "ko");
+      sessionStorage.setItem("gyeol_scan", raw);
+    },
+    [JSON.stringify(GOOD_SCAN)] as const,
+  );
+  await page.goto("/survey");
+  await expect(page.getByText("사진에서 확인한", { exact: false })).toBeVisible();
+});

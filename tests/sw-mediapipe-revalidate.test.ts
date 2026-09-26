@@ -190,8 +190,9 @@ describe("the MediaPipe cache against a new deploy", () => {
 
   it("does not try to cache a 206, which the Cache API rejects outright", async () => {
     // `response.ok` is true for a 206 and these files are served with
-    // `Accept-Ranges: bytes`, so a ranged request for the 11 MB wasm used to throw
-    // inside respondWith. Checking `status === 200` is what stops it.
+    // `Accept-Ranges: bytes`. Pins the behaviour, not the mechanism: the worker has two
+    // layers (`status === 200` and a `.catch` on the put), and the supervisor's cycle 44
+    // review found that swapping the first for `.ok` alone still passes this file.
     h.setServer(async () => new Response("partial", { status: 206 }));
     const { responded, waits } = h.fire(request(WASM));
     expect(await (await responded!).text()).toBe("deploy-1");
@@ -210,10 +211,9 @@ describe("the MediaPipe cache with nothing in it", () => {
   });
 
   it("hands a 206 straight to the page instead of turning it into a network error", async () => {
-    // The cold-cache half of the 206 case, and the one that separates `status === 200`
-    // from `response.ok`. With `.ok`, `cache.put` rejects on the 206, the surrounding
-    // catch swallows it, and the page gets Response.error() for a range it asked for.
-    // With `status === 200` the put is simply skipped and the partial content is served.
+    // The cold-cache half of the 206 case: the partial content must reach the page and
+    // must not be stored. Both layers in the worker (`status === 200`, and the `.catch` on
+    // the put) keep it working on their own; removing both is what this catches.
     const h = load();
     h.setServer(async () => new Response("partial", { status: 206 }));
     const { responded } = h.fire(request(WASM));

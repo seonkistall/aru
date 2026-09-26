@@ -1298,6 +1298,19 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-09-26 — the first visit after a MediaPipe upgrade pairs new code with the
+  cached old runtime (cycle 44).** `scripts/copy-mediapipe-assets.mjs` copies the
+  package's `wasm/` to the unversioned path `/vendor/mediapipe/wasm` at `postinstall`.
+  The `@mediapipe/tasks-vision` JS is bundled by the build, and `public/sw.js` answers the
+  runtime from `aru-mediapipe-v1` before it revalidates (cycle 44). So on the first
+  capture after a version bump, a warm visitor runs the new API against the old runtime,
+  and only the second visit is consistent. Whether 0.10.x tolerates that skew is unknown.
+  Cheapest fixes to weigh:
+  - copy into a versioned directory (`/vendor/mediapipe/<version>/wasm`) and point
+    `landmarker-config.ts` at it;
+  - or put the package version into the cache name.
+  Either way, pin it with the `tests/sw-mediapipe-revalidate.test.ts` harness.
+
 - [x] **2026-09-25 — a tap during the English interval is thrown away (cycle 40).**
   ~~Actioned 2026-09-26 (cycle 42): (b) + (c), not (a).~~ Measured first on a production
   build at 360x800, navigation start → `html[lang]` becoming the saved locale, three runs
@@ -1557,7 +1570,47 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `- [~] [AI]`, and which is present in the new pair in that form. No backlog item was
   ticked `[x]`, so nothing moved to "Closed backlog items".
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound. One reader was left unguarded and one code comment
+  overclaimed; both were fixed before merge. One finding goes forward.
+
+  *Predicted by reading, before the branch existed, and all held:*
+  - `public/sw.js` does not intercept `/_next/` chunks. Navigations are network-first with
+    `/offline.html` as the fallback, so a stale deploy cannot come from the worker.
+  - The real stale case is the MediaPipe cache: cache-first, never revalidated, at the
+    unversioned paths `/vendor/mediapipe/wasm` and `/vendor/mediapipe/face_landmarker.task`
+    (`app/scan/landmarker-config.ts:3-4`).
+  - `{}` passes a `typeof === "object"` guard and reaches `scanApplied` true.
+
+  *Fixed here 1: `/survey` read the same key with no guard.* `loadScanHint`
+  (`app/survey/page.tsx`) parses `gyeol_scan` from sessionStorage. With
+  `{ "confidence": 0.9 }` it printed "사진에서 뚜렷하게 보이는 항목이 적어…", a sentence
+  about a photo with no data behind it. It now returns no hint unless `isScanReads`
+  passes. Three cases were added to `saved-scan-shape.regression-32.spec.ts`, for **13
+  passed**. With the guard removed: **2 failed | 1 passed** on the `/survey` cases. With
+  the weaker `typeof parsed === "object"` guard: **1 failed | 2 passed**.
+
+  *Fixed here 2: a comment claimed more than the code does.* `sw.js` said `.ok` "would
+  have thrown inside respondWith", and one test comment said the cold-cache 206 case
+  "separates `status === 200` from `response.ok`". Swapping to `.ok` alone still gives
+  **16 passed**, because the put already has its own `.catch(() => {})`. Both comments now
+  describe two layers. Removing both layers fails the cold-cache 206 case: **1 failed | 15
+  passed**. Reverting `sw.js` to the old cache-first worker gives **3 failed | 13
+  passed**. Removing the `.catch` on the revalidation gives **2 failed | 14 passed**.
+
+  *Finding for a later cycle (recorded under "Supervisor findings not yet actioned").*
+  Stale-while-revalidate stops "forever", but the first visit after a MediaPipe upgrade
+  still pairs new code with old files. `scripts/copy-mediapipe-assets.mjs` copies
+  `node_modules/@mediapipe/tasks-vision/wasm` into `public/vendor/mediapipe/wasm` at
+  `postinstall`. The package's JS API is bundled by the build, so after an upgrade a warm
+  visitor gets the new bundle with the cached old runtime for one visit. Installed
+  version: **0.10.35** (`node_modules/@mediapipe/tasks-vision/package.json`). Not measured.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 113 passed (113)
+  / Tests 1006 passed (1006)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `83b8c9d` drops
+  **1** line: the blemish item's `- [AI]` became `- [~] [AI]` (`docs/AUTOPILOT.md:304`).
+  Cycle 41 sits after cycle 40 at the end of the changelog. `npm run smoke` gave
+  **253 passed (12.8m)** and `Smoke test passed.`
 
 - 2026-09-26 (cycle 43) — Branch `autopilot/2026-09-26-0639`. **The returning visitor's
   path, measured the way a returning visitor arrives: a fresh context with ONLY
