@@ -2,6 +2,34 @@ const SHELL_CACHE = "aru-shell-v1";
 const MEDIAPIPE_CACHE = "aru-mediapipe-v1";
 const ACTIVE_CACHES = new Set([SHELL_CACHE, MEDIAPIPE_CACHE]);
 
+// `/vendor/mediapipe/<version>/wasm/...` — the runtime directory is named after the
+// installed @mediapipe/tasks-vision version (scripts/copy-mediapipe-assets.mjs), so an
+// upgrade changes the URL and this cache would otherwise keep the old version's ~34 MB
+// next to the new one forever. Two segments are required after `/vendor/mediapipe/`,
+// which is what leaves the unversioned `face_landmarker.task` unmatched: it is one
+// segment, it is not shipped by the package, and stale-while-revalidate is what keeps
+// it current.
+const VERSIONED_RUNTIME = /^\/vendor\/mediapipe\/([^/]+)\/.+$/;
+
+function runtimeVersion(pathname) {
+  const match = VERSIONED_RUNTIME.exec(pathname);
+  return match ? match[1] : null;
+}
+
+// Drop every cached runtime file that belongs to some other version, once the visitor
+// has asked for this one. The legacy unversioned `/vendor/mediapipe/wasm/...` entries a
+// pre-upgrade worker cached match too: their first segment is `wasm`, which is not the
+// version being served. Never rejects — it runs under `waitUntil` beside a response
+// that has already been decided, and a failed prune is only wasted storage.
+function pruneOtherRuntimeVersions(cache, keep) {
+  return cache.keys()
+    .then((keys) => Promise.all(keys.map((key) => {
+      const version = runtimeVersion(new URL(key.url).pathname);
+      return version !== null && version !== keep ? cache.delete(key) : undefined;
+    })))
+    .catch(() => undefined);
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.add("/offline.html")));
   self.skipWaiting();
@@ -46,6 +74,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin === self.location.origin && url.pathname.startsWith("/vendor/mediapipe/")) {
     event.respondWith(
       caches.open(MEDIAPIPE_CACHE).then(async (cache) => {
+        const version = runtimeVersion(url.pathname);
+        if (version !== null) event.waitUntil(pruneOtherRuntimeVersions(cache, version));
         const cached = await cache.match(event.request);
         const revalidate = fetch(event.request)
           .then(async (response) => {

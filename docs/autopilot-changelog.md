@@ -9181,3 +9181,259 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **0** lines. Recent cycles holds 41/40/39, and cycle 38 sits after cycle 37 at the end
   of the changelog. With the spec fix,
   `npm run smoke` gave **229 passed (7.7m)** and `Smoke test passed.`
+
+- 2026-09-26 (cycle 42) — Branch `autopilot/2026-09-26-0039`. **A visitor whose saved
+  language is ja, zh or ar spends between a third of a second and four seconds looking at
+  an interactive-looking English page that is about to be thrown away, and until this
+  cycle every tap in that window was discarded. Measured, not reasoned about: under a
+  throttled profile the window is about 1.1 s wide on `/scan`, and a tap inside it started
+  the camera and then lost it in all three locales. It is now held rather than swallowed,
+  and the same remount reached the other way — through the language switcher — was
+  throwing `/report` off its picks step and taking all four merchant links with it.**
+
+  **Baselines, re-measured here on `02c7123` before any edit.** `node_modules` was absent,
+  so `npm ci` first. `npx vitest run` **Test Files 107 passed (107) / Tests 925 passed
+  (925)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 146 tests in 2.137s ... OK**. All four match the supervisor's. A baseline smoke was
+  not run; only the post-change one below, which is green.
+
+  **The English interval, measured before anything was changed.** Production build
+  (`npm run build`, then `npx next start`), 360x800, one fresh context per locale, the
+  clock being `performance.now()` from navigation start to the `MutationObserver` firing on
+  `html[lang]` becoming the saved locale, three runs each. The throttling is CDP
+  `Network.emulateNetworkConditions` with **latency 562.5 ms, downloadThroughput 180000
+  B/s, uploadThroughput 84375 B/s** — a Fast-3G-shaped profile named by its numbers, not
+  claimed to be any tool's preset.
+
+  | route | locale | no throttling | 562.5ms / 180000 B/s |
+  |---|---|---|---|
+  | `/` | ja | 428.8 / 426.9 / 435.8 | 4129.9 / 4131.5 / 4133.8 |
+  | `/` | zh | 383 / 405.1 / 401 | 3955.4 / 3962.4 / 3980.4 |
+  | `/` | ar | 417.4 / 382 / 399.1 | 3826.1 / 3826 / 3831.8 |
+  | `/scan` | ja | 390.4 / 375.9 / 370.2 | 4223.8 / 4224.7 / 4223.6 |
+  | `/scan` | zh | 374.3 / 384.5 / 349 | 4063.2 / 4065 / 4056.9 |
+  | `/scan` | ar | 346.4 / 356.8 / 367 | 3921.1 / 3932.1 / 3925.6 |
+
+  **That is not the loss window, and the difference matters.** A tap can only be lost once
+  the page is interactive. `ko` and `en` wait for no chunk, so their `html[lang]` lands at
+  hydration: **3148.7** ms and **3139.8** ms on `/scan` under the throttled profile. The
+  window is the gap to the lazy locale's remount — about **1.1 s** for ja, against roughly
+  **0.4 s** total on an unthrottled box where hydration itself eats most of it. Probed
+  with a real hit-tested `page.mouse.click` at the button's centre at 3400 ms: ja, zh and
+  ar all **accepted** the tap (`[data-quality-checklist]` count **1** immediately after),
+  and after the remount — ja **4289.0**, zh **4086.3**, ar **3931.8** ms — the checklist
+  read **0** with the start button visible again. `ko` and `en` kept the camera, checklist
+  **1** before and after.
+
+  **A synthetic `HTMLElement.click()` would have made this cycle's fix look broken, and
+  nearly did.** `inert` is defined in terms of hit-testing, so a dispatched click walks
+  straight past it; the first run of the post-fix probe reported the tap still accepted.
+  The probe and the spec both use real mouse input for that reason.
+
+  **What else the remount can lose, grepped across every route.** Every one of these is
+  plain React state inside the keyed subtree, so the remount discards it:
+  `app/survey/page.tsx` holds all **five** fields of the object it saves
+  (`{ type, concerns, category, budget, avoid }`, `app/survey/page.tsx:100`) in `useState`
+  and writes them to sessionStorage exactly once, on submit at
+  `app/survey/page.tsx:102` — `grep -c 'setItem'` on that file is **1** — so answering the
+  survey during the interval loses every answer; `app/scan/page.tsx` (`grep -c '= useState'`
+  **16**, `grep -c 'setItem'` **0**) loses the camera and, downstream of it, both consent
+  checkboxes; `app/privacy/page.tsx` (**5** / **0**) loses the `deleteState === "confirm"`
+  step of the delete-everything flow; `app/checkin/page.tsx` (**6** / **0**) and
+  `app/care/page.tsx` (**3** / **0**) lose whatever is half-answered; `app/report/page.tsx` loses `stepIndex`, which is the defect
+  fixed under UI/UX below. The language switcher does **not** lose its tap: `setLang`
+  writes localStorage before anything remounts.
+
+  **The fix: (b) and (c), and (a) was rejected on a grep rather than on taste.** (a)
+  wanted a re-render without a remount, which needs every `t()` call site to re-run on a
+  context change. `t()` reads a module singleton, so only a subscriber re-renders, and
+  `grep -rl "useLang\b\|useLanguage\b" app/ --include=*.tsx` lists **4** files against the
+  **30** that `grep -rl 't("'` finds. (b) is four lines: the dictionary fetch now starts
+  when `lib/i18n.tsx` is first evaluated instead of in an effect after hydration. It
+  shrinks the interval and **does not close it**, which is the whole reason it is not
+  shipped alone — medians of three, `/scan` under the throttled profile, before → after:
+  ja **4223.8 → 3863.8** (**-360.0**), zh **4063.2 → 3812.5** (**-250.7**), ar **3925.6 →
+  3790.9** (**-134.7**); on `/`, ja **4131.5 → 4079.5** (**-52.0**), zh **3962.4 →
+  3919.4** (**-43.0**), ar **3826.1 → 3799.8** (**-26.3**). Unthrottled the gain is inside
+  the noise: `/scan` ar reads **356.8 → 360.4**, i.e. **+3.6**.
+
+  (c) is what closes it. While `active !== saved`, `LanguageProvider` sets `inert`,
+  `aria-busy="true"` and `data-aru-lang-pending` on `<body>` in a layout effect, and one
+  rule in `app/globals.css` dims buttons, links, inputs, selects and summaries to opacity
+  **0.55** while that attribute is present. No wrapper element, so there is nothing for
+  `ko` or `en` to render or lay out: **the `/` and `/scan` geometry under both locales is
+  byte-identical before and after**, `diff` clean over `scrollWidth`, `clientWidth`,
+  `scrollHeight`, body attribute names, body and `main` child counts, `<h1>` and
+  `[data-testid="scan-start"]` boxes and total DOM node count — **360 / 360** wide on all
+  four, `scrollHeight` **1047** (ko `/`), **800** (ko `/scan`), **1309** (en `/`), **800**
+  (en `/scan`), **199** DOM nodes on `/` and **105** on `/scan`, and `class` as the only
+  body attribute in every case. After the fix, the same 3400 ms tap under the same
+  profile: body `inert` **true**, `aria-busy` **"true"**, button opacity **0.55**, the tap
+  **not accepted**, checklist **0**; and once the chunk lands — ja **3889.1**, zh
+  **3814.7**, ar **3789.6** — `inert` is gone, opacity is back to **1**, the start button
+  is there and the checklist is still **0**. `ko` at **3157.9** and `en` at **3140.0** were
+  never held: `inert` **false**, opacity **1**, tap accepted, checklist **1**.
+
+  **What the fix promises is not that the tap is honoured**, and the spec asserts the
+  promise rather than a nicer one: inside the window the tap is refused and the page is in
+  its pre-tap state afterwards, with a live button. The honest cost is that nothing on the
+  page responds during the hold — the language switcher included — so a visitor who wants
+  to switch away mid-load waits out the interval. HTML's own advice is the reason the
+  dimming exists rather than a silent block, and it is also the reason this is a trade and
+  not a clean win.
+
+  **Pinned, and broken three ways, every count re-run on the final tree.**
+  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts` delays only the response whose
+  body contains `カメラをもう一度オンにする` by **3000** ms, the way the supervisor's probe did, and
+  is **3 passed**. Removing (c) and shipping only (b) — the "weaker but plausible" case the
+  finding named — gives **1 failed | 2 passed**. Keeping the dimming and the `aria-busy`
+  but dropping the `inert` attribute, i.e. a control that looks held and is not, also
+  gives **1 failed | 2 passed**. Putting the `inert` on `<main>` instead of `<body>` gives
+  **1 failed | 2 passed** as well, and it is worth saying which assertion catches it: the
+  `document.body` poll, not the tap, because the button is inside `<main>` and a
+  main-scoped hold does block it. So the spec pins the element as well as the behaviour,
+  and a future cycle that legitimately moves the hold will have to update it.
+
+  **UI/UX — mid-session language switching, measured for the first time, and it was
+  losing the one screen with commerce links on it.** `/report` with the picks step open and
+  `/care`, both at 360x800 on a production build, switching en → ar → ja through the real
+  picker. `dir` followed correctly every time (**ltr / rtl / ltr**) and
+  `scrollWidth === clientWidth === 360` on every screen in every locale, so there is no
+  overflow and no direction defect here. The state is another matter: on `/report` the
+  selected tab went **1 → 0 → 0** and the merchant links on screen went **4 → 0 → 0** —
+  the picks step is the only step that carries them, and a language switch closed it. Same
+  `key={active}` remount, reached by a tap instead of by a chunk. Fixed by keeping the
+  step in sessionStorage under a new registered key (`DEVICE_DATA_KEY.reportStep`,
+  `aru_report_step_v1`, session-scoped, added to `DEVICE_DATA_KEYS` so "delete my device
+  data" clears it) and restoring it in the same after-mount effect that loads the reading,
+  not during render, which is what the existing comment there warns about. After: tab
+  **1 → 1 → 1**, links **4 → 4 → 4**. Broken two ways: dropping the restore gives **1
+  failed | 2 passed**, and dropping the write while keeping the restore — the plausible
+  half-fix — also gives **1 failed | 2 passed**.
+
+  **Measured on `/care` and recorded as unexplained rather than guessed.** The scroll
+  offset was **400** before the switch, **400** after en → ar and **0** after ar → ja,
+  with **1062** px of scroll still available in ja (`scrollHeight` **1862** against a
+  **800** px viewport), so it is not a clamp against a shorter page. What resets it was not
+  established and no code was changed for it.
+
+  **Research — WHATWG HTML's own source, from `raw.githubusercontent.com`.**
+  `whatwg/html/main/source` **http=200**, **7915810** bytes, sha256
+  `bec5f8ad394043ac0ee18ba090ec74ae8760b38af5bdf584db58220c299bb9de`. Line **85298** is
+  the sentence the fix rests on — "Hit-testing must act as if the 'pointer-events' CSS
+  property were set to 'none'" — with text selection acting as `user-select: none` on line
+  **85301**. The part that changed the design is line **85351**: "Authors should not
+  specify elements as inert unless the content they represent are also visually obscured in
+  some way", and line **85354** adds that for individual form controls "the `disabled`
+  attribute is probably more appropriate". The example at line **85358** is this exact
+  situation — "how to mark partially loaded content, visually obscured by a 'loading'
+  message, as inert". So a bare `inert` with no visual change would have been against the
+  spec's own advice, which is where the one dimming rule came from; obscuring the content
+  behind a loading state was rejected because it would replace up to **4.1 s** of readable
+  English with a spinner, and per-control `disabled` was rejected because it would touch
+  every entry CTA on every route and still miss anything that is not a form control.
+
+  **ML — what the sRGB knee choice can actually move, which the open item never sized.**
+  Chosen because it needs no labelled export, no real photo and no phone profile: the
+  inputs are the whole continuous window and `labAStar` is the function the blemish
+  detector calls about 18,000 times a frame. The item (cycle 22) records that ARU branches
+  at **0.04045** where `colour-science` branches at `12.92 * 0.0031308`, and that the
+  window is reachable "in principle" because the detector's inputs are continuous — but
+  nobody had said how much it is worth. `tests/srgb-knee-window-consequence.test.ts`
+  re-derives the window from both sources rather than quoting it — colour-science's knee
+  **0.040449936**, width **6.40000000010077e-8**, channel window **[10.31473368,
+  10.31475]**, **0** integer channels inside — then sweeps it 2000 ways against held
+  channel values. Worst linear-light difference **2.32950731317641e-9** at channel
+  **10.31475**, exactly the knee discontinuity, so the two branches never meet closer
+  inside the window. Worst a* difference **0.000003178226778643989**, at
+  **(30, 10.31475, 30)**; `BLEMISH.minResidual` is **1.6** a* units, i.e.
+  **503425.37252255186x** larger. So the knee is not a blemish-count question at any
+  reachable input, and the decision the item is waiting on is cheaper than it looked.
+  **4 passed.** The file's own mirror of `labAStar` is checked against the real one over
+  every combination of 9 x 5 x 5 integer channel values at worst **0** difference, so the bounds are statements about the
+  detector's arithmetic and not about the test's. Broken three ways: making the two knees
+  identical **3 failed | 1 passed**; drifting the mirror's first matrix coefficient from
+  0.4124 to 0.4125 — the way a bound quietly stops meaning anything — **1 failed | 3
+  passed**; and branching on the linear-domain **0.0031308** instead of `12.92 *` it, the
+  classic domain confusion, **3 failed | 1 passed**. No constant moved and the item
+  **stays open**: where the knee belongs still needs IEC 61966-2-1, which this network
+  cannot reach.
+
+  **What this does not establish.** No traffic number changed and none was measured; a tap
+  that is refused instead of discarded is a defect closed, not a conversion. Everything is
+  one Chromium at exactly 360x800 against a local production build — no real phone, no real
+  network, and the throttled profile is a shaped emulation, not a measurement of anyone's
+  3G. Whether a visitor prefers a dimmed unresponsive second to a discarded tap was not
+  tested on a person; it is an engineering judgement, and the language switcher going
+  unresponsive with everything else is the part most likely to be wrong. The hold covers
+  the interval before the remount and nothing else: a tap fired **before** hydration is
+  still a no-op and always was — measured at 250 ms unthrottled, **not accepted** on both
+  the old and the new tree — and that is a separate window nobody has looked at. The
+  `/care` scroll reset is measured and unexplained. The ML bound is a bound on a* from the
+  transfer knee alone at a single cell; it says nothing about L*, about `toneSpread`, or
+  about where the knee belongs.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 108 passed (108) / Tests 929
+  passed (929)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.091s ... OK**, and
+  `npm run smoke` **232 passed (8.0m)** with `Smoke test passed.` — on the first attempt,
+  and again at **232 passed (8.0m)** after two wrong numbers in this entry and one code
+  comment were corrected (the survey saves **five** fields, not six, and the per-file
+  counts now name `grep -c '= useState'` rather than a `useState` grep that also caught
+  the import line).
+  Rotation: `docs/AUTOPILOT.md` **1852 → 1925** lines at the worker's head `a8e2bb7`, before
+  the supervisor review was added, and
+  `docs/autopilot-changelog.md` **8573 → 8762**; cycle 39's **188** lines are
+  byte-identical at the end of the changelog (`diff` clean against the extract). The
+  concatenated-`sort -u`-`comm -23` check against `02c7123` drops exactly **1** line, and
+  it is accounted for: the `- [ ]` checkbox of the lost-tap finding, which this cycle
+  ticked to `- [x]`.
+
+  **Supervisor review.** The design is right. Two defects were fixed before merge, one
+  of them severe.
+
+  *Predicted by reading, before the branch existed:* option (a) was not feasible,
+  because **28** files under `app/` call `t(` and only **4** subscribe to the language
+  context. The worker rejected (a) on the same grep. The `inert` route (c) was the
+  realistic one.
+
+  *Defect 1, severe: a failed dictionary fetch left the whole page inert for good.*
+  `loadDict` catches a failed chunk fetch, drops its cached promise and resolves with
+  the dictionary still missing (`lib/i18n/core.ts`). Nothing retries, so `active`
+  stayed `en`, `saved` stayed `ja`, and `holding = active !== saved` never became false.
+  Probed with the `ja` chunk aborted by Playwright routing, 8000ms after load:
+  `{"aborted":1,"inert":true,"pending":true,"lang":"en","firstLinkClickable":false}`.
+  The language switcher was inert too, so the visitor could not even pick English. On
+  `02c7123` the same visitor had a working English page. **Fix:** `LanguageProvider`
+  records a locale whose `loadDict` settled without a dictionary, and the hold ends for
+  it (`holding = active !== saved && unavailable !== saved`). The new spec case aborts
+  the chunk and asserts the hold lifts and `scan-start` opens the camera. Reverting the
+  release fails it: **1 failed | 4 passed**.
+
+  *Defect 2: the stored `/report` step outlived its report.* `aru_report_step_v1` was
+  written by `goStep` and never cleared, so a visitor who left a report on step 3 and
+  then answered the survey again landed on step 3 of the new report, past the picks
+  step that carries the merchant links. **Fix:** the survey submit
+  (`app/survey/page.tsx`) and the scan save (`app/scan/use-capture-analysis.ts`) now
+  remove it. The new spec case seeds step `"2"`, submits the survey and asserts step 1 is
+  selected and the key is gone. Dropping the survey's removal fails it: **1 failed | 4
+  passed**. The scan-side removal has no e2e test, because a real capture needs a face
+  the canvas camera cannot supply.
+
+  *One failure not explained.* The first run of the spec after these edits gave **1
+  failed | 4 passed**: the worker's own first case timed out waiting for `inert` to
+  appear. It did not recur in 2 warm runs or 3 runs forced cold by touching
+  `lib/i18n.tsx` (**5 passed** each). The worker's tree forced cold gave **3 passed**.
+  The mechanism is not established. The new release only fires when `loadDict` has
+  settled without a dictionary, so if the chunk really failed in that run, releasing
+  was correct.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 108 passed (108)
+  / Tests 929 passed (929)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `02c7123` drops
+  **1** line: the finding's `- [ ]` became `- [x]` (`docs/AUTOPILOT.md:1225`). Cycle 39
+  sits after cycle 38 at the end of the changelog. `npm run smoke` on
+  the fixed tree gave **234 passed (7.0m)** and `Smoke test passed.` on the first run.
+  After merging the worker's later comment-and-docs commit `72c9bea`, it gave **234
+  passed (7.0m)** and `Smoke test passed.` again.

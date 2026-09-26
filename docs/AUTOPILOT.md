@@ -765,6 +765,35 @@ partly done and stays here.
   unknown and needing cycle 11's fixture, which was never committed:** which of fixture,
   cut point or analyzer differed, and whether some construction not tried here reaches
   71. `docs/retake-sweep-what-it-measures.md`.
+  **2026-09-26, cycle 45: the third knob, and the first joint sweep of two of them.**
+  Both of cycle 32's knobs keep the clean capture ON its cut — re-seeding re-bisects.
+  The one that gives that up, a fixture landing NEAR the cut, had not been moved.
+  `ARU_PRINT_RETAKE_DARKOIL=1 npx vitest run tests/retake-signal-rule.test.ts` offsets
+  `tuned("oil")`'s `contrast` by `delta` and leaves the rest alone. **The count is a
+  ridge over the cut, not a slope:** it is **0/120** at `delta -0.02` (clean shine
+  **0.039002**) and at `+0.02` and `+0.04` (**0.061003**, **0.071852**), because a
+  disagreement needs both captures to straddle the cut; the peak over the offset alone
+  is **22/120** at `delta -0.001`, one seed above the committed **21/120**. Over both
+  knobs — 7 offsets x 4 darknesses — the largest of the 28 cells is **43/120**, at
+  `delta -0.002` and cheekL **20**, a face darker than any condition the sweep names,
+  and still under cycle 32's bound of 55. Where the grids overlap they agree: `delta 0`
+  at cheekL 40 reads **26/120** in both. **71/120 is a majority of the seeds (59.2%) and
+  nothing in this fixture family produces a majority** — 43/120 is 35.8%. Asserted at
+  four corners with 24 seeds (**7, 2, 8, 3**, each below 12). The item stays open for
+  exactly what cycle 32 left open: which of fixture, cut point or analyzer differed.
+  `docs/retake-sweep-what-it-measures.md`.
+- [AI] **One e2e case's 20s budget includes loading the 11 MB MediaPipe runtime, and it
+  has timed out twice without being attributable.** `lang-chunk-tap-hold.regression-30`
+  "never happens for ko" taps `scan-start` and waits for `[data-quality-checklist]`,
+  which `app/scan/guide.tsx` renders only once `guideState === "ready"` — after
+  `createVideoLandmarker` has fetched and instantiated the runtime. Cycle 45 saw it fail
+  inside a full smoke run and once more immediately after, then pass eight times
+  running, including with the page cache dropped and with `.next` deleted. Nothing about
+  the failure was attributed: the assets serve 200 at the versioned path, the CSP is
+  path-agnostic and the worker path is opt-in. A case that can only fail under load is
+  worth making not depend on load — assert on something the landmarker load does not
+  gate, or give this one case a budget that admits what it is waiting for — but do not
+  widen the timeout without saying which of the two it is. Noted 2026-09-26 (cycle 45).
 - [~] [AI] `minQwkGainOverHeuristic` is 0.0 — strictly-greater, with no noise band. A
   model that beats the heuristic by 0.001 on one validation split passes, and that
   gain may be noise. Estimate the band: bootstrap the validation rows, report a CI on
@@ -1298,8 +1327,31 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
-- [ ] **2026-09-26 — the first visit after a MediaPipe upgrade pairs new code with the
-  cached old runtime (cycle 44).** `scripts/copy-mediapipe-assets.mjs` copies the
+- [x] **2026-09-26 — the first visit after a MediaPipe upgrade pairs new code with the
+  cached old runtime (cycle 44).** **Actioned 2026-09-26 (cycle 45): the versioned
+  directory, from one source of truth, plus a prune on both sides.** The runtime is
+  copied to `public/vendor/mediapipe/<version>/wasm` and
+  `app/scan/landmarker-config.ts` builds its URL from `app/scan/mediapipe-version.ts`,
+  which `scripts/copy-mediapipe-assets.mjs` writes in the same pass as the copy, so no
+  install can separate them. The cache name was NOT used: it is a static file with no
+  build step to inject a version into, and renaming it would make every warm visitor
+  re-download the whole runtime on a deploy that changed nothing (cycle 44's own
+  finding). **What the skew actually does was measured first, and it is less than the
+  finding assumed.** Four pairings ran a real `FaceLandmarker` in Chromium against the
+  committed `face_landmarker.task`: matched **0.10.35**, matched **1.0.1**, new JS
+  **1.0.1** on cached runtime **0.10.35**, and new JS **0.10.35** on cached **0.10.34**
+  — all four built the graph and returned a result object, **0** page errors. There is
+  no version handshake to fail: the bundle looks up `self.ModuleFactory` and calls
+  Emscripten exports off what it returns, and `grep -o "0\.10\.[0-9]*"` finds **0**
+  version strings in either half of 0.10.35. The fix is worth having anyway because
+  nothing detects the pairing that does break — from 0.10.35 to 1.0.1 the glue gains
+  **9** symbols and the bundle calls **6** of them that 0.10.35 does not have — and
+  because MediaPipe's own documented setup has the same shape (below, Research).
+  Old versions do not accumulate: the copy script removes every other directory under
+  `public/vendor/mediapipe/`, and `public/sw.js` drops cache entries under another
+  version once one is asked for. Full numbers in the cycle 45 entry.
+
+  Original finding, for the record: `scripts/copy-mediapipe-assets.mjs` copies the
   package's `wasm/` to the unversioned path `/vendor/mediapipe/wasm` at `postinstall`.
   The `@mediapipe/tasks-vision` JS is bundled by the build, and `public/sw.js` answers the
   runtime from `aru-mediapipe-v1` before it revalidates (cycle 44). So on the first
@@ -1381,6 +1433,217 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-26 (cycle 45) — Branch `autopilot/2026-09-26-1839`. **The MediaPipe runtime
+  now lives at a URL that carries its own version, so an upgrade cannot pair a new
+  bundle with the copy a warm visitor already holds — and the skew that fix exists to
+  prevent was measured first, in a browser, before the fix was written. It does not
+  break the pairings obtainable here: five `FaceLandmarker` runs across three package
+  versions, including a major-version skew, all built their graph and returned a
+  result. What justifies the fix is that nothing would tell you if it did. `/checkin`
+  was measured across five locales and four states on a production build at 360x800 and
+  no defect was found; that is recorded as "none", not as a fix.**
+
+  **Baselines, re-measured here on `2f6b4bb` before any edit.** `node_modules` was
+  absent, so `npm ci` first. `npx vitest run` **Test Files 113 passed (113) / Tests 1006
+  passed (1006)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 146 tests in 2.080s ... OK**. All four match the supervisor's.
+
+  **Bug fix — what the skew actually does, before what to do about it.** There is no
+  version handshake between the two halves and there is nothing to add one to:
+  `createMediaPipeLib` runs the loader script, and its only check is `if
+  (!self.ModuleFactory) throw new Error('ModuleFactory not set.')`
+  (`graph_runner.ts`, master, **40942** bytes, sha256
+  `b752936cebc5e229fc7675bea0b3f4909b6778db3a11dfd4d96cb71ecdf55a76`). After that the
+  bundle calls Emscripten exports straight off the module — `_changeBinaryGraph`,
+  `_addIntToInputStream`, `_attachImageListener` and the rest. In the installed 0.10.35,
+  `grep -o "0\.10\.[0-9]*"` finds **0** matches in `vision_bundle.mjs` and **0** in
+  `wasm/vision_wasm_internal.js`: neither half states its own version, so neither can
+  check the other's.
+
+  **Measured in Chromium, not reasoned about.** `npm pack` reached the registry, so
+  0.10.34 and 1.0.1 were fetched next to the installed 0.10.35 (three distinct runtimes:
+  sha256 of `vision_wasm_internal.js` `368e048e…`, `e7fd9858…`, `e170ee67…`). A harness
+  served each combination over HTTP and ran `FilesetResolver.forVisionTasks` +
+  `FaceLandmarker.createFromOptions` (CPU delegate) + one `detect()` against the
+  committed `face_landmarker.task`. Five pairings — matched 0.10.35, matched 1.0.1, new
+  JS **1.0.1** on cached runtime **0.10.35**, new JS **0.10.35** on cached **0.10.34**,
+  and the reverse skew — every one `status ok`, a result object back, **0** page errors.
+  (The fixture is a flat 64x64 rectangle, so all five found **0** faces: this exercises
+  loading, graph construction and one inference, and says nothing about landmark
+  output.) So the finding's "whether 0.10.x tolerates that skew is unknown" is answered
+  for the pairs obtainable here, and the answer is that it does.
+
+  **What the same reading says about the next upgrade, which is why the fix landed
+  anyway.** The wasm exports are minified, so the real contract is the `Module._*`
+  surface the loader exposes. 0.10.34 and 0.10.35 expose the identical set (**111**
+  names each, `diff` clean, and their bundles call the identical **72**). From 0.10.35
+  to 1.0.1 the loader gains **9** names and loses **0** (**120**), and the 1.0.1 bundle
+  calls **6** of them that 0.10.35 does not have: `_decodeBase64`,
+  `_mediapipeLoggerGetEncodedApiKey` and four `_interactive_segmenter_*`. That pairing
+  survives for two reasons visible in the source and neither of them is a guarantee —
+  the segmenter four belong to a task class `/scan` never constructs, and the other two
+  are behind `if ("function" == typeof this.pa._mediapipeLoggerGetEncodedApiKey)`. A
+  release that moves a symbol the face path does use would fail at the call, with no
+  version to blame it on.
+
+  **The fix: one source of truth for the version, on both sides of the URL.**
+  `scripts/copy-mediapipe-assets.mjs` reads the version out of
+  `node_modules/@mediapipe/tasks-vision/package.json` (**0.10.35**), copies the runtime
+  to `public/vendor/mediapipe/0.10.35/wasm` (**33754629** bytes, the same six files),
+  and in the same pass writes `app/scan/mediapipe-version.ts`, which
+  `app/scan/landmarker-config.ts` builds `WASM` from. No install can separate them; a
+  hand edit can, and `tests/mediapipe-assets.test.ts` fails on it. **The cache name was
+  deliberately not used instead**: `public/sw.js` is a static file with no build step to
+  inject a version into, and cycle 44 already measured what a rename costs — `activate`
+  deletes every cache not in `ACTIVE_CACHES`, so every warm visitor re-downloads the
+  whole runtime, including on deploys where nothing about MediaPipe changed. A versioned
+  URL misses only when the version actually moved. `MODEL` stays unversioned on purpose:
+  the face model is not shipped by the package and does not move with it, and cycle 44's
+  revalidation is what keeps it current.
+
+  **Nothing accumulates, on either side.** The copy script removes every other directory
+  under `public/vendor/mediapipe/` — only directories, which is what leaves
+  `face_landmarker.task` and `NOTICE.md` alone — and it removed the legacy unversioned
+  `wasm/` on this run (`MediaPipe WASM assets copied to
+  public/vendor/mediapipe/0.10.35/wasm (removed wasm); version module rewritten.`). Git
+  tracking is unchanged in kind: **8** files tracked under `public/vendor/mediapipe`
+  before and **8** after, the same bytes at versioned paths, and no `.gitignore` entry
+  either way. In the visitor's cache, `public/sw.js` now drops entries whose first path
+  segment under `/vendor/mediapipe/` is not the version being asked for — which also
+  clears the pre-versioning `/vendor/mediapipe/wasm/...` copies a cycle-44 worker left
+  behind. The model, one segment deep, never matches and is never pruned.
+
+  **Broken four ways on the final tree, the first being the drift the fix exists to
+  prevent.** `tests/mediapipe-assets.test.ts` **5 passed** and
+  `tests/sw-mediapipe-revalidate.test.ts` **20 passed** (was 16). With
+  `app/scan/mediapipe-version.ts` hand-edited to `0.10.34` — the drift — **3 failed | 2
+  passed**. With a second version directory left in `public/vendor/mediapipe/` —
+  accumulation — **1 failed | 4 passed**. With the prune never called, **2 failed | 18
+  passed** (the prune case, and the count of `waitUntil` calls the revalidation case
+  asserts). With the prune dropping every version including the one being served — the
+  failure path of what was added, which would re-download **33754629** bytes on every
+  visit and still pass the upgrade case — **3 failed | 17 passed**.
+
+  **UI/UX — the check-in loop, measured, and nothing to fix.** A production build
+  (`next build` + `next start`) at 360x800 in Chromium, `localStorage` seeded in the
+  shapes the writers actually produce: `gyeol_purchases` rows as `recordProductUse`
+  writes them (`{sku_id, name, confirmedUse: true, id, ts}`), `gyeol_checkins` as
+  `recordCheckin` does, `aru.lang` as `lib/i18n/core.ts` does. Five locales x four
+  states — no product in use, one in use, the check-in due, the check-in done — is
+  **20** page loads: every one rendered its own state (the empty state's `/report` CTA
+  visible only in the first; the badge reading 사용 중 / In use / 使用中 / 使用中 / قيد
+  الاستخدام in the second; **8** buttons in the third and **0** in the other three; the
+  saved-feedback status and the `/scan` CTA in the fourth), **0** page errors, **0**
+  responses ≥400, **0** horizontally overflowing elements, **0** controls under 44px,
+  and **0** Hangul strings in the four non-`ko` locales. The loop itself works in all
+  five: answering all three questions and pressing the save button wrote exactly one
+  row to `gyeol_checkins` (`week 2, satisfaction 3, trouble false, repurchase false` —
+  the buttons pressed) and the card switched to the saved status with the all-done
+  `/scan` CTA appearing. Every CTA destination was loaded in every locale: `/`,
+  `/report` and `/scan` each **200**, non-empty, and none in `app/error.tsx`. A
+  three-card case with the catalogue's three longest names, at rounds 4 / 2 / not-due at
+  once, is also clean in all five (**0** overflowing, **0** clipped by `scrollWidth`,
+  page `scrollWidth` never exceeding the viewport). The failure path that the probe
+  cannot reach was checked by grep instead: all **26** strings `/checkin` passes through
+  `t()`, the "저장하지 못했어요…" refusal among them, have entries in each of
+  `lib/i18n/{en,ja,zh,ar}.ts` — **0** missing. No defect, so no fix and no new
+  translation key.
+
+  **Research — MediaPipe's own position on runtime/JS version compatibility.** The
+  package's own README (installed 0.10.35, **8403** bytes, sha256
+  `aadce68d35bfc0dc75fd191bbf9e6285816e907eb43a6301b43bd9a29768f7c5`) shows the setup it
+  recommends **11** times, and every one of them is
+  `FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm")`
+  — **0** occurrences of a version-pinned `tasks-vision@` URL. So the documented pattern
+  pairs a JS bundle pinned by `package.json` with whatever runtime jsdelivr is serving
+  latest: the skew is not an accident of ARU's self-hosting, it is the vendor's default.
+  The nearest thing to a statement about versions is in the repo's own
+  `docs/getting_started/javascript.md`
+  (raw.githubusercontent.com/google-ai-edge/mediapipe/master, http **200**, **4998**
+  bytes, sha256 `24aff7bbf55a43ed0b5fd20c06c7ccc7028dba98126d04abce0b2acacaf0ab36`):
+  "To prevent breaking changes from affecting your work, restrict your request to a
+  `<minor>` number." That is the legacy Solutions API, not Tasks, and it is about
+  pinning a dependency rather than about pairing halves — *inference:* it is the same
+  advice this cycle's fix implements, one level down. Release notes could not be read:
+  `api.github.com/repos/google-ai-edge/mediapipe/releases` returns **403** with
+  `{"message":"GitHub access to this repository is not enabled for this session. Use
+  add_repo to request access…"}`, the session's own proxy and not MediaPipe. Three
+  source files were read on raw.githubusercontent.com and **0** of them contain "same
+  version", "must match" or "mismatch".
+
+  **ML — the third knob on the one retake row cycle 32 left open.** 조명 dark + oil
+  re-derived at **21/120** against cycle 11's written **71/120**. Cycle 32 moved the two
+  knobs the re-derivation exposes one at a time, and both keep the clean capture ON its
+  cut because re-seeding re-bisects. The knob nobody had moved is the one that gives
+  that up — a fixture landing NEAR the cut, which is what a written rather than
+  bisected fixture would do. `ARU_PRINT_RETAKE_DARKOIL=1 npx vitest run
+  tests/retake-signal-rule.test.ts`: **the count is a ridge over the cut, not a slope**
+  — **0/120** at `delta -0.02` (clean shine **0.039002**) and at `+0.02` and `+0.04`
+  (**0.061003**, **0.071852**), because a disagreement needs both captures to straddle
+  the cut, with a peak of **22/120** at `delta -0.001`, one seed above the committed
+  **21/120**. Over both knobs at once — 7 offsets x 4 darknesses, the first joint sweep
+  — the largest of the **28** cells is **43/120**, at `delta -0.002` and cheekL **20**,
+  a face darker than any condition the sweep names, and still under cycle 32's bound of
+  55. Where the two grids overlap they agree exactly: `delta 0` at cheekL 40 reads
+  **26/120** in both. **71/120 is a majority of the seeds (59.2%) and nothing in this
+  fixture family produces a majority** — 43/120 is 35.8%. Asserted rather than printed
+  at four corners with 24 seeds (**7, 2, 8, 3**, each below 12). No constant moved and
+  the item stays open for exactly what cycle 32 left open.
+  `docs/retake-sweep-what-it-measures.md`.
+
+  **What this does not establish.** No traffic number changed and none was measured. The
+  skew result is five pairings of three package versions in one headless Chromium on a
+  flat synthetic frame — not a phone, not a real face, and not a statement about any
+  version pair that does not exist yet; the point of the fix is precisely that the next
+  pair cannot be checked in advance. Whether a real CDN, a real Service Worker update
+  cycle or iOS Safari behaves as the local `next start` harness did was not measured.
+  The version directory is proven to hold one version by a test that reads the working
+  tree, not by anything that runs at deploy time: a checkout that never ran
+  `postinstall` has whatever is committed. `/checkin` is **20** loads in one Chromium at
+  one viewport against a local production build — no real phone, no network throttling,
+  no real re-engagement email, and the audience side of that email (who gets one, and
+  whether they have a recorded product use at all) was not examined, only the landing.
+  "No defect" means no defect in what was measured: rendering, state selection, CTA
+  destinations, overflow, tap targets, Hangul leakage and the record loop. The ML result
+  is a synthetic fixture sweep at 120 seeds per cell; it rules out two construction
+  knobs jointly and says nothing about a real dark capture, which still needs the golden
+  set in BLOCKERS.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 113 passed (113) / Tests 1014
+  passed (1014)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.010s ... OK**.
+  **Smoke ran twice and the first run was red, at one spec.** Run 1: **252 passed**, **1
+  failed** — `lang-chunk-tap-hold.regression-30.spec.ts` "never happens for ko, which
+  waits for no chunk", a 20s timeout on `[data-quality-checklist]`, which the guide
+  renders only once `guideState === "ready"`, i.e. once the ~11 MB WASM runtime has
+  loaded. That spec is on this cycle's path, so it was chased rather than re-run: the
+  failure reproduced once more immediately afterwards (whole file, **1 failed | 4
+  passed**) and then **did not reproduce in eight further runs** — five whole-file runs
+  (**5 passed** each, 13.1-13.5s), one after `sync; echo 3 > /proc/sys/vm/drop_caches`
+  (**1 passed**, 6.0s), one after `rm -rf .next` (**5 passed**, 18.4s), and one single
+  case (**1 passed**, 4.6s). What was ruled out along the way: the assets are served at
+  the new path (`/vendor/mediapipe/0.10.35/wasm/vision_wasm_internal.js` **200 322044**,
+  `.wasm` **200 11153617**, the model **200 3758596**, and the old path **404**); the
+  CSP is path-agnostic (`script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
+  `next.config.ts`); the worker path is opt-in (`?worker=1`) and not on this route. What
+  was NOT established is what made those two runs slow — a single `-g` run on the
+  pre-change asset path passed, but so does every run on the tree as it stands, so that
+  one pass is not evidence either way. Run 2 of smoke, on this tree: **253 passed
+  (8.9m)** and `Smoke test passed.`, whose own steps re-ran lint at **2 problems (0
+  errors, 2 warnings)**, vitest at **113 passed (113) / 1014 passed (1014)** and
+  selftest at **Ran 146 tests in 2.159s ... OK**. Rotation: `docs/AUTOPILOT.md` **2087
+  -> 2093** lines and `docs/autopilot-changelog.md` **9183 -> 9439**; cycle 42's **255**
+  lines are byte-identical at the end of the changelog, after cycle 41 (`diff` clean
+  against the extract taken from `2f6b4bb`), and the concatenated-`sort -u`-`comm -23`
+  check against `2f6b4bb` drops **2** lines, both from the MediaPipe finding this cycle
+  ticked: its `- [ ]` header line, which is now `- [x]` with the same wording, and the
+  line that carried the end of that header plus the first half-sentence of the finding,
+  which now sits under "Original finding, for the record:" at a different wrap. No
+  backlog item was ticked `[x]`, so nothing moved to "Closed backlog items".
+
+  *Supervisor review:* pending.
 
 - 2026-09-26 (cycle 44) — Branch `autopilot/2026-09-26-1239`. **Two ways the returning
   visitor's saved state lies to them, both measured on production builds before being
@@ -1828,260 +2091,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **0** lines. Recent cycles holds 43/42/41, and cycle 40 sits after cycle 39 at the end
   of the changelog. `npm run smoke` gave
   **240 passed (8.3m)** and `Smoke test passed.`
-
-- 2026-09-26 (cycle 42) — Branch `autopilot/2026-09-26-0039`. **A visitor whose saved
-  language is ja, zh or ar spends between a third of a second and four seconds looking at
-  an interactive-looking English page that is about to be thrown away, and until this
-  cycle every tap in that window was discarded. Measured, not reasoned about: under a
-  throttled profile the window is about 1.1 s wide on `/scan`, and a tap inside it started
-  the camera and then lost it in all three locales. It is now held rather than swallowed,
-  and the same remount reached the other way — through the language switcher — was
-  throwing `/report` off its picks step and taking all four merchant links with it.**
-
-  **Baselines, re-measured here on `02c7123` before any edit.** `node_modules` was absent,
-  so `npm ci` first. `npx vitest run` **Test Files 107 passed (107) / Tests 925 passed
-  (925)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 146 tests in 2.137s ... OK**. All four match the supervisor's. A baseline smoke was
-  not run; only the post-change one below, which is green.
-
-  **The English interval, measured before anything was changed.** Production build
-  (`npm run build`, then `npx next start`), 360x800, one fresh context per locale, the
-  clock being `performance.now()` from navigation start to the `MutationObserver` firing on
-  `html[lang]` becoming the saved locale, three runs each. The throttling is CDP
-  `Network.emulateNetworkConditions` with **latency 562.5 ms, downloadThroughput 180000
-  B/s, uploadThroughput 84375 B/s** — a Fast-3G-shaped profile named by its numbers, not
-  claimed to be any tool's preset.
-
-  | route | locale | no throttling | 562.5ms / 180000 B/s |
-  |---|---|---|---|
-  | `/` | ja | 428.8 / 426.9 / 435.8 | 4129.9 / 4131.5 / 4133.8 |
-  | `/` | zh | 383 / 405.1 / 401 | 3955.4 / 3962.4 / 3980.4 |
-  | `/` | ar | 417.4 / 382 / 399.1 | 3826.1 / 3826 / 3831.8 |
-  | `/scan` | ja | 390.4 / 375.9 / 370.2 | 4223.8 / 4224.7 / 4223.6 |
-  | `/scan` | zh | 374.3 / 384.5 / 349 | 4063.2 / 4065 / 4056.9 |
-  | `/scan` | ar | 346.4 / 356.8 / 367 | 3921.1 / 3932.1 / 3925.6 |
-
-  **That is not the loss window, and the difference matters.** A tap can only be lost once
-  the page is interactive. `ko` and `en` wait for no chunk, so their `html[lang]` lands at
-  hydration: **3148.7** ms and **3139.8** ms on `/scan` under the throttled profile. The
-  window is the gap to the lazy locale's remount — about **1.1 s** for ja, against roughly
-  **0.4 s** total on an unthrottled box where hydration itself eats most of it. Probed
-  with a real hit-tested `page.mouse.click` at the button's centre at 3400 ms: ja, zh and
-  ar all **accepted** the tap (`[data-quality-checklist]` count **1** immediately after),
-  and after the remount — ja **4289.0**, zh **4086.3**, ar **3931.8** ms — the checklist
-  read **0** with the start button visible again. `ko` and `en` kept the camera, checklist
-  **1** before and after.
-
-  **A synthetic `HTMLElement.click()` would have made this cycle's fix look broken, and
-  nearly did.** `inert` is defined in terms of hit-testing, so a dispatched click walks
-  straight past it; the first run of the post-fix probe reported the tap still accepted.
-  The probe and the spec both use real mouse input for that reason.
-
-  **What else the remount can lose, grepped across every route.** Every one of these is
-  plain React state inside the keyed subtree, so the remount discards it:
-  `app/survey/page.tsx` holds all **five** fields of the object it saves
-  (`{ type, concerns, category, budget, avoid }`, `app/survey/page.tsx:100`) in `useState`
-  and writes them to sessionStorage exactly once, on submit at
-  `app/survey/page.tsx:102` — `grep -c 'setItem'` on that file is **1** — so answering the
-  survey during the interval loses every answer; `app/scan/page.tsx` (`grep -c '= useState'`
-  **16**, `grep -c 'setItem'` **0**) loses the camera and, downstream of it, both consent
-  checkboxes; `app/privacy/page.tsx` (**5** / **0**) loses the `deleteState === "confirm"`
-  step of the delete-everything flow; `app/checkin/page.tsx` (**6** / **0**) and
-  `app/care/page.tsx` (**3** / **0**) lose whatever is half-answered; `app/report/page.tsx` loses `stepIndex`, which is the defect
-  fixed under UI/UX below. The language switcher does **not** lose its tap: `setLang`
-  writes localStorage before anything remounts.
-
-  **The fix: (b) and (c), and (a) was rejected on a grep rather than on taste.** (a)
-  wanted a re-render without a remount, which needs every `t()` call site to re-run on a
-  context change. `t()` reads a module singleton, so only a subscriber re-renders, and
-  `grep -rl "useLang\b\|useLanguage\b" app/ --include=*.tsx` lists **4** files against the
-  **30** that `grep -rl 't("'` finds. (b) is four lines: the dictionary fetch now starts
-  when `lib/i18n.tsx` is first evaluated instead of in an effect after hydration. It
-  shrinks the interval and **does not close it**, which is the whole reason it is not
-  shipped alone — medians of three, `/scan` under the throttled profile, before → after:
-  ja **4223.8 → 3863.8** (**-360.0**), zh **4063.2 → 3812.5** (**-250.7**), ar **3925.6 →
-  3790.9** (**-134.7**); on `/`, ja **4131.5 → 4079.5** (**-52.0**), zh **3962.4 →
-  3919.4** (**-43.0**), ar **3826.1 → 3799.8** (**-26.3**). Unthrottled the gain is inside
-  the noise: `/scan` ar reads **356.8 → 360.4**, i.e. **+3.6**.
-
-  (c) is what closes it. While `active !== saved`, `LanguageProvider` sets `inert`,
-  `aria-busy="true"` and `data-aru-lang-pending` on `<body>` in a layout effect, and one
-  rule in `app/globals.css` dims buttons, links, inputs, selects and summaries to opacity
-  **0.55** while that attribute is present. No wrapper element, so there is nothing for
-  `ko` or `en` to render or lay out: **the `/` and `/scan` geometry under both locales is
-  byte-identical before and after**, `diff` clean over `scrollWidth`, `clientWidth`,
-  `scrollHeight`, body attribute names, body and `main` child counts, `<h1>` and
-  `[data-testid="scan-start"]` boxes and total DOM node count — **360 / 360** wide on all
-  four, `scrollHeight` **1047** (ko `/`), **800** (ko `/scan`), **1309** (en `/`), **800**
-  (en `/scan`), **199** DOM nodes on `/` and **105** on `/scan`, and `class` as the only
-  body attribute in every case. After the fix, the same 3400 ms tap under the same
-  profile: body `inert` **true**, `aria-busy` **"true"**, button opacity **0.55**, the tap
-  **not accepted**, checklist **0**; and once the chunk lands — ja **3889.1**, zh
-  **3814.7**, ar **3789.6** — `inert` is gone, opacity is back to **1**, the start button
-  is there and the checklist is still **0**. `ko` at **3157.9** and `en` at **3140.0** were
-  never held: `inert` **false**, opacity **1**, tap accepted, checklist **1**.
-
-  **What the fix promises is not that the tap is honoured**, and the spec asserts the
-  promise rather than a nicer one: inside the window the tap is refused and the page is in
-  its pre-tap state afterwards, with a live button. The honest cost is that nothing on the
-  page responds during the hold — the language switcher included — so a visitor who wants
-  to switch away mid-load waits out the interval. HTML's own advice is the reason the
-  dimming exists rather than a silent block, and it is also the reason this is a trade and
-  not a clean win.
-
-  **Pinned, and broken three ways, every count re-run on the final tree.**
-  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts` delays only the response whose
-  body contains `カメラをもう一度オンにする` by **3000** ms, the way the supervisor's probe did, and
-  is **3 passed**. Removing (c) and shipping only (b) — the "weaker but plausible" case the
-  finding named — gives **1 failed | 2 passed**. Keeping the dimming and the `aria-busy`
-  but dropping the `inert` attribute, i.e. a control that looks held and is not, also
-  gives **1 failed | 2 passed**. Putting the `inert` on `<main>` instead of `<body>` gives
-  **1 failed | 2 passed** as well, and it is worth saying which assertion catches it: the
-  `document.body` poll, not the tap, because the button is inside `<main>` and a
-  main-scoped hold does block it. So the spec pins the element as well as the behaviour,
-  and a future cycle that legitimately moves the hold will have to update it.
-
-  **UI/UX — mid-session language switching, measured for the first time, and it was
-  losing the one screen with commerce links on it.** `/report` with the picks step open and
-  `/care`, both at 360x800 on a production build, switching en → ar → ja through the real
-  picker. `dir` followed correctly every time (**ltr / rtl / ltr**) and
-  `scrollWidth === clientWidth === 360` on every screen in every locale, so there is no
-  overflow and no direction defect here. The state is another matter: on `/report` the
-  selected tab went **1 → 0 → 0** and the merchant links on screen went **4 → 0 → 0** —
-  the picks step is the only step that carries them, and a language switch closed it. Same
-  `key={active}` remount, reached by a tap instead of by a chunk. Fixed by keeping the
-  step in sessionStorage under a new registered key (`DEVICE_DATA_KEY.reportStep`,
-  `aru_report_step_v1`, session-scoped, added to `DEVICE_DATA_KEYS` so "delete my device
-  data" clears it) and restoring it in the same after-mount effect that loads the reading,
-  not during render, which is what the existing comment there warns about. After: tab
-  **1 → 1 → 1**, links **4 → 4 → 4**. Broken two ways: dropping the restore gives **1
-  failed | 2 passed**, and dropping the write while keeping the restore — the plausible
-  half-fix — also gives **1 failed | 2 passed**.
-
-  **Measured on `/care` and recorded as unexplained rather than guessed.** The scroll
-  offset was **400** before the switch, **400** after en → ar and **0** after ar → ja,
-  with **1062** px of scroll still available in ja (`scrollHeight` **1862** against a
-  **800** px viewport), so it is not a clamp against a shorter page. What resets it was not
-  established and no code was changed for it.
-
-  **Research — WHATWG HTML's own source, from `raw.githubusercontent.com`.**
-  `whatwg/html/main/source` **http=200**, **7915810** bytes, sha256
-  `bec5f8ad394043ac0ee18ba090ec74ae8760b38af5bdf584db58220c299bb9de`. Line **85298** is
-  the sentence the fix rests on — "Hit-testing must act as if the 'pointer-events' CSS
-  property were set to 'none'" — with text selection acting as `user-select: none` on line
-  **85301**. The part that changed the design is line **85351**: "Authors should not
-  specify elements as inert unless the content they represent are also visually obscured in
-  some way", and line **85354** adds that for individual form controls "the `disabled`
-  attribute is probably more appropriate". The example at line **85358** is this exact
-  situation — "how to mark partially loaded content, visually obscured by a 'loading'
-  message, as inert". So a bare `inert` with no visual change would have been against the
-  spec's own advice, which is where the one dimming rule came from; obscuring the content
-  behind a loading state was rejected because it would replace up to **4.1 s** of readable
-  English with a spinner, and per-control `disabled` was rejected because it would touch
-  every entry CTA on every route and still miss anything that is not a form control.
-
-  **ML — what the sRGB knee choice can actually move, which the open item never sized.**
-  Chosen because it needs no labelled export, no real photo and no phone profile: the
-  inputs are the whole continuous window and `labAStar` is the function the blemish
-  detector calls about 18,000 times a frame. The item (cycle 22) records that ARU branches
-  at **0.04045** where `colour-science` branches at `12.92 * 0.0031308`, and that the
-  window is reachable "in principle" because the detector's inputs are continuous — but
-  nobody had said how much it is worth. `tests/srgb-knee-window-consequence.test.ts`
-  re-derives the window from both sources rather than quoting it — colour-science's knee
-  **0.040449936**, width **6.40000000010077e-8**, channel window **[10.31473368,
-  10.31475]**, **0** integer channels inside — then sweeps it 2000 ways against held
-  channel values. Worst linear-light difference **2.32950731317641e-9** at channel
-  **10.31475**, exactly the knee discontinuity, so the two branches never meet closer
-  inside the window. Worst a* difference **0.000003178226778643989**, at
-  **(30, 10.31475, 30)**; `BLEMISH.minResidual` is **1.6** a* units, i.e.
-  **503425.37252255186x** larger. So the knee is not a blemish-count question at any
-  reachable input, and the decision the item is waiting on is cheaper than it looked.
-  **4 passed.** The file's own mirror of `labAStar` is checked against the real one over
-  every combination of 9 x 5 x 5 integer channel values at worst **0** difference, so the bounds are statements about the
-  detector's arithmetic and not about the test's. Broken three ways: making the two knees
-  identical **3 failed | 1 passed**; drifting the mirror's first matrix coefficient from
-  0.4124 to 0.4125 — the way a bound quietly stops meaning anything — **1 failed | 3
-  passed**; and branching on the linear-domain **0.0031308** instead of `12.92 *` it, the
-  classic domain confusion, **3 failed | 1 passed**. No constant moved and the item
-  **stays open**: where the knee belongs still needs IEC 61966-2-1, which this network
-  cannot reach.
-
-  **What this does not establish.** No traffic number changed and none was measured; a tap
-  that is refused instead of discarded is a defect closed, not a conversion. Everything is
-  one Chromium at exactly 360x800 against a local production build — no real phone, no real
-  network, and the throttled profile is a shaped emulation, not a measurement of anyone's
-  3G. Whether a visitor prefers a dimmed unresponsive second to a discarded tap was not
-  tested on a person; it is an engineering judgement, and the language switcher going
-  unresponsive with everything else is the part most likely to be wrong. The hold covers
-  the interval before the remount and nothing else: a tap fired **before** hydration is
-  still a no-op and always was — measured at 250 ms unthrottled, **not accepted** on both
-  the old and the new tree — and that is a separate window nobody has looked at. The
-  `/care` scroll reset is measured and unexplained. The ML bound is a bound on a* from the
-  transfer knee alone at a single cell; it says nothing about L*, about `toneSpread`, or
-  about where the knee belongs.
-
-  *Validation on this tree:* `npx vitest run` **Test Files 108 passed (108) / Tests 929
-  passed (929)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
-  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.091s ... OK**, and
-  `npm run smoke` **232 passed (8.0m)** with `Smoke test passed.` — on the first attempt,
-  and again at **232 passed (8.0m)** after two wrong numbers in this entry and one code
-  comment were corrected (the survey saves **five** fields, not six, and the per-file
-  counts now name `grep -c '= useState'` rather than a `useState` grep that also caught
-  the import line).
-  Rotation: `docs/AUTOPILOT.md` **1852 → 1925** lines at the worker's head `a8e2bb7`, before
-  the supervisor review was added, and
-  `docs/autopilot-changelog.md` **8573 → 8762**; cycle 39's **188** lines are
-  byte-identical at the end of the changelog (`diff` clean against the extract). The
-  concatenated-`sort -u`-`comm -23` check against `02c7123` drops exactly **1** line, and
-  it is accounted for: the `- [ ]` checkbox of the lost-tap finding, which this cycle
-  ticked to `- [x]`.
-
-  **Supervisor review.** The design is right. Two defects were fixed before merge, one
-  of them severe.
-
-  *Predicted by reading, before the branch existed:* option (a) was not feasible,
-  because **28** files under `app/` call `t(` and only **4** subscribe to the language
-  context. The worker rejected (a) on the same grep. The `inert` route (c) was the
-  realistic one.
-
-  *Defect 1, severe: a failed dictionary fetch left the whole page inert for good.*
-  `loadDict` catches a failed chunk fetch, drops its cached promise and resolves with
-  the dictionary still missing (`lib/i18n/core.ts`). Nothing retries, so `active`
-  stayed `en`, `saved` stayed `ja`, and `holding = active !== saved` never became false.
-  Probed with the `ja` chunk aborted by Playwright routing, 8000ms after load:
-  `{"aborted":1,"inert":true,"pending":true,"lang":"en","firstLinkClickable":false}`.
-  The language switcher was inert too, so the visitor could not even pick English. On
-  `02c7123` the same visitor had a working English page. **Fix:** `LanguageProvider`
-  records a locale whose `loadDict` settled without a dictionary, and the hold ends for
-  it (`holding = active !== saved && unavailable !== saved`). The new spec case aborts
-  the chunk and asserts the hold lifts and `scan-start` opens the camera. Reverting the
-  release fails it: **1 failed | 4 passed**.
-
-  *Defect 2: the stored `/report` step outlived its report.* `aru_report_step_v1` was
-  written by `goStep` and never cleared, so a visitor who left a report on step 3 and
-  then answered the survey again landed on step 3 of the new report, past the picks
-  step that carries the merchant links. **Fix:** the survey submit
-  (`app/survey/page.tsx`) and the scan save (`app/scan/use-capture-analysis.ts`) now
-  remove it. The new spec case seeds step `"2"`, submits the survey and asserts step 1 is
-  selected and the key is gone. Dropping the survey's removal fails it: **1 failed | 4
-  passed**. The scan-side removal has no e2e test, because a real capture needs a face
-  the canvas camera cannot supply.
-
-  *One failure not explained.* The first run of the spec after these edits gave **1
-  failed | 4 passed**: the worker's own first case timed out waiting for `inert` to
-  appear. It did not recur in 2 warm runs or 3 runs forced cold by touching
-  `lib/i18n.tsx` (**5 passed** each). The worker's tree forced cold gave **3 passed**.
-  The mechanism is not established. The new release only fires when `loadDict` has
-  settled without a dictionary, so if the chunk really failed in that run, releasing
-  was correct.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 108 passed (108)
-  / Tests 929 passed (929)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `02c7123` drops
-  **1** line: the finding's `- [ ]` became `- [x]` (`docs/AUTOPILOT.md:1225`). Cycle 39
-  sits after cycle 38 at the end of the changelog. `npm run smoke` on
-  the fixed tree gave **234 passed (7.0m)** and `Smoke test passed.` on the first run.
-  After merging the worker's later comment-and-docs commit `72c9bea`, it gave **234
-  passed (7.0m)** and `Smoke test passed.` again.
-

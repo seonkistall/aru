@@ -38,8 +38,10 @@ type Harness = {
   activate: () => Promise<void>;
   install: () => Promise<void>;
   cacheBodies: (name: string) => Promise<Record<string, string>>;
+  cacheUrls: (name: string) => string[];
   cacheNames: () => string[];
   setServer: (fn: (req: FakeRequest) => Promise<Response>) => void;
+  breakCacheKeys: (name: string) => void;
   fetchCount: () => number;
 };
 
@@ -51,7 +53,8 @@ function load(seed: Record<string, Record<string, string>> = {}): Harness {
     stores.set(name, store);
   }
 
-  const makeCache = (store: Map<string, Response>) => ({
+  const brokenKeys = new Set<string>();
+  const makeCache = (name: string, store: Map<string, Response>) => ({
     match: async (req: FakeRequest | string) => {
       const hit = store.get(typeof req === "string" ? ORIGIN + req : req.url);
       return hit ? hit.clone() : undefined;
@@ -67,7 +70,12 @@ function load(seed: Record<string, Record<string, string>> = {}): Harness {
       if (!res.ok) throw new TypeError("Request failed");
       store.set(ORIGIN + path, res);
     },
-    keys: async () => [...store.keys()].map((url) => ({ url })),
+    keys: async () => {
+      if (brokenKeys.has(name)) throw new TypeError("Cache.keys failed");
+      return [...store.keys()].map((url) => ({ url }));
+    },
+    // Cache.delete takes the same request objects Cache.keys hands out.
+    delete: async (req: FakeRequest | string) => store.delete(typeof req === "string" ? ORIGIN + req : req.url),
   });
 
   let server: (req: FakeRequest) => Promise<Response> = async () => new Response("default", { status: 200 });
@@ -76,7 +84,7 @@ function load(seed: Record<string, Record<string, string>> = {}): Harness {
   const caches = {
     open: async (name: string) => {
       if (!stores.has(name)) stores.set(name, new Map());
-      return makeCache(stores.get(name)!);
+      return makeCache(name, stores.get(name)!);
     },
     keys: async () => [...stores.keys()],
     delete: async (name: string) => stores.delete(name),
@@ -135,13 +143,25 @@ function load(seed: Record<string, Record<string, string>> = {}): Harness {
       for (const [url, res] of store) out[url] = await res.clone().text();
       return out;
     },
+    cacheUrls: (name) => [...(stores.get(name) ?? new Map()).keys()].sort(),
     cacheNames: () => [...stores.keys()],
     setServer: (fn) => void (server = fn),
+    breakCacheKeys: (name) => void brokenKeys.add(name),
     fetchCount: () => fetchCount,
   };
 }
 
-const WASM = "/vendor/mediapipe/wasm/vision_wasm_internal.js";
+// The runtime directory is named after the installed @mediapipe/tasks-vision version
+// (scripts/copy-mediapipe-assets.mjs). These two are stand-ins for "the version the
+// build ships" and "the version the visitor's cache is still holding" — the worker
+// reads the version out of the URL and never knows the real one, so the literals here
+// do not move when the package is upgraded.
+const VERSION = "0.10.35";
+const OLD_VERSION = "0.10.34";
+const WASM = `/vendor/mediapipe/${VERSION}/wasm/vision_wasm_internal.js`;
+const OLD_WASM = `/vendor/mediapipe/${OLD_VERSION}/wasm/vision_wasm_internal.js`;
+// What a worker cached before the directory was versioned at all.
+const LEGACY_WASM = "/vendor/mediapipe/wasm/vision_wasm_internal.js";
 const MODEL = "/vendor/mediapipe/face_landmarker.task";
 const MP_CACHE = "aru-mediapipe-v1";
 const SHELL_CACHE = "aru-shell-v1";
@@ -158,7 +178,8 @@ describe("the MediaPipe cache against a new deploy", () => {
     const first = h.fire(request(WASM));
     expect(await (await first.responded!).text(), "the visitor waited on the network").toBe("deploy-1");
     // The revalidation is handed to waitUntil, not awaited in front of the response.
-    expect(first.waits.length).toBe(1);
+    // Two of them now: the version prune is the other one.
+    expect(first.waits.length).toBe(2);
     await Promise.all(first.waits);
     expect((await h.cacheBodies(MP_CACHE))[ORIGIN + WASM]).toBe("deploy-2");
 
@@ -198,6 +219,65 @@ describe("the MediaPipe cache against a new deploy", () => {
     expect(await (await responded!).text()).toBe("deploy-1");
     await expect(Promise.all(waits)).resolves.toBeDefined();
     expect((await h.cacheBodies(MP_CACHE))[ORIGIN + WASM]).toBe("deploy-1");
+  });
+});
+
+/**
+ * The upgrade case, which stale-while-revalidate on its own does not cover: the bundled
+ * JS API is replaced by the deploy, the runtime under /public is not, and the two have
+ * no version handshake. Versioning the directory is what makes the new bundle ask for a
+ * URL the cache cannot answer with the old runtime. That leaves the old version sitting
+ * in the cache — ~34 MB of it — so the worker drops it once the visitor asks for
+ * another one.
+ */
+describe("the MediaPipe cache after a version upgrade", () => {
+  it("drops the runtime of every other version once this one is asked for", async () => {
+    const h = load({
+      [MP_CACHE]: {
+        [ORIGIN + OLD_WASM]: "old-runtime",
+        [ORIGIN + LEGACY_WASM]: "unversioned-runtime",
+        [ORIGIN + MODEL]: "model",
+      },
+    });
+    h.setServer(async () => new Response("new-runtime", { status: 200 }));
+
+    const { responded, waits } = h.fire(request(WASM));
+    expect(await (await responded!).text(), "the new URL is a cold miss, so it is fetched").toBe("new-runtime");
+    await Promise.all(waits);
+
+    // The old version and the pre-versioning copy are gone; the model, which is not
+    // shipped by the package and has no version in its URL, is untouched.
+    expect(h.cacheUrls(MP_CACHE)).toEqual([ORIGIN + WASM, ORIGIN + MODEL].sort());
+  });
+
+  it("keeps the version it is serving", async () => {
+    // The failure path of the prune: a rule that dropped the current version too would
+    // re-download ~34 MB on every single visit and still pass the case above.
+    const h = load({ [MP_CACHE]: { [ORIGIN + WASM]: "current-runtime" } });
+    const { responded, waits } = h.fire(request(WASM));
+    expect(await (await responded!).text()).toBe("current-runtime");
+    await Promise.all(waits);
+    expect(h.cacheUrls(MP_CACHE)).toEqual([ORIGIN + WASM]);
+  });
+
+  it("prunes nothing when the request carries no version", async () => {
+    // `/vendor/mediapipe/face_landmarker.task` is one segment: it says nothing about
+    // which runtime the page wants, so it must not be read as a version to keep.
+    const h = load({ [MP_CACHE]: { [ORIGIN + WASM]: "runtime", [ORIGIN + MODEL]: "model" } });
+    const { responded, waits } = h.fire(request(MODEL));
+    expect(await (await responded!).text()).toBe("model");
+    await Promise.all(waits);
+    expect(h.cacheUrls(MP_CACHE)).toEqual([ORIGIN + WASM, ORIGIN + MODEL].sort());
+  });
+
+  it("serves the capture runtime even if the prune itself fails", async () => {
+    // A prune runs beside a response that is already decided. If enumerating the cache
+    // throws, the visitor must still get their runtime and nothing may reject.
+    const h = load({ [MP_CACHE]: { [ORIGIN + WASM]: "current-runtime" } });
+    h.breakCacheKeys(MP_CACHE);
+    const { responded, waits } = h.fire(request(WASM));
+    expect(await (await responded!).text()).toBe("current-runtime");
+    await expect(Promise.all(waits)).resolves.toBeDefined();
   });
 });
 
