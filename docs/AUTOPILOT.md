@@ -1643,7 +1643,44 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   which now sits under "Original finding, for the record:" at a different wrap. No
   backlog item was ticked `[x]`, so nothing moved to "Closed backlog items".
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and no correction needed. This cycle measured the skew
+  in a browser before fixing it; my finding had left the skew as unknown.
+
+  *Predicted by reading, before the branch existed:*
+  - Neither half states its version. `grep -o "0\.10\.[0-9]*"` found nothing in
+    `vision_bundle.mjs` or `wasm/vision_wasm_internal.js`. The worker got the same
+    **0** and **0**.
+  - `face_landmarker.task` is not shipped by the package, so its path has to stay
+    unversioned. It did.
+  - The weak point of any versioned fix is that old versions pile up in the service
+    worker cache. The worker added a prune for that.
+
+  *Where my prediction was too pessimistic:* I expected the skew could not be
+  established without a second version. `npm pack` reached the registry, and the worker
+  ran five pairings across three versions.
+
+  *Broken here, three ways, on the committed tree.*
+  `tests/mediapipe-assets.test.ts` + `tests/sw-mediapipe-revalidate.test.ts` give **25
+  passed**.
+  - Drifting `app/scan/mediapipe-version.ts` to `"0.10.36"`, the drift the fix exists to
+    prevent: **3 failed**.
+  - Weakening `VERSIONED_RUNTIME` to one path segment, which would also prune the
+    unversioned `face_landmarker.task`: **2 failed | 23 passed**.
+  - Removing the prune call: **2 failed | 23 passed**.
+
+  *The copy script, run here.* A repeat `npm run assets:mediapipe` leaves the working
+  tree clean. With a planted legacy `public/vendor/mediapipe/wasm/old.js`, it prints
+  `(removed wasm)`, and the tree is clean again afterwards.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 113 passed (113)
+  / Tests 1014 passed (1014)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `2f6b4bb` drops
+  **2** lines: the MediaPipe finding's `- [ ]` became `- [x]`, and its next line gained
+  the actioned note (`docs/AUTOPILOT.md:1330-1331`). Recent cycles holds 45/44/43, and
+  cycle 42 sits after cycle 41 at the end of the changelog. `npm run smoke` first
+  failed before any test body ran (`Error: Timed out waiting 120000ms from
+  config.webServer`). The one re-run gave **253 passed (9.3m)** and `Smoke test
+  passed.`
 
 - 2026-09-26 (cycle 44) — Branch `autopilot/2026-09-26-1239`. **Two ways the returning
   visitor's saved state lies to them, both measured on production builds before being
