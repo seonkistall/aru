@@ -94,6 +94,38 @@ async function findOpenPort(startPort) {
   throw new Error(`No open smoke-test port found from ${startPort}`);
 }
 
+/**
+ * Refuse to run the e2e phase while something already holds its port.
+ *
+ * `playwright.mobile.config.ts` now sets `reuseExistingServer: false`, which stops the
+ * gate reporting a result from a server it did not start — with a real leftover dev
+ * server Playwright names the collision in 2s. It does NOT cover a socket that accepts
+ * the connection and never replies: Playwright's port-in-use probe waits on that
+ * request, and `webServer.timeout` does not bound the probe, so the run hangs with no
+ * verdict (measured at 468s before the fix and still hanging after it, both killed by
+ * hand rather than by any timeout). A wedged `next dev` is exactly what this repo
+ * produces when a smoke run is killed mid-suite — twice recorded in
+ * docs/autopilot-changelog.md. One connect with its own deadline turns that hang into a
+ * named failure before any test runs.
+ */
+async function assertPortFree(port, label) {
+  const inUse = await new Promise((resolve) => {
+    const probe = createServer();
+    probe.once("error", () => resolve(true));
+    probe.once("listening", () => probe.close(() => resolve(false)));
+    probe.listen(port, host);
+  });
+
+  if (inUse) {
+    throw new Error(
+      `port ${port} (${label}) is already in use. A dev server from an earlier run is probably still alive — ` +
+        `stop it before running the gate, or the e2e phase cannot be trusted to load this tree.`
+    );
+  }
+
+  console.log(`ok port ${port} free for ${label}`);
+}
+
 async function waitForServer(baseUrl, child) {
   const deadline = Date.now() + 60_000;
   let lastError = "server did not respond";
@@ -224,6 +256,8 @@ async function smokeHttp() {
 async function main() {
   await run(npmCmd, ["run", "lint"]);
   await run(npmCmd, ["test"]);
+  // Must match `playwright.mobile.config.ts`'s own default, which reads the same var.
+  await assertPortFree(Number(process.env.MOBILE_UI_PORT ?? 3102), "test:mobile-ui");
   await run(npmCmd, ["run", "test:mobile-ui"]);
   await run(npmCmd, ["run", "build"]);
   await run(pythonCmd, ["-m", "py_compile", ...mlFiles]);

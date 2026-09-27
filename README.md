@@ -673,6 +673,27 @@ git diff --check
 `scripts/smoke-test.mjs` calls `lint`, `test`, `test:mobile-ui`, `build`,
 `py_compile`, `ml/selftest.py` and the HTTP route checks — and not that config.
 
+**Running the gate so its answer means something.** The e2e phase starts its own
+`next dev`, and as of 2026-09-27 it refuses to borrow one. `reuseExistingServer` is off
+unless you set `ARU_REUSE_DEV_SERVER=1`, and `webServer.command` clears Turbopack's
+persistent `.next/dev` cache first (`scripts/clear-dev-cache.mjs`). Before that, a dev
+server left alive from an earlier run was silently reused: with a CSS rule deleted,
+`guide-ltr-in-rtl-chrome.regression-34` reported `8 passed` where the tree's true result
+was `4 failed | 4 passed`. So:
+
+- **Nothing else may be listening on `MOBILE_UI_PORT` (3102).** `npm run smoke` now checks
+  this before the e2e phase and stops with a named error rather than hanging; a wedged
+  `next dev` — what killing a smoke run mid-suite leaves behind — used to hang the run
+  with no verdict at all.
+- **Do not kill a smoke run with a `pkill -f` pattern** that also matches your own shell.
+  That is how the orphan gets created; kill by PID.
+- `ARU_REUSE_DEV_SERVER=1` is for an interactive edit loop only. It costs roughly 3-4 s of
+  cold Turbopack compile to leave it unset (measured: 4930 / 5247 / 6072 ms to the first
+  200 on `/` cold, 1958 ms warm), which is the price of the run meaning what it says.
+- `eslint` ignores `test-results/**` and `playwright-report/**`. It did not before, and
+  because `smoke` runs `lint` first, one earlier failing e2e run turned `0 errors, 2
+  warnings` into `215 errors, 4020 warnings` over 6366 files of captured trace JS.
+
 Test counts grow with features; the latest run evidence in
 [STATUS](docs/STATUS.md) and `docs/qa/` takes precedence over the numbers
 here. The counts above were last re-derived by running each suite on

@@ -9884,3 +9884,251 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **1** line: the blemish item's `- [AI]` became `- [~] [AI]` (`docs/AUTOPILOT.md:304`).
   Cycle 41 sits after cycle 40 at the end of the changelog. `npm run smoke` gave
   **253 passed (12.8m)** and `Smoke test passed.`
+
+- 2026-09-26 (cycle 45) — Branch `autopilot/2026-09-26-1839`. **The MediaPipe runtime
+  now lives at a URL that carries its own version, so an upgrade cannot pair a new
+  bundle with the copy a warm visitor already holds — and the skew that fix exists to
+  prevent was measured first, in a browser, before the fix was written. It does not
+  break the pairings obtainable here: five `FaceLandmarker` runs across three package
+  versions, including a major-version skew, all built their graph and returned a
+  result. What justifies the fix is that nothing would tell you if it did. `/checkin`
+  was measured across five locales and four states on a production build at 360x800 and
+  no defect was found; that is recorded as "none", not as a fix.**
+
+  **Baselines, re-measured here on `2f6b4bb` before any edit.** `node_modules` was
+  absent, so `npm ci` first. `npx vitest run` **Test Files 113 passed (113) / Tests 1006
+  passed (1006)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3
+  ml/selftest.py` **Ran 146 tests in 2.080s ... OK**. All four match the supervisor's.
+
+  **Bug fix — what the skew actually does, before what to do about it.** There is no
+  version handshake between the two halves and there is nothing to add one to:
+  `createMediaPipeLib` runs the loader script, and its only check is `if
+  (!self.ModuleFactory) throw new Error('ModuleFactory not set.')`
+  (`graph_runner.ts`, master, **40942** bytes, sha256
+  `b752936cebc5e229fc7675bea0b3f4909b6778db3a11dfd4d96cb71ecdf55a76`). After that the
+  bundle calls Emscripten exports straight off the module — `_changeBinaryGraph`,
+  `_addIntToInputStream`, `_attachImageListener` and the rest. In the installed 0.10.35,
+  `grep -o "0\.10\.[0-9]*"` finds **0** matches in `vision_bundle.mjs` and **0** in
+  `wasm/vision_wasm_internal.js`: neither half states its own version, so neither can
+  check the other's.
+
+  **Measured in Chromium, not reasoned about.** `npm pack` reached the registry, so
+  0.10.34 and 1.0.1 were fetched next to the installed 0.10.35 (three distinct runtimes:
+  sha256 of `vision_wasm_internal.js` `368e048e…`, `e7fd9858…`, `e170ee67…`). A harness
+  served each combination over HTTP and ran `FilesetResolver.forVisionTasks` +
+  `FaceLandmarker.createFromOptions` (CPU delegate) + one `detect()` against the
+  committed `face_landmarker.task`. Five pairings — matched 0.10.35, matched 1.0.1, new
+  JS **1.0.1** on cached runtime **0.10.35**, new JS **0.10.35** on cached **0.10.34**,
+  and the reverse skew — every one `status ok`, a result object back, **0** page errors.
+  (The fixture is a flat 64x64 rectangle, so all five found **0** faces: this exercises
+  loading, graph construction and one inference, and says nothing about landmark
+  output.) So the finding's "whether 0.10.x tolerates that skew is unknown" is answered
+  for the pairs obtainable here, and the answer is that it does.
+
+  **What the same reading says about the next upgrade, which is why the fix landed
+  anyway.** The wasm exports are minified, so the real contract is the `Module._*`
+  surface the loader exposes. 0.10.34 and 0.10.35 expose the identical set (**111**
+  names each, `diff` clean, and their bundles call the identical **72**). From 0.10.35
+  to 1.0.1 the loader gains **9** names and loses **0** (**120**), and the 1.0.1 bundle
+  calls **6** of them that 0.10.35 does not have: `_decodeBase64`,
+  `_mediapipeLoggerGetEncodedApiKey` and four `_interactive_segmenter_*`. That pairing
+  survives for two reasons visible in the source and neither of them is a guarantee —
+  the segmenter four belong to a task class `/scan` never constructs, and the other two
+  are behind `if ("function" == typeof this.pa._mediapipeLoggerGetEncodedApiKey)`. A
+  release that moves a symbol the face path does use would fail at the call, with no
+  version to blame it on.
+
+  **The fix: one source of truth for the version, on both sides of the URL.**
+  `scripts/copy-mediapipe-assets.mjs` reads the version out of
+  `node_modules/@mediapipe/tasks-vision/package.json` (**0.10.35**), copies the runtime
+  to `public/vendor/mediapipe/0.10.35/wasm` (**33754629** bytes, the same six files),
+  and in the same pass writes `app/scan/mediapipe-version.ts`, which
+  `app/scan/landmarker-config.ts` builds `WASM` from. No install can separate them; a
+  hand edit can, and `tests/mediapipe-assets.test.ts` fails on it. **The cache name was
+  deliberately not used instead**: `public/sw.js` is a static file with no build step to
+  inject a version into, and cycle 44 already measured what a rename costs — `activate`
+  deletes every cache not in `ACTIVE_CACHES`, so every warm visitor re-downloads the
+  whole runtime, including on deploys where nothing about MediaPipe changed. A versioned
+  URL misses only when the version actually moved. `MODEL` stays unversioned on purpose:
+  the face model is not shipped by the package and does not move with it, and cycle 44's
+  revalidation is what keeps it current.
+
+  **Nothing accumulates, on either side.** The copy script removes every other directory
+  under `public/vendor/mediapipe/` — only directories, which is what leaves
+  `face_landmarker.task` and `NOTICE.md` alone — and it removed the legacy unversioned
+  `wasm/` on this run (`MediaPipe WASM assets copied to
+  public/vendor/mediapipe/0.10.35/wasm (removed wasm); version module rewritten.`). Git
+  tracking is unchanged in kind: **8** files tracked under `public/vendor/mediapipe`
+  before and **8** after, the same bytes at versioned paths, and no `.gitignore` entry
+  either way. In the visitor's cache, `public/sw.js` now drops entries whose first path
+  segment under `/vendor/mediapipe/` is not the version being asked for — which also
+  clears the pre-versioning `/vendor/mediapipe/wasm/...` copies a cycle-44 worker left
+  behind. The model, one segment deep, never matches and is never pruned.
+
+  **Broken four ways on the final tree, the first being the drift the fix exists to
+  prevent.** `tests/mediapipe-assets.test.ts` **5 passed** and
+  `tests/sw-mediapipe-revalidate.test.ts` **20 passed** (was 16). With
+  `app/scan/mediapipe-version.ts` hand-edited to `0.10.34` — the drift — **3 failed | 2
+  passed**. With a second version directory left in `public/vendor/mediapipe/` —
+  accumulation — **1 failed | 4 passed**. With the prune never called, **2 failed | 18
+  passed** (the prune case, and the count of `waitUntil` calls the revalidation case
+  asserts). With the prune dropping every version including the one being served — the
+  failure path of what was added, which would re-download **33754629** bytes on every
+  visit and still pass the upgrade case — **3 failed | 17 passed**.
+
+  **UI/UX — the check-in loop, measured, and nothing to fix.** A production build
+  (`next build` + `next start`) at 360x800 in Chromium, `localStorage` seeded in the
+  shapes the writers actually produce: `gyeol_purchases` rows as `recordProductUse`
+  writes them (`{sku_id, name, confirmedUse: true, id, ts}`), `gyeol_checkins` as
+  `recordCheckin` does, `aru.lang` as `lib/i18n/core.ts` does. Five locales x four
+  states — no product in use, one in use, the check-in due, the check-in done — is
+  **20** page loads: every one rendered its own state (the empty state's `/report` CTA
+  visible only in the first; the badge reading 사용 중 / In use / 使用中 / 使用中 / قيد
+  الاستخدام in the second; **8** buttons in the third and **0** in the other three; the
+  saved-feedback status and the `/scan` CTA in the fourth), **0** page errors, **0**
+  responses ≥400, **0** horizontally overflowing elements, **0** controls under 44px,
+  and **0** Hangul strings in the four non-`ko` locales. The loop itself works in all
+  five: answering all three questions and pressing the save button wrote exactly one
+  row to `gyeol_checkins` (`week 2, satisfaction 3, trouble false, repurchase false` —
+  the buttons pressed) and the card switched to the saved status with the all-done
+  `/scan` CTA appearing. Every CTA destination was loaded in every locale: `/`,
+  `/report` and `/scan` each **200**, non-empty, and none in `app/error.tsx`. A
+  three-card case with the catalogue's three longest names, at rounds 4 / 2 / not-due at
+  once, is also clean in all five (**0** overflowing, **0** clipped by `scrollWidth`,
+  page `scrollWidth` never exceeding the viewport). The failure path that the probe
+  cannot reach was checked by grep instead: all **26** strings `/checkin` passes through
+  `t()`, the "저장하지 못했어요…" refusal among them, have entries in each of
+  `lib/i18n/{en,ja,zh,ar}.ts` — **0** missing. No defect, so no fix and no new
+  translation key.
+
+  **Research — MediaPipe's own position on runtime/JS version compatibility.** The
+  package's own README (installed 0.10.35, **8403** bytes, sha256
+  `aadce68d35bfc0dc75fd191bbf9e6285816e907eb43a6301b43bd9a29768f7c5`) shows the setup it
+  recommends **11** times, and every one of them is
+  `FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm")`
+  — **0** occurrences of a version-pinned `tasks-vision@` URL. So the documented pattern
+  pairs a JS bundle pinned by `package.json` with whatever runtime jsdelivr is serving
+  latest: the skew is not an accident of ARU's self-hosting, it is the vendor's default.
+  The nearest thing to a statement about versions is in the repo's own
+  `docs/getting_started/javascript.md`
+  (raw.githubusercontent.com/google-ai-edge/mediapipe/master, http **200**, **4998**
+  bytes, sha256 `24aff7bbf55a43ed0b5fd20c06c7ccc7028dba98126d04abce0b2acacaf0ab36`):
+  "To prevent breaking changes from affecting your work, restrict your request to a
+  `<minor>` number." That is the legacy Solutions API, not Tasks, and it is about
+  pinning a dependency rather than about pairing halves — *inference:* it is the same
+  advice this cycle's fix implements, one level down. Release notes could not be read:
+  `api.github.com/repos/google-ai-edge/mediapipe/releases` returns **403** with
+  `{"message":"GitHub access to this repository is not enabled for this session. Use
+  add_repo to request access…"}`, the session's own proxy and not MediaPipe. Three
+  source files were read on raw.githubusercontent.com and **0** of them contain "same
+  version", "must match" or "mismatch".
+
+  **ML — the third knob on the one retake row cycle 32 left open.** 조명 dark + oil
+  re-derived at **21/120** against cycle 11's written **71/120**. Cycle 32 moved the two
+  knobs the re-derivation exposes one at a time, and both keep the clean capture ON its
+  cut because re-seeding re-bisects. The knob nobody had moved is the one that gives
+  that up — a fixture landing NEAR the cut, which is what a written rather than
+  bisected fixture would do. `ARU_PRINT_RETAKE_DARKOIL=1 npx vitest run
+  tests/retake-signal-rule.test.ts`: **the count is a ridge over the cut, not a slope**
+  — **0/120** at `delta -0.02` (clean shine **0.039002**) and at `+0.02` and `+0.04`
+  (**0.061003**, **0.071852**), because a disagreement needs both captures to straddle
+  the cut, with a peak of **22/120** at `delta -0.001`, one seed above the committed
+  **21/120**. Over both knobs at once — 7 offsets x 4 darknesses, the first joint sweep
+  — the largest of the **28** cells is **43/120**, at `delta -0.002` and cheekL **20**,
+  a face darker than any condition the sweep names, and still under cycle 32's bound of
+  55. Where the two grids overlap they agree exactly: `delta 0` at cheekL 40 reads
+  **26/120** in both. **71/120 is a majority of the seeds (59.2%) and nothing in this
+  fixture family produces a majority** — 43/120 is 35.8%. Asserted rather than printed
+  at four corners with 24 seeds (**7, 2, 8, 3**, each below 12). No constant moved and
+  the item stays open for exactly what cycle 32 left open.
+  `docs/retake-sweep-what-it-measures.md`.
+
+  **What this does not establish.** No traffic number changed and none was measured. The
+  skew result is five pairings of three package versions in one headless Chromium on a
+  flat synthetic frame — not a phone, not a real face, and not a statement about any
+  version pair that does not exist yet; the point of the fix is precisely that the next
+  pair cannot be checked in advance. Whether a real CDN, a real Service Worker update
+  cycle or iOS Safari behaves as the local `next start` harness did was not measured.
+  The version directory is proven to hold one version by a test that reads the working
+  tree, not by anything that runs at deploy time: a checkout that never ran
+  `postinstall` has whatever is committed. `/checkin` is **20** loads in one Chromium at
+  one viewport against a local production build — no real phone, no network throttling,
+  no real re-engagement email, and the audience side of that email (who gets one, and
+  whether they have a recorded product use at all) was not examined, only the landing.
+  "No defect" means no defect in what was measured: rendering, state selection, CTA
+  destinations, overflow, tap targets, Hangul leakage and the record loop. The ML result
+  is a synthetic fixture sweep at 120 seeds per cell; it rules out two construction
+  knobs jointly and says nothing about a real dark capture, which still needs the golden
+  set in BLOCKERS.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 113 passed (113) / Tests 1014
+  passed (1014)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.010s ... OK**.
+  **Smoke ran twice and the first run was red, at one spec.** Run 1: **252 passed**, **1
+  failed** — `lang-chunk-tap-hold.regression-30.spec.ts` "never happens for ko, which
+  waits for no chunk", a 20s timeout on `[data-quality-checklist]`, which the guide
+  renders only once `guideState === "ready"`, i.e. once the ~11 MB WASM runtime has
+  loaded. That spec is on this cycle's path, so it was chased rather than re-run: the
+  failure reproduced once more immediately afterwards (whole file, **1 failed | 4
+  passed**) and then **did not reproduce in eight further runs** — five whole-file runs
+  (**5 passed** each, 13.1-13.5s), one after `sync; echo 3 > /proc/sys/vm/drop_caches`
+  (**1 passed**, 6.0s), one after `rm -rf .next` (**5 passed**, 18.4s), and one single
+  case (**1 passed**, 4.6s). What was ruled out along the way: the assets are served at
+  the new path (`/vendor/mediapipe/0.10.35/wasm/vision_wasm_internal.js` **200 322044**,
+  `.wasm` **200 11153617**, the model **200 3758596**, and the old path **404**); the
+  CSP is path-agnostic (`script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
+  `next.config.ts`); the worker path is opt-in (`?worker=1`) and not on this route. What
+  was NOT established is what made those two runs slow — a single `-g` run on the
+  pre-change asset path passed, but so does every run on the tree as it stands, so that
+  one pass is not evidence either way. Run 2 of smoke, on this tree: **253 passed
+  (8.9m)** and `Smoke test passed.`, whose own steps re-ran lint at **2 problems (0
+  errors, 2 warnings)**, vitest at **113 passed (113) / 1014 passed (1014)** and
+  selftest at **Ran 146 tests in 2.159s ... OK**. Rotation: `docs/AUTOPILOT.md` **2087
+  -> 2093** lines and `docs/autopilot-changelog.md` **9183 -> 9439**; cycle 42's **255**
+  lines are byte-identical at the end of the changelog, after cycle 41 (`diff` clean
+  against the extract taken from `2f6b4bb`), and the concatenated-`sort -u`-`comm -23`
+  check against `2f6b4bb` drops **2** lines, both from the MediaPipe finding this cycle
+  ticked: its `- [ ]` header line, which is now `- [x]` with the same wording, and the
+  line that carried the end of that header plus the first half-sentence of the finding,
+  which now sits under "Original finding, for the record:" at a different wrap. No
+  backlog item was ticked `[x]`, so nothing moved to "Closed backlog items".
+
+  **Supervisor review.** Sound, and no correction needed. This cycle measured the skew
+  in a browser before fixing it; my finding had left the skew as unknown.
+
+  *Predicted by reading, before the branch existed:*
+  - Neither half states its version. `grep -o "0\.10\.[0-9]*"` found nothing in
+    `vision_bundle.mjs` or `wasm/vision_wasm_internal.js`. The worker got the same
+    **0** and **0**.
+  - `face_landmarker.task` is not shipped by the package, so its path has to stay
+    unversioned. It did.
+  - The weak point of any versioned fix is that old versions pile up in the service
+    worker cache. The worker added a prune for that.
+
+  *Where my prediction was too pessimistic:* I expected the skew could not be
+  established without a second version. `npm pack` reached the registry, and the worker
+  ran five pairings across three versions.
+
+  *Broken here, three ways, on the committed tree.*
+  `tests/mediapipe-assets.test.ts` + `tests/sw-mediapipe-revalidate.test.ts` give **25
+  passed**.
+  - Drifting `app/scan/mediapipe-version.ts` to `"0.10.36"`, the drift the fix exists to
+    prevent: **3 failed**.
+  - Weakening `VERSIONED_RUNTIME` to one path segment, which would also prune the
+    unversioned `face_landmarker.task`: **2 failed | 23 passed**.
+  - Removing the prune call: **2 failed | 23 passed**.
+
+  *The copy script, run here.* A repeat `npm run assets:mediapipe` leaves the working
+  tree clean. With a planted legacy `public/vendor/mediapipe/wasm/old.js`, it prints
+  `(removed wasm)`, and the tree is clean again afterwards.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 113 passed (113)
+  / Tests 1014 passed (1014)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `2f6b4bb` drops
+  **2** lines: the MediaPipe finding's `- [ ]` became `- [x]`, and its next line gained
+  the actioned note (`docs/AUTOPILOT.md:1330-1331`). Recent cycles holds 45/44/43, and
+  cycle 42 sits after cycle 41 at the end of the changelog. `npm run smoke` first
+  failed before any test body ran (`Error: Timed out waiting 120000ms from
+  config.webServer`). The one re-run gave **253 passed (9.3m)** and `Smoke test
+  passed.`
