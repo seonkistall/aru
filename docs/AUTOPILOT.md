@@ -227,6 +227,47 @@ Items ticked `[x]` move to [`docs/autopilot-changelog.md`](autopilot-changelog.m
 once the work is merged, so this list is the open work and nothing else. `[~]` means
 partly done and stays here.
 
+- [~] [AI+OWNER] **Search experiment: two catalogue-built guide pages. Shipped
+  2026-09-27 (cycle 46); the test has not started and cannot start without the owner.**
+  Seven cycles of product quality had landed against zero traffic, so this cycle spent
+  the UI/UX slot on the one acquisition path that does not need a budget: two indexable
+  English pages built from the catalogue, `/guide/serum-for-combination-skin` and
+  `/guide/toner-for-oily-skin`, each handing a searcher into `/scan` or `/survey`.
+
+  **Hypothesis.** A searcher looking for "serum for combination skin" wants a shortlist
+  with reasons, not a landing page, and ARU's catalogue already holds the reasons
+  (`lib/skus.ts`, `lib/ingredients.ts`, `CONCERN_ROLES`). If that is true, two pages at
+  the two (category, skin type) pairs the catalogue covers best should pick up
+  impressions without any spend. If it is false, they pick up nothing and the whole
+  content-marketing direction is cheaper to abandon now than after twenty pages.
+
+  **What the owner must do for this to be tested at all.** Submit `/sitemap.xml` to
+  Google Search Console. This is already an owner blocker (cycle 39) and nothing has
+  changed it: the sitemap lists both new URLs as of this cycle, and a sitemap nobody
+  submits is a file nobody fetches. No amount of loop work substitutes for it.
+
+  **The metric.** Search Console impressions for exactly these two URLs, read as the
+  Pages report filtered to `/guide/`. Not clicks, not sessions, not `/ops` — the funnel
+  store is localStorage-only and the flush is off for an unresolved consent question
+  (BLOCKERS), so the loop cannot see a visitor arrive. Impressions is the only number
+  that exists.
+
+  **KILL CRITERION: 0 impressions for both URLs 4 weeks after the sitemap is submitted →
+  delete both pages**, their two `SEO_ROUTES` entries, `lib/guides.ts`, the guides line
+  on `/`, `tests/guides.test.ts` and
+  `tests/e2e/guide-pages.regression-33.spec.ts`, and restore the two `INDEXABLE` lists.
+  That is the whole footprint; it was built to be removable in one commit.
+
+  **Nothing scales this up until that number is read.** No third guide, no per-locale
+  guide URLs (an open owner decision, "Next"), no blog, no programmatic pages. Two is
+  the experiment; more than two before a reading is the doorway-page failure mode this
+  cycle deliberately stayed on the right side of.
+
+  **Opportunity cost, stated.** This cycle did not touch the commerce deep-links, the
+  funnel flush, or the model. If the owner never submits the sitemap, the cycle bought
+  nothing except two pages nobody reads — which is the same risk every item above the
+  affiliate blocker carries.
+
 - [AI] **Deep-link the commerce out-links to product pages.** Every entry in
   `buildCommerceLinks` (`lib/commerce.ts`) currently points at a merchant *search* URL —
   `oliveYoungSearchUrl`, `naverShoppingSearchUrl`, `coupangSearchUrl` all build
@@ -1223,6 +1264,19 @@ Owner-only, dated when first recorded.
   `developer.mozilla.org`, `en.wikipedia.org`, `law.go.kr`, `www.kcs.go.kr`, `doi.org`,
   `www.ncbi.nlm.nih.gov` and `www.w3.org` all still refuse. Full probe output is in
   `docs/tone-ita-verification.md`.
+  **2026-09-27, cycle 46: two more hosts refuse and the `api.github.com` line above is
+  now wrong.** `static.googleusercontent.com` and `google.github.io` both give
+  `curl: (56) CONNECT tunnel failed, response 403`, so Google's rater guidelines PDF is
+  out of reach along with `developers.google.com` and `support.google.com`. And
+  `api.github.com` no longer answers a general query: `search/repositories` returns
+  `http=403` with `"This GitHub API path is not available: sessions are bound to their
+  configured repositories. Use repository-scoped endpoints (repos/{owner}/{repo}/...)."`
+  `raw.githubusercontent.com` still serves any public repository's files
+  (`google/robotstxt` README, `http=200 bytes=5282`), and a blobless `git clone --depth 1
+  --filter=blob:none --no-checkout` of a public repository works and costs **524K** of
+  `.git`, which is how cycle 46 searched `GoogleChrome/web.dev`'s **3987** paths without
+  downloading it. So a cycle can read a named file out of a known public repository and
+  cannot search GitHub for one.
 - 2026-09-16 (re-stated 2026-09-17, and now the ONLY thing standing in the way) —
   **The legal basis for switching the funnel flush on.** Cycle 7 built the ingest
   endpoint, so every technical item on the §6 checklist in
@@ -1326,6 +1380,17 @@ Two things follow for anyone editing the Routine:
 
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
+
+- [ ] **2026-09-27 — neither claim list covers "reduce / control / minimise" (cycle 46
+  review).** `BANNED` in `lib/recommend.ts` (Korean) has no 감소, and
+  `BANNED_BY_LANG.en` in `lib/claim-filter.ts` has no reduce, control, minimise,
+  prevent, fade, brighten or firm. So an LLM product reason like "reduces excess sebum"
+  or "피지를 감소시켜요" passes both gates. Guide copy today uses none of these verbs:
+  the counts in the cycle 46 review find only concern nouns. Whether each word is a
+  claim under Korean cosmetics advertising rules is a legal question the owner should
+  settle before the lists grow. The filter's own header says a false positive only
+  costs a pre-approved template. Add the verbs in both languages with test cases in
+  `tests/claim-filter.test.ts`, and check that no pre-approved template trips them.
 
 - [x] **2026-09-26 — the first visit after a MediaPipe upgrade pairs new code with the
   cached old runtime (cycle 44).** **Actioned 2026-09-26 (cycle 45): the versioned
@@ -1433,6 +1498,262 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-27 (cycle 46) — Branch `autopilot/2026-09-27-0039`. **ARU has two indexable
+  pages that a searcher can land on and be handed into the product, built from the
+  catalogue rather than written, and shipped as an experiment with a kill criterion
+  instead of as a content plan. Which two pairs was decided by counting coverage, not
+  taste: `세럼 × 복합성` is alone at the top with **4** SKUs / **10** concerns / **10**
+  ingredients, and `토너 × 지성` wins a five-way tie at **3** SKUs on concern coverage
+  (**7** against **5** for `크림 × 민감성`) while differing from the first page in both
+  axes. The body is in the first HTTP response — **586** and **495** words with
+  JavaScript off — and the landing CTA did not move by a pixel. The bug found on the way
+  is that `public/offline.html` was an indexable page nothing could have caught: the
+  route-table guard walks `app/`, and that file is in `public/`.**
+
+  **Baselines, re-measured here on `c90864a`.** `node_modules` was absent, so `npm ci`
+  first. `npx vitest run` **Test Files 113 passed (113) / Tests 1014 passed (1014)**, run
+  on the working tree before any edit. The other three were run in a clean
+  `git worktree` at `c90864a` (with `node_modules` symlinked in) rather than claimed from
+  a post-edit run, because by then the working tree already carried the change:
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 146
+  tests in 1.793s ... OK**. All four match the supervisor's.
+
+  **UI/UX and growth — `/guide/serum-for-combination-skin` and
+  `/guide/toner-for-oily-skin`.** The pair choice is a census of `lib/skus.ts`, pinned in
+  `tests/guides.test.ts` so it cannot drift: **22** SKUs across **8** categories, and for
+  every (category, skin type) pair the count of SKUs the catalogue lists for both. One
+  pair leads on all three measures — `세럼 × 복합성`, **4** SKUs, **10** distinct
+  concerns, **10** distinct ingredient keys. Exactly **5** pairs tie at **3** SKUs
+  (`토너 × 지성`, `토너 × 복합성`, `세럼 × 지성`, `크림 × 민감성`, `선크림 × 복합성`), and
+  the tie went to `토너 × 지성` on concern coverage — **7** concerns against **5** for
+  `크림 × 민감성` — because it is also a different category AND a different skin type
+  from the first page. Two pages that differ in one axis would have been two views of the
+  same shortlist, which is the shape of a doorway page.
+
+  Both are SERVER components with no `t()`. `lib/guides.ts` reads the English dictionary
+  directly through `enText()`, because `t()` answers from a module singleton that starts
+  at `ko` and the served bytes are the whole point of an indexable page. Measured against
+  a dev server on `127.0.0.1:3199`: the serum page is **52899** bytes served and **586**
+  words of body text after tags and scripts are stripped, the toner page **48153** bytes
+  and **495** words, and every product row is present with JavaScript disabled. **4** of
+  **4** anchors on each page carry a real `href`, all of them internal
+  (`/`, `/scan`, `/survey`, and the other guide). `/sitemap.xml` now lists **6** `<loc>`
+  entries, up from **4**. Nothing links out to a merchant, so no `/api/out` path and no
+  `CommerceDisclosure` are involved — the pages end at `/scan` and `/survey`.
+
+  **Geometry at 360x800, measured not eyeballed.** Neither page scrolls sideways:
+  `scrollWidth` **360** against `clientWidth` **360** on both. Both hand-off links are
+  full-width inside the viewport (`x` **20**, `width` **320**) and clear the 44px tap
+  floor — **61** for the scan link, **44.5** for the survey link. The `h1` starts at `y`
+  **93.5** while the fixed language pill ends at **54** (`y` **10** + `height` **44**), so
+  the first heading is not under a button. Page heights are **3649** and **3041** with
+  **182** and **168** DOM nodes.
+
+  **The claim check runs three rulers, and the hits are pinned rather than asserted
+  absent.** `efficacyClean()`'s Korean list finds **0** hits in the visible text of
+  either page and **0** in the whole served document. `BANNED_BY_LANG.en` — the gate
+  `reasonClean()` puts LLM output through — finds exactly `["Soothing", "soothing"]` on
+  both, and both come from the catalogue's own word for the 진정 ingredient role, which
+  `lib/i18n/en.ts` already renders on `/report` and `/care` through
+  `app/components/product-card.tsx`. The substring list `tests/seo-metadata.test.ts`
+  holds route metadata to finds exactly `["condition"]`, inside `Conditioning`, the
+  English name of the 컨디셔닝 role. Pinning is what makes the check work: a banned word
+  this cycle wrote would change the set and fail. A fourth test strips every catalogue
+  word case-insensitively and asserts what is left of each authored sentence is clean,
+  which is how `treats` in a lede gets caught.
+
+  **`enText()` found a translation gap and it turned out not to be one.** It threw on
+  `PHA·LHA`. Audited across all four dictionaries rather than guessed: exactly **3**
+  catalogue strings are missing everywhere — `PHA·LHA`, `LHA` and `SPF50+ PA++++` — all
+  Hangul-free, all read the same in every language, `withHangul=0`. So `enText()` passes
+  a Hangul-free string through and throws only on a Hangul one, and a separate test
+  asserts nothing either page renders matches `/[가-힣]/`.
+
+  **The landing CTA did not move.** Measured at 360x800 with the guides line stashed and
+  again with it applied, `[data-primary-action="scan"]` is byte-identical: `x` **24**,
+  `y` **612.15625**, `width` **312**, `height` **74.5**. So are the header tagline
+  (**98.75 / 28 / 155.25 / 57**) and the hero callout. The page grows below the fold
+  only: `scrollHeight` **1309** → **1372**, DOM nodes **214** → **218**, and
+  `scrollWidth` stays **360** against a `clientWidth` of **360**. The guides line is one
+  new translated key (`"영문 가이드"`) added to all four dictionaries — en **913** → **914**,
+  ja **909** → **910**, zh **909** → **910**, ar **913** → **914** — and no existing
+  string's content was touched. The two link labels are the guides' own English
+  headings, so they need no dictionary; `tests/guides.test.ts` reads `app/page.tsx` and
+  asserts both paths and both headings against `GUIDES`, which is what catches a rename.
+
+  **Bug fix — `public/offline.html` was indexable, and by construction nothing could
+  have found it.** It answers **200** with a `<title>` (`smoke`'s own route checks
+  already fetch it), it carried no `robots` meta —
+  `git show c90864a:public/offline.html | grep -c "robots\|noindex"` gives **0** — and it
+  has no `SEO_ROUTES` entry. The route-table guard that would
+  catch exactly this, `appRoutes()` in `tests/seo-metadata.test.ts`, walks `app/`, so a
+  static page under `public/` was outside its reach from the day it was written. It is
+  discoverable: `/offline.html` is a string literal at **2** places in `public/sw.js`
+  (lines **34** and **55**), which `robots.txt` allows a crawler to fetch. Fixed with the
+  tag, and the guard generalised — the new sweep reads every
+  `.html` under `public/` recursively (today that is **1** file, asserted by name so the
+  sweep cannot pass by sweeping nothing) and requires `noindex, nofollow` on each.
+
+  **ML — skipped deliberately.** Nothing in the scan pipeline is trivially advanceable
+  from an acquisition cycle, and `python3 ml/selftest.py` was run to confirm it stays
+  green rather than to claim progress: **Ran 146 tests ... OK**, unchanged.
+
+  **Research — Google's own doorway-page and helpful-content guidance is NOT reachable
+  from this container, and that is recorded rather than worked around.** Every canonical
+  host refuses. Verbatim:
+
+  ```
+  --- https://developers.google.com/search/docs/essentials/spam-policies
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://developers.google.com/search/docs/fundamentals/creating-helpful-content
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://support.google.com/webmasters/answer/66356
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://static.googleusercontent.com/media/guidelines.raterhub.com/en//searchqualityevaluatorguidelines.pdf
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://google.github.io/styleguide/
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  ```
+
+  Nor is the Search Central source on GitHub, which the brief asked to try:
+  `google/search-central`, `google/search-central-docs`, `google/googlesearchcentral` and
+  `googlesearchcentral/googlesearchcentral.github.io` all answer `http=404 bytes=14` on
+  `raw.githubusercontent.com`, while `google/robotstxt` on the same host answers
+  `http=200 bytes=5282` — so the host works and the repository does not exist.
+  `api.github.com` cannot be used to search for it: this session is repo-scoped and
+  `search/repositories` returns `http=403` with `"This GitHub API path is not available:
+  sessions are bound to their configured repositories."` A blobless shallow clone of
+  `GoogleChrome/web.dev` (**3987** paths in `HEAD`) contains **0** files matching
+  `doorway` or `helpful-content`.
+
+  **What IS reachable is Google-authored and machine-checkable, so the two pages were
+  checked against it in writing.** Three files, all `http=200`:
+
+  - `https://raw.githubusercontent.com/GoogleChrome/lighthouse/main/core/audits/seo/crawlable-anchors.js`
+    — **4570** bytes, sha256
+    `4a4f84375cbc2d3514bb8dff41d768bbc43f039e0e40a02547e97d6b3128beed`.
+    Quote: *"Search engines may use `href` attributes on links to crawl websites. Ensure
+    that the `href` attribute of anchor elements links to an appropriate destination, so
+    more pages of the site can be discovered."* Checked: **4** of **4** anchors on each
+    guide page have an `href`, and one of the four on each is the other guide, so both
+    pages are discoverable from either.
+  - `https://raw.githubusercontent.com/GoogleChrome/lighthouse/main/core/audits/seo/is-crawlable.js`
+    — **8119** bytes, sha256
+    `a3da720c762c2955a1d1468a4bcd007a9c61cf0f5635194277721b214deabf89`.
+    Quote: *"Search engines are unable to include your pages in search results if they
+    don't have permission to crawl them."* Checked: both pages serve
+    `<meta name="robots" content="index, follow">`, `robots.txt` disallows only `/api/`,
+    and both canonicals are absolute on the shipped origin.
+  - `https://raw.githubusercontent.com/GoogleChrome/web.dev/main/src/site/content/en/discoverable/pass-lighthouse-seo-audit/index.md`
+    — **2163** bytes, sha256
+    `431d7b32d69c7f72b9b00f509a7ee449a0d2faa76ee8f3120ca93ddf475da4af`.
+    Quotes: *"If a search engine has trouble seeing your page, you're possibly missing
+    out on traffic sources"* and *"Bottom line: make great content for the people you
+    want to attract."* Checked against the first: the body is in the served HTML, **586**
+    and **495** words with scripts off, which is what the E2E spec asserts rather than
+    asserting a DOM after hydration.
+
+  **What this research does NOT establish.** Google's actual doorway-page policy wording
+  was not read, so no sentence here quotes it, and nothing below claims these pages
+  comply with a policy this cycle could not fetch. What the cycle did instead is make the
+  doorway failure mode measurable on its own terms and refuse it structurally: the two
+  pages differ in both axes, each carries per-page content drawn from different SKUs, no
+  third page may be added before the kill criterion is read (Backlog > Now), and there is
+  no external destination for a doorway to funnel to.
+
+  **Docs and rotation.** The experiment is written down in Backlog > Now with its
+  hypothesis, the owner action it waits on (submit the sitemap — already a cycle 39
+  blocker), the metric (Search Console impressions for the two URLs) and the kill
+  criterion (0 impressions 4 weeks after submission → delete both pages and the whole
+  footprint, which is one commit). Recent cycles holds 46/45/44; cycle 43's **216** lines
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 42.
+  `docs/AUTOPILOT.md` **2130** → **1913** lines by the move alone (**2189** once this
+  entry, the backlog item and the BLOCKERS update are in), and
+  `docs/autopilot-changelog.md` **9439** → **9656**
+  (+**217** including the separating blank line). The proof is not an assertion: `sort -u`
+  over both files at `c90864a` gives **10011** unique lines, `sort -u` over the new pair
+  gives **10246**, and `comm -23` of the first against the second drops **0** lines. The
+  moved text is byte-identical, not merely present: the **216** lines extracted from
+  `c90864a` and the last **216** lines of the new changelog both sha256 to
+  `4bdff9cc7a4f84d843c7efcda5fcca5e7a7c6dc48122728857ee6336915dde63`, and `diff` between
+  them is empty. No backlog
+  item was ticked `[x]`, so nothing moved to "Closed backlog items".
+
+  **Broken here, five ways, on the committed tree.** `tests/guides.test.ts` +
+  `tests/seo-metadata.test.ts` give **70 passed**; `tests/e2e/guide-pages.regression-33.spec.ts`
+  gives **9 passed**.
+  - A banned English term in an authored lede (`treats oily skin fastest`): **3 failed |
+    67 passed**.
+  - The toner guide dropped from `SEO_ROUTES`: **5 failed | 63 passed** (of 68 — the
+    per-route cases go with it).
+  - The `noindex` tag removed from `public/offline.html`, the failure path of this
+    cycle's bug fix: **1 failed | 69 passed**.
+  - A guide's `h1` renamed without touching the landing link: **2 failed | 68 passed**.
+  - The toner page turned into a client component that renders its body in a
+    `useEffect`, which is the exact failure the pages exist to avoid: **2 failed | 7
+    passed** on the E2E spec, both failures on the JavaScript-disabled cases.
+
+  **Validation on this tree, worker:** `npx vitest run` **Test Files 114 passed (114) /
+  Tests 1046 passed (1046)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .`
+  **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 1.684s ... OK**.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` **264 passed (7.3m)** and
+  `Smoke test passed.`
+
+  **The first smoke run was red and the re-run was earned, not assumed.** It ended
+  **44 failed | 220 passed (8.8m)**. Of the 44, **43** were
+  `page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3102/…` — the dev server
+  died partway and every spec after it failed on the socket, which is runner loss and not
+  a test result. The **1** real assertion was
+  `rtl-logical-inset.regression-19 › /privacy's buttons still read from the left in LTR`,
+  waiting 5000ms for `html[dir="ltr"]` and getting `null` on the page's `<html lang="en"
+  class="h-full antialiased">`. That spec covers `/privacy`, which this cycle does not
+  touch, and it was checked rather than waved away: run alone on the same tree it gives
+  **6 passed**, including both cases that failed. Disk and memory were not the cause
+  (**29G** available, **13822** MB free). One re-run, the only one, gave the green above,
+  and the guide specs and the two new discovery cases are inside its **264**.
+
+  **Supervisor review.** Sound, and no correction needed. The first cycle aimed at
+  acquisition rather than defects, built so it can be killed.
+
+  *Predicted by reading, before the branch existed:* `efficacyClean()` is a KOREAN list
+  (`lib/recommend.ts:96-116`). If English guide copy were tested with it alone, the test
+  would be vacuous. It was not: `tests/guides.test.ts` runs every authored sentence
+  through `BANNED_BY_LANG.en` as well. The only hits are `Soothing`/`soothing`, pinned to
+  catalogue text that already ships on `/report` and `/care`.
+
+  *Broken here, two ways, on the committed tree.*
+  - Adding `"This serum visibly improves uneven texture."` to the serum guide's lede:
+    **2 failed | 24 passed** on `tests/guides.test.ts`.
+  - Dropping `/guide/toner-for-oily-skin` from `SEO_ROUTES`: five named failures across
+    `tests/guides.test.ts` and `tests/seo-metadata.test.ts`, including "registers both
+    guides as indexable with their own title and description".
+  Both edits were reverted.
+
+  *Checked here: no efficacy verbs outside the lists either.* The one-off test was not
+  committed. It counted, in each guide's full serialised data, the words the two lists
+  do NOT cover (reduce, control, minimise, prevent, fade, brighten, firm, clear, calm,
+  repair, protect) plus concern nouns:
+  - serum: `{"sebum":6,"pores":13,"barrier":4,"pore":1}`.
+  - toner: `{"pores":11,"barrier":5,"sebum":2}`.
+  Only nouns naming a concern appear, never a verb claiming to change it. That gap in
+  the lists is recorded as a finding.
+
+  *The bug fix is real.* `public/offline.html` answered 200 with a title and no robots
+  tag, and `/sw.js` names it. It is now `noindex, nofollow`.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
+  / Tests 1046 passed (1046)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `c90864a` drops
+  **0** lines. Recent cycles holds 46/45/44, and cycle 43 sits after cycle 42 at the end
+  of the changelog. `npm run smoke` gave
+  **264 passed (10.4m)** and `Smoke test passed.`
 
 - 2026-09-26 (cycle 45) — Branch `autopilot/2026-09-26-1839`. **The MediaPipe runtime
   now lives at a URL that carries its own version, so an upgrade cannot pair a new
@@ -1911,220 +2232,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **1** line: the blemish item's `- [AI]` became `- [~] [AI]` (`docs/AUTOPILOT.md:304`).
   Cycle 41 sits after cycle 40 at the end of the changelog. `npm run smoke` gave
   **253 passed (12.8m)** and `Smoke test passed.`
-
-- 2026-09-26 (cycle 43) — Branch `autopilot/2026-09-26-0639`. **The returning visitor's
-  path, measured the way a returning visitor arrives: a fresh context with ONLY
-  localStorage seeded, no sessionStorage, 360x800, production build, five locales, seven
-  record states, 165 screen measurements. No error boundary, no overflow and no
-  un-interpolated placeholder anywhere. Two real defects: `/report`'s picks step — the
-  only screen with merchant links on it — becomes an empty dead step for a record whose
-  category the catalogue no longer ships, which is the state `isSurvey` was deliberately
-  written to keep and which an existing test says renders "its no-picks branch"; and 6
-  Korean characters on `/report`'s first screen in all four non-Korean locales, whose fix
-  is a translation key this cycle may not add.**
-
-  **Baselines, re-measured here on `4cfaa3a` before any edit.** `node_modules` was absent,
-  so `npm ci` first. `npx vitest run` **Test Files 108 passed (108) / Tests 929 passed
-  (929)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 146 tests in 2.482s ... OK**. All four match the supervisor's. A baseline smoke was
-  not run; only the post-change one below, which is green.
-
-  **The sweep.** `npm run build` then `npx next start -p 3199`, one fresh Playwright
-  context per cell at 360x800, `addInitScript` writing `aru.lang` and
-  `aru_last_result` into localStorage and **nothing into sessionStorage** — the empty
-  sessionStorage is what sends `/report` and `/care` down the saved-result fallback in the
-  first place. Five locales x seven states x `/`, `/report` step 1, `/report` picks step,
-  `/care`, `/checkin`. **165** measurements (the picks step does not exist in the two
-  states that have no report, which is 10 of the 175 cells). Across all 165:
-  **0** error boundaries, **0** uncaught page errors, **0** cells where
-  `scrollWidth !== clientWidth` or `clientWidth !== 360`, **0** un-interpolated
-  `{placeholder}` tokens.
-
-  **The record's shape has never changed, so "the shapes older builds wrote" is about its
-  contents.** `git log --oneline -- lib/last-result.ts` is **3** commits, and
-  `LastResult = { survey, scan, reads, ts }` is byte-identical in the first of them
-  (`git show c458b04:lib/last-result.ts`). What moved is the READ: cycle 32 replaced a
-  `parsed.survey` truthiness check with `isSurvey`, cycle 33 added `isSkinReads`. So the
-  two legacy states measured are the two records those cycles were written for — a truthy
-  non-survey and a wrong-shaped `reads` — and not an invented envelope.
-
-  **Picks are recomputed, not stored, which is what makes state (iv) reachable at all.**
-  `loadInitialView` calls `recommend(saved.survey, saved.scan ?? null)`
-  (`app/report/page.tsx`), and `recommend` never leaves `survey.category`: `inCategory` is
-  filtered once and all four relaxation steps filter it again, so an unstocked category
-  returns `picks: []`. The record cannot carry a pick or a sku id — it carries the category
-  that selects them. `grep -o 'category: "[^"]*"' lib/skus.ts | sort | uniq -c` gives 8
-  categories with 2-4 SKUs each and `CATEGORIES` in `app/survey/page.tsx` lists the same
-  8, so zero picks is **not** reachable from a fresh survey today; a stored record is the
-  only way in, which is exactly what `tests/survey-shape.test.ts`'s "accepts a survey
-  naming a category this build no longer ships" keeps.
-
-  **The defect: that step had no branch, and the comment claiming it does is in the tree.**
-  `tests/survey-shape.test.ts:106-112` and the `isSurvey` docstring in `lib/recommend.ts`
-  both rest on "/report renders its no-picks branch". Measured with `앰플` as the stored
-  category, ko: the picks step went from **4** `/api/out` links, **9** anchors and **8**
-  buttons to **0**, **4** and **5**. The product grid renders nothing, the compare
-  `<details>` needs two picks, and the whole commerce section sat behind `top &&` — so the
-  step lost the four merchant links **and** the one `/care` hand-off on it. Same counts in
-  all five locales. Fixed by giving the section an else: `/survey` on the filled treatment
-  and `/care` beside it, no `CommerceDisclosure` (no affiliate link is on screen to
-  disclose), and no new sentence — every string on that page has to be an existing key, and
-  the heading row already reads "{category} · 0개".
-
-  **What the fix does not claim.** The intro paragraph above the grid ("추천 기준") still
-  says up to three options will be shown, at zero, because saying anything else needs a
-  key. `/care` with the same record degrades and does not die: **8** buttons to **2**, with
-  **4** anchors either way, because the clinic links do not depend on picks.
-
-  **Pinned, and broken three ways on the final tree.**
-  `tests/e2e/return-path-no-picks.regression-31.spec.ts` is **6 passed** — the dropped
-  category, the current record, the same record 60 days old, the pre-cycle-32 truthy
-  non-survey, the pre-cycle-33 wrong-shaped `reads`, and nothing stored. Removing the else
-  entirely, i.e. the tree before this cycle: **1 failed | 5 passed**. Keeping the empty
-  state but dropping its `/care` link — the plausible half-fix: **1 failed | 5 passed**.
-  Inverting the condition so the empty state takes the step that HAS picks, which is the
-  failure path of what was added rather than its happy path: **4 failed | 2 passed**.
-
-  **The second defect, measured and not fixed, because the fix is a key.** 6 Korean
-  characters on `/report`'s first screen in `en`, `ja`, `zh` and `ar`, in every state whose
-  `reads` survives validation. Extracted with a text-node walk: one node,
-  `노출 여유 확인`, the trust chip out of `signalCheck` in `lib/report-trust.ts`. **12** of
-  the **14** strings that function can return are keys in all four locales and the **2**
-  for `노출 여유` are in none. Filed under Backlog > Now with the greps; not fixed because
-  this cycle's brief forbade adding a translation key, and no rendering trick fixes it
-  without changing what the other three chips say.
-
-  **Two things that looked like leaks and are not.** With the stored category `앰플`, the
-  echoed text is the record's own string: `앰플 · 0 items` and the 추천 기준 sentence, 2
-  characters each, because `t()` returns its key. With a stored product use naming a sku
-  the catalogue dropped, `/checkin` echoes the stored `name`. Both are synthetic values no
-  build wrote: every real category and every real SKU name IS a key
-  (`grep -cF` on the first three `name:` values in `lib/skus.ts` is **1** in `en` and `ja`).
-  And `/checkin` handles the missing sku without a defect — `sku?.category ?? "세럼"` — so
-  the card renders with a fallback visual.
-
-  **Nothing reads `ts`, so state (ii) is state (i).** `grep -rn "loadLastResult()\|hasLastResult()" app/ lib/`
-  outside `lib/last-result.ts` is **4** lines, and
-  `grep -rnE "saved\.ts|loadLastResult\(\)[^;]*\.ts\b|lastResult[^;]*\.ts\b" app/ lib/`
-  is **0** against the single writer at `app/report/page.tsx:111`; so a 60-day-old
-  record shows the banner and reaches 4 merchant links exactly like a fresh one. Recorded
-  rather than changed: a "N days ago" label needs a string that does not exist.
-
-  **Research — WebKit's own source, because `webkit.org` is refused here.** Both attempts
-  printed verbatim `curl: (56) CONNECT tunnel failed, response 403` and
-  `webkit.org http=000`. `ResourceLoadStatisticsStore.cpp` from
-  `raw.githubusercontent.com/WebKit/WebKit/main` **http=200**, **175527** bytes, sha256
-  `0881c73d0a61e093991671abfa70b0289323945d3d44ae0b22cbebb6a2958169`; its header
-  **http=200**, **26484** bytes, sha256
-  `e8728be27979385a8d8d1f468e4459237a038b6aefd51063fe22c5e5d54d5af0`. Lines 73-74 are
-  `operatingDatesWindowLong { 30 }` and `operatingDatesWindowShort { 7 }`, both commented
-  `// days`. The finding that matters for ARU is that **the famous 7 days is the short
-  window and a plain first-party site does not get it**: `shouldRemoveAllButCookiesFor`
-  (:2832-2852) picks `Short` only when the domain's `dataRemovalFrequency` is `Short`, and
-  the **2** call sites that hand it to `setIsScheduledForAllScriptWrittenStorageRemoval`
-  (:1371, and :2059 through the local assigned at :2054, out of **7** lines that
-  `grep -c "DataRemovalFrequency::Short"` finds) are both keyed on link decoration from a
-  prevalent resource. Removal itself is enabled
-  by default — the member initialiser at `ResourceLoadStatisticsStore.h:426` is
-  `FirstPartyWebsiteDataRemovalMode::AllButCookies` — and appends the domain to
-  `domainsToDeleteAllScriptWrittenStorageFor` (:2906-2913), cookies untouched. The
-  exemption list (:786-798, :2895-2901) is app-bound ∪ managed ∪ persisted domains ∪
-  `m_standaloneApplicationDomain`, whose own comment names home screen web applications.
-  Quotes, both hashes and the labelled inferences —
-  including that ARU's own paid-traffic channel is the one whose returning visitors lose
-  the record first — are in
-  [`docs/webkit-script-storage-cap.md`](webkit-script-storage-cap.md).
-
-  **ML — the `roughness_ratio` divergent window, sized without faces.** Chosen because it
-  needs no labelled export and is not the sRGB LUT/knee item cycles 41 and 42 both worked.
-  The window is **not** `highFreq === 0`: a 1px checkerboard of `(60,60,176)` and
-  `(63,81,60)`, distinct colours whose exact luminance numerator `299r + 587g + 114b` is
-  **73224** for both, gives `highFreq` **1.4210854715202004e-14** against **0** for the
-  flat frame, `foreheadHf` **1.9407372876655204e-16** at a region mean L* of
-  **73.22399999999999** — flat in luminance (texture **5.188544138981456e-13**) and not in
-  colour (mean blue **118.8944246737841**). And the committed row's `320000.0` magnitude
-  belongs to the other region, not to the epsilon: with both regions in the window the
-  Python form returns **1.9407372876655204e-10**, exactly its own ceiling
-  `cheekHf / 1e-6`. `tests/roughness-ratio-divergent-window.test.ts` **4 passed**; broken
-  three ways at **2 failed | 2 passed**, **2 failed | 2 passed** and **1 failed | 3
-  passed**. No constant moved and the item stays `[~]`. Full paragraph on the item itself.
-
-  **What this does not establish.** No traffic number changed and none was measured: a step
-  that is no longer dead is a defect closed, not a conversion. Zero picks is not reachable
-  from today's catalogue, so this fix is insurance against a category being dropped and
-  against a hand-edited store, not a live leak — the reason it was worth doing is that the
-  guard which permits the state, and a test that names the branch, were both already in the
-  tree. One Chromium at exactly 360x800 against a local production build: no real phone, no
-  real network, no throttling this cycle. The seven states are the ones the record's own
-  history and the catalogue make reachable; a record whose `scan` is wrong-shaped was NOT
-  measured, and reading `shouldApplyScan` — `Boolean(scan && !scan.retakeRecommended &&
-  (scan.confidence ?? 0.7) >= 0.58)` — says a truthy non-object `scan` would set
-  `scanApplied` true with no camera data behind it. That is read from the code, not run,
-  and nobody has measured what the report then claims. The `노출 여유` leak is measured in
-  its `확인` form only. The WebKit note is read from `main` at the hashes above, not from
-  any shipped iOS, and nothing was measured on a device. The ML result is about which
-  captures are in the window and how big the disagreement is; it does not say which side
-  should move.
-
-  *Validation on this tree:* `npx vitest run` **Test Files 109 passed (109) / Tests 933
-  passed (933)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
-  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.747s ... OK**, and
-  `npm run smoke` **240 passed (11.1m)** with `Smoke test passed.` — whose own steps
-  re-ran lint at **2 problems (0 errors, 2 warnings)**, vitest at **109 passed (109) /
-  933 passed (933)** and selftest at **Ran 146 tests in 2.705s ... OK** on the same tree.
-  **It took three smoke attempts and the two failures were mine, not the tree's.** The
-  first reached **240 passed (14.0m)** in its e2e phase and never printed the verdict,
-  because it was killed on purpose: comment-only edits had landed mid-run and the rule is
-  to measure the final tree. That kill used a `pkill -f` pattern which also matched the
-  killing shell, so the run's `npm run dev` server on port 3102 was orphaned; the second
-  attempt attached to it (`reuseExistingServer: true`,
-  `playwright.mobile.config.ts`) and lost it mid-suite — **117 failed | 123 passed
-  (12.8m)**, every failure `net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3102/...`
-  from spec 210 onward, and **0** of them a product defect. The third ran with 3102 and
-  3199 confirmed free and has **0** `ERR_CONNECTION_REFUSED` lines. Recorded because a
-  reader comparing e2e totals across cycles would otherwise see a red run and no reason.
-  Rotation: `docs/AUTOPILOT.md` **1972 → 1999** lines and
-  `docs/autopilot-changelog.md` **8762 → 8950**; cycle 40's **188** lines are
-  byte-identical at the end of the changelog (`diff` clean against the extract), and the
-  concatenated-`sort -u`-`comm -23` check against `4cfaa3a` drops **0** lines. No backlog
-  item was ticked `[x]` this cycle, so nothing moved to "Closed backlog items".
-
-  **Supervisor review.** Sound. The worker disproved one of my predictions. Two things
-  were added before merge.
-
-  *My error, recorded.* I predicted that an unknown stored category could not empty the
-  picks, because `sku.category === survey.category` is a **+2** score term
-  (`lib/recommend.ts:151`). That was wrong. `inCategory` (`lib/recommend.ts:402`) filters
-  the pool, and every relaxation step (:421, :424, :429, :437) starts from it. The worker
-  read the whole function and I read one line. My other predictions held: picks are
-  recomputed, not stored, and `lib/last-result.ts` has **3** commits with an unchanged
-  record shape.
-
-  *Added 1: the Korean leak is fixed here.* The worker measured it and was right not to
-  fix it, because its brief forbade new keys. That rule was a scope limit in my brief,
-  not an owner rule, and the Korean string is already the rendered key. Only its
-  translations were missing. The two entries are now in all four dictionaries, and
-  `tests/report-trust-chip-keys.test.ts` pins every chip `buildReportTrust` can return
-  (see the backlog item for the break counts). Of the 10 `확인`/`보류` chips the four
-  signals can produce, only the 2 for `노출 여유` had been missing in all four locales
-  (checked with `grep -F` per locale).
-
-  *Added 2: regression-31 did not catch a hidden empty state.* Its link checks were
-  `toHaveCount(1)`. Setting the empty state's section to `display: none` gave **6
-  passed**. They are now `toBeVisible()`, and the same break gives **1 failed | 5
-  passed**. The other break, linking the empty state to `/scan` instead of `/survey`,
-  already failed: **1 failed | 5 passed**. Clean is **6 passed**.
-
-  *Research checked against the source.* `ResourceLoadStatisticsStore.cpp`, fetched
-  here: **http 200**, **175527** bytes, the same sha256. Lines 73-74 read
-  `operatingDatesWindowLong { 30 }; // days` and `operatingDatesWindowShort { 7 }; //
-  days`. `grep -c "DataRemovalFrequency::Short"` gives **7**. The note also says these
-  are days the browser ran, not calendar days (`docs/webkit-script-storage-cap.md:98`).
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 110 passed (110)
-  / Tests 938 passed (938)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `4cfaa3a` drops
-  **0** lines. Recent cycles holds 43/42/41, and cycle 40 sits after cycle 39 at the end
-  of the changelog. `npm run smoke` gave
-  **240 passed (8.3m)** and `Smoke test passed.`

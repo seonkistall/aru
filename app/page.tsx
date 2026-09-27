@@ -131,6 +131,33 @@ export default function Home() {
         </div>
       </section>
 
+      {/* The only crawler-reachable link to the two guide pages
+          (lib/guides.ts, registered in lib/seo.ts). Deliberately BELOW the
+          "이렇게 진행돼요" cards and outside the hero section, so the primary
+          CTA's box does not move: measured at 360x800 before and after, the
+          `[data-primary-action="scan"]` rect is unchanged.
+
+          The paths and labels are literals rather than an import of `GUIDES`,
+          which would pull `lib/skus.ts` into the landing bundle for two links.
+          `tests/guides.test.ts` reads this file and asserts both against
+          `GUIDES`, so a renamed guide fails there instead of shipping a 404. */}
+      <section className="px-6" style={{ paddingBottom: 16, width: "100%", maxWidth: 720, marginInline: "auto" }}>
+        <p
+          data-testid="guide-links"
+          style={{ margin: 0, fontSize: 13, lineHeight: 1.8, color: "var(--text-muted)", textAlign: "center" }}
+        >
+          {t("영문 가이드")}
+          {": "}
+          <Link href="/guide/serum-for-combination-skin" style={{ color: "var(--text-muted)" }}>
+            Serums for combination skin
+          </Link>
+          {" · "}
+          <Link href="/guide/toner-for-oily-skin" style={{ color: "var(--text-muted)" }}>
+            Toners for oily skin
+          </Link>
+        </p>
+      </section>
+
     </main>
   );
 }

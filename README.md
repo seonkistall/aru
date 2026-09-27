@@ -192,6 +192,7 @@ unsubscribe → cleanup 30 days after unsubscribe or the 4-week send`
 | `/studio` | Share-card editing, Web Share | Safely prefilled when a real scan result exists |
 | `/checkin` | 2- and 4-week post-usage check-in | Safe guidance when no local/subscription state exists; answer pills keep 44px touch targets in all five locales |
 | `/privacy` | Data purpose, transmission, retention, deletion | Used as the public production URL |
+| `/guide/serum-for-combination-skin`, `/guide/toner-for-oily-skin` | Catalogue-built English guides that hand a searcher into `/scan` or `/survey` | Server-rendered: body is in the first HTML response, checked with JavaScript disabled |
 | `/unsubscribe` | Signed email unsubscribe | Rejects missing/tampered/expired tokens |
 | `/pilot`, `/ops`, `/eval` | Research participation, ops, evaluation | 404 in production unless explicitly enabled |
 
@@ -205,13 +206,22 @@ Screenshots: [`docs/buildweek/assets`](docs/buildweek/assets) (English,
 [`lib/seo.ts`](lib/seo.ts), which is also the source for every page's title,
 description, canonical and `og:*`.
 
-Only `/`, `/scan`, `/survey` and `/privacy` are indexable, and the rule is
-measured rather than stylistic: those are the pages that render real content for
-a first-time visitor with empty device storage. Everything else renders from
+Six URLs are indexable — `/`, `/scan`, `/survey`, `/privacy` and the two guide
+pages below — and the rule is measured rather than stylistic: those are the pages
+that render real content for a first-time visitor with empty device storage. Everything else renders from
 device storage, so a crawler arriving cold gets an empty state or a redirect —
 those pages are `noindex` but still carry their own title and description,
 because people share them. `/api/` is the only `Disallow`; a page that relies on
 a `noindex` tag must stay crawlable or the crawler never reads the tag.
+
+`/guide/serum-for-combination-skin` and `/guide/toner-for-oily-skin` are a
+search experiment, not a content plan: server-rendered English pages built from
+the catalogue by [`lib/guides.ts`](lib/guides.ts), with the kill criterion
+written down in "Backlog > Now" of
+[`docs/AUTOPILOT.md`](docs/AUTOPILOT.md) — 0 Search Console impressions four
+weeks after the owner submits the sitemap and both pages come out again.
+`public/offline.html` is a page too, and now says `noindex`: the route-table
+guard walks `app/`, so nothing there could ever have seen it.
 
 Language is chosen client-side on these same URLs, so metadata is English and
 there is no `hreflang` — see §4 of
