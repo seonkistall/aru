@@ -263,6 +263,18 @@ partly done and stays here.
   the experiment; more than two before a reading is the doorway-page failure mode this
   cycle deliberately stayed on the right side of.
 
+  **Annotated 2026-09-27 (cycle 47).** No page was added — this rule was read and kept.
+  What cycle 47 did change is how the two existing pages RENDER for a returning visitor
+  who had already picked a language: the bodies were laying out inside whatever
+  `html[lang]`/`dir` the chrome had, so a saved `ar` wrapped Latin prose in
+  `html[dir=rtl]` and a saved `ko` put the Korean display face on an English `h1`. Fixed
+  on the guide's own root; the pages' measured geometry is now identical under all five
+  saved languages, pinned by
+  `tests/e2e/guide-ltr-in-rtl-chrome.regression-34.spec.ts`. This does not touch the
+  experiment, its metric or its kill criterion, and the footprint to delete is unchanged
+  except that the new spec joins the list above. `/sitemap.xml` still lists the same
+  **6** URLs (`lib/seo.ts` has **6** `index: true` entries and was not modified).
+
   **Opportunity cost, stated.** This cycle did not touch the commerce deep-links, the
   funnel flush, or the model. If the owner never submits the sitemap, the cycle bought
   nothing except two pages nobody reads — which is the same risk every item above the
@@ -1381,16 +1393,31 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
-- [ ] **2026-09-27 — neither claim list covers "reduce / control / minimise" (cycle 46
-  review).** `BANNED` in `lib/recommend.ts` (Korean) has no 감소, and
-  `BANNED_BY_LANG.en` in `lib/claim-filter.ts` has no reduce, control, minimise,
-  prevent, fade, brighten or firm. So an LLM product reason like "reduces excess sebum"
-  or "피지를 감소시켜요" passes both gates. Guide copy today uses none of these verbs:
-  the counts in the cycle 46 review find only concern nouns. Whether each word is a
-  claim under Korean cosmetics advertising rules is a legal question the owner should
-  settle before the lists grow. The filter's own header says a false positive only
-  costs a pre-approved template. Add the verbs in both languages with test cases in
-  `tests/claim-filter.test.ts`, and check that no pre-approved template trips them.
+- [x] **2026-09-27 — neither claim list covers "reduce / control / minimise" (cycle 46
+  review).** **Actioned 2026-09-27 (cycle 47): the verbs added in all five languages,
+  and what the additions cost measured rather than asserted.** `lib/recommend.ts`
+  gains 감소 / 예방 / 억제 (Korean, so `efficacyClean()` covers all five locales);
+  `BANNED_BY_LANG` gains reduce / control / minimise / minimize / prevent / fade /
+  brighten / firm in `en`, 減少 / 予防 / 抑制 / 引き締め in `ja`, 减少 / 预防 / 抑制 in
+  `zh`, and تقليل / يقلل / وقاية / يمنع / تفتيح in `ar`. `tests/claim-filter.test.ts`
+  **8 passed → 12 passed**, broken three ways at **1 failed | 11 passed** each.
+  **Nothing on a reason path trips them**, checked by enumeration and not by reading:
+  **100** pre-approved reason templates (4 surveys × 2 scan states × 5 languages × the
+  picks each returns) and **95** heroNotes (19 distinct ingredient pairs × 5 languages)
+  all pass both gates, and both guide pages give **0** hits for the new English group.
+  **What it does cost is one SKU name**: the same sweep over all **110** (SKU name ×
+  language) pairs moves from **6** rejected to **7**, the newcomer being `en:
+  Brightening Calming Spot Serum` on `brighten` — so if an LLM echoes that product's
+  name the candidate is refused and the pre-approved template shows instead. The other
+  **6** are pre-existing (`sooth` / 舒缓 / 淡斑). **The legal question stays open and is
+  labelled as such in both files**: every primary source refused this container, so the
+  additions rest on the lists' own internal logic (a verb claiming to change a
+  condition is the concept class of 개선 and 완화, already banned) and on the header's
+  stated asymmetry, NOT on a reading of 화장품법. The owner should still put the list in
+  front of counsel. Two blunter entries were rejected on measurement: bare `منع` fires
+  on `منعش` (the catalogue's word for 산뜻) and bare `شد` on `الشد` (the care tip for
+  밤사이 당김); both near-misses are now pinned as must-pass cases. Full numbers in the
+  cycle 47 entry.
 
 - [x] **2026-09-26 — the first visit after a MediaPipe upgrade pairs new code with the
   cached old runtime (cycle 44).** **Actioned 2026-09-26 (cycle 45): the versioned
@@ -1498,6 +1525,272 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-27 (cycle 47) — Branch `autopilot/2026-09-27-0639`. **The two guide pages were
+  an English body wearing whatever chrome the visitor had saved, and for `ar` that chrome
+  was right-to-left. Measured before it was touched: under a saved `ar` the guide's
+  `<ul>` lost its indent to the far side, every prose line right-aligned, the primary
+  CTA's `→` crossed to the wrong side of its own label, and the closing "Another guide:
+  <link>" sentence reversed its two runs — 9 of the 23 fields a production-build probe
+  measured differed from `en` on both pages. Under a saved `ko` the English `h1` was drawn in the Korean hand-drawn
+  display face, which the stylesheet's own comment asks it not to be. After the fix, 0
+  fields differ under any of the four non-`en` locales. The compliance half closed the
+  cycle 46 review's finding: the claim lists banned words that NAME a state and none that
+  claims to CHANGE one, so "reduces excess sebum" passed in every language while
+  "improves skin tone" did not.**
+
+  **Baselines, re-measured here on `ac9688d`.** `node_modules` was absent, so `npm ci`
+  first. `npx vitest run` **Test Files 114 passed (114) / Tests 1046 passed (1046)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 146
+  tests in 2.560s ... OK**. All four match the supervisor's.
+
+  **Bug fix — an English guide inside a non-English, RTL chrome.** The guide bodies
+  (`app/guide/guide-view.tsx`) are English by design, but they render inside
+  `LanguageProvider`, which writes `document.documentElement.lang` and `dir` from the
+  visitor's SAVED language (`lib/i18n.tsx`). Measured on a production build at 360x800
+  with `aru.lang` set to each of en/ko/ja/zh/ar, as viewport x-coordinates on
+  `/guide/serum-for-combination-skin`. Under `ar`:
+  - the `<ul>`'s `padding-inline-start: 18px` resolved as `padding-right`, so the English
+    list lost its indent: `padding-left` **0px** / `padding-right` **18px** and the first
+    `<li>` box at x **20** — the same x as the sibling paragraph above it — against
+    **18px** / **0px** and x **38** under `en`;
+  - the `<dd>` "Breakouts, Redness, Pores, Oil" ran **148.7…325** against **35…211.3**;
+  - both `h1` lines ended flush at **340**, starting **190.83** and **108.98**, against
+    **20…169.17** and **20…251.02**;
+  - the primary CTA's `→` sat at **41.83…61.92** with the `T` of "Take" at
+    **67.44…79.31**, i.e. the arrow rendered BEFORE the words, against **298.08…318.17**
+    and **41.83…53.7** under `en`;
+  - the closing "Another guide: <link>" reversed its two runs — label **142.44…231.3**,
+    link **231.3…340** — against label **20…108.86**, link **108.86…217.56**;
+  - the breadcrumb's `ARU` link moved from **20…45.5** to **270.56…296.06**.
+
+  Under `ko` the defect is quieter and it is a font, not a direction. `html[lang="ko"]`
+  is the one locale `app/globals.css` does NOT hand `--font-display: var(--font-sans)`,
+  so the Korean hand-drawn face and its **1.1** leading landed on an English `h1`: the
+  serum heading was **36.7**px tall on one line where `en` needs **73.41** on two.
+  `ja` and `zh` get the same override as `en`, so for those two the defect was
+  `html[lang]` misdescribing Latin text and nothing visual at all. Nothing overflowed in
+  any locale, before or after: `scrollWidth` **360** against `clientWidth` **360** in all
+  **10** (page × locale) combinations.
+
+  **The fix and the assertion it is pinned with.** `lang="en" dir="ltr"` plus
+  `data-guide-root` on the guide's own root `<main>`, and one companion rule in
+  `app/globals.css` — `[data-guide-root] { --font-display: var(--font-sans); }` and
+  `[data-guide-root] .locale-display { line-height: 1.2; }` — because the rules those
+  override are anchored to `html[lang]` and no attribute on an inner element can reach
+  them. What the spec asserts is the invariant rather than the pixel values: a **19**-field
+  snapshot of computed styles, bounding boxes and text-run rects is IDENTICAL under every
+  saved language. The before/after is from a separate **23**-field probe run against a
+  production build: `ar` differed from `en` in **9** of those fields on both pages and
+  `ko` in **6** (serum) / **2** (toner); after the fix, **0** differ on either page under
+  any of the four non-`en` locales. `tests/e2e/guide-ltr-in-rtl-chrome.regression-34.spec.ts` gives
+  **8 passed**.
+
+  **Broken four ways, including the two weaker fixes the brief named.**
+  - The whole fix reverted (no `lang`/`dir`/`data-guide-root`, no CSS companion):
+    **8 failed**.
+  - `dir` set but not `lang`, CSS companion kept — the plausible half-fix, since `lang`
+    alone moves no pixel: **2 failed | 6 passed**, and both failures are the semantic
+    cases, which is why they exist separately from the geometry.
+  - The attributes moved to the `h1`, an inner element that misses the list:
+    **6 failed | 2 passed**.
+  - `lang`/`dir` kept but the CSS companion removed, i.e. the `ko` half alone:
+    **4 failed | 4 passed**.
+  All four were reverted and the restored tree gives **8 passed** again.
+
+  **The cycle-42 hold DOES make the guide's CTAs unclickable, and it was deliberately not
+  changed.** With the `ar` dictionary chunk delayed **4000**ms and `aru.lang` already
+  `ar`, `<body>` goes `inert` **133**ms in, the scan CTA is visible at opacity **0.55**,
+  `elementFromPoint` at its centre (**180**, **540.2**) returns `HTML` rather than the
+  link, and a real mouse click there does not navigate (URL unchanged). But that window
+  cannot reach the visitor these pages exist for, which was measured and not reasoned:
+  a searcher arriving from Google has no saved language, `defaultLang()` returns `en`, and
+  the same delayed-chunk probe with no `aru.lang` set saw `inert` **never** over
+  **6093**ms of polling. Narrowing the hold means editing `lib/i18n.tsx`, the cycle-42
+  fix itself, which is not this cycle's subject — recorded here as a finding instead.
+
+  **Compliance — the claim lists had no verb for changing a condition.** The cycle 46
+  review found `BANNED` (Korean, `lib/recommend.ts`) had no 감소 and `BANNED_BY_LANG.en`
+  no reduce / control / minimise / prevent / fade / brighten / firm. Added: 감소 / 예방 /
+  억제 to the Korean list (so `efficacyClean()` covers all five locales, the same reason
+  the 2026-09-20 additions only mattered for the four non-Korean lists); reduce /
+  control / minimise / minimize / prevent / fade / brighten / firm to `en`; 減少 / 予防 /
+  抑制 / 引き締め to `ja`; 减少 / 预防 / 抑制 to `zh`; تقليل / يقلل / وقاية / يمنع / تفتيح
+  to `ar`. `tests/claim-filter.test.ts` goes **8 passed → 12 passed**.
+
+  **What the additions cost, enumerated rather than asserted.** Nothing on a reason path
+  trips them: **100** pre-approved reason templates (4 surveys × 2 scan states × 5
+  languages × the picks each returns) and **95** heroNotes (**19** distinct ingredient
+  pairs × 5 languages) pass both gates, **0** rejected; and the new English group gives
+  **0** hits in either guide page's full serialised data (**5430** and **4601**
+  characters). What it does cost is one SKU NAME: over all **110** (SKU name × language)
+  pairs the count the per-language gate rejects moves from **6** to **7**, and the
+  newcomer is `en: Brightening Calming Spot Serum` on `brighten`. SKU names are never
+  themselves filtered — the gate's only input is the LLM candidate in
+  `app/api/reason/route.ts:81` — so the cost is that a candidate echoing that one product
+  name is refused and the pre-approved template shows instead, which here reads
+  "With Pores, Oil concerns and a ₩30,000 budget in mind, this Toner is one option to
+  explore." The other **6** are pre-existing (`sooth` in `en`, 舒缓 / 淡斑 in `zh`).
+
+  **Nine shipped dictionary values DO contain the new words, and none of them is on a
+  reason path.** Swept over all four dictionaries: `en` **4** of **914** values, `zh`
+  **4** of **910**, `ar` **1** of **914**, `ja` **0** of **910**, and **0** of the **914**
+  Korean keys. Three are the same sentence in three languages — the care tip "…to reduce
+  overnight tightness" (`lib/recommend.ts:376`) — and the rest are camera-glare coaching
+  ("Reduce direct light or visible shine") and routine step text
+  (`lib/recommend.ts:269,271`), plus the SKU name above. None of them passes through
+  `reasonClean()` or `efficacyClean()`: `efficacyClean()` gates the reason template
+  (`lib/recommend.ts:213`), the heroNote (`:411`) and the vision narrative
+  (`app/api/analyze/route.ts:89`), and routine titles and bodies are gated by neither.
+  So the sweep is a statement about what WOULD fire if that copy were ever routed through
+  the gate, not a live false positive.
+
+  **Two blunter entries were rejected on measurement, and both near-misses are pinned.**
+  Arabic matches as a substring, so bare `منع` (prevent) fires on `منعش` — the
+  catalogue's own word for 산뜻 (`lib/i18n/ar.ts:320-321`) — and bare `شد` (firm) on
+  `الشد`, the care tip for 밤사이 당김. `يمنع` is used instead and the existing
+  `شد البشرة` phrase is left alone; the list also keeps English `\bfirm\b` word-bounded,
+  which is what stops it firing on the shipped "Capture quality confirmed." Broken three
+  ways, each **1 failed | 11 passed**: the `en` verb group removed; the three Korean
+  verbs removed; and bare `منع`/`شد` substituted for `يمنع`/`شد البشرة`.
+
+  **Research — every primary Korean source refused this container, recorded verbatim
+  rather than worked around.** The additions therefore rest on inference, which both
+  files say in their own comments.
+
+  ```
+  --- https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=0&efYd=0
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.law.go.kr/법령/화장품법시행규칙
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.law.go.kr/DRF/lawService.do?OC=test&target=law&type=HTML&LM=화장품법
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.law.go.kr/flDownload.do?gubun=&flSeq=108687011&bylClsCd=110201
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.mfds.go.kr/brd/m_99/list.do
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://nedrug.mfds.go.kr/index
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://easylaw.go.kr/CSP/CnpClsMain.laf?popMenu=ov&csmSeq=1301&ccfNo=4&cciNo=2&cnpClsNo=1
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://kcia.or.kr/inc/down.php?dir=BOARD&file_name=202508_175547601592435_2.pdf
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://elaw.klri.re.kr/eng_service/lawView.do?hseq=61024&lang=ENG
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32013R0655
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.fda.gov/cosmetics/cosmetics-laws-regulations/it-cosmetic-drug-or-both-or-it-soap
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://ko.wikisource.org/wiki/화장품법
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  ```
+
+  The refusal is the proxy's policy, not a broken proxy: `raw.githubusercontent.com` on
+  the same tunnel answers `http=200 bytes=24644` for
+  `google/robotstxt/master/robots.cc`, and
+  `curl -sS "$HTTPS_PROXY/__agentproxy/status"` lists each denial as
+  `"kind": "connect_rejected", "detail": "gateway answered 403 to CONNECT (policy denial
+  or upstream failure)"` against `"host": "www.law.go.kr:443"` and
+  `"host": "www.mfds.go.kr:443"`. `WebFetch` is a separate egress path and refuses the
+  same hosts with `EGRESS_BLOCKED`. **So no sentence in this cycle quotes 화장품법, 별표 5
+  or MFDS guidance, and nothing here claims the new entries are legally required.** They
+  are labelled INFERENCE in `lib/recommend.ts` and `lib/claim-filter.ts`, resting on two
+  things: the lists' own internal logic — a verb claiming to change a condition is the
+  concept class of 개선 and 완화, which have been banned since the first list — and the
+  header's stated asymmetry, that a false positive costs one pre-approved template. **The
+  owner should put the list in front of counsel before relying on it.** This is not legal
+  advice.
+
+  **ML — skipped deliberately.** Nothing in the scan pipeline is trivially advanceable
+  from a locale-rendering and compliance cycle, and `python3 ml/selftest.py` was run to
+  confirm it stays green rather than to claim progress: **Ran 146 tests ... OK**,
+  unchanged.
+
+  **No guide page was added**, per the experiment's own rule in Backlog > Now: the kill
+  criterion has not been read, so nothing scales the guides up. This cycle changed how
+  the two existing pages render and added no route, no `SEO_ROUTES` entry and no
+  `<loc>` — `/sitemap.xml` still lists the same **6**.
+
+  **Docs and rotation.** The claim-verb finding is ticked with what landed. Recent cycles
+  holds 47/46/45; cycle 44's **229** lines moved verbatim to the end of
+  `docs/autopilot-changelog.md` after cycle 43. `docs/AUTOPILOT.md` **2234** → **2004**
+  lines by the move alone, and `docs/autopilot-changelog.md` **9656** → **9886**
+  (+**230** including the separating blank line). The moved text is byte-identical, not
+  merely present: the **229** lines extracted from `ac9688d` and the last **229** lines of
+  the new changelog both sha256 to
+  `16da44d976b3ff67d2c290428d78b474d25634d2d807fe030c8edb70ab7f1d91`. **Nothing was lost,
+  and the one thing that changed is accounted for**: `sort -u` over both files at
+  `ac9688d` gives **10283** unique lines and over the final pair **10488**, and
+  `comm -23` of the first against the second drops **10** lines — all **10** are the
+  unticked `- [ ]` body of the claim-verb finding that the ticked version above replaces,
+  and **0** of them belong to cycle 44. No backlog item was
+  ticked `[x]`, so nothing moved to "Closed backlog items". With this entry, the backlog
+  annotation and the ticked finding in, `docs/AUTOPILOT.md` is **2259**
+  lines.
+
+  **Validation on this tree, worker:** `npx vitest run` **Test Files 114 passed (114) /
+  Tests 1050 passed (1050)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .`
+  **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.500s ... OK**.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` **272 passed (12.9m)** and
+  `Smoke test passed.`, first try — no re-run was needed or spent. The mobile suite is
+  **272** specs, up from cycle 46's **264** by this cycle's **8**. Smoke ran a second time
+  on the exact committed tree, because two JSDoc-only edits landed while the first run was
+  in flight: **272 passed (12.1m)** and `Smoke test passed.` again, with the working tree
+  reporting no diff and no untracked file. So the gating run is the code that ships; the
+  only edits after it are this validation block and the line count above.
+
+  **Supervisor review.** Sound, and no correction needed. There is one note on the doc
+  rotation and one tooling note.
+
+  *Predicted by reading, before the branch existed:* existing English copy already says
+  "reduce": `lib/i18n/en.ts:52` and `:254` (camera glare tips) and `:353` (a routine
+  line). Adding the verb could have sent that copy to fallback. It cannot, because the
+  filters only run on reason paths: `app/api/reason/route.ts:81`,
+  `app/api/analyze/route.ts:89`, and `lib/recommend.ts:217` and `:415` (grep of every
+  `reasonClean(`/`efficacyClean(` call). Routine lines and camera tips never pass
+  through them.
+
+  *Broken here, four ways, on the committed tree.*
+  - Dropping `"감소"` from `BANNED`: **1 failed | 11 passed** on
+    `tests/claim-filter.test.ts`.
+  - Narrowing `en` to bare `reduce` with no inflections: **1 failed | 11 passed**.
+  - Removing `dir="ltr"` from the guide root while keeping `lang`: **6 failed | 2
+    passed** on `guide-ltr-in-rtl-chrome.regression-34.spec.ts`.
+  - Removing the `[data-guide-root] { --font-display: ... }` rule: **4 failed | 4
+    passed**.
+  Clean is **12 passed** and **8 passed**.
+
+  *Tooling note: a stale dev cache produced a false red.* One clean run of
+  regression-34 gave **4 failed | 4 passed**, with the h1 still in `"Nanum Pen Script"`
+  under `ko`. After `rm -rf .next` the same tree gave **8 passed**. The dev server
+  had served an older `app/globals.css` out of its cache. A red run of an e2e spec that
+  depends on a CSS change should be re-checked on a cleared `.next` before it is
+  believed, and the same holds the other way before a green one is trusted.
+
+  *Rotation note.* The comm check drops **10** lines, all of them the claim-verb
+  finding's original wording, which the worker rewrote in place into its actioned form
+  instead of ticking and appending. Nothing substantive is lost: the finding's text is
+  in the cycle 46 review and in git history (`ac9688d:docs/AUTOPILOT.md`). Future
+  cycles should tick and append instead.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
+  / Tests 1050 passed (1050)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. Recent cycles holds 47/46/45, and cycle 44
+  sits after cycle 43 at the end of the changelog. `npm run smoke` gave
+  **272 passed (9.2m)** and `Smoke test passed.`
 
 - 2026-09-27 (cycle 46) — Branch `autopilot/2026-09-27-0039`. **ARU has two indexable
   pages that a searcher can land on and be handed into the product, built from the
@@ -2002,233 +2295,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   failed before any test body ran (`Error: Timed out waiting 120000ms from
   config.webServer`). The one re-run gave **253 passed (9.3m)** and `Smoke test
   passed.`
-
-- 2026-09-26 (cycle 44) — Branch `autopilot/2026-09-26-1239`. **Two ways the returning
-  visitor's saved state lies to them, both measured on production builds before being
-  fixed. A `scan` in a shape no capture ever wrote made `/report` claim it used the
-  camera — `shouldApplyScan` is a truthiness test, so `1`, `"x"`, `[]`, `{}` and `true`
-  each produced 3 pick reasons opening "카메라에서 확인한 피부 특징과" over the
-  survey-only picks. And the service worker's MediaPipe cache never revalidated, so a
-  returning visitor kept the first copy each URL ever served — 322044 bytes against the
-  322064 the server had — across every deploy, forever. The Home Screen install nudge was
-  researched and NOT built, because WebKit's own source says the saved result would not
-  come with it.**
-
-  **Baselines, re-measured here on `83b8c9d` before any edit.** `node_modules` was absent,
-  so `npm ci` first. `npx vitest run` **Test Files 110 passed (110) / Tests 938 passed
-  (938)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 146 tests in 2.461s ... OK**. All four match the supervisor's. No baseline smoke
-  was run; only the post-change one below.
-
-  **Bug fix 1 — the wrong-shaped `scan`, measured before it was guarded.** Cycle 43 read
-  this out of the code and did not run it. Run here on `npm run build` + `npx next start
-  -p 3199`, one fresh 360x800 context per value, localStorage only (`aru_last_result`
-  with the same survey and `reads: null`), `/report` then its picks step. `scan: null`
-  gives **0** occurrences of "카메라에서 확인한" and 4 `/api/out` links on SKUs
-  `sr1/sr2/sr3` + the summary. `1`, `"x"`, `[]`, `{}` and `true` each give **3**
-  occurrences — one per pick — on the **same** `sr1/sr2/sr3`, with **0** page errors and
-  **0** error boundaries throughout. A real reading (`oil 2, redness 1, pores 1,
-  confidence 0.82`) also gives 3, but on `sr1/sr2/sr4`: the copy is the only thing the
-  fake values changed, which is what makes it a lie rather than a crash.
-
-  **The fix is the cycle 32/33 shape, at all three reads.** `isScanReads` in
-  `lib/last-result.ts` requires `oil`, `redness` and `pores` to be finite, rejects arrays,
-  and checks `confidence` / `retakeRecommended` / `source` only when present, because the
-  type marks them optional. Those are exactly the six fields
-  `app/scan/use-capture-analysis.ts` writes. Applied in `loadLastResult()` (a bad scan is
-  dropped to null, the survey and `ts` survive) and at the sessionStorage read in both
-  `app/report/page.tsx` and `app/care/page.tsx` — the second of which is also the one that
-  mirrors the record back into localStorage, so an unguarded value there was the value
-  every future visit fell back to.
-
-  **These shapes were already in the suite, asserting the wrong thing.**
-  `tests/e2e/reads-shape.regression-17.spec.ts` has carried a `WRONG_SCAN` list since
-  cycle 17 — `5`, `"abcdef"`, `{}`, `true`, `[]` and `{"oil":"x","redness":0,"pores":0}`,
-  six values — and every case asserts only that `/report` does not fall into
-  `app/error.tsx` and keeps its shell. Nothing there looked at what the page then says,
-  which is why a defect visible in three sentences per pick survived from cycle 17 to
-  here, through every green run in between. Those cases still pass unchanged.
-
-  **Of the ten wrong shapes the unit test carries, 8 reach `scanApplied` today and 2 are
-  refused by accident:** `{ ...good, confidence: "높음" }` fails because `"높음" >= 0.58`
-  is false and `{ ...good, retakeRecommended: "no" }` because `!"no"` is false. Both are
-  in the table so a later edit to those expressions cannot quietly turn them into the
-  first kind. `tests/scan-shape.test.ts` **28 passed**; `tests/e2e/saved-scan-shape.regression-32.spec.ts`
-  **10 passed**. Broken three ways on the final tree: reverting the guard at all three
-  reads, i.e. the tree before this cycle, **11 failed | 17 passed** and **8 failed | 2
-  passed**; the weaker plausible guard `typeof value === "object" && value !== null`,
-  which `[]` and `{}` pass, **14 failed | 14 passed** and **5 failed | 5 passed**; and the
-  failure path of what was added — a guard that returns `false` for everything, silently
-  costing a returning visitor their real capture — **5 failed | 23 passed** and **1 failed
-  | 9 passed**.
-
-  **Bug fix 2 — the service worker against a new deploy. The two cases the brief asked
-  about are both clean; the defect is a third one.** `public/sw.js` caches exactly two
-  things: `/offline.html`, added once at install, and `/vendor/mediapipe/*`. It caches
-  **no pages at all** — navigations are network-first with the offline page as the only
-  fallback — and it does not touch `/_next/static/chunks/`, so (a) a returning `ja`
-  visitor on a NEW build gets the new dictionary chunk, not a stale page and not the
-  cycle-42 English release path. Measured on two real production builds at the same
-  origin in one persistent Chromium profile, `lib/i18n/ja.ts` edited between them to move
-  the chunk hash: after the rebuild and restart, `html[lang]` **ja**, Japanese copy, **0**
-  non-200 responses, **0** failed requests, **0** page errors; the only `fromServiceWorker`
-  response is `/report` itself, which is the network-first passthrough. (b) offline with a
-  warm profile, the same page rendered in Japanese from the HTTP cache through that same
-  passthrough — the offline page is what a visitor gets when the HTTP cache cannot answer,
-  and it is `<html lang="ko">` with one English line, for every locale.
-
-  **The real defect: `/vendor/mediapipe/` was cache-first with no revalidation, at URLs
-  with no content hash.** **33754629** bytes across the six files in `wasm/` plus a
-  **3758596**-byte `face_landmarker.task`, **37513687** for the directory.
-  Measured across two deploys on a warm profile: deploy 1 cached **322044** bytes of
-  `wasm/vision_wasm_internal.js`; after the file was changed and the server restarted, the
-  server served **322064** and the page still read **322044**, from a `fetch(url, { cache:
-  "no-store" })` that the worker answered anyway. A deploy fixing the capture runtime
-  would never have reached anyone whose cache was warm. Fixed with stale-while-revalidate:
-  the cached copy still answers immediately, and the revalidation runs behind it under
-  `event.waitUntil`. `next start` serves `/public` with `Cache-Control: public, max-age=0`
-  plus an `ETag`, so that revalidation is a conditional request, not a 37 MB background
-  download per visit. Verified on the same two-deploy sequence: visit 1 after the deploy
-  still reads **322044** (nothing blocks), visit 2 reads **322064** with the marker.
-
-  **Its failure paths are the point, not the happy path.** A rejected `respondWith` for the
-  runtime or the model is a dead capture screen, so the revalidation can never reject: it
-  is `.catch(() => undefined)`, and the cached copy is returned regardless. A non-200 does
-  not overwrite the cache, so a deploy that drops a file does not poison it. The status
-  check is `=== 200` and not `.ok`, because these files are served with `Accept-Ranges:
-  bytes` and `cache.put` rejects outright on a 206 — with `.ok`, a cold-cache range request
-  became `Response.error()` for the page. `tests/sw-mediapipe-revalidate.test.ts` drives
-  `public/sw.js` itself in a `vm` context with fake `caches`/`fetch`, **16 passed**, and
-  covers what the worker does NOT touch as well: `/api/`, non-GET, and the Next.js chunks.
-  Broken three ways on the final tree: restoring cache-first **1 failed | 15 passed**;
-  dropping the `.catch` so an offline revalidation rejects **2 failed | 14 passed**;
-  `.ok` instead of `status === 200` **1 failed | 15 passed**. The cache name was
-  deliberately NOT bumped to `-v2`: `activate` deletes every cache not in `ACTIVE_CACHES`,
-  so a rename would make every warm visitor re-download the whole runtime once.
-
-  **UI/UX — the Home Screen install nudge, researched and not built.** `webkit.org` is
-  still refused here, verbatim `curl: (56) CONNECT tunnel failed, response 403` and
-  `webkit.org http=000`. From WebKit's source instead:
-  `WebsiteDataStore.cpp:2534-2540` routes `defaultLocalStorageDirectory` through
-  `websiteDataDirectoryFileSystemRepresentation("LocalStorage"_s)`, and
-  `WebsiteDataStoreCocoa.mm:587-598` anchors that at `URLForDirectory:NSLibraryDirectory
-  inDomain:NSUserDomainMask` + `WebKit` + `WebsiteData`, appending the bundle identifier
-  **only when `!WebKit::processHasContainer()`** — the source's own statement that a
-  containerised process needs no further separation. `standaloneApplicationURL`
-  (`WebsiteDataStoreConfiguration.h:251-252`) is a property the embedding app sets on
-  itself, fed to `resourceLoadStatisticsParameters.standaloneApplicationDomain` at
-  `WebsiteDataStoreCocoa.mm:234`, so cycle 43's exemption is keyed on what the host app
-  declares, not on anything Safari hands over. *Inference, and the step the tree does not
-  take in words:* a Home Screen web app is a separate host process with its own container,
-  so the `aru_last_result` Safari holds is not readable from it. And
-  `Source/WebCore/dom/EventNames.json` — **338** event names, `beforeunload` among them —
-  has **0** occurrences of `beforeinstallprompt` and **0** of `appinstalled`, so on the
-  only platform the storage cap applies to the affordance could only ever be a line of
-  text. Not built: under that inference a visitor who follows the nudge opens an installed
-  app with no saved result while Safari still has one, which manufactures the dead return
-  path cycles 32, 33 and 43 were spent closing — on the one screen in the product with
-  merchant links on it. No translation key was added. Sources, hashes and what would
-  change the decision: [`docs/webkit-script-storage-cap.md`](webkit-script-storage-cap.md).
-
-  **ML — which `BLEMISH` constant is worth a labelling session.** The backlog item wants
-  the five constants calibrated against real photos through `/eval`, which needs photos.
-  What does not need photos is where that budget has to go.
-  `tests/blemish-constant-sensitivity.test.ts` builds a copy of `lib/skin.ts` per variant
-  with ONE constant rewritten, runs the shipped `detectBlemishes` on the same synthetic
-  face `tests/scan-cost-benchmark.test.ts` uses, and records the count at 400x480 and
-  720x960 (shipped: **6** and **5**). `suppressionRadius` dominates — at **1** the count
-  is **9** and **7**, at **3** it is **5** and **5**, a span of **4**. `backgroundRadius`
-  spans **2** (at 4: **7** and **5**), `gridAcrossFace` spans **1** (at 80: **5** and
-  **6**). `minResidual` at 1.4 and 1.8 and `excludeFraction` at 0.045 and 0.065 do not
-  move either size off 6 and 5 **at all** — because the fixture's five blemishes are +26 r
-  over their background, nowhere near the 1.6 a\* floor, so no candidate is marginal.
-  That is the item's own point as a measurement: a synthetic face with no borderline
-  blemish cannot settle a threshold whose job is to judge borderline ones. **24 passed**,
-  and the conclusion is asserted rather than printed. No shipped constant moved and the
-  item stays open.
-
-  **What this does not establish.** No traffic number changed and none was measured. The
-  wrong-shaped `scan` is not known to be reachable from any build ARU has shipped — the
-  only writer writes all six fields — so like cycles 32 and 33 this is insurance against a
-  hand-edited store and against a shape a future build might mirror in, and the reason it
-  was worth doing is that the read was already in the tree with nothing checking it. One
-  Chromium at 360x800 against a local production build: no real phone, no real network, no
-  throttling, and the scan measurement and its spec are **ko only** — the three claim
-  strings are keys in all four other locales (`grep -c` on each of `lib/i18n/{en,ja,zh,ar}.ts`
-  finds the trust-chip title once in each), so the defect was localised too and only its
-  Korean form was measured. The service-worker measurement is two `next start` deploys at the same
-  origin in one persistent profile; no CDN, no real deploy, no iOS Safari, and the byte
-  totals are `du -sb` / `os.path.getsize` on `public/vendor/mediapipe/`, not a transfer. Whether the
-  revalidation is in fact a 304 on a real origin was NOT measured — it is read from the
-  `Cache-Control: public, max-age=0` + `ETag` headers `next start` sends. `/offline.html`
-  is still written once at install and never refreshed while the worker's bytes are
-  unchanged; measured as a fact, left alone because the page carries no build-dependent
-  content. `/care`'s sessionStorage `reads` is still parsed without `isSkinReads` —
-  harmless today only because `careSummary` ignores the argument (`lib/care.ts:70`, the
-  `_reads` eslint warning) — and `app/survey/page.tsx`'s own scan read is unguarded too,
-  where a non-object lands on the honest "촬영 조건이 충분하지 않아" hint rather than a
-  false claim. Neither was touched. The WebKit conclusion is an inference from a path rule,
-  not a statement in the tree, and nothing was measured on a device. The ML result is a
-  sensitivity sweep on one synthetic fixture at two sizes; it says which knobs matter here
-  and nothing about what any of them should be.
-
-  *Validation on this tree:* `npx vitest run` **Test Files 113 passed (113) / Tests 1006
-  passed (1006)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
-  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.635s ... OK**, and
-  `npm run smoke` **250 passed (12.3m)** with `Smoke test passed.` — whose own steps
-  re-ran lint at **2 problems (0 errors, 2 warnings)**, vitest at **113 passed (113) /
-  1006 passed (1006)** and selftest at **Ran 146 tests in 2.564s ... OK** on the same
-  tree. **Smoke ran twice and both were green.** The first gave **250 passed (12.9m)**
-  and `Smoke test passed.`, but a one-line comment reflow in `public/sw.js` landed after
-  it started — and `tests/sw-mediapipe-revalidate.test.ts` reads that file off disk and
-  runs it — so it was re-run rather than quoted. The numbers above are the second run's.
-  Rotation: `docs/AUTOPILOT.md` **2045 → 2034** lines and
-  `docs/autopilot-changelog.md` **8950 → 9183**; cycle 41's **232** lines are
-  byte-identical at the end of the changelog (`diff` clean against the extract), and the
-  concatenated-`sort -u`-`comm -23` check against `83b8c9d` drops **1** line — the
-  blemish backlog item's first line, which this cycle re-ticked from `- [AI]` to
-  `- [~] [AI]`, and which is present in the new pair in that form. No backlog item was
-  ticked `[x]`, so nothing moved to "Closed backlog items".
-
-  **Supervisor review.** Sound. One reader was left unguarded and one code comment
-  overclaimed; both were fixed before merge. One finding goes forward.
-
-  *Predicted by reading, before the branch existed, and all held:*
-  - `public/sw.js` does not intercept `/_next/` chunks. Navigations are network-first with
-    `/offline.html` as the fallback, so a stale deploy cannot come from the worker.
-  - The real stale case is the MediaPipe cache: cache-first, never revalidated, at the
-    unversioned paths `/vendor/mediapipe/wasm` and `/vendor/mediapipe/face_landmarker.task`
-    (`app/scan/landmarker-config.ts:3-4`).
-  - `{}` passes a `typeof === "object"` guard and reaches `scanApplied` true.
-
-  *Fixed here 1: `/survey` read the same key with no guard.* `loadScanHint`
-  (`app/survey/page.tsx`) parses `gyeol_scan` from sessionStorage. With
-  `{ "confidence": 0.9 }` it printed "사진에서 뚜렷하게 보이는 항목이 적어…", a sentence
-  about a photo with no data behind it. It now returns no hint unless `isScanReads`
-  passes. Three cases were added to `saved-scan-shape.regression-32.spec.ts`, for **13
-  passed**. With the guard removed: **2 failed | 1 passed** on the `/survey` cases. With
-  the weaker `typeof parsed === "object"` guard: **1 failed | 2 passed**.
-
-  *Fixed here 2: a comment claimed more than the code does.* `sw.js` said `.ok` "would
-  have thrown inside respondWith", and one test comment said the cold-cache 206 case
-  "separates `status === 200` from `response.ok`". Swapping to `.ok` alone still gives
-  **16 passed**, because the put already has its own `.catch(() => {})`. Both comments now
-  describe two layers. Removing both layers fails the cold-cache 206 case: **1 failed | 15
-  passed**. Reverting `sw.js` to the old cache-first worker gives **3 failed | 13
-  passed**. Removing the `.catch` on the revalidation gives **2 failed | 14 passed**.
-
-  *Finding for a later cycle (recorded under "Supervisor findings not yet actioned").*
-  Stale-while-revalidate stops "forever", but the first visit after a MediaPipe upgrade
-  still pairs new code with old files. `scripts/copy-mediapipe-assets.mjs` copies
-  `node_modules/@mediapipe/tasks-vision/wasm` into `public/vendor/mediapipe/wasm` at
-  `postinstall`. The package's JS API is bundled by the build, so after an upgrade a warm
-  visitor gets the new bundle with the cached old runtime for one visit. Installed
-  version: **0.10.35** (`node_modules/@mediapipe/tasks-vision/package.json`). Not measured.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 113 passed (113)
-  / Tests 1006 passed (1006)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `83b8c9d` drops
-  **1** line: the blemish item's `- [AI]` became `- [~] [AI]` (`docs/AUTOPILOT.md:304`).
-  Cycle 41 sits after cycle 40 at the end of the changelog. `npm run smoke` gave
-  **253 passed (12.8m)** and `Smoke test passed.`

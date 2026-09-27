@@ -495,6 +495,19 @@ used externally as if they proved purchases, efficacy or failure prevention.
   `/unsubscribe` (cycle 35, `docs/rtl-sweep-part-two.md`). `/scan` is the pre-camera
   screen only — the two blocks behind `phase === "ready"` need a camera and are open
   in `docs/AUTOPILOT.md`, as are mid-session language switching and a real phone.
+- The two `/guide/*` pages are the one exception to all of this, and they declare it
+  rather than inherit it. Their body is English in every locale, but they render inside
+  `LanguageProvider`, which writes `html[lang]`/`dir` from the visitor's SAVED language —
+  so a returning visitor who had picked `ar` got `html[dir=rtl]` around Latin prose (the
+  list indent moved to the far side, the CTA's `→` crossed to the wrong side of its
+  label, the "Another guide:" sentence reversed) and one who had picked `ko` got the
+  Korean hand-drawn display face on an English `h1`. `app/guide/guide-view.tsx` sets
+  `lang="en" dir="ltr"` and `data-guide-root` on its own `<main>`, with a companion rule
+  in `app/globals.css` for the font token, which is anchored to `html[lang]` and cannot
+  be reached from an inner element.
+  `tests/e2e/guide-ltr-in-rtl-chrome.regression-34.spec.ts` asserts the invariant rather
+  than the pixels: the pages' measured geometry is identical under all five saved
+  languages.
 - Position over the camera image stays PHYSICAL on purpose. `app/scan/guide.tsx` puts
   the 이마/T존, 왼볼 and 오른볼 zone boxes, the corner marks, the landmark dots and the
   ROI rectangle on a photograph of a face; mirroring them under `ar` would move a

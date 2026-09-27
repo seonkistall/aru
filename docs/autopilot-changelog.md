@@ -9654,3 +9654,233 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **0** lines. Recent cycles holds 43/42/41, and cycle 40 sits after cycle 39 at the end
   of the changelog. `npm run smoke` gave
   **240 passed (8.3m)** and `Smoke test passed.`
+
+- 2026-09-26 (cycle 44) — Branch `autopilot/2026-09-26-1239`. **Two ways the returning
+  visitor's saved state lies to them, both measured on production builds before being
+  fixed. A `scan` in a shape no capture ever wrote made `/report` claim it used the
+  camera — `shouldApplyScan` is a truthiness test, so `1`, `"x"`, `[]`, `{}` and `true`
+  each produced 3 pick reasons opening "카메라에서 확인한 피부 특징과" over the
+  survey-only picks. And the service worker's MediaPipe cache never revalidated, so a
+  returning visitor kept the first copy each URL ever served — 322044 bytes against the
+  322064 the server had — across every deploy, forever. The Home Screen install nudge was
+  researched and NOT built, because WebKit's own source says the saved result would not
+  come with it.**
+
+  **Baselines, re-measured here on `83b8c9d` before any edit.** `node_modules` was absent,
+  so `npm ci` first. `npx vitest run` **Test Files 110 passed (110) / Tests 938 passed
+  (938)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 146 tests in 2.461s ... OK**. All four match the supervisor's. No baseline smoke
+  was run; only the post-change one below.
+
+  **Bug fix 1 — the wrong-shaped `scan`, measured before it was guarded.** Cycle 43 read
+  this out of the code and did not run it. Run here on `npm run build` + `npx next start
+  -p 3199`, one fresh 360x800 context per value, localStorage only (`aru_last_result`
+  with the same survey and `reads: null`), `/report` then its picks step. `scan: null`
+  gives **0** occurrences of "카메라에서 확인한" and 4 `/api/out` links on SKUs
+  `sr1/sr2/sr3` + the summary. `1`, `"x"`, `[]`, `{}` and `true` each give **3**
+  occurrences — one per pick — on the **same** `sr1/sr2/sr3`, with **0** page errors and
+  **0** error boundaries throughout. A real reading (`oil 2, redness 1, pores 1,
+  confidence 0.82`) also gives 3, but on `sr1/sr2/sr4`: the copy is the only thing the
+  fake values changed, which is what makes it a lie rather than a crash.
+
+  **The fix is the cycle 32/33 shape, at all three reads.** `isScanReads` in
+  `lib/last-result.ts` requires `oil`, `redness` and `pores` to be finite, rejects arrays,
+  and checks `confidence` / `retakeRecommended` / `source` only when present, because the
+  type marks them optional. Those are exactly the six fields
+  `app/scan/use-capture-analysis.ts` writes. Applied in `loadLastResult()` (a bad scan is
+  dropped to null, the survey and `ts` survive) and at the sessionStorage read in both
+  `app/report/page.tsx` and `app/care/page.tsx` — the second of which is also the one that
+  mirrors the record back into localStorage, so an unguarded value there was the value
+  every future visit fell back to.
+
+  **These shapes were already in the suite, asserting the wrong thing.**
+  `tests/e2e/reads-shape.regression-17.spec.ts` has carried a `WRONG_SCAN` list since
+  cycle 17 — `5`, `"abcdef"`, `{}`, `true`, `[]` and `{"oil":"x","redness":0,"pores":0}`,
+  six values — and every case asserts only that `/report` does not fall into
+  `app/error.tsx` and keeps its shell. Nothing there looked at what the page then says,
+  which is why a defect visible in three sentences per pick survived from cycle 17 to
+  here, through every green run in between. Those cases still pass unchanged.
+
+  **Of the ten wrong shapes the unit test carries, 8 reach `scanApplied` today and 2 are
+  refused by accident:** `{ ...good, confidence: "높음" }` fails because `"높음" >= 0.58`
+  is false and `{ ...good, retakeRecommended: "no" }` because `!"no"` is false. Both are
+  in the table so a later edit to those expressions cannot quietly turn them into the
+  first kind. `tests/scan-shape.test.ts` **28 passed**; `tests/e2e/saved-scan-shape.regression-32.spec.ts`
+  **10 passed**. Broken three ways on the final tree: reverting the guard at all three
+  reads, i.e. the tree before this cycle, **11 failed | 17 passed** and **8 failed | 2
+  passed**; the weaker plausible guard `typeof value === "object" && value !== null`,
+  which `[]` and `{}` pass, **14 failed | 14 passed** and **5 failed | 5 passed**; and the
+  failure path of what was added — a guard that returns `false` for everything, silently
+  costing a returning visitor their real capture — **5 failed | 23 passed** and **1 failed
+  | 9 passed**.
+
+  **Bug fix 2 — the service worker against a new deploy. The two cases the brief asked
+  about are both clean; the defect is a third one.** `public/sw.js` caches exactly two
+  things: `/offline.html`, added once at install, and `/vendor/mediapipe/*`. It caches
+  **no pages at all** — navigations are network-first with the offline page as the only
+  fallback — and it does not touch `/_next/static/chunks/`, so (a) a returning `ja`
+  visitor on a NEW build gets the new dictionary chunk, not a stale page and not the
+  cycle-42 English release path. Measured on two real production builds at the same
+  origin in one persistent Chromium profile, `lib/i18n/ja.ts` edited between them to move
+  the chunk hash: after the rebuild and restart, `html[lang]` **ja**, Japanese copy, **0**
+  non-200 responses, **0** failed requests, **0** page errors; the only `fromServiceWorker`
+  response is `/report` itself, which is the network-first passthrough. (b) offline with a
+  warm profile, the same page rendered in Japanese from the HTTP cache through that same
+  passthrough — the offline page is what a visitor gets when the HTTP cache cannot answer,
+  and it is `<html lang="ko">` with one English line, for every locale.
+
+  **The real defect: `/vendor/mediapipe/` was cache-first with no revalidation, at URLs
+  with no content hash.** **33754629** bytes across the six files in `wasm/` plus a
+  **3758596**-byte `face_landmarker.task`, **37513687** for the directory.
+  Measured across two deploys on a warm profile: deploy 1 cached **322044** bytes of
+  `wasm/vision_wasm_internal.js`; after the file was changed and the server restarted, the
+  server served **322064** and the page still read **322044**, from a `fetch(url, { cache:
+  "no-store" })` that the worker answered anyway. A deploy fixing the capture runtime
+  would never have reached anyone whose cache was warm. Fixed with stale-while-revalidate:
+  the cached copy still answers immediately, and the revalidation runs behind it under
+  `event.waitUntil`. `next start` serves `/public` with `Cache-Control: public, max-age=0`
+  plus an `ETag`, so that revalidation is a conditional request, not a 37 MB background
+  download per visit. Verified on the same two-deploy sequence: visit 1 after the deploy
+  still reads **322044** (nothing blocks), visit 2 reads **322064** with the marker.
+
+  **Its failure paths are the point, not the happy path.** A rejected `respondWith` for the
+  runtime or the model is a dead capture screen, so the revalidation can never reject: it
+  is `.catch(() => undefined)`, and the cached copy is returned regardless. A non-200 does
+  not overwrite the cache, so a deploy that drops a file does not poison it. The status
+  check is `=== 200` and not `.ok`, because these files are served with `Accept-Ranges:
+  bytes` and `cache.put` rejects outright on a 206 — with `.ok`, a cold-cache range request
+  became `Response.error()` for the page. `tests/sw-mediapipe-revalidate.test.ts` drives
+  `public/sw.js` itself in a `vm` context with fake `caches`/`fetch`, **16 passed**, and
+  covers what the worker does NOT touch as well: `/api/`, non-GET, and the Next.js chunks.
+  Broken three ways on the final tree: restoring cache-first **1 failed | 15 passed**;
+  dropping the `.catch` so an offline revalidation rejects **2 failed | 14 passed**;
+  `.ok` instead of `status === 200` **1 failed | 15 passed**. The cache name was
+  deliberately NOT bumped to `-v2`: `activate` deletes every cache not in `ACTIVE_CACHES`,
+  so a rename would make every warm visitor re-download the whole runtime once.
+
+  **UI/UX — the Home Screen install nudge, researched and not built.** `webkit.org` is
+  still refused here, verbatim `curl: (56) CONNECT tunnel failed, response 403` and
+  `webkit.org http=000`. From WebKit's source instead:
+  `WebsiteDataStore.cpp:2534-2540` routes `defaultLocalStorageDirectory` through
+  `websiteDataDirectoryFileSystemRepresentation("LocalStorage"_s)`, and
+  `WebsiteDataStoreCocoa.mm:587-598` anchors that at `URLForDirectory:NSLibraryDirectory
+  inDomain:NSUserDomainMask` + `WebKit` + `WebsiteData`, appending the bundle identifier
+  **only when `!WebKit::processHasContainer()`** — the source's own statement that a
+  containerised process needs no further separation. `standaloneApplicationURL`
+  (`WebsiteDataStoreConfiguration.h:251-252`) is a property the embedding app sets on
+  itself, fed to `resourceLoadStatisticsParameters.standaloneApplicationDomain` at
+  `WebsiteDataStoreCocoa.mm:234`, so cycle 43's exemption is keyed on what the host app
+  declares, not on anything Safari hands over. *Inference, and the step the tree does not
+  take in words:* a Home Screen web app is a separate host process with its own container,
+  so the `aru_last_result` Safari holds is not readable from it. And
+  `Source/WebCore/dom/EventNames.json` — **338** event names, `beforeunload` among them —
+  has **0** occurrences of `beforeinstallprompt` and **0** of `appinstalled`, so on the
+  only platform the storage cap applies to the affordance could only ever be a line of
+  text. Not built: under that inference a visitor who follows the nudge opens an installed
+  app with no saved result while Safari still has one, which manufactures the dead return
+  path cycles 32, 33 and 43 were spent closing — on the one screen in the product with
+  merchant links on it. No translation key was added. Sources, hashes and what would
+  change the decision: [`docs/webkit-script-storage-cap.md`](webkit-script-storage-cap.md).
+
+  **ML — which `BLEMISH` constant is worth a labelling session.** The backlog item wants
+  the five constants calibrated against real photos through `/eval`, which needs photos.
+  What does not need photos is where that budget has to go.
+  `tests/blemish-constant-sensitivity.test.ts` builds a copy of `lib/skin.ts` per variant
+  with ONE constant rewritten, runs the shipped `detectBlemishes` on the same synthetic
+  face `tests/scan-cost-benchmark.test.ts` uses, and records the count at 400x480 and
+  720x960 (shipped: **6** and **5**). `suppressionRadius` dominates — at **1** the count
+  is **9** and **7**, at **3** it is **5** and **5**, a span of **4**. `backgroundRadius`
+  spans **2** (at 4: **7** and **5**), `gridAcrossFace` spans **1** (at 80: **5** and
+  **6**). `minResidual` at 1.4 and 1.8 and `excludeFraction` at 0.045 and 0.065 do not
+  move either size off 6 and 5 **at all** — because the fixture's five blemishes are +26 r
+  over their background, nowhere near the 1.6 a\* floor, so no candidate is marginal.
+  That is the item's own point as a measurement: a synthetic face with no borderline
+  blemish cannot settle a threshold whose job is to judge borderline ones. **24 passed**,
+  and the conclusion is asserted rather than printed. No shipped constant moved and the
+  item stays open.
+
+  **What this does not establish.** No traffic number changed and none was measured. The
+  wrong-shaped `scan` is not known to be reachable from any build ARU has shipped — the
+  only writer writes all six fields — so like cycles 32 and 33 this is insurance against a
+  hand-edited store and against a shape a future build might mirror in, and the reason it
+  was worth doing is that the read was already in the tree with nothing checking it. One
+  Chromium at 360x800 against a local production build: no real phone, no real network, no
+  throttling, and the scan measurement and its spec are **ko only** — the three claim
+  strings are keys in all four other locales (`grep -c` on each of `lib/i18n/{en,ja,zh,ar}.ts`
+  finds the trust-chip title once in each), so the defect was localised too and only its
+  Korean form was measured. The service-worker measurement is two `next start` deploys at the same
+  origin in one persistent profile; no CDN, no real deploy, no iOS Safari, and the byte
+  totals are `du -sb` / `os.path.getsize` on `public/vendor/mediapipe/`, not a transfer. Whether the
+  revalidation is in fact a 304 on a real origin was NOT measured — it is read from the
+  `Cache-Control: public, max-age=0` + `ETag` headers `next start` sends. `/offline.html`
+  is still written once at install and never refreshed while the worker's bytes are
+  unchanged; measured as a fact, left alone because the page carries no build-dependent
+  content. `/care`'s sessionStorage `reads` is still parsed without `isSkinReads` —
+  harmless today only because `careSummary` ignores the argument (`lib/care.ts:70`, the
+  `_reads` eslint warning) — and `app/survey/page.tsx`'s own scan read is unguarded too,
+  where a non-object lands on the honest "촬영 조건이 충분하지 않아" hint rather than a
+  false claim. Neither was touched. The WebKit conclusion is an inference from a path rule,
+  not a statement in the tree, and nothing was measured on a device. The ML result is a
+  sensitivity sweep on one synthetic fixture at two sizes; it says which knobs matter here
+  and nothing about what any of them should be.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 113 passed (113) / Tests 1006
+  passed (1006)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.635s ... OK**, and
+  `npm run smoke` **250 passed (12.3m)** with `Smoke test passed.` — whose own steps
+  re-ran lint at **2 problems (0 errors, 2 warnings)**, vitest at **113 passed (113) /
+  1006 passed (1006)** and selftest at **Ran 146 tests in 2.564s ... OK** on the same
+  tree. **Smoke ran twice and both were green.** The first gave **250 passed (12.9m)**
+  and `Smoke test passed.`, but a one-line comment reflow in `public/sw.js` landed after
+  it started — and `tests/sw-mediapipe-revalidate.test.ts` reads that file off disk and
+  runs it — so it was re-run rather than quoted. The numbers above are the second run's.
+  Rotation: `docs/AUTOPILOT.md` **2045 → 2034** lines and
+  `docs/autopilot-changelog.md` **8950 → 9183**; cycle 41's **232** lines are
+  byte-identical at the end of the changelog (`diff` clean against the extract), and the
+  concatenated-`sort -u`-`comm -23` check against `83b8c9d` drops **1** line — the
+  blemish backlog item's first line, which this cycle re-ticked from `- [AI]` to
+  `- [~] [AI]`, and which is present in the new pair in that form. No backlog item was
+  ticked `[x]`, so nothing moved to "Closed backlog items".
+
+  **Supervisor review.** Sound. One reader was left unguarded and one code comment
+  overclaimed; both were fixed before merge. One finding goes forward.
+
+  *Predicted by reading, before the branch existed, and all held:*
+  - `public/sw.js` does not intercept `/_next/` chunks. Navigations are network-first with
+    `/offline.html` as the fallback, so a stale deploy cannot come from the worker.
+  - The real stale case is the MediaPipe cache: cache-first, never revalidated, at the
+    unversioned paths `/vendor/mediapipe/wasm` and `/vendor/mediapipe/face_landmarker.task`
+    (`app/scan/landmarker-config.ts:3-4`).
+  - `{}` passes a `typeof === "object"` guard and reaches `scanApplied` true.
+
+  *Fixed here 1: `/survey` read the same key with no guard.* `loadScanHint`
+  (`app/survey/page.tsx`) parses `gyeol_scan` from sessionStorage. With
+  `{ "confidence": 0.9 }` it printed "사진에서 뚜렷하게 보이는 항목이 적어…", a sentence
+  about a photo with no data behind it. It now returns no hint unless `isScanReads`
+  passes. Three cases were added to `saved-scan-shape.regression-32.spec.ts`, for **13
+  passed**. With the guard removed: **2 failed | 1 passed** on the `/survey` cases. With
+  the weaker `typeof parsed === "object"` guard: **1 failed | 2 passed**.
+
+  *Fixed here 2: a comment claimed more than the code does.* `sw.js` said `.ok` "would
+  have thrown inside respondWith", and one test comment said the cold-cache 206 case
+  "separates `status === 200` from `response.ok`". Swapping to `.ok` alone still gives
+  **16 passed**, because the put already has its own `.catch(() => {})`. Both comments now
+  describe two layers. Removing both layers fails the cold-cache 206 case: **1 failed | 15
+  passed**. Reverting `sw.js` to the old cache-first worker gives **3 failed | 13
+  passed**. Removing the `.catch` on the revalidation gives **2 failed | 14 passed**.
+
+  *Finding for a later cycle (recorded under "Supervisor findings not yet actioned").*
+  Stale-while-revalidate stops "forever", but the first visit after a MediaPipe upgrade
+  still pairs new code with old files. `scripts/copy-mediapipe-assets.mjs` copies
+  `node_modules/@mediapipe/tasks-vision/wasm` into `public/vendor/mediapipe/wasm` at
+  `postinstall`. The package's JS API is bundled by the build, so after an upgrade a warm
+  visitor gets the new bundle with the cached old runtime for one visit. Installed
+  version: **0.10.35** (`node_modules/@mediapipe/tasks-vision/package.json`). Not measured.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 113 passed (113)
+  / Tests 1006 passed (1006)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `83b8c9d` drops
+  **1** line: the blemish item's `- [AI]` became `- [~] [AI]` (`docs/AUTOPILOT.md:304`).
+  Cycle 41 sits after cycle 40 at the end of the changelog. `npm run smoke` gave
+  **253 passed (12.8m)** and `Smoke test passed.`

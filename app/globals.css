@@ -114,6 +114,19 @@ html[lang="ja"] .locale-display,
 html[lang="zh-CN"] .locale-display,
 html[lang="ar"] .locale-display { line-height: 1.35; }
 
+/* The guide pages (app/guide/*) are English in every locale, but they render
+   inside LanguageProvider, which writes html[lang] and html[dir] from the
+   visitor's SAVED language. `lang`/`dir` on the guide's own root
+   (app/guide/guide-view.tsx) fix direction, alignment, the list indent and bidi
+   order, but they cannot reach the two rules above: those are anchored to
+   html[lang], so a saved `ko` still put the Korean hand-drawn display face and
+   its 1.1 leading on an English h1 — the opposite of what the "Keep the
+   hand-drawn display face Korean-only" comment above asks for. This companion
+   states the Latin values on the guide root instead, so the page renders the
+   same whatever the chrome says. */
+[data-guide-root] { --font-display: var(--font-sans); }
+[data-guide-root] .locale-display { line-height: 1.2; }
+
 /* RTL: decorative forward arrows (SVG strokes and literal → glyphs) are drawn
    pointing right; mirror them so "forward" still points along the reading
    direction. inline-block lets transform apply to glyph spans. */
