@@ -1760,7 +1760,45 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `playwright.ios.config.ts` is a compile-checked change only (**no webkit on disk**).
   The share-card 320x640 measurements are a one-off probe, not a regression spec.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and no correction needed. It also explains two things I
+  had been working around by hand for a week.
+
+  *Predicted by reading, before the branch existed, and all three handled:*
+  - clearing the whole of `.next` would delete the production build a later smoke step
+    serves. The worker clears `.next/dev` only.
+  - clearing at config import time would race the running server. The worker clears as
+    the first link of `webServer.command`, and measured the race when it tried the other
+    way.
+  - `reuseExistingServer: true` lets a leftover server stand in for this tree. It is now
+    off unless `ARU_REUSE_DEV_SERVER=1`.
+  My guess that the cold start was near 120s was wrong: it measured **4930 / 5247 / 6072**
+  ms. The webServer timeouts in cycles 40, 41 and 45 were not a shortage of headroom.
+
+  *Broken here, two ways.*
+  - Holding port 3102 with a socket that accepts and never replies, then running `npm run
+    smoke`: it stopped after **69** s (lint + vitest, then the probe) with `Smoke test
+    failed: port 3102 (test:mobile-ui) is already in use.` The worker's measurement
+    before the fix was a hang it killed by hand at 468 s.
+  - A real `next dev` left alive on 3102, then a single regression-34 run: it stopped in
+    **2** s with `Error: http://127.0.0.1:3102 is already used ...`, instead of silently
+    reusing it.
+  With nothing on the port, the default run gave **8 passed**.
+
+  *The eslint change explains a habit of mine.* I had been running `rm -rf test-results`
+  before every lint for a week without recording why. The worker measured it: one failing
+  e2e run leaves **6366** trace files that turn `0 errors` into **215 errors**.
+
+  *And I reproduced the README's own warning.* A `pkill -f` pattern I used to stop the
+  leftover dev server matched my own shell and killed it (exit **144**). The same pattern
+  also left the `next-server` child alive, which then made the next spec run fail on the
+  port check, correctly. Kill by PID.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 115 passed (115)
+  / Tests 1063 passed (1063)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `ab3941e` drops
+  **0** lines. Recent cycles holds 48/47/46, and cycle 45 sits after cycle 44 at the end
+  of the changelog. `npm run smoke` gave
+  **272 passed (10.7m)** and `Smoke test passed.` on the first run.
 
 - 2026-09-27 (cycle 47) — Branch `autopilot/2026-09-27-0639`. **The two guide pages were
   an English body wearing whatever chrome the visitor had saved, and for `ar` that chrome
