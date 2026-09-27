@@ -16,7 +16,7 @@ import { efficacyClean } from "../lib/recommend";
  * index/noindex split, and that no metadata string makes a medical claim.
  */
 
-const INDEXABLE = ["/", "/scan", "/survey", "/privacy"];
+const INDEXABLE = ["/", "/scan", "/survey", "/privacy", "/guide/serum-for-combination-skin", "/guide/toner-for-oily-skin"];
 const NOINDEX = ["/report", "/care", "/checkin", "/studio", "/unsubscribe", "/ops", "/pilot", "/eval"];
 
 /**
@@ -110,6 +110,33 @@ describe("no metadata string makes a medical claim", () => {
       expect(efficacyClean(route.description)).toEqual({ ok: true, flagged: [] });
       const text = `${route.title} ${route.description}`.toLowerCase();
       expect(ENGLISH_CLAIMS.filter((word) => text.includes(word))).toEqual([]);
+    });
+  }
+});
+
+/**
+ * Cycle 46. `appRoutes()` above walks `app/`, so it can only ever see pages Next
+ * renders. `public/offline.html` is a page too — served at `/offline.html` with a
+ * 200 and a `<title>`, named as a string literal in `public/sw.js` that
+ * `robots.txt` allows a crawler to fetch — and it carried no robots tag and no
+ * `SEO_ROUTES` entry, so it was indexable by default. Found by grepping the
+ * discovery surface rather than by a report.
+ */
+describe("static HTML in public/ is not indexable by default", () => {
+  const files = readdirSync("public", { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .map((entry) => join(entry.parentPath, entry.name));
+
+  it("finds the offline page, so the sweep below is not sweeping an empty set", () => {
+    expect(files).toContain(join("public", "offline.html"));
+  });
+
+  for (const file of files) {
+    it(`${file} declares noindex`, () => {
+      const html = readFileSync(file, "utf8");
+      expect(html).toMatch(/<meta\s+name="robots"\s+content="noindex, nofollow"\s*\/?>/);
+      // A page with no entry in the table must not claim to be one.
+      expect(SEO_ROUTES.some((route) => route.path === `/${file.replace(/^public\//, "")}`)).toBe(false);
     });
   }
 });

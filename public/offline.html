@@ -3,6 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <!-- This file is a real page at /offline.html: it answers 200, it carries a
+         <title>, and nothing stops a crawler reaching it. It is named as a string
+         literal in /sw.js, which robots.txt allows a crawler to fetch, so
+         "nobody links to it" is not a defence. It is not in SEO_ROUTES either,
+         and the route-table guard in tests/seo-metadata.test.ts walks app/ only,
+         so it could never have caught a static page in public/. Without this tag
+         the site's own offline notice is an indexable page competing with /.
+         Checked by "every HTML file under public/ says noindex". -->
+    <meta name="robots" content="noindex, nofollow" />
     <meta name="theme-color" content="#ffffff" />
     <title>아루 ARU — 오프라인</title>
     <style>

@@ -17,7 +17,7 @@ import { expect, test, type Page } from "@playwright/test";
  * noindex tag below is their second layer.
  */
 
-const INDEXABLE = ["/", "/scan", "/survey", "/privacy"];
+const INDEXABLE = ["/", "/scan", "/survey", "/privacy", "/guide/serum-for-combination-skin", "/guide/toner-for-oily-skin"];
 const NOINDEX = ["/report", "/care", "/checkin", "/studio", "/unsubscribe", "/ops", "/pilot", "/eval"];
 const ORIGIN = "https://aru-beauty.vercel.app";
 
@@ -55,7 +55,7 @@ test("sitemap.xml lists the indexable pages and nothing that is noindex", async 
   expect(response.headers()["content-type"]).toContain("xml");
   const body = await response.text();
   const locations = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  expect(locations).toEqual([ORIGIN, `${ORIGIN}/scan`, `${ORIGIN}/survey`, `${ORIGIN}/privacy`]);
+  expect(locations).toEqual(INDEXABLE.map((path) => (path === "/" ? ORIGIN : `${ORIGIN}${path}`)));
   for (const path of NOINDEX) expect(locations).not.toContain(`${ORIGIN}${path}`);
   expect(body).not.toContain("<lastmod>");
   // No per-locale URLs exist, so no alternate can honestly be claimed.

@@ -9437,3 +9437,220 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   the fixed tree gave **234 passed (7.0m)** and `Smoke test passed.` on the first run.
   After merging the worker's later comment-and-docs commit `72c9bea`, it gave **234
   passed (7.0m)** and `Smoke test passed.` again.
+
+- 2026-09-26 (cycle 43) — Branch `autopilot/2026-09-26-0639`. **The returning visitor's
+  path, measured the way a returning visitor arrives: a fresh context with ONLY
+  localStorage seeded, no sessionStorage, 360x800, production build, five locales, seven
+  record states, 165 screen measurements. No error boundary, no overflow and no
+  un-interpolated placeholder anywhere. Two real defects: `/report`'s picks step — the
+  only screen with merchant links on it — becomes an empty dead step for a record whose
+  category the catalogue no longer ships, which is the state `isSurvey` was deliberately
+  written to keep and which an existing test says renders "its no-picks branch"; and 6
+  Korean characters on `/report`'s first screen in all four non-Korean locales, whose fix
+  is a translation key this cycle may not add.**
+
+  **Baselines, re-measured here on `4cfaa3a` before any edit.** `node_modules` was absent,
+  so `npm ci` first. `npx vitest run` **Test Files 108 passed (108) / Tests 929 passed
+  (929)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 146 tests in 2.482s ... OK**. All four match the supervisor's. A baseline smoke was
+  not run; only the post-change one below, which is green.
+
+  **The sweep.** `npm run build` then `npx next start -p 3199`, one fresh Playwright
+  context per cell at 360x800, `addInitScript` writing `aru.lang` and
+  `aru_last_result` into localStorage and **nothing into sessionStorage** — the empty
+  sessionStorage is what sends `/report` and `/care` down the saved-result fallback in the
+  first place. Five locales x seven states x `/`, `/report` step 1, `/report` picks step,
+  `/care`, `/checkin`. **165** measurements (the picks step does not exist in the two
+  states that have no report, which is 10 of the 175 cells). Across all 165:
+  **0** error boundaries, **0** uncaught page errors, **0** cells where
+  `scrollWidth !== clientWidth` or `clientWidth !== 360`, **0** un-interpolated
+  `{placeholder}` tokens.
+
+  **The record's shape has never changed, so "the shapes older builds wrote" is about its
+  contents.** `git log --oneline -- lib/last-result.ts` is **3** commits, and
+  `LastResult = { survey, scan, reads, ts }` is byte-identical in the first of them
+  (`git show c458b04:lib/last-result.ts`). What moved is the READ: cycle 32 replaced a
+  `parsed.survey` truthiness check with `isSurvey`, cycle 33 added `isSkinReads`. So the
+  two legacy states measured are the two records those cycles were written for — a truthy
+  non-survey and a wrong-shaped `reads` — and not an invented envelope.
+
+  **Picks are recomputed, not stored, which is what makes state (iv) reachable at all.**
+  `loadInitialView` calls `recommend(saved.survey, saved.scan ?? null)`
+  (`app/report/page.tsx`), and `recommend` never leaves `survey.category`: `inCategory` is
+  filtered once and all four relaxation steps filter it again, so an unstocked category
+  returns `picks: []`. The record cannot carry a pick or a sku id — it carries the category
+  that selects them. `grep -o 'category: "[^"]*"' lib/skus.ts | sort | uniq -c` gives 8
+  categories with 2-4 SKUs each and `CATEGORIES` in `app/survey/page.tsx` lists the same
+  8, so zero picks is **not** reachable from a fresh survey today; a stored record is the
+  only way in, which is exactly what `tests/survey-shape.test.ts`'s "accepts a survey
+  naming a category this build no longer ships" keeps.
+
+  **The defect: that step had no branch, and the comment claiming it does is in the tree.**
+  `tests/survey-shape.test.ts:106-112` and the `isSurvey` docstring in `lib/recommend.ts`
+  both rest on "/report renders its no-picks branch". Measured with `앰플` as the stored
+  category, ko: the picks step went from **4** `/api/out` links, **9** anchors and **8**
+  buttons to **0**, **4** and **5**. The product grid renders nothing, the compare
+  `<details>` needs two picks, and the whole commerce section sat behind `top &&` — so the
+  step lost the four merchant links **and** the one `/care` hand-off on it. Same counts in
+  all five locales. Fixed by giving the section an else: `/survey` on the filled treatment
+  and `/care` beside it, no `CommerceDisclosure` (no affiliate link is on screen to
+  disclose), and no new sentence — every string on that page has to be an existing key, and
+  the heading row already reads "{category} · 0개".
+
+  **What the fix does not claim.** The intro paragraph above the grid ("추천 기준") still
+  says up to three options will be shown, at zero, because saying anything else needs a
+  key. `/care` with the same record degrades and does not die: **8** buttons to **2**, with
+  **4** anchors either way, because the clinic links do not depend on picks.
+
+  **Pinned, and broken three ways on the final tree.**
+  `tests/e2e/return-path-no-picks.regression-31.spec.ts` is **6 passed** — the dropped
+  category, the current record, the same record 60 days old, the pre-cycle-32 truthy
+  non-survey, the pre-cycle-33 wrong-shaped `reads`, and nothing stored. Removing the else
+  entirely, i.e. the tree before this cycle: **1 failed | 5 passed**. Keeping the empty
+  state but dropping its `/care` link — the plausible half-fix: **1 failed | 5 passed**.
+  Inverting the condition so the empty state takes the step that HAS picks, which is the
+  failure path of what was added rather than its happy path: **4 failed | 2 passed**.
+
+  **The second defect, measured and not fixed, because the fix is a key.** 6 Korean
+  characters on `/report`'s first screen in `en`, `ja`, `zh` and `ar`, in every state whose
+  `reads` survives validation. Extracted with a text-node walk: one node,
+  `노출 여유 확인`, the trust chip out of `signalCheck` in `lib/report-trust.ts`. **12** of
+  the **14** strings that function can return are keys in all four locales and the **2**
+  for `노출 여유` are in none. Filed under Backlog > Now with the greps; not fixed because
+  this cycle's brief forbade adding a translation key, and no rendering trick fixes it
+  without changing what the other three chips say.
+
+  **Two things that looked like leaks and are not.** With the stored category `앰플`, the
+  echoed text is the record's own string: `앰플 · 0 items` and the 추천 기준 sentence, 2
+  characters each, because `t()` returns its key. With a stored product use naming a sku
+  the catalogue dropped, `/checkin` echoes the stored `name`. Both are synthetic values no
+  build wrote: every real category and every real SKU name IS a key
+  (`grep -cF` on the first three `name:` values in `lib/skus.ts` is **1** in `en` and `ja`).
+  And `/checkin` handles the missing sku without a defect — `sku?.category ?? "세럼"` — so
+  the card renders with a fallback visual.
+
+  **Nothing reads `ts`, so state (ii) is state (i).** `grep -rn "loadLastResult()\|hasLastResult()" app/ lib/`
+  outside `lib/last-result.ts` is **4** lines, and
+  `grep -rnE "saved\.ts|loadLastResult\(\)[^;]*\.ts\b|lastResult[^;]*\.ts\b" app/ lib/`
+  is **0** against the single writer at `app/report/page.tsx:111`; so a 60-day-old
+  record shows the banner and reaches 4 merchant links exactly like a fresh one. Recorded
+  rather than changed: a "N days ago" label needs a string that does not exist.
+
+  **Research — WebKit's own source, because `webkit.org` is refused here.** Both attempts
+  printed verbatim `curl: (56) CONNECT tunnel failed, response 403` and
+  `webkit.org http=000`. `ResourceLoadStatisticsStore.cpp` from
+  `raw.githubusercontent.com/WebKit/WebKit/main` **http=200**, **175527** bytes, sha256
+  `0881c73d0a61e093991671abfa70b0289323945d3d44ae0b22cbebb6a2958169`; its header
+  **http=200**, **26484** bytes, sha256
+  `e8728be27979385a8d8d1f468e4459237a038b6aefd51063fe22c5e5d54d5af0`. Lines 73-74 are
+  `operatingDatesWindowLong { 30 }` and `operatingDatesWindowShort { 7 }`, both commented
+  `// days`. The finding that matters for ARU is that **the famous 7 days is the short
+  window and a plain first-party site does not get it**: `shouldRemoveAllButCookiesFor`
+  (:2832-2852) picks `Short` only when the domain's `dataRemovalFrequency` is `Short`, and
+  the **2** call sites that hand it to `setIsScheduledForAllScriptWrittenStorageRemoval`
+  (:1371, and :2059 through the local assigned at :2054, out of **7** lines that
+  `grep -c "DataRemovalFrequency::Short"` finds) are both keyed on link decoration from a
+  prevalent resource. Removal itself is enabled
+  by default — the member initialiser at `ResourceLoadStatisticsStore.h:426` is
+  `FirstPartyWebsiteDataRemovalMode::AllButCookies` — and appends the domain to
+  `domainsToDeleteAllScriptWrittenStorageFor` (:2906-2913), cookies untouched. The
+  exemption list (:786-798, :2895-2901) is app-bound ∪ managed ∪ persisted domains ∪
+  `m_standaloneApplicationDomain`, whose own comment names home screen web applications.
+  Quotes, both hashes and the labelled inferences —
+  including that ARU's own paid-traffic channel is the one whose returning visitors lose
+  the record first — are in
+  [`docs/webkit-script-storage-cap.md`](webkit-script-storage-cap.md).
+
+  **ML — the `roughness_ratio` divergent window, sized without faces.** Chosen because it
+  needs no labelled export and is not the sRGB LUT/knee item cycles 41 and 42 both worked.
+  The window is **not** `highFreq === 0`: a 1px checkerboard of `(60,60,176)` and
+  `(63,81,60)`, distinct colours whose exact luminance numerator `299r + 587g + 114b` is
+  **73224** for both, gives `highFreq` **1.4210854715202004e-14** against **0** for the
+  flat frame, `foreheadHf` **1.9407372876655204e-16** at a region mean L* of
+  **73.22399999999999** — flat in luminance (texture **5.188544138981456e-13**) and not in
+  colour (mean blue **118.8944246737841**). And the committed row's `320000.0` magnitude
+  belongs to the other region, not to the epsilon: with both regions in the window the
+  Python form returns **1.9407372876655204e-10**, exactly its own ceiling
+  `cheekHf / 1e-6`. `tests/roughness-ratio-divergent-window.test.ts` **4 passed**; broken
+  three ways at **2 failed | 2 passed**, **2 failed | 2 passed** and **1 failed | 3
+  passed**. No constant moved and the item stays `[~]`. Full paragraph on the item itself.
+
+  **What this does not establish.** No traffic number changed and none was measured: a step
+  that is no longer dead is a defect closed, not a conversion. Zero picks is not reachable
+  from today's catalogue, so this fix is insurance against a category being dropped and
+  against a hand-edited store, not a live leak — the reason it was worth doing is that the
+  guard which permits the state, and a test that names the branch, were both already in the
+  tree. One Chromium at exactly 360x800 against a local production build: no real phone, no
+  real network, no throttling this cycle. The seven states are the ones the record's own
+  history and the catalogue make reachable; a record whose `scan` is wrong-shaped was NOT
+  measured, and reading `shouldApplyScan` — `Boolean(scan && !scan.retakeRecommended &&
+  (scan.confidence ?? 0.7) >= 0.58)` — says a truthy non-object `scan` would set
+  `scanApplied` true with no camera data behind it. That is read from the code, not run,
+  and nobody has measured what the report then claims. The `노출 여유` leak is measured in
+  its `확인` form only. The WebKit note is read from `main` at the hashes above, not from
+  any shipped iOS, and nothing was measured on a device. The ML result is about which
+  captures are in the window and how big the disagreement is; it does not say which side
+  should move.
+
+  *Validation on this tree:* `npx vitest run` **Test Files 109 passed (109) / Tests 933
+  passed (933)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0
+  errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.747s ... OK**, and
+  `npm run smoke` **240 passed (11.1m)** with `Smoke test passed.` — whose own steps
+  re-ran lint at **2 problems (0 errors, 2 warnings)**, vitest at **109 passed (109) /
+  933 passed (933)** and selftest at **Ran 146 tests in 2.705s ... OK** on the same tree.
+  **It took three smoke attempts and the two failures were mine, not the tree's.** The
+  first reached **240 passed (14.0m)** in its e2e phase and never printed the verdict,
+  because it was killed on purpose: comment-only edits had landed mid-run and the rule is
+  to measure the final tree. That kill used a `pkill -f` pattern which also matched the
+  killing shell, so the run's `npm run dev` server on port 3102 was orphaned; the second
+  attempt attached to it (`reuseExistingServer: true`,
+  `playwright.mobile.config.ts`) and lost it mid-suite — **117 failed | 123 passed
+  (12.8m)**, every failure `net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3102/...`
+  from spec 210 onward, and **0** of them a product defect. The third ran with 3102 and
+  3199 confirmed free and has **0** `ERR_CONNECTION_REFUSED` lines. Recorded because a
+  reader comparing e2e totals across cycles would otherwise see a red run and no reason.
+  Rotation: `docs/AUTOPILOT.md` **1972 → 1999** lines and
+  `docs/autopilot-changelog.md` **8762 → 8950**; cycle 40's **188** lines are
+  byte-identical at the end of the changelog (`diff` clean against the extract), and the
+  concatenated-`sort -u`-`comm -23` check against `4cfaa3a` drops **0** lines. No backlog
+  item was ticked `[x]` this cycle, so nothing moved to "Closed backlog items".
+
+  **Supervisor review.** Sound. The worker disproved one of my predictions. Two things
+  were added before merge.
+
+  *My error, recorded.* I predicted that an unknown stored category could not empty the
+  picks, because `sku.category === survey.category` is a **+2** score term
+  (`lib/recommend.ts:151`). That was wrong. `inCategory` (`lib/recommend.ts:402`) filters
+  the pool, and every relaxation step (:421, :424, :429, :437) starts from it. The worker
+  read the whole function and I read one line. My other predictions held: picks are
+  recomputed, not stored, and `lib/last-result.ts` has **3** commits with an unchanged
+  record shape.
+
+  *Added 1: the Korean leak is fixed here.* The worker measured it and was right not to
+  fix it, because its brief forbade new keys. That rule was a scope limit in my brief,
+  not an owner rule, and the Korean string is already the rendered key. Only its
+  translations were missing. The two entries are now in all four dictionaries, and
+  `tests/report-trust-chip-keys.test.ts` pins every chip `buildReportTrust` can return
+  (see the backlog item for the break counts). Of the 10 `확인`/`보류` chips the four
+  signals can produce, only the 2 for `노출 여유` had been missing in all four locales
+  (checked with `grep -F` per locale).
+
+  *Added 2: regression-31 did not catch a hidden empty state.* Its link checks were
+  `toHaveCount(1)`. Setting the empty state's section to `display: none` gave **6
+  passed**. They are now `toBeVisible()`, and the same break gives **1 failed | 5
+  passed**. The other break, linking the empty state to `/scan` instead of `/survey`,
+  already failed: **1 failed | 5 passed**. Clean is **6 passed**.
+
+  *Research checked against the source.* `ResourceLoadStatisticsStore.cpp`, fetched
+  here: **http 200**, **175527** bytes, the same sha256. Lines 73-74 read
+  `operatingDatesWindowLong { 30 }; // days` and `operatingDatesWindowShort { 7 }; //
+  days`. `grep -c "DataRemovalFrequency::Short"` gives **7**. The note also says these
+  are days the browser ran, not calendar days (`docs/webkit-script-storage-cap.md:98`).
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 110 passed (110)
+  / Tests 938 passed (938)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `4cfaa3a` drops
+  **0** lines. Recent cycles holds 43/42/41, and cycle 40 sits after cycle 39 at the end
+  of the changelog. `npm run smoke` gave
+  **240 passed (8.3m)** and `Smoke test passed.`

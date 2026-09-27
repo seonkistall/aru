@@ -61,6 +61,20 @@ export const SEO_ROUTES: readonly SeoRoute[] = [
     index: true,
   },
   {
+    path: "/guide/serum-for-combination-skin",
+    title: "Serums for combination skin | ARU",
+    description:
+      "What to look for in a serum when your skin is shiny in some zones and tight in others, with the four serums in ARU's catalogue listed for combination skin and the grounds each one is there on.",
+    index: true,
+  },
+  {
+    path: "/guide/toner-for-oily-skin",
+    title: "Toners for oily skin | ARU",
+    description:
+      "What to look for in a toner when your skin runs oily, with the three toners in ARU's catalogue listed for oily skin, what each one is listed for, and where to start.",
+    index: true,
+  },
+  {
     path: "/report",
     title: "Your skin report | ARU",
     description:

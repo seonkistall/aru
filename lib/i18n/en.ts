@@ -896,6 +896,7 @@ export const EN: Record<string, string> = {
   "개인정보와 동의": "Privacy & consent",
   "영어 상담 가능한 피부과 찾기": "Find an English-speaking dermatologist",
   "영어 상담이 필요한 여행자에게 유용해요.": "Useful for travelers who need a consultation in English.",
+  "영문 가이드": "Guides (English)",
   "전체 기기 데이터": "All device data",
   "ARU 기기 데이터 전체 삭제": "Delete all ARU device data",
   "이 브라우저에 저장된 ARU 데이터를 한 번에 지울 수 있어요. 리마인더 이메일과 파일럿 서버 데이터는 포함되지 않습니다.": "You can delete all ARU data stored in this browser at once. Reminder email and pilot server data are not included.",
