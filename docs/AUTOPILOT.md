@@ -1771,7 +1771,9 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `43041ca` drops
   **2** lines: the two backlog items' opening lines, which the worker ticked and moved to
   the changelog (`docs/autopilot-changelog.md:32` and `:83`). Recent cycles holds
-  49/48/47, and cycle 46 sits after cycle 45 at the end of the changelog. SMOKE_RESULT
+  49/48/47, and cycle 46 sits after cycle 45 at the end of the changelog. `npm run smoke`
+  **Test Files 117 passed (117) / Tests 1076 passed (1076)**, **277 passed (9.6m)**,
+  **Smoke test passed.**
 
 - 2026-09-27 (cycle 48) — Branch `autopilot/2026-09-27-1239`. **The gate that decides
   every push could report a result for a tree it never loaded, and it was proved in the
