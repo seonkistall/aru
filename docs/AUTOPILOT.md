@@ -1381,6 +1381,17 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-09-27 — neither claim list covers "reduce / control / minimise" (cycle 46
+  review).** `BANNED` in `lib/recommend.ts` (Korean) has no 감소, and
+  `BANNED_BY_LANG.en` in `lib/claim-filter.ts` has no reduce, control, minimise,
+  prevent, fade, brighten or firm. So an LLM product reason like "reduces excess sebum"
+  or "피지를 감소시켜요" passes both gates. Guide copy today uses none of these verbs:
+  the counts in the cycle 46 review find only concern nouns. Whether each word is a
+  claim under Korean cosmetics advertising rules is a legal question the owner should
+  settle before the lists grow. The filter's own header says a false positive only
+  costs a pre-approved template. Add the verbs in both languages with test cases in
+  `tests/claim-filter.test.ts`, and check that no pre-approved template trips them.
+
 - [x] **2026-09-26 — the first visit after a MediaPipe upgrade pairs new code with the
   cached old runtime (cycle 44).** **Actioned 2026-09-26 (cycle 45): the versioned
   directory, from one source of truth, plus a prune on both sides.** The runtime is
@@ -1708,7 +1719,41 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   (**29G** available, **13822** MB free). One re-run, the only one, gave the green above,
   and the guide specs and the two new discovery cases are inside its **264**.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and no correction needed. The first cycle aimed at
+  acquisition rather than defects, built so it can be killed.
+
+  *Predicted by reading, before the branch existed:* `efficacyClean()` is a KOREAN list
+  (`lib/recommend.ts:96-116`). If English guide copy were tested with it alone, the test
+  would be vacuous. It was not: `tests/guides.test.ts` runs every authored sentence
+  through `BANNED_BY_LANG.en` as well. The only hits are `Soothing`/`soothing`, pinned to
+  catalogue text that already ships on `/report` and `/care`.
+
+  *Broken here, two ways, on the committed tree.*
+  - Adding `"This serum visibly improves uneven texture."` to the serum guide's lede:
+    **2 failed | 24 passed** on `tests/guides.test.ts`.
+  - Dropping `/guide/toner-for-oily-skin` from `SEO_ROUTES`: five named failures across
+    `tests/guides.test.ts` and `tests/seo-metadata.test.ts`, including "registers both
+    guides as indexable with their own title and description".
+  Both edits were reverted.
+
+  *Checked here: no efficacy verbs outside the lists either.* The one-off test was not
+  committed. It counted, in each guide's full serialised data, the words the two lists
+  do NOT cover (reduce, control, minimise, prevent, fade, brighten, firm, clear, calm,
+  repair, protect) plus concern nouns:
+  - serum: `{"sebum":6,"pores":13,"barrier":4,"pore":1}`.
+  - toner: `{"pores":11,"barrier":5,"sebum":2}`.
+  Only nouns naming a concern appear, never a verb claiming to change it. That gap in
+  the lists is recorded as a finding.
+
+  *The bug fix is real.* `public/offline.html` answered 200 with a title and no robots
+  tag, and `/sw.js` names it. It is now `noindex, nofollow`.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
+  / Tests 1046 passed (1046)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `c90864a` drops
+  **0** lines. Recent cycles holds 46/45/44, and cycle 43 sits after cycle 42 at the end
+  of the changelog. `npm run smoke` gave
+  **264 passed (10.4m)** and `Smoke test passed.`
 
 - 2026-09-26 (cycle 45) — Branch `autopilot/2026-09-26-1839`. **The MediaPipe runtime
   now lives at a URL that carries its own version, so an upgrade cannot pair a new
