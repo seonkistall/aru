@@ -60,6 +60,59 @@ describe("multilingual banned-claims gate (reasonClean)", () => {
     expect(reasonClean("피부과에서도 쓰는 성분이에요", "ko")).toBe(false);
   });
 
+  // The second gap, found by the supervisor in the cycle 46 review and closed
+  // 2026-09-27. Every concept the lists already held NAMED a state; none covered
+  // a verb claiming to change one in the ordinary direction, so the sentences
+  // below passed both gates while "improves skin tone" two blocks up did not.
+  it("blocks verbs that claim to change a condition, which neither list covered", () => {
+    expect(reasonClean("Reduces excess sebum through the day.", "en")).toBe(false);
+    expect(reasonClean("Controls oil without stripping.", "en")).toBe(false);
+    expect(reasonClean("Minimises the look of enlarged pores.", "en")).toBe(false);
+    expect(reasonClean("Minimizes the look of enlarged pores.", "en")).toBe(false);
+    expect(reasonClean("Prevents new breakouts overnight.", "en")).toBe(false);
+    expect(reasonClean("Fades dark spots over time.", "en")).toBe(false);
+    expect(reasonClean("Brightens a dull complexion.", "en")).toBe(false);
+    expect(reasonClean("Visibly firms slack skin.", "en")).toBe(false);
+  });
+
+  it("blocks the same verbs in Korean, whatever the requested language", () => {
+    // efficacyClean runs first on every candidate, so one Korean entry covers all
+    // five locales — the same reason the 2026-09-20 additions only ever mattered
+    // for the four non-Korean lists.
+    expect(reasonClean("피지를 감소시켜요", "ko")).toBe(false);
+    expect(reasonClean("여드름 예방에 좋아요", "ko")).toBe(false);
+    expect(reasonClean("피지 분비를 억제해요", "ko")).toBe(false);
+    expect(reasonClean("피지를 감소시켜요", "en")).toBe(false);
+  });
+
+  it("blocks the same verbs in ja, zh and ar", () => {
+    expect(reasonClean("皮脂を減少させます。", "ja")).toBe(false);
+    expect(reasonClean("ニキビ予防にぴったり。", "ja")).toBe(false);
+    expect(reasonClean("皮脂の分泌を抑制します。", "ja")).toBe(false);
+    expect(reasonClean("毛穴を引き締めます。", "ja")).toBe(false);
+    expect(reasonClean("减少多余油脂。", "zh")).toBe(false);
+    expect(reasonClean("预防痘痘反复。", "zh")).toBe(false);
+    expect(reasonClean("抑制油脂分泌。", "zh")).toBe(false);
+    expect(reasonClean("يساعد على تقليل الزيوت الزائدة.", "ar")).toBe(false);
+    expect(reasonClean("يقلل من لمعان البشرة.", "ar")).toBe(false);
+    expect(reasonClean("يمنع ظهور الحبوب.", "ar")).toBe(false);
+    expect(reasonClean("وقاية يومية للبشرة الدهنية.", "ar")).toBe(false);
+    expect(reasonClean("تفتيح لون البشرة تدريجيًا.", "ar")).toBe(false);
+  });
+
+  // The entries that were deliberately NOT added, pinned so a later cycle that
+  // reaches for the blunter root sees these fail. Arabic matches as a substring,
+  // so bare منع would fire on منعش ("refreshing", the catalogue's word for 산뜻)
+  // and bare شد on الشد ("tightness", in the care tip for 밤사이 당김). English
+  // \bfirm\b is the same risk handled by a word boundary: lib/i18n/en.ts ships
+  // "Capture quality confirmed." and "Confirm device data deletion".
+  it("does not fire on shipped copy that merely contains a banned root", () => {
+    expect(reasonClean("قوام منعش يناسب الصباح.", "ar")).toBe(true);
+    expect(reasonClean("طبقة رقيقة من الكريم تساعد مع الشد الليلي.", "ar")).toBe(true);
+    expect(reasonClean("Capture quality confirmed.", "en")).toBe(true);
+    expect(reasonClean("Confirm device data deletion before you leave.", "en")).toBe(true);
+  });
+
   it("passes neutral descriptive copy in every language", () => {
     expect(reasonClean("가볍게 마무리되는 젤 타입이에요.", "ko")).toBe(true);
     expect(reasonClean("A light gel texture that suits oily skin.", "en")).toBe(true);

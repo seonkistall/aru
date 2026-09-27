@@ -12,10 +12,35 @@ import type { Guide } from "@/lib/guides";
  * on any child, `overflowWrap: "break-word"` on the long INCI lists, and 64px of
  * top padding so the h1 clears the fixed language pill
  * (`app/components/language-switcher.tsx`, top 10 / insetInlineEnd 10).
+ *
+ * `lang="en" dir="ltr"` and `data-guide-root` are load-bearing, not decoration.
+ * This body is English in every locale, but it renders inside
+ * `LanguageProvider`, which writes `document.documentElement.lang`/`dir` from the
+ * visitor's SAVED language (`lib/i18n.tsx`). So a returning visitor who had
+ * picked Arabic got `html[dir=rtl]` around Latin prose, and one who had picked
+ * Korean got the Korean hand-drawn display face on an English `h1`. Declaring
+ * the guide's own root closes both: `dir` fixes direction, `text-align: start`,
+ * the `padding-inline-start` list indent and bidi run order (the `→` in the CTA
+ * flipped to the wrong side of its label), and `lang` stops the document
+ * misdescribing Latin text to a screen reader. The font token and the display
+ * leading need the companion rule in `app/globals.css` keyed on
+ * `[data-guide-root]`, because the rules they override are anchored to
+ * `html[lang]` and nothing on this element can reach those.
+ * Pinned by `tests/e2e/guide-ltr-in-rtl-chrome.regression-34.spec.ts`, whose main
+ * assertion is geometry under every saved language rather than these attributes:
+ * a 19-field snapshot of computed styles, bounding boxes and text-run rects that
+ * must be identical under en/ko/ja/zh/ar. The attributes get one case of their
+ * own because `ja` and `zh` showed no geometry difference at all.
  */
 export function GuideView({ guide }: { guide: Guide }) {
   return (
-    <main className="min-h-screen" style={{ background: "var(--paper)", color: "var(--ink)" }}>
+    <main
+      lang="en"
+      dir="ltr"
+      data-guide-root
+      className="min-h-screen"
+      style={{ background: "var(--paper)", color: "var(--ink)" }}
+    >
       <div style={{ width: "100%", maxWidth: 720, marginInline: "auto", padding: "64px 20px 40px" }}>
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
           <Link href="/" style={{ color: "var(--text-muted)" }}>ARU</Link> · Guide

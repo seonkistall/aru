@@ -93,6 +93,27 @@ const TONE_LABEL: Record<Sku["tone"], string> = {
   gentle: "순한 선택",
 };
 
+// Prohibited/risky cosmetic-advertising expressions, Korean. The three verbs
+// added 2026-09-27 (감소 / 예방 / 억제) close the gap the cycle 46 review found:
+// the list banned 개선 and 완화 but not 감소, so "피지를 감소시켜요" passed this
+// gate AND lib/claim-filter.ts's. They are the direct Korean counterparts of the
+// reduce / prevent / control entries added to BANNED_BY_LANG.en in the same pass.
+// INFERENCE, not a reading of the statute: the primary sources (화장품법 시행규칙
+// 별표 5, MFDS guidance on 화장품 표시·광고) are not reachable from this
+// container — every law.go.kr / mfds.go.kr / easylaw.go.kr / kcia.or.kr host
+// answers `curl: (56) CONNECT tunnel failed, response 403`, recorded in the
+// cycle 47 entry of docs/AUTOPILOT.md. What the additions rest on is this list's
+// own internal logic (a verb claiming to change a condition is the same concept
+// class as 개선 and 완화, which are already here) and the asymmetry
+// lib/claim-filter.ts's header states: a false positive costs one pre-approved
+// template. Whether each word is prohibited under Korean cosmetics advertising
+// rules is a legal question for the owner's counsel, not settled here.
+// Measured, not assumed: on this tree the ONLY occurrences of 감소 / 예방 / 억제
+// under lib/ and app/ are this list and the two comments describing it —
+// `grep -rn "감소\|예방\|억제" lib/ app/ | grep -v "^lib/recommend.ts:"` returns
+// the one line in lib/claim-filter.ts and nothing else. No shipped string, in any
+// dictionary or template, starts failing. The wider sweep is in the cycle 47
+// entry: 100 reason templates and 95 heroNotes across five languages, 0 rejected.
 const BANNED = [
   "미백",
   "주름개선",
@@ -110,6 +131,9 @@ const BANNED = [
   "제거",
   "효능",
   "효과",
+  "감소",
+  "예방",
+  "억제",
 ];
 
 export function efficacyClean(text: string): { ok: boolean; flagged: string[] } {
