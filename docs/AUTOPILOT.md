@@ -1725,6 +1725,53 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   **Validation on this tree, worker.** Filled in below once the gating run finished, so
   these are the committed tree's numbers and not an earlier tree's.
+  *(Supervisor: nothing was filled in below. The branch was pushed with this sentence
+  as the entry's last line and without the `*Supervisor review:* pending.` line. The
+  supervisor's own validation, which is the gate, follows.)*
+
+  **Supervisor review.** Sound, with one weak test hardened before merge. The owner
+  should hear about one visible change: the brand red.
+
+  *Contrast recomputed here, independently of the worker's harness.* WCAG relative
+  luminance against `#ffffff`:
+  - `#e0382c` **4.401**, `#d9362b` **4.653**, `#c22e23` **5.662**;
+  - `#ef8a1f` **2.522**, `#d57b1c` **3.144**.
+  All five match the worker's numbers. The primary CTA red changes on every screen. It is
+  the minimum darkening that clears AA, and the owner should know the brand colour moved.
+
+  *Where I disagreed and then did not.* Before the branch existed I predicted the
+  conservative default (`?? 0`) would be right for a reading with no `confidence`, and
+  that `?? 0.7` would let a record set `scanApplied` with nothing behind it. Since cycle
+  44, `isScanReads` requires finite `oil`/`redness`/`pores`, so a confidence-less record
+  that reaches `shouldApplyScan` does carry real reads. Applying it is not a camera claim
+  without data. The worker's choice is to agree on one function and keep what decides the
+  picks. It stands.
+
+  *Hardened here: `tests/device-store-guards.test.ts` passed with the guard removed.*
+  - Replacing `/care`'s `if (isSkinReads(parsedReads)) reads = parsedReads;` with a bare
+    cast gave **4 passed**. The check was "the file contains the word `isSkinReads`", and
+    the import line alone satisfies that.
+  - Its header said it "enumerates the readers instead of trusting a memory of them",
+    but the reader list was a fixed array of four files.
+  - It now walks every `.ts`/`.tsx` under `app/` and `lib/`. After each
+    `getItem(DEVICE_DATA_KEY.reads|scan)` it requires an `isSkinReads(` /
+    `isScanReads(` / `shouldApplyScan(` CALL within the next 800 characters, with
+    comment lines dropped.
+  - The same cast now gives **1 failed | 3 passed**. A guard left only in a comment next
+    to the read also gives **1 failed | 3 passed**. Clean is **4 passed**.
+
+  *Broken here, two more ways.*
+  - Restoring `/survey`'s local `(scan.confidence ?? 0) < 0.58` copy: **1 failed | 6
+    passed** on `tests/scan-confidence-agreement.test.ts`.
+  - Restoring `--plum: #e0382c`: **2 failed | 3 passed** on
+    `conversion-path-accessibility.spec.ts`. Clean is **5 passed**.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 117 passed (117)
+  / Tests 1076 passed (1076)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `43041ca` drops
+  **2** lines: the two backlog items' opening lines, which the worker ticked and moved to
+  the changelog (`docs/autopilot-changelog.md:32` and `:83`). Recent cycles holds
+  49/48/47, and cycle 46 sits after cycle 45 at the end of the changelog. SMOKE_RESULT
 
 - 2026-09-27 (cycle 48) — Branch `autopilot/2026-09-27-1239`. **The gate that decides
   every push could report a result for a tree it never loaded, and it was proved in the
