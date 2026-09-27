@@ -141,7 +141,21 @@ export function efficacyClean(text: string): { ok: boolean; flagged: string[] } 
   return { ok: flagged.length === 0, flagged };
 }
 
-function shouldApplyScan(scan: ScanReads): scan is NonNullable<ScanReads> {
+// The ONE rule for "is this reading good enough to act on", exported because /survey
+// has to describe the same verdict it will get on /report. It had its own copy with a
+// different default — `(scan.confidence ?? 0) < 0.58` — and the two disagreed on exactly
+// one input: a reading with no `confidence` at all. There, /survey showed the honest
+// "촬영 조건이 충분하지 않아" hint while this function applied the scan anyway, so the
+// picks the next screen produced opened "카메라에서 확인한 피부 특징과 …" for a photo
+// the previous screen had just called unusable.
+//
+// `?? 0.7` is the default kept, and this function is where it lives, because this is
+// what decides the picks: a hint that contradicts the recommendation is the defect, not
+// the recommendation. The only writer of the store sets `confidence` unconditionally
+// (`app/scan/use-capture-analysis.ts`), so the absent case is reachable only from an
+// older build's record or a hand-edited store — which is why the fix is to agree rather
+// than to change what a real reading produces.
+export function shouldApplyScan(scan: ScanReads): scan is NonNullable<ScanReads> {
   return Boolean(scan && !scan.retakeRecommended && (scan.confidence ?? 0.7) >= 0.58);
 }
 

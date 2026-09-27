@@ -29,6 +29,95 @@ Ticked `[x]` and moved here; the section each was under is kept.
 
 ### Now
 
+- [x] [AI] **Three device-store reads still have no shape guard, and one cached file is
+  never refreshed.** Found 2026-09-26 (cycle 44) while guarding `scan`; each is recorded
+  rather than fixed because none of them lies today and the cycle's rule is surgical
+  changes. (1) `app/care/page.tsx` parses the sessionStorage `reads` with no
+  `isSkinReads`, which `/report` has had since cycle 33 — harmless only because
+  `careSummary` ignores the argument (`lib/care.ts:70`, the `_reads` warning `npx eslint .`
+  reports), so the day anything on `/care` renders a read field it is the cycle-33 defect
+  again. (2) `app/survey/page.tsx`'s own scan read is unguarded, and uses
+  `(scan.confidence ?? 0) < 0.58` where `lib/recommend.ts` uses `?? 0.7` — a wrong-shaped
+  scan lands on the honest "촬영 조건이 충분하지 않아" hint there, so it is the
+  inconsistency and not the guard that is open. (3) `public/sw.js` adds `/offline.html`
+  to `aru-shell-v1` in `install`, which only re-runs when the worker's own bytes change,
+  so a deploy that edits `public/offline.html` never reaches a returning visitor; measured
+  as a fact and left alone because that page carries no build-dependent content. Also
+  unfixed and known: it is `<html lang="ko">` with one English line, for `ja`/`zh`/`ar`
+  visitors too.
+
+  **Closed 2026-09-27 (cycle 49). All three actioned, and the third one's decision is
+  recorded rather than deferred again.** (1) `app/care/page.tsx` now guards its `reads`
+  read with `isSkinReads`. (2) The inconsistency, not the guard, is what closed: `/survey`
+  no longer holds a copy of the condition at all — `shouldApplyScan` is exported from
+  `lib/recommend.ts` and `/survey` calls it, so the `?? 0` / `?? 0.7` disagreement on a
+  confidence-less reading cannot come back. `?? 0.7` is the default kept, because the
+  function that decides the picks is the one the hint has to describe: the old behaviour
+  told a visitor the photo was unusable and then opened every pick reason with
+  "카메라에서 확인한 …". The store's only writer sets `confidence` unconditionally
+  (`app/scan/use-capture-analysis.ts`), which is why agreeing was the right fix rather
+  than changing what a real reading produces. (3) `/offline.html` **does** need
+  refreshing, and the reason is this cycle: it now has edited content. `SHELL_CACHE` is
+  `aru-shell-<first 8 of sha256(public/offline.html)>`, recomputed by
+  `tests/service-worker.test.ts` rather than stored, so editing that file fails the suite
+  until the constant moves — and moving the constant is itself the worker-bytes change
+  that re-runs `install`, while `activate` drops the cache the old name owned. Cycle 45
+  rejected a cache rename for `MEDIAPIPE_CACHE` and that reasoning does not carry here:
+  that cache holds **15234257** bytes a warm visitor would re-download, this one holds one
+  **3066**-byte file. The `<html lang>` mismatch is half-fixed and the half is named: the
+  English sentence is now `<small lang="en">` (WCAG 3.1.2 Language of Parts), so a screen
+  reader stops reading it with Korean pronunciation rules; a `ja`/`zh`/`ar` visitor still
+  gets Korean plus that line, which is left open because the page is a static file with no
+  dictionary and no build step, so five locales means five copies of its copy inside it.
+  New guard against the next hole: `tests/device-store-guards.test.ts` enumerates every
+  reader of `gyeol_reads` / `gyeol_scan` and fails if one lacks its guard, so cycle 50
+  does not find the fourth by hand. **4 passed**, and with `/care`'s guard removed again
+  **1 failed | 3 passed**. `tests/scan-confidence-agreement.test.ts` **7 passed**; with
+  `/survey`'s old condition pasted back, **1 failed | 6 passed**, and with the shared
+  `?? 0.7` changed to `?? 0` — the failure path, i.e. the verdict itself rather than where
+  it lives — **2 failed | 5 passed**. `tests/service-worker.test.ts` **6 passed**; **1
+  failed | 5 passed** both when a byte is appended to `public/offline.html` without
+  bumping the cache name (`expected 'aru-shell-2adcc808' to be 'aru-shell-cc494ffc'`) and
+  when the English line loses its `lang`.
+
+- [x] [AI] **One e2e case's 20s budget includes loading the 11 MB MediaPipe runtime, and it
+  has timed out twice without being attributable.** `lang-chunk-tap-hold.regression-30`
+  "never happens for ko" taps `scan-start` and waits for `[data-quality-checklist]`,
+  which `app/scan/guide.tsx` renders only once `guideState === "ready"` — after
+  `createVideoLandmarker` has fetched and instantiated the runtime. Cycle 45 saw it fail
+  inside a full smoke run and once more immediately after, then pass eight times
+  running, including with the page cache dropped and with `.next` deleted. Nothing about
+  the failure was attributed: the assets serve 200 at the versioned path, the CSP is
+  path-agnostic and the worker path is opt-in. A case that can only fail under load is
+  worth making not depend on load — assert on something the landmarker load does not
+  gate, or give this one case a budget that admits what it is waiting for — but do not
+  widen the timeout without saying which of the two it is. Noted 2026-09-26 (cycle 45).
+
+  **Closed 2026-09-27 (cycle 49) the first way, not the second: the assertion no longer
+  depends on the landmarker load, and no timeout anywhere was widened.** Measured first.
+  The runtime fetch is **3** requests and **15234257** bytes —
+  `vision_wasm_internal.wasm` **11153617** (the item's "11 MB", confirmed off disk), its
+  glue `vision_wasm_internal.js` **322044**, and `face_landmarker.task` **3758596** — and
+  the thing the finding assumed turns out to be false: **it does not start on the tap.**
+  On a production build in this container with a cold browser cache the three responses
+  land at **606**, **1195** and **1278** ms after navigation, i.e. while the visitor is
+  still looking at the intro screen, and tap → `[data-quality-checklist]` was **173** /
+  **233** / **241** ms over three runs against tap → `phase === "ready"` at **163** /
+  **222** / **228** ms. So the old assertion was ~**10** ms of its own work riding on a
+  multi-megabyte download whose timing this case never cared about, which is exactly how a
+  20 s budget expires under load with nothing in the product broken. `scan-start` hidden
+  plus a new `[data-testid="scan-capture"]` visible is the same claim — the tap was
+  accepted, `getUserMedia` resolved — decided by nothing that MediaPipe gates.
+  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts` **5 passed**; broken two ways at
+  **1 failed** each, the first being the real failure path (`onClick={startCamera}`
+  replaced with a no-op, so the tap is swallowed: `expect(locator).toBeHidden() failed —
+  unexpected value "visible"`), the second the testid removed (`element(s) not found`).
+  **The two `ja` cases still wait for the checklist and were not touched**: they are not
+  the cases that timed out, and the item's instruction was not to widen any other budget.
+  What this does NOT establish: the flake itself was never reproduced here, on a
+  production build or a dev one, so the attribution cycle 45 could not make is still not
+  made — what changed is that this case can no longer be the one that carries it.
+
 - [x] [AI] ~~`savePilotNote` is the only store in the repo with no `window` guard, no cap and
   no try/catch~~ — closed 2026-09-21 (cycle 26). Every clause held on arrival. Fixed with the
   guard, a 500-row cap matching `lib/labels.ts`, a try/catch, and a `PilotNote | null` return
@@ -10132,3 +10221,259 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   failed before any test body ran (`Error: Timed out waiting 120000ms from
   config.webServer`). The one re-run gave **253 passed (9.3m)** and `Smoke test
   passed.`
+
+- 2026-09-27 (cycle 46) — Branch `autopilot/2026-09-27-0039`. **ARU has two indexable
+  pages that a searcher can land on and be handed into the product, built from the
+  catalogue rather than written, and shipped as an experiment with a kill criterion
+  instead of as a content plan. Which two pairs was decided by counting coverage, not
+  taste: `세럼 × 복합성` is alone at the top with **4** SKUs / **10** concerns / **10**
+  ingredients, and `토너 × 지성` wins a five-way tie at **3** SKUs on concern coverage
+  (**7** against **5** for `크림 × 민감성`) while differing from the first page in both
+  axes. The body is in the first HTTP response — **586** and **495** words with
+  JavaScript off — and the landing CTA did not move by a pixel. The bug found on the way
+  is that `public/offline.html` was an indexable page nothing could have caught: the
+  route-table guard walks `app/`, and that file is in `public/`.**
+
+  **Baselines, re-measured here on `c90864a`.** `node_modules` was absent, so `npm ci`
+  first. `npx vitest run` **Test Files 113 passed (113) / Tests 1014 passed (1014)**, run
+  on the working tree before any edit. The other three were run in a clean
+  `git worktree` at `c90864a` (with `node_modules` symlinked in) rather than claimed from
+  a post-edit run, because by then the working tree already carried the change:
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 146
+  tests in 1.793s ... OK**. All four match the supervisor's.
+
+  **UI/UX and growth — `/guide/serum-for-combination-skin` and
+  `/guide/toner-for-oily-skin`.** The pair choice is a census of `lib/skus.ts`, pinned in
+  `tests/guides.test.ts` so it cannot drift: **22** SKUs across **8** categories, and for
+  every (category, skin type) pair the count of SKUs the catalogue lists for both. One
+  pair leads on all three measures — `세럼 × 복합성`, **4** SKUs, **10** distinct
+  concerns, **10** distinct ingredient keys. Exactly **5** pairs tie at **3** SKUs
+  (`토너 × 지성`, `토너 × 복합성`, `세럼 × 지성`, `크림 × 민감성`, `선크림 × 복합성`), and
+  the tie went to `토너 × 지성` on concern coverage — **7** concerns against **5** for
+  `크림 × 민감성` — because it is also a different category AND a different skin type
+  from the first page. Two pages that differ in one axis would have been two views of the
+  same shortlist, which is the shape of a doorway page.
+
+  Both are SERVER components with no `t()`. `lib/guides.ts` reads the English dictionary
+  directly through `enText()`, because `t()` answers from a module singleton that starts
+  at `ko` and the served bytes are the whole point of an indexable page. Measured against
+  a dev server on `127.0.0.1:3199`: the serum page is **52899** bytes served and **586**
+  words of body text after tags and scripts are stripped, the toner page **48153** bytes
+  and **495** words, and every product row is present with JavaScript disabled. **4** of
+  **4** anchors on each page carry a real `href`, all of them internal
+  (`/`, `/scan`, `/survey`, and the other guide). `/sitemap.xml` now lists **6** `<loc>`
+  entries, up from **4**. Nothing links out to a merchant, so no `/api/out` path and no
+  `CommerceDisclosure` are involved — the pages end at `/scan` and `/survey`.
+
+  **Geometry at 360x800, measured not eyeballed.** Neither page scrolls sideways:
+  `scrollWidth` **360** against `clientWidth` **360** on both. Both hand-off links are
+  full-width inside the viewport (`x` **20**, `width` **320**) and clear the 44px tap
+  floor — **61** for the scan link, **44.5** for the survey link. The `h1` starts at `y`
+  **93.5** while the fixed language pill ends at **54** (`y` **10** + `height` **44**), so
+  the first heading is not under a button. Page heights are **3649** and **3041** with
+  **182** and **168** DOM nodes.
+
+  **The claim check runs three rulers, and the hits are pinned rather than asserted
+  absent.** `efficacyClean()`'s Korean list finds **0** hits in the visible text of
+  either page and **0** in the whole served document. `BANNED_BY_LANG.en` — the gate
+  `reasonClean()` puts LLM output through — finds exactly `["Soothing", "soothing"]` on
+  both, and both come from the catalogue's own word for the 진정 ingredient role, which
+  `lib/i18n/en.ts` already renders on `/report` and `/care` through
+  `app/components/product-card.tsx`. The substring list `tests/seo-metadata.test.ts`
+  holds route metadata to finds exactly `["condition"]`, inside `Conditioning`, the
+  English name of the 컨디셔닝 role. Pinning is what makes the check work: a banned word
+  this cycle wrote would change the set and fail. A fourth test strips every catalogue
+  word case-insensitively and asserts what is left of each authored sentence is clean,
+  which is how `treats` in a lede gets caught.
+
+  **`enText()` found a translation gap and it turned out not to be one.** It threw on
+  `PHA·LHA`. Audited across all four dictionaries rather than guessed: exactly **3**
+  catalogue strings are missing everywhere — `PHA·LHA`, `LHA` and `SPF50+ PA++++` — all
+  Hangul-free, all read the same in every language, `withHangul=0`. So `enText()` passes
+  a Hangul-free string through and throws only on a Hangul one, and a separate test
+  asserts nothing either page renders matches `/[가-힣]/`.
+
+  **The landing CTA did not move.** Measured at 360x800 with the guides line stashed and
+  again with it applied, `[data-primary-action="scan"]` is byte-identical: `x` **24**,
+  `y` **612.15625**, `width` **312**, `height` **74.5**. So are the header tagline
+  (**98.75 / 28 / 155.25 / 57**) and the hero callout. The page grows below the fold
+  only: `scrollHeight` **1309** → **1372**, DOM nodes **214** → **218**, and
+  `scrollWidth` stays **360** against a `clientWidth` of **360**. The guides line is one
+  new translated key (`"영문 가이드"`) added to all four dictionaries — en **913** → **914**,
+  ja **909** → **910**, zh **909** → **910**, ar **913** → **914** — and no existing
+  string's content was touched. The two link labels are the guides' own English
+  headings, so they need no dictionary; `tests/guides.test.ts` reads `app/page.tsx` and
+  asserts both paths and both headings against `GUIDES`, which is what catches a rename.
+
+  **Bug fix — `public/offline.html` was indexable, and by construction nothing could
+  have found it.** It answers **200** with a `<title>` (`smoke`'s own route checks
+  already fetch it), it carried no `robots` meta —
+  `git show c90864a:public/offline.html | grep -c "robots\|noindex"` gives **0** — and it
+  has no `SEO_ROUTES` entry. The route-table guard that would
+  catch exactly this, `appRoutes()` in `tests/seo-metadata.test.ts`, walks `app/`, so a
+  static page under `public/` was outside its reach from the day it was written. It is
+  discoverable: `/offline.html` is a string literal at **2** places in `public/sw.js`
+  (lines **34** and **55**), which `robots.txt` allows a crawler to fetch. Fixed with the
+  tag, and the guard generalised — the new sweep reads every
+  `.html` under `public/` recursively (today that is **1** file, asserted by name so the
+  sweep cannot pass by sweeping nothing) and requires `noindex, nofollow` on each.
+
+  **ML — skipped deliberately.** Nothing in the scan pipeline is trivially advanceable
+  from an acquisition cycle, and `python3 ml/selftest.py` was run to confirm it stays
+  green rather than to claim progress: **Ran 146 tests ... OK**, unchanged.
+
+  **Research — Google's own doorway-page and helpful-content guidance is NOT reachable
+  from this container, and that is recorded rather than worked around.** Every canonical
+  host refuses. Verbatim:
+
+  ```
+  --- https://developers.google.com/search/docs/essentials/spam-policies
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://developers.google.com/search/docs/fundamentals/creating-helpful-content
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://support.google.com/webmasters/answer/66356
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://static.googleusercontent.com/media/guidelines.raterhub.com/en//searchqualityevaluatorguidelines.pdf
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://google.github.io/styleguide/
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  ```
+
+  Nor is the Search Central source on GitHub, which the brief asked to try:
+  `google/search-central`, `google/search-central-docs`, `google/googlesearchcentral` and
+  `googlesearchcentral/googlesearchcentral.github.io` all answer `http=404 bytes=14` on
+  `raw.githubusercontent.com`, while `google/robotstxt` on the same host answers
+  `http=200 bytes=5282` — so the host works and the repository does not exist.
+  `api.github.com` cannot be used to search for it: this session is repo-scoped and
+  `search/repositories` returns `http=403` with `"This GitHub API path is not available:
+  sessions are bound to their configured repositories."` A blobless shallow clone of
+  `GoogleChrome/web.dev` (**3987** paths in `HEAD`) contains **0** files matching
+  `doorway` or `helpful-content`.
+
+  **What IS reachable is Google-authored and machine-checkable, so the two pages were
+  checked against it in writing.** Three files, all `http=200`:
+
+  - `https://raw.githubusercontent.com/GoogleChrome/lighthouse/main/core/audits/seo/crawlable-anchors.js`
+    — **4570** bytes, sha256
+    `4a4f84375cbc2d3514bb8dff41d768bbc43f039e0e40a02547e97d6b3128beed`.
+    Quote: *"Search engines may use `href` attributes on links to crawl websites. Ensure
+    that the `href` attribute of anchor elements links to an appropriate destination, so
+    more pages of the site can be discovered."* Checked: **4** of **4** anchors on each
+    guide page have an `href`, and one of the four on each is the other guide, so both
+    pages are discoverable from either.
+  - `https://raw.githubusercontent.com/GoogleChrome/lighthouse/main/core/audits/seo/is-crawlable.js`
+    — **8119** bytes, sha256
+    `a3da720c762c2955a1d1468a4bcd007a9c61cf0f5635194277721b214deabf89`.
+    Quote: *"Search engines are unable to include your pages in search results if they
+    don't have permission to crawl them."* Checked: both pages serve
+    `<meta name="robots" content="index, follow">`, `robots.txt` disallows only `/api/`,
+    and both canonicals are absolute on the shipped origin.
+  - `https://raw.githubusercontent.com/GoogleChrome/web.dev/main/src/site/content/en/discoverable/pass-lighthouse-seo-audit/index.md`
+    — **2163** bytes, sha256
+    `431d7b32d69c7f72b9b00f509a7ee449a0d2faa76ee8f3120ca93ddf475da4af`.
+    Quotes: *"If a search engine has trouble seeing your page, you're possibly missing
+    out on traffic sources"* and *"Bottom line: make great content for the people you
+    want to attract."* Checked against the first: the body is in the served HTML, **586**
+    and **495** words with scripts off, which is what the E2E spec asserts rather than
+    asserting a DOM after hydration.
+
+  **What this research does NOT establish.** Google's actual doorway-page policy wording
+  was not read, so no sentence here quotes it, and nothing below claims these pages
+  comply with a policy this cycle could not fetch. What the cycle did instead is make the
+  doorway failure mode measurable on its own terms and refuse it structurally: the two
+  pages differ in both axes, each carries per-page content drawn from different SKUs, no
+  third page may be added before the kill criterion is read (Backlog > Now), and there is
+  no external destination for a doorway to funnel to.
+
+  **Docs and rotation.** The experiment is written down in Backlog > Now with its
+  hypothesis, the owner action it waits on (submit the sitemap — already a cycle 39
+  blocker), the metric (Search Console impressions for the two URLs) and the kill
+  criterion (0 impressions 4 weeks after submission → delete both pages and the whole
+  footprint, which is one commit). Recent cycles holds 46/45/44; cycle 43's **216** lines
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 42.
+  `docs/AUTOPILOT.md` **2130** → **1913** lines by the move alone (**2189** once this
+  entry, the backlog item and the BLOCKERS update are in), and
+  `docs/autopilot-changelog.md` **9439** → **9656**
+  (+**217** including the separating blank line). The proof is not an assertion: `sort -u`
+  over both files at `c90864a` gives **10011** unique lines, `sort -u` over the new pair
+  gives **10246**, and `comm -23` of the first against the second drops **0** lines. The
+  moved text is byte-identical, not merely present: the **216** lines extracted from
+  `c90864a` and the last **216** lines of the new changelog both sha256 to
+  `4bdff9cc7a4f84d843c7efcda5fcca5e7a7c6dc48122728857ee6336915dde63`, and `diff` between
+  them is empty. No backlog
+  item was ticked `[x]`, so nothing moved to "Closed backlog items".
+
+  **Broken here, five ways, on the committed tree.** `tests/guides.test.ts` +
+  `tests/seo-metadata.test.ts` give **70 passed**; `tests/e2e/guide-pages.regression-33.spec.ts`
+  gives **9 passed**.
+  - A banned English term in an authored lede (`treats oily skin fastest`): **3 failed |
+    67 passed**.
+  - The toner guide dropped from `SEO_ROUTES`: **5 failed | 63 passed** (of 68 — the
+    per-route cases go with it).
+  - The `noindex` tag removed from `public/offline.html`, the failure path of this
+    cycle's bug fix: **1 failed | 69 passed**.
+  - A guide's `h1` renamed without touching the landing link: **2 failed | 68 passed**.
+  - The toner page turned into a client component that renders its body in a
+    `useEffect`, which is the exact failure the pages exist to avoid: **2 failed | 7
+    passed** on the E2E spec, both failures on the JavaScript-disabled cases.
+
+  **Validation on this tree, worker:** `npx vitest run` **Test Files 114 passed (114) /
+  Tests 1046 passed (1046)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .`
+  **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 1.684s ... OK**.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` **264 passed (7.3m)** and
+  `Smoke test passed.`
+
+  **The first smoke run was red and the re-run was earned, not assumed.** It ended
+  **44 failed | 220 passed (8.8m)**. Of the 44, **43** were
+  `page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3102/…` — the dev server
+  died partway and every spec after it failed on the socket, which is runner loss and not
+  a test result. The **1** real assertion was
+  `rtl-logical-inset.regression-19 › /privacy's buttons still read from the left in LTR`,
+  waiting 5000ms for `html[dir="ltr"]` and getting `null` on the page's `<html lang="en"
+  class="h-full antialiased">`. That spec covers `/privacy`, which this cycle does not
+  touch, and it was checked rather than waved away: run alone on the same tree it gives
+  **6 passed**, including both cases that failed. Disk and memory were not the cause
+  (**29G** available, **13822** MB free). One re-run, the only one, gave the green above,
+  and the guide specs and the two new discovery cases are inside its **264**.
+
+  **Supervisor review.** Sound, and no correction needed. The first cycle aimed at
+  acquisition rather than defects, built so it can be killed.
+
+  *Predicted by reading, before the branch existed:* `efficacyClean()` is a KOREAN list
+  (`lib/recommend.ts:96-116`). If English guide copy were tested with it alone, the test
+  would be vacuous. It was not: `tests/guides.test.ts` runs every authored sentence
+  through `BANNED_BY_LANG.en` as well. The only hits are `Soothing`/`soothing`, pinned to
+  catalogue text that already ships on `/report` and `/care`.
+
+  *Broken here, two ways, on the committed tree.*
+  - Adding `"This serum visibly improves uneven texture."` to the serum guide's lede:
+    **2 failed | 24 passed** on `tests/guides.test.ts`.
+  - Dropping `/guide/toner-for-oily-skin` from `SEO_ROUTES`: five named failures across
+    `tests/guides.test.ts` and `tests/seo-metadata.test.ts`, including "registers both
+    guides as indexable with their own title and description".
+  Both edits were reverted.
+
+  *Checked here: no efficacy verbs outside the lists either.* The one-off test was not
+  committed. It counted, in each guide's full serialised data, the words the two lists
+  do NOT cover (reduce, control, minimise, prevent, fade, brighten, firm, clear, calm,
+  repair, protect) plus concern nouns:
+  - serum: `{"sebum":6,"pores":13,"barrier":4,"pore":1}`.
+  - toner: `{"pores":11,"barrier":5,"sebum":2}`.
+  Only nouns naming a concern appear, never a verb claiming to change it. That gap in
+  the lists is recorded as a finding.
+
+  *The bug fix is real.* `public/offline.html` answered 200 with a title and no robots
+  tag, and `/sw.js` names it. It is now `noindex, nofollow`.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
+  / Tests 1046 passed (1046)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `c90864a` drops
+  **0** lines. Recent cycles holds 46/45/44, and cycle 43 sits after cycle 42 at the end
+  of the changelog. `npm run smoke` gave
+  **264 passed (10.4m)** and `Smoke test passed.`

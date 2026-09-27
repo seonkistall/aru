@@ -1,4 +1,15 @@
-const SHELL_CACHE = "aru-shell-v1";
+// The suffix is the first 8 hex digits of sha256(public/offline.html), and
+// `tests/service-worker.test.ts` recomputes it rather than storing it. That is the whole
+// refresh mechanism, and it is here because this cache had none: `install` adds
+// `/offline.html` once and only re-runs when the worker's OWN bytes change, so an edit to
+// `public/offline.html` never reached a returning visitor (measured cycle 44, left alone
+// then because the page carried no build-dependent content — this cycle edits it, so it
+// does now). Renaming the cache is what cycle 45 rejected for MEDIAPIPE_CACHE, and for a
+// reason that does not apply here: that one holds 15234257 bytes a warm visitor would
+// re-download, this one holds one 3066-byte file. Changing this constant is itself a
+// change to the worker's bytes, so it re-runs `install`, and `activate` already deletes
+// every cache not in ACTIVE_CACHES, which drops the old one.
+const SHELL_CACHE = "aru-shell-2adcc808";
 const MEDIAPIPE_CACHE = "aru-mediapipe-v1";
 const ACTIVE_CACHES = new Set([SHELL_CACHE, MEDIAPIPE_CACHE]);
 

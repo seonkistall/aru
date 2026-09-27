@@ -22,10 +22,25 @@
   --stroke: #1a1a1a;       /* hand-drawn black strokes (SVG) */
   --line: #dcdcdc;         /* quiet structure (recedes) */
   /* annotation colors — restrained, prefer less */
-  --plum: #e0382c;         /* RED: key / problem / result (name kept for compat) */
+  /* Darkened from #e0382c, which is 4.401:1 on white — under the 4.5:1 WCAG 2.2 AA
+     floor (SC 1.4.3) by 0.099, in BOTH directions, because contrast is symmetric. It is
+     the primary CTA colour, so that miss reached the whole conversion path: the /scan and
+     /survey submit buttons (white on red), the "올리브영에서 제품 보기" buy buttons on
+     /report, the ingredient names, the rank badges and the required-field asterisks —
+     66 failing text nodes across 12 screen x locale pairs, measured, of which 60 were
+     this colour. #d9362b is 4.653:1, the least darkening (97% of each channel) that
+     clears 4.5 with at least 0.1 of margin. --plum-press stays darker at 5.662:1. */
+  --plum: #d9362b;         /* RED: key / problem / result (name kept for compat) */
   --plum-press: #c22e23;
   --plum-soft: #fbe6e4;
-  --orange: #ef8a1f;       /* flow / arrows / A→B */
+  /* Darkened from #ef8a1f, which is 2.522:1 on white against the 3:1 large-text floor
+     (SC 1.4.3, large scale = 18pt/24px or 14pt bold). Exactly one of the 15
+     `var(--orange)` uses in app/*.tsx is text a reader has to read — the 26px step
+     numerals in `HowCard` (app/page.tsx:171) — and it failed at 2.522:1 on all three;
+     the other 14 are 11 SVG `stroke=` attributes and 3 aria-hidden `→` glyphs, which
+     carry no text contrast requirement and only get slightly darker. #d57b1c is 3.144:1,
+     the least darkening (89% of each channel) that clears 3 with at least 0.1 of margin. */
+  --orange: #d57b1c;       /* flow / arrows / A→B */
   --blue: #2f6de0;         /* AI / system / 2nd-layer notes */
   --bronze: #767676;       /* labels = quiet */
   --rose: #f5f5f5;

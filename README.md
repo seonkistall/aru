@@ -513,6 +513,41 @@ used externally as if they proved purchases, efficacy or failure prevention.
   ROI rectangle on a photograph of a face; mirroring them under `ar` would move a
   label to the wrong cheek.
 
+### Accessibility
+
+Audited for the first time in cycle 49, at 360x800 on a production build, `en` and `ko`,
+over the conversion path (`/`, `/scan` intro and ready, `/survey`, `/report` picks,
+`/care`) — 12 screen x locale pairs. What holds today, measured rather than asserted:
+
+- **Accessible names.** 186 visible interactive controls, 0 without an accessible name.
+  0 of 68 visible `img`/`svg` elements reach the accessibility tree unnamed. The path
+  holds only 6 `input`/`select`/`textarea` controls (the `/scan` consent checkboxes) and
+  all 6 are labelled — a thin result, reported as one.
+- **Keyboard focus.** 164 Tab stops, every one with a visible indicator.
+- **Text contrast (WCAG 2.2 SC 1.4.3, level AA).** Body and CTA text clears 4.5:1, and
+  text at 24px or 18.66px bold clears 3:1. This is what moved two shipped tokens:
+  `--plum` was `#e0382c` at 4.401:1 and is now `#d9362b` at 4.653:1; `--orange` was
+  `#ef8a1f` at 2.522:1 against the large-text floor and is now `#d57b1c` at 3.144:1. A
+  new colour on text has to clear its floor, and
+  `tests/e2e/conversion-path-accessibility.spec.ts` computes the ratio from the colours
+  the browser resolves, not from the hex literals.
+- **Target size.** `--tap-min: 44px` is the repo's contract and it is **WCAG 2.5.5, level
+  AAA** — stricter than the AA floor, which is 2.5.8's 24x24 with Spacing, Equivalent,
+  Inline, User Agent Control and Essential exceptions. A control under 44px is therefore
+  not automatically a WCAG failure, and two of the three found under it were correctly
+  left alone: the `/guide/` links on `/` are inline in a sentence, and the `/scan` consent
+  checkboxes are 18x18 inputs inside 290x57.2 labels, which is the real target.
+  Provenance for every threshold above, with the normative quotes and fetch hashes:
+  [docs/contrast-provenance.md](docs/contrast-provenance.md) and
+  [docs/tap-target-provenance.md](docs/tap-target-provenance.md).
+
+Not yet established, and not to be read as passing: `ja`/`zh`/`ar` were not audited (the
+contrast result is a property of tokens and carries over; wrapped geometry does not), no
+screen reader was run, and zoom, `prefers-reduced-motion` and SC 1.4.11 Non-text Contrast
+for the SVG line art are untested. `/report`'s other two steps, `/checkin`, `/studio`,
+`/privacy` and the two guide pages have not been audited at all. Open items are in
+`docs/AUTOPILOT.md`.
+
 ## Repository layout
 
 ```text

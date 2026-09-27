@@ -21,7 +21,7 @@
       .mark { width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 50%; display: grid; place-items: center; background: #1a1a1a; color: #fff; font-weight: 800; letter-spacing: .04em; }
       h1 { margin: 0 0 10px; font-size: 24px; line-height: 1.25; }
       p { margin: 0; color: #3d3d3d; font-size: 14px; line-height: 1.6; }
-      button { width: 100%; min-height: 48px; margin-top: 22px; border: 0; border-radius: 9px; background: #e0382c; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+      button { width: 100%; min-height: 48px; margin-top: 22px; border: 0; border-radius: 9px; background: #d9362b; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
       small { display: block; margin-top: 14px; color: #6e6e6e; line-height: 1.5; }
     </style>
   </head>
@@ -31,7 +31,14 @@
       <h1>지금은 연결할 수 없어요</h1>
       <p>처음 스캔하거나 새 추천을 만들려면 네트워크 연결이 필요해요. 연결을 확인한 뒤 다시 시도해 주세요.</p>
       <button type="button" onclick="location.reload()">다시 시도</button>
-      <small>ARU needs a connection for first use. Check your network and try again.</small>
+      <!-- `lang="en"` on this line and not on <html>: the page is Korean with one
+           English sentence, and a single document language made a screen reader read
+           the English with Korean pronunciation rules (WCAG 3.1.2 Language of Parts).
+           What this does NOT fix, and it is recorded rather than papered over: a ja/zh/ar
+           visitor still gets Korean plus this line. The page is a static file with no
+           dictionary and no build step, so serving it in five languages means five
+           copies of the copy inside it — a bigger change than the mismatch justifies. -->
+      <small lang="en">ARU needs a connection for first use. Check your network and try again.</small>
     </main>
   </body>
 </html>

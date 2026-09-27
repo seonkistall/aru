@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { recordFunnelEvent, recordPageView } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
-import type { ScanReads, Survey as SurveyT } from "@/lib/recommend";
+import { shouldApplyScan, type ScanReads, type Survey as SurveyT } from "@/lib/recommend";
 import { t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
 import { isScanReads } from "@/lib/last-result";
@@ -42,7 +42,11 @@ function loadScanHint(): ScanHint {
     // about a photo with no data behind it.
     if (!isScanReads(parsed)) return null;
     const scan: ScanReads = parsed;
-    if (!scan || scan.retakeRecommended || (scan.confidence ?? 0) < 0.58) {
+    // `shouldApplyScan` from lib/recommend.ts, not a second copy of its condition: this
+    // hint promises what /report will do with the same reading, and a local copy had
+    // already drifted (`?? 0` here against `?? 0.7` there), so a confidence-less reading
+    // was called unusable here and used there. One function, one verdict.
+    if (!shouldApplyScan(scan)) {
       return { concerns: [], text: t("촬영 조건이 충분하지 않아 사진은 참고만 할게요. 설문 답변을 중심으로 정리해요.") };
     }
     const concerns: Concern[] = [];
@@ -209,7 +213,16 @@ function Chips<T extends string>({ options, selected, onPick }: { options: T[]; 
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bronze)", fontWeight: 700 };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 28, color: "var(--ink)", margin: "6px 0 12px" };
 const scanHintStyle: React.CSSProperties = { fontSize: 13.5, color: "var(--ink-soft)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "11px 12px", lineHeight: 1.5, marginBottom: 22 };
-const retakeLinkStyle: React.CSSProperties = { display: "inline-block", marginTop: 6, fontSize: 12.5, color: "var(--text-muted)", textDecoration: "underline" };
+// 18.8px tall before `--tap-min`, measured at 360x800 on a production build, and it is
+// the one control on the conversion path that misses the repo's own target contract. It
+// does NOT fail WCAG 2.2 AA: SC 2.5.8's floor is 24x24 with a Spacing exception, and the
+// nearest other target's distance from a 24px circle centred on this link is 72.9px, so
+// the exception applies. It fails `--tap-min: 44px`, which is SC 2.5.5 (AAA) and this
+// repo's standard everywhere else — and unlike the two guide links on `/`, this one has
+// no sentence around it to fall under the Inline exception either (its parent div has no
+// text of its own). `inline-flex` + `align-items` rather than padding so the underline
+// still hugs the text.
+const retakeLinkStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", minHeight: "var(--tap-min)", marginTop: 6, fontSize: 12.5, color: "var(--text-muted)", textDecoration: "underline" };
 
 function chipStyle(on: boolean): React.CSSProperties {
   return {
