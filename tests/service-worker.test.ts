@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,10 +13,35 @@ describe("safe ARU service worker", () => {
     expect(existsSync(offlinePath)).toBe(true);
 
     const worker = readFileSync(workerPath, "utf8");
-    expect(worker).toContain('const SHELL_CACHE = "aru-shell-v1"');
     expect(worker).toContain('const MEDIAPIPE_CACHE = "aru-mediapipe-v1"');
     expect(worker).toContain('cache.add("/offline.html")');
     expect(worker).toContain("caches.delete");
+  });
+
+  // `install` adds /offline.html once and only re-runs when the worker's own bytes change,
+  // so before this pairing an edit to public/offline.html never reached a returning
+  // visitor: the cached copy answered every navigation failure forever. The suffix of
+  // SHELL_CACHE is the first 8 hex digits of sha256(public/offline.html), recomputed here
+  // rather than stored, so editing that file fails this test until the constant moves —
+  // and moving the constant is itself the worker-bytes change that re-runs `install`,
+  // while `activate` drops the cache the old name owned.
+  it("names the shell cache after the offline page it holds, so an edit to it ships", () => {
+    const offline = readFileSync(resolve(root, "public/offline.html"));
+    const expected = `aru-shell-${createHash("sha256").update(offline).digest("hex").slice(0, 8)}`;
+    const worker = readFileSync(resolve(root, "public/sw.js"), "utf8");
+    const declared = /const SHELL_CACHE = "([^"]+)"/.exec(worker)?.[1];
+    expect(declared).toBe(expected);
+    // The cache the name belongs to must be the one `activate` keeps, or the rename would
+    // drop the entry it just filled on every start.
+    expect(worker).toContain("const ACTIVE_CACHES = new Set([SHELL_CACHE, MEDIAPIPE_CACHE])");
+  });
+
+  // The page is Korean with one English sentence. A single document language made a
+  // screen reader read that sentence with Korean pronunciation rules (WCAG 3.1.2).
+  it("marks the offline page's English line as English", () => {
+    const offline = readFileSync(resolve(root, "public/offline.html"), "utf8");
+    expect(offline).toContain('<html lang="ko">');
+    expect(offline).toMatch(/<small lang="en">ARU needs a connection/);
   });
 
   it("falls back for navigation but caches only same-origin MediaPipe assets", () => {

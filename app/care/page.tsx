@@ -6,7 +6,7 @@ import { careSummary, clinicLinks, productSearchLinks, type CareLink } from "@/l
 import { isSurvey, recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { useFunnelPageView } from "@/app/use-funnel-page-view";
-import { isScanReads, loadLastResult } from "@/lib/last-result";
+import { isScanReads, isSkinReads, loadLastResult } from "@/lib/last-result";
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -57,7 +57,16 @@ function loadCareView(): CareView | null {
   } catch {}
   try {
     const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
-    if (readsRaw) reads = JSON.parse(readsRaw);
+    // The third read of the same store, and the only one that had no guard. It is
+    // harmless TODAY only because `careSummary` ignores its `_reads` argument
+    // (`lib/care.ts:70`) — so the moment anything on /care renders a read field, a
+    // wrong-shaped value is the cycle-33 defect again, on the screen that carries the
+    // commerce links. Guarded now rather than when that happens, with the same
+    // structural check /report and /studio use.
+    if (readsRaw) {
+      const parsedReads: unknown = JSON.parse(readsRaw);
+      if (isSkinReads(parsedReads)) reads = parsedReads;
+    }
   } catch {}
 
   return { survey, reads, result: recommend(survey, scan) };

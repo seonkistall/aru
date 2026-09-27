@@ -164,7 +164,12 @@ const OLD_WASM = `/vendor/mediapipe/${OLD_VERSION}/wasm/vision_wasm_internal.js`
 const LEGACY_WASM = "/vendor/mediapipe/wasm/vision_wasm_internal.js";
 const MODEL = "/vendor/mediapipe/face_landmarker.task";
 const MP_CACHE = "aru-mediapipe-v1";
-const SHELL_CACHE = "aru-shell-v1";
+// Read out of the worker, not restated: the shell cache's name now carries a hash of
+// `public/offline.html` so that an edit to that file actually reaches a returning visitor
+// (`tests/service-worker.test.ts` is what holds the two together). A literal here would
+// have to be re-typed on every edit to the offline page, and this harness does not care
+// what the cache is called — only that it is the one the worker fills.
+const SHELL_CACHE = /const SHELL_CACHE = "([^"]+)"/.exec(SOURCE)![1];
 
 describe("the MediaPipe cache against a new deploy", () => {
   let h: Harness;

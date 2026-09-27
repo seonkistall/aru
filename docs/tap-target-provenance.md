@@ -83,3 +83,22 @@ rather than leaving them at the line box: they are not text-flow targets.
 - It does not argue that `44` should move. Nothing here proposes a change; the value is
   correct against the AAA criterion and stays put. This doc exists so that the number has
   a source the next cycle can see, not to reopen it.
+
+## Re-fetched 2026-09-27 (cycle 49)
+
+The first accessibility pass over the conversion path needed these same two criteria, so
+`guidelines/sc/22/target-size-minimum.html` was fetched again rather than quoted from this
+doc. It came back `http=200`, **1737 bytes**, sha256
+`b5cd439141c3771e69cd20596f6fbda5fadfe28967f8783559066a435a62b123` — **byte-identical to
+the row recorded above**, five days later. The citation is live, not stale.
+
+Cycle 49 also had to apply the 44-vs-24 distinction this doc drew, and it changed one
+verdict. `/survey`'s "카메라로 다시 살펴보기" link measured **18.8px** tall at 360x800 on a
+production build. It misses `--tap-min` and was raised to it — but it does **not** fail
+2.5.8, because the nearest other target is **72.9px** from a 24px-diameter circle centred
+on its bounding box, so the **Spacing** exception applies. The two `/guide/` links on `/`
+(**15px** and **38.4px** tall) were measured, found to be `display: inline` inside a `<p>`
+carrying its own text ("영문 가이드:" and "·"), and left alone under the **Inline**
+exception quoted above — the same clause, reaching the opposite answer from the `/checkin`
+links, and for the reason the clause states. The contrast half of that pass has its own
+provenance in [`contrast-provenance.md`](contrast-provenance.md).
