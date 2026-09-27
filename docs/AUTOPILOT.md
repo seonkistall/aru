@@ -1752,7 +1752,45 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   reporting no diff and no untracked file. So the gating run is the code that ships; the
   only edits after it are this validation block and the line count above.
 
-  *Supervisor review:* pending.
+  **Supervisor review.** Sound, and no correction needed. There is one note on the doc
+  rotation and one tooling note.
+
+  *Predicted by reading, before the branch existed:* existing English copy already says
+  "reduce": `lib/i18n/en.ts:52` and `:254` (camera glare tips) and `:353` (a routine
+  line). Adding the verb could have sent that copy to fallback. It cannot, because the
+  filters only run on reason paths: `app/api/reason/route.ts:81`,
+  `app/api/analyze/route.ts:89`, and `lib/recommend.ts:217` and `:415` (grep of every
+  `reasonClean(`/`efficacyClean(` call). Routine lines and camera tips never pass
+  through them.
+
+  *Broken here, four ways, on the committed tree.*
+  - Dropping `"감소"` from `BANNED`: **1 failed | 11 passed** on
+    `tests/claim-filter.test.ts`.
+  - Narrowing `en` to bare `reduce` with no inflections: **1 failed | 11 passed**.
+  - Removing `dir="ltr"` from the guide root while keeping `lang`: **6 failed | 2
+    passed** on `guide-ltr-in-rtl-chrome.regression-34.spec.ts`.
+  - Removing the `[data-guide-root] { --font-display: ... }` rule: **4 failed | 4
+    passed**.
+  Clean is **12 passed** and **8 passed**.
+
+  *Tooling note: a stale dev cache produced a false red.* One clean run of
+  regression-34 gave **4 failed | 4 passed**, with the h1 still in `"Nanum Pen Script"`
+  under `ko`. After `rm -rf .next` the same tree gave **8 passed**. The dev server
+  had served an older `app/globals.css` out of its cache. A red run of an e2e spec that
+  depends on a CSS change should be re-checked on a cleared `.next` before it is
+  believed, and the same holds the other way before a green one is trusted.
+
+  *Rotation note.* The comm check drops **10** lines, all of them the claim-verb
+  finding's original wording, which the worker rewrote in place into its actioned form
+  instead of ticking and appending. Nothing substantive is lost: the finding's text is
+  in the cycle 46 review and in git history (`ac9688d:docs/AUTOPILOT.md`). Future
+  cycles should tick and append instead.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
+  / Tests 1050 passed (1050)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. Recent cycles holds 47/46/45, and cycle 44
+  sits after cycle 43 at the end of the changelog. `npm run smoke` gave
+  **272 passed (9.2m)** and `Smoke test passed.`
 
 - 2026-09-27 (cycle 46) — Branch `autopilot/2026-09-27-0039`. **ARU has two indexable
   pages that a searcher can land on and be handed into the product, built from the
