@@ -5,16 +5,35 @@ import { t } from "@/lib/i18n/core";
 
 export type CardRead = { label: string; value: string; calm?: boolean };
 
-// The branded 9:16 skin-mood card. Shared by /studio (editable) and the scan
-// result screen (one-tap share) so the shareable image has a single source of
-// truth. Rendered off-screen when only used to rasterize.
+// The branded skin-mood card, and the only image this product puts into a chat.
+//
+// `/studio` is its ONLY renderer. This comment used to also claim the scan result screen,
+// which it does not: `shareResultCard()` in app/scan/page.tsx copies a `moodShareUrl()`
+// deep link to the clipboard and never touches this component (grep for `ShareCard` finds
+// app/studio/page.tsx and this file). Worth being exact about, because the two paths give
+// a recipient completely different things — a link that opens the app, or a PNG.
+//
+// What the PNG actually carries, measured at a 360x800 viewport on all five locales:
+// the box rasterizes at 320x640 (the `width: 360` below is capped by `maxWidth: "100%"`
+// inside the page's padding), with 0 horizontal and 0 vertical overflow and no clipped
+// text in any locale. It draws NO url, domain or handle — `t("아루")` ("ARU" outside `ko`)
+// is the only thing on the image a recipient could search for. `shareUrl` reaches the
+// share SHEET, not the image, so a downloaded card has no way back to the product at all.
+// That is an owner decision, not a defect to patch here; it is written down so the next
+// reader does not have to re-measure it.
+//
+// Rendered off-screen when only used to rasterize.
 export const ShareCard = forwardRef<HTMLDivElement, { headline: string; reads: CardRead[] }>(
   function ShareCard({ headline, reads }, ref) {
     return (
       <div ref={ref} style={cardPreview}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--ink)" }}>{t("아루")}</span>
-          <span style={miniLabel}>skin mood</span>
+          {/* The one string on the card that never localizes: a bare literal, not a `t()`
+            key, so it renders as English in all five locales including `ar` (dir=rtl).
+            Left as-is deliberately — it reads as part of the mark rather than as copy —
+            and recorded so it is a decision rather than an oversight. */}
+        <span style={miniLabel}>skin mood</span>
         </div>
         <h2 style={cardHeadline}>{t(headline)}</h2>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>{t("오늘의 피부 특징을 간단히 정리했어요.")}</p>

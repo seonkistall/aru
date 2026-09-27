@@ -13,6 +13,16 @@ const eslintConfig = defineConfig([
     "build/**",
     "public/vendor/**",
     "next-env.d.ts",
+    // Playwright's failure artifacts, which are gitignored (.gitignore) but were not
+    // ignored here. `trace: "retain-on-failure"` writes the app's own compiled JS into
+    // `test-results/**/traces/resources/`, so one failing e2e run left 6366 files that
+    // `npm run lint` then walked: `0 errors, 2 warnings` on a fresh clone became
+    // `215 errors, 4020 warnings`. Because `npm run smoke` runs `lint` FIRST, that made
+    // the gate red at step 1 over a previous run's leftovers, pointing every reader at
+    // code that is not the app's. A fresh clone has neither directory, which is why this
+    // never showed up in CI.
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 
