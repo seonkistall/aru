@@ -10743,3 +10743,241 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   ml/selftest.py` **Ran 146 tests ... OK**. Recent cycles holds 47/46/45, and cycle 44
   sits after cycle 43 at the end of the changelog. `npm run smoke` gave
   **272 passed (9.2m)** and `Smoke test passed.`
+
+- 2026-09-27 (cycle 48) — Branch `autopilot/2026-09-27-1239`. **The gate that decides
+  every push could report a result for a tree it never loaded, and it was proved in the
+  dangerous direction: with the `[data-guide-root]` rule deleted from `app/globals.css`,
+  `guide-ltr-in-rtl-chrome.regression-34` read `8 passed` — a FALSE GREEN — because
+  `playwright.mobile.config.ts` set `reuseExistingServer: true` and Playwright handed the
+  whole run to a dev server warmed on the previous revision. The true result on that tree
+  is `4 failed | 4 passed`. A second, independent hole: `npm run lint` is the gate's FIRST
+  step and it walked Playwright's own failure artifacts, so one earlier failing e2e run
+  turned `0 errors, 2 warnings` into `215 errors, 4020 warnings` over 6366 files of
+  captured trace JS. Both are fixed and both breaks now break. The share-card audit found
+  no rendering defect in any of the five locales and one pre-existing claim-list
+  asymmetry that reaches a shipped headline.**
+
+  **Baselines, re-measured here on `ab3941e`.** `node_modules` was absent, so `npm ci`
+  first (exit **0**). `npx vitest run` **Test Files 114 passed (114) / Tests 1050 passed
+  (1050)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 146 tests in 1.999s ... OK**. All four match the supervisor's.
+
+  **Measurement first: what the cold start actually costs, so the timeout was not bumped
+  on a hunch.** `playwright.mobile.config.ts`'s webServer is `npm run dev`
+  (Next **16.2.9**, Turbopack) with `timeout: 120_000`. Time from spawn to the first 200
+  on `/`, three cold runs with `.next` removed each time: **4930** / **5247** / **6072**
+  ms, against **1958** ms on a warm cache. So the timeout carries about **19.8x** headroom
+  over the slowest cold start observed, and **the 120 s timeouts in cycles 40 / 41 / 45
+  were never a shortage of headroom** — `timeout` is left at **120_000** deliberately.
+  Raising it would only have made the real failure slower to surface. The persistent dev
+  cache lives at `.next/dev` — `find .next -maxdepth 1 -type d` after a cold dev start
+  lists `.next` and `.next/dev` and no other directory — and `.next/` is gitignored
+  (`.gitignore:17`), so it survives branch checkouts and container restarts.
+
+  **What the real cause is, reproduced on purpose, in both directions.**
+  - *False green.* `.next` cleared, good CSS, one clean run to warm a dev server on 3102
+    (**8 passed**). That server left alive, then line **127** of `app/globals.css` deleted
+    (`grep -c "data-guide-root] { --font-display"` → **0**). Playwright reused the running
+    server: **8 passed**. On the same tree with the port free the answer is **4 failed | 4
+    passed**. A gate cannot be trusted that reports green for a deleted rule.
+  - *Indefinite hang.* A socket that accepts the connection and never replies, put on
+    3102. The old config hung with no verdict and no `next dev` ever spawned — killed by
+    hand at **468 s**, i.e. it never reached its own `120_000` ms timeout at all.
+  - *Not the cause.* A warm on-disk `.next/dev` from a STOPPED server did not reproduce
+    anything: good CSS warmed, server stopped, rule deleted, cache kept — **4 failed | 4
+    passed**, the true answer. The on-disk cache alone never produced a wrong result here.
+    It is cleared anyway, because it is the one remaining unknown and the cost is bounded
+    by the numbers above, but the honest attribution is server reuse.
+  - *Corroboration, not just this container.* `docs/autopilot-changelog.md` already
+    diagnosed the orphan-server half twice and fixed neither: "attached to that dead
+    server and timed out on `config.webServer`", and a run that read **117 failed | 123
+    passed** with **0** of the failures a product defect.
+
+  **The fix.** `reuseExistingServer` becomes `process.env.ARU_REUSE_DEV_SERVER === "1"` —
+  off by default, so the deterministic path is the default for a single-spec run too,
+  which is exactly where cycle 47's false red came from. The dev-cache clear is the first
+  link of `webServer.command` (`node scripts/clear-dev-cache.mjs && npm run dev ...`),
+  cross-platform through the shell Playwright already uses, and it removes `.next/dev`
+  only — never the parent, because `npm run smoke` runs the e2e suite BEFORE `next build`
+  and the `next start` at the end of the same run serves the production output from
+  `.next`. The same two changes land in `playwright.ios.config.ts`, which had the
+  identical `reuseExistingServer: true`; that suite is not in the gate and could not be
+  run here (**no webkit on disk** under `/opt/pw-browsers`), so it is a compile-checked
+  change only.
+
+  **A bug in the first version of the fix, found by breaking it rather than by reading.**
+  The clear started as a module-level `rmSync` in the config. Playwright re-imports the
+  config in every worker, so it fired again while the runner's dev server was live and
+  deleted the cache underneath it: Turbopack logged `Persisting failed: Another write
+  batch or compaction is already active` and regression-34 went **8 passed → 8 failed on a
+  clean tree**. That is why the clear is a script invoked once by the command, and the
+  reason is written into `scripts/clear-dev-cache.mjs` so it is not re-introduced.
+
+  **Proof the fix turns the false result into the true one, broken four ways.**
+  - Clean tree, port free: **8 passed (23.4s)**, no `Persisting failed`.
+  - Rule deleted, port free: **4 failed | 4 passed (27.9s)** — the true answer, where the
+    old config said **8 passed**.
+  - Rule deleted WITH the warmed leftover server still on 3102: `Error:
+    http://127.0.0.1:3102 is already used, make sure that nothing is running on the
+    port/url or set reuseExistingServer:true in config.webServer.` in **2 s**. The false
+    green is gone.
+  - The wedged socket: **still hangs.** `reuseExistingServer: false` does not bound
+    Playwright's own port-in-use probe, and `webServer.timeout` does not cover it. Stated
+    plainly rather than claimed fixed.
+
+  **So the gate closes that last hole itself.** `scripts/smoke-test.mjs` gains an
+  `assertPortFree()` preflight on `MOBILE_UI_PORT ?? 3102`, run after `test` and before
+  `test:mobile-ui`, using the `node:net` probe the script already had for its own port
+  search. With the wedged socket in place the gate now stops at **35 s** with
+  `Smoke test failed: port 3102 (test:mobile-ui) is already in use. A dev server from an
+  earlier run is probably still alive — ...` instead of hanging without a verdict. A
+  wedged `next dev` is precisely what this repo produces when a smoke run is killed
+  mid-suite, which the changelog records twice.
+
+  **Second defect, found while measuring the first: `npm run lint` graded the wrong
+  files.** `eslint.config.mjs` ignored `.next/**` but not `test-results/**`. With
+  `trace: "retain-on-failure"` a failing e2e run writes the app's own compiled JS into
+  `test-results/**/traces/resources/`, and `find test-results -type f | wc -l` gave
+  **6366**. `npx eslint .` over that tree: **4235 problems (215 errors, 4020 warnings)**,
+  with **16** of the flagged top-level paths under `test-results` and **1** under `lib`.
+  Because `smoke` runs `lint` first, the gate was red at step 1 over a previous run's
+  leftovers — a false RED, and one that points every reader at code that is not the app's.
+  A fresh clone has no such directory (`.gitignore:66` `/test-results/`,
+  `:67` `/playwright-report/`), which is why it never showed up in CI. After adding
+  `test-results/**` and `playwright-report/**` to `globalIgnores`, with all **6366** files
+  still on disk: **2 problems (0 errors, 2 warnings)**. Broken two ways: dropping
+  `test-results/**` restores **4235 problems (215 errors, 4020 warnings)**; dropping
+  `playwright-report/**` with one probe file in that directory gives **3 problems (0
+  errors, 3 warnings)** against **2** with it in place.
+
+  **UI/UX + growth — the share card.** Full numbers on the backlog item above. In short:
+  the card rasterizes at **320x640** at a 360x800 viewport, with **0** overflow and **0**
+  clipped text nodes in all five locales and Hangul only under `ko`; it draws **no** url,
+  domain or handle, so a downloaded PNG carries nothing back to the product but the word
+  `ARU` (`shareUrl` reaches the share sheet, not the image, and is left untouched as an
+  owner decision). `tests/share-card-claims.test.ts` now pins the closed set of **30**
+  strings the card can draw against both gates in all five locales: `efficacyClean()`
+  passes all of them, `BANNED_BY_LANG` is hit by exactly **1** — `오늘은 진정 루틴이
+  먼저예요`, which `en` translates onto `sooth` and `zh` onto 舒缓 while `ja` and `ar` are
+  clean — a LIST asymmetry, pre-existing, and the same shape as the cycle 46 review's
+  finding. **No translation string was changed.** One stale comment on the component was
+  corrected: it claimed the scan result screen shares the card, and that path copies a
+  deep link instead.
+
+  **Research — Playwright's `webServer` contract, primary source.**
+  `https://raw.githubusercontent.com/microsoft/playwright/v1.61.1/docs/src/test-api/class-testconfig.md`,
+  HTTP **200**, **29952** bytes, sha256
+  `724fe8dee3db273d5a72511659250dae6d1646b815d18c3782054d3c315e402e`. On the flag this
+  cycle turned off: "If true, it will re-use an existing server on the `port` or `url`
+  when available. ... If `false`, it will throw if an existing process is listening on the
+  `port` or `url`. This should be commonly set to `!process.env.CI` to allow the local dev
+  server when running tests locally." And: "For continuous integration, you may want to
+  use the `reuseExistingServer: !process.env.CI` option which does not use an existing
+  server on the CI." Two things the same page settles: `timeout` "Defaults to 60000" (this
+  repo already raises it to 120_000), and `url` is expected "to return a 2xx, 3xx, 400,
+  401, 402, or 403 status code when the server is ready" — which is why a socket that
+  replies with nothing at all is outside what the probe is specified to handle. Note the
+  documented throw is not quite what this container does: with `false` and a real leftover
+  server Playwright names the collision in 2 s as quoted above, and in an earlier run of
+  the same shape it instead spawned the server and surfaced
+  `Error: Process from config.webServer was not able to start. Exit code: 1` over a
+  `listen EADDRINUSE` in **4 s**. Loud and named either way, which is the property the
+  gate needs.
+
+  **ML — skipped, nothing trivially advanceable.** `python3 ml/selftest.py` is green and
+  untouched (**Ran 146 tests ... OK**), and no file under `ml/` is in this diff.
+  `minQwkGainOverHeuristic` stays **0.0** and `status` / `promotionGate` in
+  `public/models/visible-attributes/manifest.json` were not opened.
+
+  **No guide page was added**, per the experiment's own rule in Backlog > Now.
+
+  **Docs and rotation.** The share-surface backlog item is ticked by appending, not by
+  rewriting its original wording — cycle 47's rotation note asked for exactly that.
+  Recent cycles holds 48/47/46; cycle 45's **247** lines moved verbatim to the end of
+  `docs/autopilot-changelog.md` after cycle 44. `docs/AUTOPILOT.md` **2297** → **2050**
+  lines by the move alone and `docs/autopilot-changelog.md` **9886** → **10134**
+  (+**248** including the separating blank line). The moved text is byte-identical, not
+  merely present: the **247** extracted lines and the last **247** lines of the new
+  changelog both sha256 to
+  `40bc8d33ca08ea2af1e957ea970833fa4d9e1868c714ed953bf13fd0d25e94ca`. No backlog item was
+  ticked `[x]`, so nothing moved to "Closed backlog items".
+
+  **Nothing was lost, and this time nothing needed accounting for.** `sort -u` over both
+  files at `ab3941e` gives **10520** unique lines and over the final pair **10734**, and
+  `comm -23` of the first against the second drops **0** lines — no line present at
+  `ab3941e` is absent now, because the share-surface item was ticked by appending rather
+  than by rewriting its original wording. With this entry, the backlog annotation and the
+  validation below in, `docs/AUTOPILOT.md` is 2286 lines. Those three counts are the
+  last thing measured on this tree, so only digits inside these lines moved afterwards.
+
+  **Validation on this tree, worker.** `npx vitest run` **Test Files 115 passed (115) /
+  Tests 1063 passed (1063)** — up from **114** / **1050** by this cycle's one new file and
+  its **13** tests. `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged.
+  `npx eslint .` **0 errors, 2 warnings**. `python3 ml/selftest.py` **Ran 146 tests in
+  2.231s ... OK**. `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` printed
+  `ok port 3102 free for test:mobile-ui`, then **272 passed (9.5m)** and
+  `Smoke test passed.`, first try — no re-run was needed or spent. The mobile suite is
+  still **272** specs: this cycle added a vitest file, not an e2e spec, and none was
+  removed. That gating run predates this validation block, so the four fast checks were
+  re-run on the committed tree — **115** / **1063**, **13**, **0 errors, 2 warnings**,
+  **Ran 146 tests in 2.154s ... OK** — and smoke was run again on the commit itself,
+  because `tests/doc-links.test.ts` reads these two files and a docs-only edit is
+  therefore not automatically inert. Its result is in the branch's own report.
+
+  **What clearing the dev cache costs the gate, measured at gate level rather than
+  asserted.** That **9.5m** e2e phase ran on a cleared `.next/dev` every time, against
+  cycle 47's **12.9m** and **12.1m** (worker) and **9.2m** (supervisor) on an uncleared
+  one. The clear sits inside the existing run-to-run spread, so the gate did not get
+  slower in exchange for meaning what it says. The per-start cost is the one bounded
+  number: **3.0–4.1 s** (cold **4930** / **5247** / **6072** ms to the first 200 on `/`
+  against **1958** ms warm).
+
+  **What this cycle did NOT establish.** The exact `Error: Timed out waiting 120000ms from
+  config.webServer.` string from cycles 40 / 41 / 45 was never reproduced on this
+  container — what reproduced instead was an indefinite hang with no verdict, and the
+  changelog's own account attributes the 120 s form to the same reused-dead-server cause.
+  The wedged-socket hang is contained by the smoke preflight, not fixed in Playwright's
+  probe, so a bare `npm run test:mobile-ui` against a wedged port still hangs.
+  `playwright.ios.config.ts` is a compile-checked change only (**no webkit on disk**).
+  The share-card 320x640 measurements are a one-off probe, not a regression spec.
+
+  **Supervisor review.** Sound, and no correction needed. It also explains two things I
+  had been working around by hand for a week.
+
+  *Predicted by reading, before the branch existed, and all three handled:*
+  - clearing the whole of `.next` would delete the production build a later smoke step
+    serves. The worker clears `.next/dev` only.
+  - clearing at config import time would race the running server. The worker clears as
+    the first link of `webServer.command`, and measured the race when it tried the other
+    way.
+  - `reuseExistingServer: true` lets a leftover server stand in for this tree. It is now
+    off unless `ARU_REUSE_DEV_SERVER=1`.
+  My guess that the cold start was near 120s was wrong: it measured **4930 / 5247 / 6072**
+  ms. The webServer timeouts in cycles 40, 41 and 45 were not a shortage of headroom.
+
+  *Broken here, two ways.*
+  - Holding port 3102 with a socket that accepts and never replies, then running `npm run
+    smoke`: it stopped after **69** s (lint + vitest, then the probe) with `Smoke test
+    failed: port 3102 (test:mobile-ui) is already in use.` The worker's measurement
+    before the fix was a hang it killed by hand at 468 s.
+  - A real `next dev` left alive on 3102, then a single regression-34 run: it stopped in
+    **2** s with `Error: http://127.0.0.1:3102 is already used ...`, instead of silently
+    reusing it.
+  With nothing on the port, the default run gave **8 passed**.
+
+  *The eslint change explains a habit of mine.* I had been running `rm -rf test-results`
+  before every lint for a week without recording why. The worker measured it: one failing
+  e2e run leaves **6366** trace files that turn `0 errors` into **215 errors**.
+
+  *And I reproduced the README's own warning.* A `pkill -f` pattern I used to stop the
+  leftover dev server matched my own shell and killed it (exit **144**). The same pattern
+  also left the `next-server` child alive, which then made the next spec run fail on the
+  port check, correctly. Kill by PID.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 115 passed (115)
+  / Tests 1063 passed (1063)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `ab3941e` drops
+  **0** lines. Recent cycles holds 48/47/46, and cycle 45 sits after cycle 44 at the end
+  of the changelog. `npm run smoke` gave
+  **272 passed (10.7m)** and `Smoke test passed.` on the first run.

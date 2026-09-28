@@ -32,7 +32,15 @@ import { expect, test } from "@playwright/test";
 const CONTRAST = `(() => {
   const srgb = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
   const lum = ([r, g, b]) => 0.2126 * srgb(r / 255) + 0.7152 * srgb(g / 255) + 0.0722 * srgb(b / 255);
+  // \`color(srgb ...)\` too: Chromium serialises a \`color-mix()\` background that way, and an
+  // rgb-only parse skips the layer and measures against the ancestor (cycle 51; ported here
+  // by the supervisor from tinted-surface-contrast.regression-35.spec.ts).
   const parse = (s) => {
+    const c = /color\\(\\s*srgb\\s+([^)]+)\\)/.exec(s || "");
+    if (c) {
+      const p = c[1].split(/[\\s\\/]+/).filter(Boolean).map(Number);
+      return { rgb: [p[0] * 255, p[1] * 255, p[2] * 255], a: p.length > 3 ? p[3] : 1 };
+    }
     const m = /rgba?\\(([^)]+)\\)/.exec(s || "");
     if (!m) return null;
     const p = m[1].split(/[,\\s\\/]+/).filter(Boolean).map(Number);

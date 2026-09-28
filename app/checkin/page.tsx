@@ -164,7 +164,7 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
           <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
           <button onClick={save} disabled={!ready} style={saveBtn(ready)}>{t("기록하기")}</button>
           {saveFailed && (
-            <p role="status" style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 7 }}>
+            <p role="status" style={{ fontSize: 11.5, color: "var(--plum-press)", lineHeight: 1.45, marginTop: 7 }}>
               {t("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.")}
             </p>
           )}
