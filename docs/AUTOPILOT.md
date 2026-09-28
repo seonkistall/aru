@@ -1905,7 +1905,8 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on this tree, supervisor:* `npx vitest run` **Test Files 119 passed (119) /
   Tests 1087 passed (1087)** (the nine runs above), `tsc` **13**, `eslint` **0 errors, 2
   warnings**, `python3 ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both
-  files at `d10acf7` against this pair drops **0** lines. SMOKE_RESULT
+  files at `d10acf7` against this pair drops **0** lines. `npm run smoke` **Test Files 119
+  passed (119) / Tests 1087 passed (1087)**, **288 passed (10.8m)**, **Smoke test passed.**
 
 - 2026-09-28 (cycle 50) — Branch `autopilot/2026-09-28-0039`. **The path from the landing
   page to the first link that can earn money had never been measured, and it is 4 screens
