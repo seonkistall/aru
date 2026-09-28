@@ -95,7 +95,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
         {useStatus === "saved" ? t("사용 시작일을 기록했어요.") : t("이 제품 사용 시작하기")}
       </button>
       {useStatus === "error" && (
-        <p role="status" style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 7 }}>
+        <p role="status" style={{ fontSize: 11.5, color: "var(--plum-press)", lineHeight: 1.45, marginTop: 7 }}>
           {t("저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요.")}
         </p>
       )}
@@ -108,7 +108,12 @@ const thumb: React.CSSProperties = { width: 68, height: 68, borderRadius: 10, fl
 const rankBadge: React.CSSProperties = { fontSize: 10.5, fontWeight: 800, color: "var(--on-plum)", background: "var(--plum)", borderRadius: 999, padding: "2px 7px" };
 const highlightChip: React.CSSProperties = { fontSize: 11.5, color: "var(--ink-soft)", background: "var(--surface-tint)", border: "1px solid var(--line)", borderRadius: 999, padding: "4px 9px" };
 const ingTag: React.CSSProperties = { fontSize: 11.5, color: "var(--ink-soft)", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 7, padding: "4px 8px" };
-const ingTagMatch: React.CSSProperties = { fontSize: 11.5, color: "var(--plum)", background: "color-mix(in srgb, var(--plum) 8%, var(--paper))", border: "1px solid color-mix(in srgb, var(--plum) 35%, var(--line))", borderRadius: 7, padding: "4px 8px" };
+// `--plum-press` #c22e23, not `--plum` #d9362b: on this tag's own background —
+// `color-mix(in srgb, var(--plum) 8%, var(--paper))`, which Chromium resolves to
+// rgb(252, 239, 238) — `--plum` measures 4.145877021275885:1 at 11.5px, under WCAG 2.2
+// AA's 4.5 (SC 1.4.3). `--plum-press` is 5.044548164305988:1 on the same background.
+// `--plum` itself does not move: it is the CTA colour on every screen.
+const ingTagMatch: React.CSSProperties = { fontSize: 11.5, color: "var(--plum-press)", background: "color-mix(in srgb, var(--plum) 8%, var(--paper))", border: "1px solid color-mix(in srgb, var(--plum) 35%, var(--line))", borderRadius: 7, padding: "4px 8px" };
 const watchOutStyle: React.CSSProperties = { fontSize: 12, color: "var(--plum-press)", background: "color-mix(in srgb, var(--plum) 6%, transparent)", borderRadius: 7, padding: "8px 10px", marginTop: 9, lineHeight: 1.45 };
 const merchantNote: React.CSSProperties = { fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45, marginTop: 10 };
 const buyBtn: React.CSSProperties = { minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", marginTop: 13, background: "var(--plum)", color: "var(--on-plum)", borderRadius: 9, padding: "12px 16px", fontSize: 14, fontWeight: 700, textDecoration: "none" };

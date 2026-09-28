@@ -1041,6 +1041,39 @@ partly done and stays here.
   step instead of the analysis step (it would drop the scan nudge from their first screen,
   so it is a flow decision, not a defect fix), and the **153** px of English copy above
   the first buy button.
+
+  **Appended 2026-09-28 (cycle 51): the scan cannot honestly pre-select 피부 타입, so it
+  was not built, and the reason is the oil index's own formula.** The candidate was
+  "high `oil` reading → pre-select 지성". `shineIndex` (`lib/skin.ts`) is
+  `tzoneSpecular + max(0, (tzoneL - cheekL) / cheekL) * (SHINE_REFERENCE_CHEEK_L / 255)`,
+  with `SHINE_REFERENCE_CHEEK_L` **140** and `ATTR_THRESHOLDS.oil` **0.05**/**0.16**. Term
+  two is a T-zone-against-CHEEK contrast, so the index rises when the cheeks are DIMMER
+  than the T-zone, which is the description of 복합성, not 지성. Computed from the
+  committed formula at one specular value: a face whose cheek is as bright as its T-zone
+  (`tzoneSpecular` **0.06**, `tzoneL` = `cheekL` = **140**) scores **0.06** — oil level
+  **0**, "유분 적음". The same specular with `tzoneL` **170** against `cheekL` **140**
+  scores **0.1776470588235294** — oil level **2**, "유분 많음". Reaching level 2 with NO
+  T-zone/cheek gap needs `tzoneSpecular` **0.16** on its own, and `buildSignals` fails its
+  own 반사 check at `tzoneSpecular >= 0.1`; below that cut the gap ratio must exceed
+  **0.10928571428571428** for the index to reach **0.16** (check: `shineIndex(0.0999,
+  140 * 1.10928571428571428, 140)` = **0.15989999999999993**). So on a capture that passes
+  its own quality signals, `oil >= 2` is evidence of a T-zone/cheek DIFFERENCE, and
+  pre-selecting 지성 from it would name the wrong one of the two types it distinguishes.
+  `/report` says the same thing in words: all three `explain("oil", …)` strings
+  (`app/report/page.tsx:24-26`) are about the **T존**, and the page never states a skin
+  type. 민감성 was never a candidate (not visible in a photo), and neither 중성 nor 건성
+  has a measured reading behind it.
+
+  **The double-count was measured too, and it is real.** Over all **200** (skin type ×
+  category × budget) combinations with no concerns selected, a scan of
+  `{oil: 2, redness: 0, pores: 0, confidence: 0.8, retakeRecommended: false}` — which
+  `shouldApplyScan` accepts — already changes `recommend()`'s picks in **87** of **200**,
+  through the `유분` concern `effectiveConcerns` adds. Forcing `survey.type` to 지성 on
+  top of that scan changes the picks in a further **60** of the **160** combinations whose
+  type is not already 지성. Both pushes come out of the same `oil` number and land on
+  different terms of `scoreSku` (`forTypes` +3, concern +2 and +1.2), so the pre-fill
+  would not be a shortcut through an answer the scan already knows — it would be a second
+  vote from one reading.
 - [AI] **`/report`'s routine step has a 13x15 checkbox, under both the 24x24 AA floor and
   `--tap-min`.** Found 2026-09-28 (cycle 50) by extending cycle 49's target sweep to
   `/report`'s other two steps: the `ReengageOptIn` checkbox measures **15x15** under `ko`
@@ -1053,6 +1086,25 @@ partly done and stays here.
   **0** of **284** controls without an accessible name, **0** unlabelled form controls,
   **0** of **6** images without `alt`/`aria-hidden`, **0** of **904** text nodes under
   their contrast floor across **22** screen x locale pairs.
+- [AI] **Two contrast questions cycle 51 measured and did NOT act on.** (a) SC 1.4.11
+  Non-text Contrast asks for **3**:1 on "[v]isual information required to identify user
+  interface components and states". `--line` **#dcdcdc** is the border of the outlined
+  buttons and cards on every screen and is **1.3713058806238527**:1 on `--paper` and
+  **1.2578122331668762**:1 on `--surface-tint`. Whether those borders are *required to
+  identify* the control is the open question — most of them wrap a visible text label,
+  which is the usual argument that they are not — and moving `--line` is a change to
+  every divider on every screen, which is a design decision and not a defect fix. Not
+  established either way here. The decorative fills are fine on the same SC: `--blue`
+  **#2f6de0** is **4.789395592096463**:1 on `--paper` and **4.393009940622331**:1 on
+  `--surface-tint`. (b) `/checkin`'s disabled submit puts `--muted` **#767676** on
+  `--surface-tint` **#f5f5f5** = **4.166295937845939**:1, the same pair as `/survey`'s and
+  excused by the same SC 1.4.3 Incidental sentence — but cycle 51's render reached that
+  state on `/survey` only (`button.disabled === true`, rgb(118, 118, 118) on rgb(245, 245,
+  245)); on `/checkin` the card needs a product-use record first and the run did not
+  produce one, so that one rests on reading `app/checkin/page.tsx:225` and not on a
+  render. `tests/contrast-matrix.test.ts` carries both as `EXEMPT` and says which is
+  which.
+
 - [AI] **The English dictionary is still in every visitor's first load, and only a URL
   decision gets it out.** Opened 2026-09-25 (cycle 40), which moved ja/zh/ar behind a
   dynamic `import()` and cut `/`'s initial JS from **1050358** to **783030** bytes raw
@@ -1587,6 +1639,225 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-28 (cycle 51) — Branch `autopilot/2026-09-28-1239`. **The camera path was
+  supposed to get shorter this cycle by pre-selecting 피부 타입 from the scan's oil
+  reading. It was not built, and the reason is the oil index's own formula: on a capture
+  that passes its own reflection signal the index cannot reach level 2 without a
+  T-zone-against-cheek gap, so a high reading is evidence of that difference — the
+  복합성 signature — and not of uniform oiliness, and pre-selecting 지성 from it would
+  name the wrong one of the two types the index separates. What did land is
+  the contrast MATRIX the last two cycles kept re-deriving one screen at a time — and
+  building it found two real defects neither per-screen sweep could reach: an error
+  colour that is not a colour (`color: var(--danger)`, a token defined nowhere, rendering
+  both save-failure messages in the inherited `--ink`), and a concern-matched ingredient
+  tag on `/report`'s picks step at 4.145877021275885:1, invisible to every previous sweep
+  because the rig's own parser could not read a `color-mix()` background.**
+
+  **Baselines, re-measured here on `d10acf7`.** `node_modules` was absent, so `npm ci`
+  first (exit **0**). `npx vitest run` **Test Files 118 passed (118) / Tests 1081 passed
+  (1081)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.635s ... OK**. All four match
+  the supervisor's.
+
+  **UI/UX: the scan cannot honestly pre-select 피부 타입, and the answer is a computation,
+  not caution.** `shineIndex` (`lib/skin.ts`) is `tzoneSpecular + max(0, (tzoneL - cheekL)
+  / cheekL) * (SHINE_REFERENCE_CHEEK_L / 255)` with `SHINE_REFERENCE_CHEEK_L` **140**, and
+  `ATTR_THRESHOLDS.oil` cuts at **0.05** / **0.16**. Its second term is a T-zone-against-
+  CHEEK contrast, so the index is *maximised* by dim cheeks under a bright T-zone, which
+  is the description of 복합성. Computed from the committed formula at one specular value:
+  a face whose cheek is as bright as its T-zone (`tzoneSpecular` **0.06**, `tzoneL` =
+  `cheekL` = **140**) scores **0.06** — level **0**, "유분 적음". The same specular with
+  `tzoneL` **170** against `cheekL` **140** scores **0.1776470588235294** — level **2**,
+  "유분 많음". Reaching level 2 with no gap at all needs `tzoneSpecular` **0.16** on its
+  own, and `buildSignals` already fails its 반사 check at `tzoneSpecular >= 0.1`; under
+  that cut the gap ratio has to exceed **0.10928571428571428** to reach **0.16** (check:
+  `shineIndex(0.0999, 140 * 1.10928571428571428, 140)` = **0.15989999999999993**). So on a
+  capture that passes its own quality signals, `oil >= 2` means a T-zone/cheek DIFFERENCE.
+  `/report` says the same in words — all three `explain("oil", …)` strings
+  (`app/report/page.tsx:24-26`) are about the **T존** and the page never states a type.
+  **The double-count the brief asked about is real and was measured.** Over all **200**
+  (skin type × category × budget) combinations with no concerns chosen, a scan of
+  `{oil: 2, redness: 0, pores: 0, confidence: 0.8, retakeRecommended: false}` (which
+  `shouldApplyScan` returns `true` for) already moves `recommend()`'s picks in **87** of
+  **200** through the `유분` concern; forcing `survey.type` to 지성 on top of that moves
+  them in a further **60** of the **160** combinations not already 지성. Two votes, one
+  reading, on different terms of `scoreSku`. 민감성 was never a candidate — sensitivity is
+  not visible in a photo — and neither 중성 nor 건성 has a measured reading behind it. No
+  pre-fill was built, so the scan path is still **3** screens and **3** taps longer than
+  the survey path and still saves **0** required fields (cycle 50's measurement, unchanged),
+  and `tests/e2e/first-merchant-link-path.regression-36.spec.ts` was not touched. The
+  decision and its numbers are appended to the backlog item that raised it.
+
+  **Bug fix 1: `--danger` is not defined anywhere, and two error messages are written in
+  it.** `grep -rn -e "--danger" app/ lib/` returned exactly two lines, both
+  `color: "var(--danger)"` — `app/components/product-card.tsx:98` and
+  `app/checkin/page.tsx:167` — and no definition. An unresolvable `var()` with no fallback
+  makes the declaration invalid at computed-value time, and `color` inherits, so the line
+  renders in the body colour. Rendered at 360x800 on a production build, with
+  `Storage.prototype.setItem` throwing for `gyeol_purchases` (what a full localStorage
+  does; `lsPush` returns false and the card shows its error row): the message resolved to
+  **rgb(26, 26, 26)**, `--ink`, in both `ko` and `en`. Fixed to `var(--plum-press)`
+  **#c22e23** at both sites — **5.662003205195541**:1 on `--surface`, and the token cycle
+  50 already chose for a destructive control, so no palette moves. Neither screen's happy
+  path shows this node, which is why three contrast sweeps walked past it.
+
+  **Bug fix 2: a `color-mix()` background the measuring rig could not see.**
+  `app/components/product-card.tsx:111`'s concern-matched ingredient tag is
+  `color: var(--plum)` on `color-mix(in srgb, var(--plum) 8%, var(--paper))`. Chromium
+  serialises that as `color(srgb 0.988078 0.936941 0.93349)`, and the `parse()` shared by
+  `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` and
+  `tests/e2e/conversion-path-accessibility.spec.ts` matched `rgb()`/`rgba()` only — so it
+  returned null, `bgOf` skipped that layer and measured the tag against the WHITE CARD
+  behind it. That is a false green, not a missing screen: every `color-mix` surface in
+  `app/` was invisible to the sweep that reported **0 of 904** clean last cycle. With the
+  parser taught `color(srgb …)`, the tag measures **4.145877021275885**:1 at 11.5px on
+  rgb(252, 239, 238), under the **4.5** floor, on the picks step — the screen that earns
+  money. Fixed to `--plum-press`: **5.044548164305988**:1 on the same background.
+  `--plum` itself is untouched at **#d9362b**.
+
+  **The matrix, built once.** `tests/contrast-matrix.test.ts` reads every `--token: #hex`
+  out of `app/globals.css` (**20** of them) and computes the WCAG ratio for every (text
+  token × background token) pair: **12** text tokens × **9** background tokens, **102**
+  pairs after dropping the ones whose two tokens hold the same hex, of which **53** are
+  under **4.5**. Backgrounds include the aliases that share a hex (`--rose` and `--peach`
+  are both **#f5f5f5**, same as `--surface-tint`) and `--plum-soft`, `--plum`, `--ink`,
+  `--line`. **Which of those 53 actually render as text was established by rendering, not
+  by reading.** A sweep at 360x800 on a production build over `/`, `/survey`, `/survey`
+  with a chip selected in every section, `/care`, `/privacy`, `/studio`, `/checkin` and
+  `/report`'s three steps, in `ko` and `en`, measured **1078** visible leaf text nodes and
+  found **17** distinct (colour, background) pairs and **0** nodes under their floor after
+  the two fixes. One caveat on that **1078**: the run took **11** captures per locale, not
+  10 — the eleventh was an attempt at `/report`'s retake state that the harness's own
+  per-navigation init script overwrote back to the normal reading, so it repeated the
+  analysis step and the total counts that step twice. The retake card is covered by
+  `tests/e2e/tinted-surface-contrast.regression-35.spec.ts`, which renders it properly,
+  not by this sweep. **15** of those 17 are token-on-token; the other **2** have a
+  `color-mix()` background (`--plum-press` on the ingredient tag's 8% pink, `--ink` on
+  `/care`'s 6% safety card), which is not a token pair and so is covered by the e2e spec
+  rather than by the matrix. The file holds three lists: **16** `RENDERS` pairs asserted
+  against their floor — those 15, plus `--text-muted` on `--plum-soft` from the retake
+  card that `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` renders — **1**
+  `EXEMPT` pair, and the **53**-key `UNDER_FLOOR` snapshot, so a palette edit
+  that creates a new failing pair fails the test even if nobody looks at a screen. It also
+  holds two source guards — every token used as a `color:` or as a background in `app/`
+  must be defined in `app/globals.css` and be in one of the lists — and the first of those
+  is what would have caught `--danger` on the day it was written.
+
+  **The known starting points the brief named, answered.** `--blue` on `--surface-tint`
+  does not render as text at all: `grep -rn 'color: *"\?var(--blue)' app/` gives **0**
+  hits, and `--blue`'s three uses are two `height: 2` bars (`app/scan/scanning.tsx:10,15`)
+  and an SVG `stroke` (`app/report/page.tsx:520`), which is SC 1.4.11 territory at a 3:1
+  floor — **4.789395592096463**:1 on `--paper` and **4.393009940622331**:1 on
+  `--surface-tint`, both clear. `--success` on `--plum-soft` is **4.563454447513687**:1
+  and passes. `--muted`/`--faint` **#767676** on `--surface-tint` is
+  **4.166295937845939**:1 and does render — on `/survey`'s submit, which the render caught
+  with `button.disabled === true`, rgb(118, 118, 118) on rgb(245, 245, 245); that is SC
+  1.4.3's Incidental exception (quoted below from the primary source), so it is carried as
+  `EXEMPT` rather than fixed. `/checkin`'s identical submit was NOT reached in a disabled
+  state by the render — its card needs a product-use record first — so that half rests on
+  reading `app/checkin/page.tsx:225` and the test says so. `--text-muted`/`--bronze`
+  **#6e6e6e** on `--surface-tint` is **4.6769056995019485**:1 and on `--plum-soft`
+  **4.617401251595468**:1, both cycle 50's fixes holding. `--orange` **#d57b1c** renders
+  only at ≥24px (the `/` step numerals at 26px and three aria-hidden arrows at 24-27px),
+  so its floor is **3** and **3.14409927019823**:1 on `--paper` clears it — with **0.144**
+  of margin, and **2.8838835887929415**:1 on the tint, so it must never move onto one.
+  `/ops`, `/pilot` and `/eval` are research-only and are excluded from the source guards,
+  not fixed.
+
+  **Every pin was broken on purpose.** `tests/contrast-matrix.test.ts` clean is **6
+  passed**. Putting `--text-muted` back to **#767676**: **2 failed | 4 passed**, reporting
+  `--text-muted #767676 on --surface-tint #f5f5f5 = 4.166295937845939 (floor 4.5) -
+  /privacy notice-card eyebrow (cycle 50)` and `--text-muted #767676 on --plum-soft
+  #fdf1f0 = 4.113287997227651 (floor 4.5) - /report retake confidence card (cycle 50
+  supervisor)`, plus the snapshot growing by `--text-muted on --plum-soft` and
+  `--text-muted on --surface-tint`. Putting `color: "var(--danger)"` back in
+  `app/components/product-card.tsx`: **1 failed | 5 passed**, `--danger is used as a
+  colour in app/components/product-card.tsx but is not defined in app/globals.css`. The
+  background guard fired for real while the file was being written, on `--bronze
+  (app/components/share-card.tsx) is in neither BACKGROUND_TOKENS nor
+  NO_TEXT_BACKGROUNDS` — that one is a 1x34px rule with no children and is now listed as
+  such. In `tests/e2e/tinted-surface-contrast.regression-35.spec.ts`, both new pairs of
+  cases fail without their fix: the save-failure test gives **2 failed** with `Expected:
+  "rgb(194, 46, 35)" / Received: "rgb(26, 26, 26)"` in both locales, and the picks-step
+  sweep gives **2 failed** listing **4** nodes per locale — `"글루코노락톤(PHA)"
+  rgb(217, 54, 43) on rgb(252, 239, 238) = 4.145877021275885:1 (11.5px/700)` and its
+  `· 모공 케어`, `어성초 추출물`, second `· 모공 케어` siblings, and the `en` equivalents
+  `"Gluconolactone (PHA)"`, `"· Pores care"`, `"Heartleaf extract"`, `"· Pores care"`.
+  Clean is **9 passed** across regression 35. The picks-step test also carries a vacuity
+  guard that fails if no `color(srgb …)` tag is on screen, so a fixture that stops
+  producing a matched tag cannot make it pass empty.
+
+  **Research: SC 1.4.3's Incidental exception and SC 1.4.11, from the primary source.**
+  Both fetched here from `w3c/wcag` on `raw.githubusercontent.com`, main branch.
+  `guidelines/sc/20/contrast-minimum.html`: HTTP **200**, **1071** bytes, sha256
+  `f1d819b44cc5ba64e962ce64889de2ab214af6911b27a119f7d24c43197b2e64`, conformance level
+  `AA`. It states the rule as "The visual presentation of text and images of text has a
+  contrast ratio of at least 4.5:1, except for the following:" and then, under
+  `Incidental`: "Text or images of text that are part of an inactive user interface
+  component, that are pure decoration, that are not visible to anyone, or that are part of
+  a picture that contains significant other visual content, have no contrast requirement."
+  That sentence is what cycle 50 relied on for the disabled buttons, and it does hold for
+  them: `/survey`'s submit is `button.disabled === true` in the state that renders
+  **#767676** on **#f5f5f5**, which is an inactive user interface component by the
+  exception's own words. `guidelines/sc/21/non-text-contrast.html`: HTTP **200**, **872**
+  bytes, sha256 `f2926663703c6a18795858c9c54cdab4914333bb474e965c51258e5bc38520f8`,
+  conformance level `AA`. It asks for "a contrast ratio of at least 3:1 against adjacent
+  color(s)" for, under `User Interface Components`, "Visual information required to
+  identify user interface components and states, except for inactive components or where
+  the appearance of the component is determined by the user agent and not modified by the
+  author", and under `Graphical Objects`, "Parts of graphics required to understand the
+  content, except when a particular presentation of graphics is essential to the
+  information being conveyed." The two exception clauses are why the disabled submits are
+  out of scope on both SCs at once, and the `User Interface Components` clause is what
+  raises the open question about `--line` borders now filed in the backlog. Neither
+  document is normatively binding on its own — these are the editor's-draft source files
+  the published Recommendation is built from — and they are quoted here as the wording,
+  not as a legal reading.
+  URLs: https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/20/contrast-minimum.html
+  and https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/21/non-text-contrast.html
+
+  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces
+  and the golden set is the standing blocker, so nothing was trivially advanceable.
+  `python3 ml/selftest.py` was run as a gate only. Nothing under `ml/` or
+  `public/models/` was touched.
+
+  **Guardrails.** No translation string's content changed and no key was added — the scan
+  pre-fill was not built, so the one new key it would have needed does not exist.
+  `git diff --stat -- lib/ app/api/ public/ ml/ app/scan/` is empty: `lib/consent.ts` was
+  not opened, the three `/scan` checkboxes were not touched, the API routes, the model
+  manifest and the Python pipeline did not move. `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset
+  everywhere; no provider was called and no email was sent. None of this cycle's own
+  measurement runs opened `/unsubscribe` (the sweep's screen list is above and does not
+  include it), and nothing about the re-engage email — what it sends or when — was
+  touched. `shareUrl`, `ALLOWED_HOSTS`, `metadataBase` and the
+  manifest's gate fields were not touched; no guide page was added; `--plum` is unchanged
+  at **#d9362b** and `app/globals.css` has no diff at all — both fixes are per-site token
+  swaps.
+
+  **Docs and rotation.** Two backlog items were appended to rather than rewritten: the
+  cycle 50 path item now carries this cycle's pre-fill decision, and a new item records
+  the two contrast questions measured and not acted on. No item was ticked `[x]`, so
+  nothing moved to "Closed backlog items". Recent cycles holds 51/50/49; cycle 48's entry
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 47.
+
+  **Nothing was lost in the rotation.** `sort -u` over both files at `d10acf7` gives
+  **11334** unique lines and over the final pair **11585**; `comm -23` of the first
+  against the second drops **0** — every line present at `d10acf7` is still present.
+
+  **Validation on this tree, worker.** Run on the final tree, after the last comment edit.
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged. `npx eslint .` **0 errors, 2
+  warnings** (the same pre-existing `_reads` / `_result`, run on its own and not beside
+  vitest). `python3 ml/selftest.py` **Ran 146 tests in 2.947s ... OK**.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome |
+  head -1) npm run smoke` printed **Test Files 119 passed (119) / Tests 1087 passed
+  (1087)** (118/1081 at `d10acf7`, plus `tests/contrast-matrix.test.ts`'s **6**),
+  **288 passed (14.3m)** for the e2e phase (**284** at `d10acf7`, plus this cycle's **4**
+  new e2e cases), and the literal line **Smoke test passed.** An earlier full smoke on the
+  same code with different JSDoc text also printed **288 passed (14.4m)** and **Smoke test
+  passed.**; the run above is the one on the tree being pushed.
+
+  *Supervisor review:* pending.
+
 - 2026-09-28 (cycle 50) — Branch `autopilot/2026-09-28-0039`. **The path from the landing
   page to the first link that can earn money had never been measured, and it is 4 screens
   and 6 taps: nothing in it can be cut, because all three required survey fields provably
@@ -2096,241 +2367,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   49/48/47, and cycle 46 sits after cycle 45 at the end of the changelog. `npm run smoke`
   **Test Files 117 passed (117) / Tests 1076 passed (1076)**, **277 passed (9.6m)**,
   **Smoke test passed.**
-
-- 2026-09-27 (cycle 48) — Branch `autopilot/2026-09-27-1239`. **The gate that decides
-  every push could report a result for a tree it never loaded, and it was proved in the
-  dangerous direction: with the `[data-guide-root]` rule deleted from `app/globals.css`,
-  `guide-ltr-in-rtl-chrome.regression-34` read `8 passed` — a FALSE GREEN — because
-  `playwright.mobile.config.ts` set `reuseExistingServer: true` and Playwright handed the
-  whole run to a dev server warmed on the previous revision. The true result on that tree
-  is `4 failed | 4 passed`. A second, independent hole: `npm run lint` is the gate's FIRST
-  step and it walked Playwright's own failure artifacts, so one earlier failing e2e run
-  turned `0 errors, 2 warnings` into `215 errors, 4020 warnings` over 6366 files of
-  captured trace JS. Both are fixed and both breaks now break. The share-card audit found
-  no rendering defect in any of the five locales and one pre-existing claim-list
-  asymmetry that reaches a shipped headline.**
-
-  **Baselines, re-measured here on `ab3941e`.** `node_modules` was absent, so `npm ci`
-  first (exit **0**). `npx vitest run` **Test Files 114 passed (114) / Tests 1050 passed
-  (1050)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 146 tests in 1.999s ... OK**. All four match the supervisor's.
-
-  **Measurement first: what the cold start actually costs, so the timeout was not bumped
-  on a hunch.** `playwright.mobile.config.ts`'s webServer is `npm run dev`
-  (Next **16.2.9**, Turbopack) with `timeout: 120_000`. Time from spawn to the first 200
-  on `/`, three cold runs with `.next` removed each time: **4930** / **5247** / **6072**
-  ms, against **1958** ms on a warm cache. So the timeout carries about **19.8x** headroom
-  over the slowest cold start observed, and **the 120 s timeouts in cycles 40 / 41 / 45
-  were never a shortage of headroom** — `timeout` is left at **120_000** deliberately.
-  Raising it would only have made the real failure slower to surface. The persistent dev
-  cache lives at `.next/dev` — `find .next -maxdepth 1 -type d` after a cold dev start
-  lists `.next` and `.next/dev` and no other directory — and `.next/` is gitignored
-  (`.gitignore:17`), so it survives branch checkouts and container restarts.
-
-  **What the real cause is, reproduced on purpose, in both directions.**
-  - *False green.* `.next` cleared, good CSS, one clean run to warm a dev server on 3102
-    (**8 passed**). That server left alive, then line **127** of `app/globals.css` deleted
-    (`grep -c "data-guide-root] { --font-display"` → **0**). Playwright reused the running
-    server: **8 passed**. On the same tree with the port free the answer is **4 failed | 4
-    passed**. A gate cannot be trusted that reports green for a deleted rule.
-  - *Indefinite hang.* A socket that accepts the connection and never replies, put on
-    3102. The old config hung with no verdict and no `next dev` ever spawned — killed by
-    hand at **468 s**, i.e. it never reached its own `120_000` ms timeout at all.
-  - *Not the cause.* A warm on-disk `.next/dev` from a STOPPED server did not reproduce
-    anything: good CSS warmed, server stopped, rule deleted, cache kept — **4 failed | 4
-    passed**, the true answer. The on-disk cache alone never produced a wrong result here.
-    It is cleared anyway, because it is the one remaining unknown and the cost is bounded
-    by the numbers above, but the honest attribution is server reuse.
-  - *Corroboration, not just this container.* `docs/autopilot-changelog.md` already
-    diagnosed the orphan-server half twice and fixed neither: "attached to that dead
-    server and timed out on `config.webServer`", and a run that read **117 failed | 123
-    passed** with **0** of the failures a product defect.
-
-  **The fix.** `reuseExistingServer` becomes `process.env.ARU_REUSE_DEV_SERVER === "1"` —
-  off by default, so the deterministic path is the default for a single-spec run too,
-  which is exactly where cycle 47's false red came from. The dev-cache clear is the first
-  link of `webServer.command` (`node scripts/clear-dev-cache.mjs && npm run dev ...`),
-  cross-platform through the shell Playwright already uses, and it removes `.next/dev`
-  only — never the parent, because `npm run smoke` runs the e2e suite BEFORE `next build`
-  and the `next start` at the end of the same run serves the production output from
-  `.next`. The same two changes land in `playwright.ios.config.ts`, which had the
-  identical `reuseExistingServer: true`; that suite is not in the gate and could not be
-  run here (**no webkit on disk** under `/opt/pw-browsers`), so it is a compile-checked
-  change only.
-
-  **A bug in the first version of the fix, found by breaking it rather than by reading.**
-  The clear started as a module-level `rmSync` in the config. Playwright re-imports the
-  config in every worker, so it fired again while the runner's dev server was live and
-  deleted the cache underneath it: Turbopack logged `Persisting failed: Another write
-  batch or compaction is already active` and regression-34 went **8 passed → 8 failed on a
-  clean tree**. That is why the clear is a script invoked once by the command, and the
-  reason is written into `scripts/clear-dev-cache.mjs` so it is not re-introduced.
-
-  **Proof the fix turns the false result into the true one, broken four ways.**
-  - Clean tree, port free: **8 passed (23.4s)**, no `Persisting failed`.
-  - Rule deleted, port free: **4 failed | 4 passed (27.9s)** — the true answer, where the
-    old config said **8 passed**.
-  - Rule deleted WITH the warmed leftover server still on 3102: `Error:
-    http://127.0.0.1:3102 is already used, make sure that nothing is running on the
-    port/url or set reuseExistingServer:true in config.webServer.` in **2 s**. The false
-    green is gone.
-  - The wedged socket: **still hangs.** `reuseExistingServer: false` does not bound
-    Playwright's own port-in-use probe, and `webServer.timeout` does not cover it. Stated
-    plainly rather than claimed fixed.
-
-  **So the gate closes that last hole itself.** `scripts/smoke-test.mjs` gains an
-  `assertPortFree()` preflight on `MOBILE_UI_PORT ?? 3102`, run after `test` and before
-  `test:mobile-ui`, using the `node:net` probe the script already had for its own port
-  search. With the wedged socket in place the gate now stops at **35 s** with
-  `Smoke test failed: port 3102 (test:mobile-ui) is already in use. A dev server from an
-  earlier run is probably still alive — ...` instead of hanging without a verdict. A
-  wedged `next dev` is precisely what this repo produces when a smoke run is killed
-  mid-suite, which the changelog records twice.
-
-  **Second defect, found while measuring the first: `npm run lint` graded the wrong
-  files.** `eslint.config.mjs` ignored `.next/**` but not `test-results/**`. With
-  `trace: "retain-on-failure"` a failing e2e run writes the app's own compiled JS into
-  `test-results/**/traces/resources/`, and `find test-results -type f | wc -l` gave
-  **6366**. `npx eslint .` over that tree: **4235 problems (215 errors, 4020 warnings)**,
-  with **16** of the flagged top-level paths under `test-results` and **1** under `lib`.
-  Because `smoke` runs `lint` first, the gate was red at step 1 over a previous run's
-  leftovers — a false RED, and one that points every reader at code that is not the app's.
-  A fresh clone has no such directory (`.gitignore:66` `/test-results/`,
-  `:67` `/playwright-report/`), which is why it never showed up in CI. After adding
-  `test-results/**` and `playwright-report/**` to `globalIgnores`, with all **6366** files
-  still on disk: **2 problems (0 errors, 2 warnings)**. Broken two ways: dropping
-  `test-results/**` restores **4235 problems (215 errors, 4020 warnings)**; dropping
-  `playwright-report/**` with one probe file in that directory gives **3 problems (0
-  errors, 3 warnings)** against **2** with it in place.
-
-  **UI/UX + growth — the share card.** Full numbers on the backlog item above. In short:
-  the card rasterizes at **320x640** at a 360x800 viewport, with **0** overflow and **0**
-  clipped text nodes in all five locales and Hangul only under `ko`; it draws **no** url,
-  domain or handle, so a downloaded PNG carries nothing back to the product but the word
-  `ARU` (`shareUrl` reaches the share sheet, not the image, and is left untouched as an
-  owner decision). `tests/share-card-claims.test.ts` now pins the closed set of **30**
-  strings the card can draw against both gates in all five locales: `efficacyClean()`
-  passes all of them, `BANNED_BY_LANG` is hit by exactly **1** — `오늘은 진정 루틴이
-  먼저예요`, which `en` translates onto `sooth` and `zh` onto 舒缓 while `ja` and `ar` are
-  clean — a LIST asymmetry, pre-existing, and the same shape as the cycle 46 review's
-  finding. **No translation string was changed.** One stale comment on the component was
-  corrected: it claimed the scan result screen shares the card, and that path copies a
-  deep link instead.
-
-  **Research — Playwright's `webServer` contract, primary source.**
-  `https://raw.githubusercontent.com/microsoft/playwright/v1.61.1/docs/src/test-api/class-testconfig.md`,
-  HTTP **200**, **29952** bytes, sha256
-  `724fe8dee3db273d5a72511659250dae6d1646b815d18c3782054d3c315e402e`. On the flag this
-  cycle turned off: "If true, it will re-use an existing server on the `port` or `url`
-  when available. ... If `false`, it will throw if an existing process is listening on the
-  `port` or `url`. This should be commonly set to `!process.env.CI` to allow the local dev
-  server when running tests locally." And: "For continuous integration, you may want to
-  use the `reuseExistingServer: !process.env.CI` option which does not use an existing
-  server on the CI." Two things the same page settles: `timeout` "Defaults to 60000" (this
-  repo already raises it to 120_000), and `url` is expected "to return a 2xx, 3xx, 400,
-  401, 402, or 403 status code when the server is ready" — which is why a socket that
-  replies with nothing at all is outside what the probe is specified to handle. Note the
-  documented throw is not quite what this container does: with `false` and a real leftover
-  server Playwright names the collision in 2 s as quoted above, and in an earlier run of
-  the same shape it instead spawned the server and surfaced
-  `Error: Process from config.webServer was not able to start. Exit code: 1` over a
-  `listen EADDRINUSE` in **4 s**. Loud and named either way, which is the property the
-  gate needs.
-
-  **ML — skipped, nothing trivially advanceable.** `python3 ml/selftest.py` is green and
-  untouched (**Ran 146 tests ... OK**), and no file under `ml/` is in this diff.
-  `minQwkGainOverHeuristic` stays **0.0** and `status` / `promotionGate` in
-  `public/models/visible-attributes/manifest.json` were not opened.
-
-  **No guide page was added**, per the experiment's own rule in Backlog > Now.
-
-  **Docs and rotation.** The share-surface backlog item is ticked by appending, not by
-  rewriting its original wording — cycle 47's rotation note asked for exactly that.
-  Recent cycles holds 48/47/46; cycle 45's **247** lines moved verbatim to the end of
-  `docs/autopilot-changelog.md` after cycle 44. `docs/AUTOPILOT.md` **2297** → **2050**
-  lines by the move alone and `docs/autopilot-changelog.md` **9886** → **10134**
-  (+**248** including the separating blank line). The moved text is byte-identical, not
-  merely present: the **247** extracted lines and the last **247** lines of the new
-  changelog both sha256 to
-  `40bc8d33ca08ea2af1e957ea970833fa4d9e1868c714ed953bf13fd0d25e94ca`. No backlog item was
-  ticked `[x]`, so nothing moved to "Closed backlog items".
-
-  **Nothing was lost, and this time nothing needed accounting for.** `sort -u` over both
-  files at `ab3941e` gives **10520** unique lines and over the final pair **10734**, and
-  `comm -23` of the first against the second drops **0** lines — no line present at
-  `ab3941e` is absent now, because the share-surface item was ticked by appending rather
-  than by rewriting its original wording. With this entry, the backlog annotation and the
-  validation below in, `docs/AUTOPILOT.md` is 2286 lines. Those three counts are the
-  last thing measured on this tree, so only digits inside these lines moved afterwards.
-
-  **Validation on this tree, worker.** `npx vitest run` **Test Files 115 passed (115) /
-  Tests 1063 passed (1063)** — up from **114** / **1050** by this cycle's one new file and
-  its **13** tests. `npx tsc --noEmit | grep -c "error TS"` **13**, unchanged.
-  `npx eslint .` **0 errors, 2 warnings**. `python3 ml/selftest.py` **Ran 146 tests in
-  2.231s ... OK**. `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` printed
-  `ok port 3102 free for test:mobile-ui`, then **272 passed (9.5m)** and
-  `Smoke test passed.`, first try — no re-run was needed or spent. The mobile suite is
-  still **272** specs: this cycle added a vitest file, not an e2e spec, and none was
-  removed. That gating run predates this validation block, so the four fast checks were
-  re-run on the committed tree — **115** / **1063**, **13**, **0 errors, 2 warnings**,
-  **Ran 146 tests in 2.154s ... OK** — and smoke was run again on the commit itself,
-  because `tests/doc-links.test.ts` reads these two files and a docs-only edit is
-  therefore not automatically inert. Its result is in the branch's own report.
-
-  **What clearing the dev cache costs the gate, measured at gate level rather than
-  asserted.** That **9.5m** e2e phase ran on a cleared `.next/dev` every time, against
-  cycle 47's **12.9m** and **12.1m** (worker) and **9.2m** (supervisor) on an uncleared
-  one. The clear sits inside the existing run-to-run spread, so the gate did not get
-  slower in exchange for meaning what it says. The per-start cost is the one bounded
-  number: **3.0–4.1 s** (cold **4930** / **5247** / **6072** ms to the first 200 on `/`
-  against **1958** ms warm).
-
-  **What this cycle did NOT establish.** The exact `Error: Timed out waiting 120000ms from
-  config.webServer.` string from cycles 40 / 41 / 45 was never reproduced on this
-  container — what reproduced instead was an indefinite hang with no verdict, and the
-  changelog's own account attributes the 120 s form to the same reused-dead-server cause.
-  The wedged-socket hang is contained by the smoke preflight, not fixed in Playwright's
-  probe, so a bare `npm run test:mobile-ui` against a wedged port still hangs.
-  `playwright.ios.config.ts` is a compile-checked change only (**no webkit on disk**).
-  The share-card 320x640 measurements are a one-off probe, not a regression spec.
-
-  **Supervisor review.** Sound, and no correction needed. It also explains two things I
-  had been working around by hand for a week.
-
-  *Predicted by reading, before the branch existed, and all three handled:*
-  - clearing the whole of `.next` would delete the production build a later smoke step
-    serves. The worker clears `.next/dev` only.
-  - clearing at config import time would race the running server. The worker clears as
-    the first link of `webServer.command`, and measured the race when it tried the other
-    way.
-  - `reuseExistingServer: true` lets a leftover server stand in for this tree. It is now
-    off unless `ARU_REUSE_DEV_SERVER=1`.
-  My guess that the cold start was near 120s was wrong: it measured **4930 / 5247 / 6072**
-  ms. The webServer timeouts in cycles 40, 41 and 45 were not a shortage of headroom.
-
-  *Broken here, two ways.*
-  - Holding port 3102 with a socket that accepts and never replies, then running `npm run
-    smoke`: it stopped after **69** s (lint + vitest, then the probe) with `Smoke test
-    failed: port 3102 (test:mobile-ui) is already in use.` The worker's measurement
-    before the fix was a hang it killed by hand at 468 s.
-  - A real `next dev` left alive on 3102, then a single regression-34 run: it stopped in
-    **2** s with `Error: http://127.0.0.1:3102 is already used ...`, instead of silently
-    reusing it.
-  With nothing on the port, the default run gave **8 passed**.
-
-  *The eslint change explains a habit of mine.* I had been running `rm -rf test-results`
-  before every lint for a week without recording why. The worker measured it: one failing
-  e2e run leaves **6366** trace files that turn `0 errors` into **215 errors**.
-
-  *And I reproduced the README's own warning.* A `pkill -f` pattern I used to stop the
-  leftover dev server matched my own shell and killed it (exit **144**). The same pattern
-  also left the `next-server` child alive, which then made the next spec run fail on the
-  port check, correctly. Kill by PID.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 115 passed (115)
-  / Tests 1063 passed (1063)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `ab3941e` drops
-  **0** lines. Recent cycles holds 48/47/46, and cycle 45 sits after cycle 44 at the end
-  of the changelog. `npm run smoke` gave
-  **272 passed (10.7m)** and `Smoke test passed.` on the first run.

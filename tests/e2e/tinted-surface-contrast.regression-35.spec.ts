@@ -37,10 +37,24 @@ import { expect, test } from "@playwright/test";
 
 // WCAG relative luminance and contrast ratio, from the normative definitions. Same
 // formula as tests/e2e/conversion-path-accessibility.spec.ts.
+//
+// `parse` understands `color(srgb r g b / a)` as well as `rgb()/rgba()` (cycle 51).
+// Chromium serialises a `color-mix()` result in the `color()` notation, so the
+// rgb-only version returned null for it — and `bgOf` then skipped that layer and
+// measured against the ANCESTOR's background instead. Every `color-mix` surface in
+// `app/` was therefore invisible to this rig and to the sweep that shares its formula:
+// the concern-matched ingredient tag on `/report`'s picks step measured as if it sat on
+// the white card. That is a false green, not a missing screen, which is why the fix is
+// in the parser and not in the list of places to look.
 const CONTRAST = `(() => {
   const srgb = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
   const lum = ([r, g, b]) => 0.2126 * srgb(r / 255) + 0.7152 * srgb(g / 255) + 0.0722 * srgb(b / 255);
   const parse = (s) => {
+    const c = /color\\(\\s*srgb\\s+([^)]+)\\)/.exec(s || "");
+    if (c) {
+      const p = c[1].split(/[\\s\\/]+/).filter(Boolean).map(Number);
+      return { rgb: [p[0] * 255, p[1] * 255, p[2] * 255], a: p.length > 3 ? p[3] : 1 };
+    }
     const m = /rgba?\\(([^)]+)\\)/.exec(s || "");
     if (!m) return null;
     const p = m[1].split(/[,\\s\\/]+/).filter(Boolean).map(Number);
@@ -222,5 +236,160 @@ for (const lang of ["ko", "en"] as const) {
       .filter((n) => n.ratio < (n.large ? 3 : 4.5))
       .map((n) => `"${n.text}" ${n.color} on ${n.bg} = ${Math.round(n.ratio * 1000) / 1000}:1 (${n.px}px/${n.weight})`);
     expect(failing, `${lang}: text under the AA floor on the retake card`).toEqual([]);
+  });
+}
+
+/**
+ * Cycle 51: the same defect class one layer further down — a colour that is not a colour.
+ *
+ * Two error messages are written `color: var(--danger)`
+ * (`app/components/product-card.tsx`, `app/checkin/page.tsx`). `--danger` is defined
+ * NOWHERE: `grep -rn -- "--danger" app/ lib/ --include=*.css` returns only those two
+ * `color:` uses. An unresolvable `var()` with no fallback makes the declaration invalid
+ * at computed-value time, and `color` is inherited, so the error line renders in the
+ * colour it inherits instead of a red. Neither screen's happy path shows it, which is why
+ * three contrast sweeps in a row walked past it: the node only exists while the device
+ * store is refusing writes.
+ *
+ * This test renders that state — `Storage.prototype.setItem` throws for the product-use
+ * key, exactly what a full or blocked localStorage does, and `lsPush` returns false —
+ * and asserts both things about the line: that it clears the AA floor on its background,
+ * and that its colour is the one the stylesheet names, so an inherited fallback that
+ * happens to pass contrast cannot satisfy it.
+ */
+const SURVEY_FIXTURE = { type: "지성", concerns: [], category: "토너", budget: 29000, avoid: [] };
+
+for (const lang of ["ko", "en"] as const) {
+  test(`the product card's save-failure line is a named colour and clears AA in ${lang}`, async ({ page }) => {
+    await page.addInitScript(
+      ([l, survey]) => {
+        try {
+          localStorage.setItem("aru.lang", l as string);
+          sessionStorage.setItem("gyeol_survey", survey as string);
+        } catch {}
+        // Refuse exactly the write the "이 제품 사용 시작하기" button makes. Everything
+        // else on the page keeps its storage, so nothing else changes state.
+        const native = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key: string, value: string) {
+          if (key === "gyeol_purchases") throw new DOMException("QuotaExceededError", "QuotaExceededError");
+          return native.call(this, key, value);
+        };
+      },
+      [lang, JSON.stringify(SURVEY_FIXTURE)] as const,
+    );
+    await page.goto("/report");
+    await page.waitForLoadState("networkidle");
+
+    const tabs = page.locator('[role="tab"]');
+    await expect(tabs).toHaveCount(3);
+    await tabs.nth(1).click();
+
+    const useBtn = page.locator("button").filter({ hasText: lang === "ko" ? "이 제품 사용 시작하기" : "Start using this product" }).first();
+    await expect(useBtn).toBeVisible();
+    await useBtn.click();
+
+    const error = page.locator('p[role="status"]').filter({ hasText: lang === "ko" ? "저장하지 못했어요" : "Couldn" }).first();
+    await expect(error).toBeVisible();
+
+    const measured = (await page.evaluate(
+      ([src, text]) => {
+        const measure = eval(src as string) as (el: Element) => Record<string, unknown>;
+        const el = Array.from(document.querySelectorAll('p[role="status"]')).find((p) => (p.textContent || "").includes(text as string));
+        if (!el) return null;
+        return { text: (el.textContent || "").trim().slice(0, 40), ...measure(el) };
+      },
+      [CONTRAST, lang === "ko" ? "저장하지 못했어요" : "Couldn"] as const,
+    )) as { text: string; ratio: number; px: number; weight: number; large: boolean; color: string; bg: string } | null;
+
+    expect(measured, "the save-failure line should be measurable").not.toBeNull();
+    const node = measured!;
+    const floor = node.large ? 3 : 4.5;
+    expect(
+      node.ratio,
+      `${lang}: "${node.text}" ${node.color} on ${node.bg} = ${node.ratio}:1 (${node.px}px/${node.weight}), floor ${floor}`,
+    ).toBeGreaterThanOrEqual(floor);
+    // `--plum-press` #c22e23. Asserting the value, not just the ratio: the bug this
+    // replaces passed the ratio while rendering in the inherited body colour.
+    expect(node.color, `${lang}: the save-failure line's resolved colour`).toBe("rgb(194, 46, 35)");
+  });
+}
+
+/**
+ * Cycle 51: `/report`'s picks step is the screen that earns money, and its tinted
+ * surfaces are not tokens at all — `app/components/product-card.tsx:111` builds one with
+ * `color-mix(in srgb, var(--plum) 8%, var(--paper))`, so no grep for `--surface-tint` or
+ * `--plum-soft` reaches it. Nor is the card a `<section>`, so the sweep above walks past
+ * it. This one measures every visible leaf text node on the step, whatever element it
+ * sits in, against the background the browser composites.
+ *
+ * The survey fixture picks concerns that make `ingredientTagsFor` return a
+ * concern-matched tag, because the failing style is the MATCHED variant; the vacuity
+ * guard asserts such a tag is on screen, so a fixture that stops producing one fails the
+ * test instead of passing it empty.
+ */
+const PICKS_SURVEY = '{"type":"지성","concerns":["모공","유분"],"budget":30000,"avoid":[],"category":"토너"}';
+
+const ALL_TEXT = `(() => {
+  const measure = MEASURE;
+  const vis = (el) => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && st.visibility !== "hidden" && Number(st.opacity) > 0;
+  };
+  const nodes = [];
+  let tinted = 0;
+  for (const el of Array.from(document.body.querySelectorAll("*"))) {
+    if (el.children.length > 0) continue;
+    if (!(el.textContent || "").trim()) continue;
+    if (!vis(el)) continue;
+    const m = measure(el);
+    if (!/^rgb\\(255, 255, 255\\)$/.test(m.bg)) tinted++;
+    nodes.push({ text: el.textContent.trim().slice(0, 40), ...m });
+  }
+  return { nodes, tinted };
+})()`;
+
+for (const lang of ["ko", "en"] as const) {
+  test(`every text node on /report's picks step clears WCAG AA in ${lang}`, async ({ page }) => {
+    await page.addInitScript(
+      ([l, survey]) => {
+        try {
+          localStorage.setItem("aru.lang", l as string);
+          sessionStorage.setItem("gyeol_survey", survey as string);
+        } catch {}
+      },
+      [lang, PICKS_SURVEY] as const,
+    );
+    await page.goto("/report");
+    await page.waitForLoadState("networkidle");
+    const tabs = page.locator('[role="tab"]');
+    await expect(tabs).toHaveCount(3);
+    await tabs.nth(1).click();
+    await expect(page.locator('a[href^="/api/out"]').first()).toBeVisible();
+
+    // Vacuity guard: the concern-matched ingredient tag must actually be on screen, and
+    // it must be the mixed pink, not a white chip.
+    // Chromium serialises the `color-mix` result as `color(srgb ...)`, so match on that
+    // rather than on an rgb() string it never produces here.
+    const matchedTags = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("span")).filter((s) =>
+        /^color\(srgb /.test(getComputedStyle(s).backgroundColor),
+      ).length,
+    );
+    expect(matchedTags, "concern-matched ingredient tags on the picks step").toBeGreaterThan(0);
+
+    const report = (await page.evaluate(([src]) => eval(src as string), [
+      ALL_TEXT.replace("MEASURE", CONTRAST),
+    ] as const)) as {
+      tinted: number;
+      nodes: { text: string; ratio: number; px: number; weight: number; large: boolean; color: string; bg: string }[];
+    };
+    expect(report.nodes.length, "measurable text nodes on the picks step").toBeGreaterThan(40);
+    expect(report.tinted, "text nodes sitting on a non-white background").toBeGreaterThan(0);
+
+    const failing = report.nodes
+      .filter((n) => n.ratio < (n.large ? 3 : 4.5))
+      .map((n) => `"${n.text}" ${n.color} on ${n.bg} = ${n.ratio}:1 (${n.px}px/${n.weight})`);
+    expect(failing, `${lang}: text under the AA floor on /report picks`).toEqual([]);
   });
 }

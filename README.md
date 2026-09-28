@@ -529,8 +529,11 @@ to every screen a visitor reaches: 360x800 on a production build, `en` and `ko`,
   `/studio`, `/privacy` and `/unsubscribe` has a visible indicator. `/report`'s picks and
   routine steps are the one gap: cycle 50's script-driven `.focus()` harness and a
   `Tab`-driven probe disagreed there, so neither result is reported as fact.
-- **Text contrast (WCAG 2.2 SC 1.4.3, level AA).** 0 of 904 visible leaf text nodes are
-  under their floor: 4.5:1 for body text, 3:1 at 24px or 18.66px bold. This has moved
+- **Text contrast (WCAG 2.2 SC 1.4.3, level AA).** 0 of 1078 visible leaf text nodes are
+  under their floor: 4.5:1 for body text, 3:1 at 24px or 18.66px bold. (Cycle 50's
+  equivalent number, 904, was measured with a rig that could not read a `color-mix()`
+  background — see the matrix bullet below — so it did not cover every surface it
+  appeared to.) This has moved
   three shipped tokens. `--plum` was `#e0382c` at 4.401:1 and is now `#d9362b` at 4.653:1;
   `--orange` was `#ef8a1f` at 2.522:1 against the large-text floor and is now `#d57b1c` at
   3.144:1 (both cycle 49). `--bronze` was `#767676` and is now `#6e6e6e` (cycle 50).
@@ -545,6 +548,25 @@ to every screen a visitor reaches: 360x800 on a production build, `en` and `ko`,
   `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` compute the ratio from the
   colours the browser resolves, walking the ancestor chain for the background, not from the
   hex literals.
+- **The pair table is in one place now (cycle 51).** `tests/contrast-matrix.test.ts` reads
+  every colour token out of `app/globals.css` and computes all 102 (text token x
+  background token) ratios, 53 of which are under 4.5. It asserts the 16 pairs established
+  by rendering to be text, carries the 1 pair that renders under its floor and is exempt
+  (a disabled submit: SC 1.4.3's Incidental exception for an inactive user interface
+  component), and snapshots the 53 so a palette edit cannot quietly create a failing pair.
+  Two source guards go with it: every token used as a `color:` or as a background in
+  `app/` must be defined in `app/globals.css` and listed in the matrix. The first guard
+  exists because `color: var(--danger)` was live at two sites with `--danger` defined
+  nowhere, which made the declaration invalid at computed-value time and rendered both
+  save-failure messages in the inherited `--ink` rgb(26, 26, 26) instead of a red.
+- **A `color-mix()` background is not an `rgb()` string, and a measuring rig that assumes
+  it is will report a false green.** Chromium serialises `color-mix(in srgb, var(--plum)
+  8%, var(--paper))` as `color(srgb 0.988078 0.936941 0.93349)`. The shared `parse()` in
+  the specs above matched `rgb()`/`rgba()` only, so it returned null and the background
+  walk skipped that layer and measured against the ancestor — which is how the
+  concern-matched ingredient tag on `/report`'s picks step sat at 4.145877021275885:1 on
+  the money screen through three contrast sweeps. The parser now understands `color(srgb
+  ...)`, and the tag takes `--plum-press` at 5.044548164305988:1.
 - **Target size.** `--tap-min: 44px` is the repo's contract and it is **WCAG 2.5.5, level
   AAA** — stricter than the AA floor, which is 2.5.8's 24x24 with Spacing, Equivalent,
   Inline, User Agent Control and Essential exceptions. A control under 44px is therefore
@@ -561,8 +583,13 @@ to every screen a visitor reaches: 360x800 on a production build, `en` and `ko`,
 Not yet established, and not to be read as passing: `ja`/`zh`/`ar` were not audited (a
 contrast result carries over only where the same colour pair renders — cycle 50 is what
 made that qualification necessary; wrapped geometry does not carry over at all), no screen
-reader was run, and zoom, `prefers-reduced-motion` and SC 1.4.11 Non-text Contrast for the
-SVG line art are untested. The two guide pages have not been audited at all, and
+reader was run, and zoom and `prefers-reduced-motion` are untested. SC 1.4.11 Non-text
+Contrast is only partly measured: `--blue` `#2f6de0`, the scan bars and one icon stroke,
+is 4.789395592096463:1 on `--paper` and 4.393009940622331:1 on `--surface-tint`, both over
+the 3:1 floor, while `--line` `#dcdcdc` — the border of the outlined buttons and cards —
+is 1.3713058806238527:1 on `--paper`; whether those borders count as "required to identify"
+the control is an open question filed in `docs/AUTOPILOT.md`, and the rest of the SVG line
+art is still untested. The two guide pages have not been audited at all, and
 `/report`'s focus visibility is unresolved (above). Open items are in `docs/AUTOPILOT.md`.
 
 ## Repository layout
