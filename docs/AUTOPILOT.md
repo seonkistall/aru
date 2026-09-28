@@ -1074,6 +1074,62 @@ partly done and stays here.
   different terms of `scoreSku` (`forTypes` +3, concern +2 and +1.2), so the pre-fill
   would not be a shortcut through an answer the scan already knows — it would be a second
   vote from one reading.
+
+  **Appended 2026-09-28 (cycle 52): all five locales measured, four were below the fold, and
+  one layout-only reorder fixed every one.** `ja`, `zh` and `ar` had never been measured.
+  Same method as `tests/e2e/first-merchant-link-path.regression-36.spec.ts`, 360x800:
+  `ko` **0** px of scroll (box **738.3→783.3** of an **800** viewport), `zh` **18.7**
+  (**773.7→818.7**), `ja` **84.3** (**839.3→884.3**), `ar` **145.7** (**900.7→945.7**),
+  `en` **153** (**908→953**). Every block above the link was measured per locale and all the
+  extra height is copy wrapping: the page header **146.9 → 182.3**, the step tablist
+  **49.2 → 64.8** (`ja`/`en`), the "추천 기준" section **96.5 → 120.5** (`en`), and inside the
+  first card the name/price row **68 → 112.8** (`en`/`ar`), the highlight chips
+  **27.3 → 59.5** (`ar`), the ingredient tags **49 → 82.3** (`ja`/`ar`/`en`) and the merchant
+  note **16.7 → 33.3** (`ja`/`ar`/`en`). None of those shortens by moving anything. What did
+  move is the one block whose position was arbitrary: "추천 기준" now renders AFTER the
+  product grid instead of before it — above the grid it plus its margins occupied **150.5**
+  px in `ko`/`zh`/`ja`/`ar` and **174.5** px in `en`. Copy, styles and render conditions are
+  byte-identical; only the DOM position changed, and `CommerceDisclosure` did not move.
+  First-link box bottoms afterwards: **636.8** (`ko`), **672.2** (`zh`), **737.8** (`ja`),
+  **782.5** (`en`), **799.2** (`ar`) — **0** px of scroll in all five. Identical with
+  `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`; the disclosure block stays **33.3** px in every
+  locale because the longer affiliate sentence still wraps to two lines. **The open part is
+  `ar`'s 0.8 px of margin**: the next copy edit above that card's buy button in `ar` pushes it
+  back under the fold. regression-36 now covers all **5** locales at budget **0** and prints
+  `marginBelow` (**163.2** / **127.8** / **62.2** / **17.5** / **0.8**), so it will say so —
+  and when it does, the answer is another layout move, not a shorter disclosure. The two
+  candidates cycle 50 listed are still untouched: landing survey-only visitors on the picks
+  step, and the English copy above the button.
+- [~] [AI] **Cycle 51's unnamed vitest failure did not reproduce in 25 runs; the clock
+  mechanism that produces its line is fixed, the diagnosis is still open.** Opened
+  2026-09-28 (cycle 52). `npx vitest run` was run **25** times on `11e6c4f` with full
+  output kept per run — **6** cold (`node_modules/.vite` and `node_modules/.vitest` removed
+  first), **7** warm, **7** `--sequence.shuffle`, **2** concurrent processes, **2**
+  `--reporter=json`, **1** cold under six busy-loops — and every one printed **Test Files
+  119 passed (119) / Tests 1087 passed (1087)**. What WAS found and fixed: vitest's
+  `testTimeout` default is **5000** ms and **3** tests carry no timeout of their own while
+  running long enough to race it. At `--testTimeout=5000` under twelve busy-loops,
+  `tests/cheek-clipping-signal.test.ts > … > puts the cut below every capture whose published
+  cheek level has moved` (**8462ms**), `tests/blemish-plateau-census.test.ts > … > reports no
+  tie on a frame with real pixel noise, at any frame size or noise level` (**7141ms**) and
+  `tests/ita-guard-decision.test.ts > … > is never entered by a capture: 121 blue gains step
+  straight over it` (**6489ms**) all raise `Test timed out in 5000ms` with **0** assertion
+  failures. `vitest.config.ts` now sets `testTimeout: 60_000`, pinned by
+  `tests/vitest-timeout-budget.test.ts`. **What stays open:** whether that was cycle 51's
+  failure. Its name was never captured and it did not reproduce here, so the mechanism is
+  recorded as the one that reproduces the signature, not as the diagnosis. The candidates
+  ruled out along the way, so a future cycle does not redo them: **0** `setTimeout`,
+  `await new Promise` or `useFakeTimers` in `tests/*.test.ts`; nothing asserts a duration by
+  default; `performance.now` in **1** file and `Math.random` in **2**; **0** of the **10**
+  `readdirSync` call sites walk `tests/`, so the cycle-20 lint race against
+  `tests/.blemish-perturb-tmp/` has no in-vitest twin, and two concurrent vitest processes
+  sharing that directory both passed; `process.env` writes exist in **6** test files but
+  `pool` is `forks` and `isolate` is `true` by default (both confirmed from vitest's own
+  docs), so they cannot leak between files, and the 7 shuffle runs are the check that they do
+  not leak within one. The one candidate class left unexamined is anything that depends on
+  the wall-clock DATE rather than on elapsed time — `Date.now()` appears in the re-engage and
+  funnel tests, all of it as offsets from now rather than as absolute dates, read but not
+  proven safe across a day or month boundary.
 - [AI] **`/report`'s routine step has a 13x15 checkbox, under both the 24x24 AA floor and
   `--tap-min`.** Found 2026-09-28 (cycle 50) by extending cycle 49's target sweep to
   `/report`'s other two steps: the `ReengageOptIn` checkbox measures **15x15** under `ko`
@@ -1639,6 +1695,252 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-28 (cycle 52) — Branch `autopilot/2026-09-28-1839`. **Cycle 51's unnamed vitest
+  failure did not reproduce in 25 runs, so the cycle went after the one mechanism that
+  produces its exact line from a tree with no defect in it — and found it. Vitest's
+  `testTimeout` default is 5000ms, and three tests in this suite carry no timeout of their
+  own while running long enough that a loaded container turns the CLOCK into the assertion:
+  run with `--testTimeout=5000` under twelve busy-loops the suite reads `Test Files 3 failed
+  | 117 passed (120)` with three `Test timed out in 5000ms` and not one assertion failing.
+  On the 119-file tree `--testTimeout=2000` reproduces cycle 51's line verbatim —
+  `Test Files 1 failed | 118 passed (119) / Tests 1 failed | 1086 passed (1087)` — from one
+  test. Alongside it, the first merchant link was measured in all five locales for the first
+  time and four of the five were below the fold; one layout-only reorder puts it in the
+  first viewport in every one, `ar` by 0.8 px, which is stated as the limit it is.**
+
+  **Baselines, re-measured here on `11e6c4f`.** `node_modules` was absent, so `npm ci`
+  first (exit **0**). `npx vitest run` **Test Files 119 passed (119) / Tests 1087 passed
+  (1087)**, on **25** separate runs described below. `npx tsc --noEmit | grep -c "error
+  TS"` **13**, `npx eslint .` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146
+  tests in 2.063s ... OK** — those three measured in a detached `git worktree` of
+  `11e6c4f` with `node_modules` symlinked in, so the working tree was never disturbed to
+  get them. All four match the supervisor's.
+
+  **Bug fix: the flaky test did not reproduce, and the mechanism that makes that line
+  possible is now named and fixed.** `npx vitest run` was run **25** times on `11e6c4f`
+  with every run's full output kept in its own file: **6** cold (`node_modules/.vite` and
+  `node_modules/.vitest` removed immediately before), **7** warm, **7** with
+  `--sequence.shuffle`, **2** as two concurrent vitest processes started in the same
+  second, **2** with `--reporter=json`, and **1** cold under six busy-loops on this 4-core
+  box. The **23** runs on the default reporter each printed **Test Files 119 passed (119) /
+  Tests 1087 passed (1087)**, and `grep -c failed` over the 20 numbered logs gives **0**
+  each; the **2** JSON runs report `numTotalTests` **1087**, `numPassedTests` **1087**,
+  `numFailedTests` **0**. Wall time moved from **23.30s**
+  (cold, idle) to **52.47s** under six busy-loops and **38.47s / 38.31s** for the
+  concurrent pair, so the load was real and the suite stayed green through it.
+  **So the candidates were enumerated instead, and one of them is a live defect.** There
+  are **0** `setTimeout`, `await new Promise` or `useFakeTimers` occurrences in
+  `tests/*.test.ts`, and nothing in the suite asserts a duration by default
+  (`tests/scan-cost-benchmark.test.ts` says so in its own header and puts its timing sweep
+  behind `ARU_PRINT_SCAN_COST`). `performance.now` appears in **1** unit test and
+  `Math.random` in **2**, and the **10** `readdirSync` call sites in `tests/*.test.ts`
+  (across **9** files) walk `app`, `lib`, `scripts`, `docs`, `public` or
+  `public/vendor/mediapipe` — **0** of them walk `tests/`, which rules out the cycle-20
+  lint race repeating inside vitest against the modules
+  `tests/blemish-perturbation-tolerance.test.ts` writes and deletes under
+  `tests/.blemish-perturb-tmp/`. The concurrent pair was the direct test of that dir as a
+  cross-process hazard and both processes passed. What is left is the clock itself. Per-test durations from
+  `--reporter=json`: idle the slowest test with no `{ timeout: N }` of its own is
+  `tests/cheek-clipping-signal.test.ts > 노출 여유: the cheek's 8-bit ceiling > puts the cut
+  below every capture whose published cheek level has moved` at **2187.3** ms, and under
+  six busy-loops **4451.1** ms — **548.9** ms short of the **5000** ms default. Run at the
+  default spelled out (`--testTimeout=5000`) under twelve busy-loops, **3** tests time out:
+  that one at **8462ms**, `tests/blemish-plateau-census.test.ts > … > reports no tie on a
+  frame with real pixel noise, at any frame size or noise level` at **7141ms**, and
+  `tests/ita-guard-decision.test.ts > … > is never entered by a capture: 121 blue gains step
+  straight over it` at **6489ms** — `Test Files 3 failed | 117 passed (120) / Tests 3 failed
+  | 1086 passed (1089)`, `grep -c "Test timed out in 5000ms"` **3**, and **0** assertion
+  failures. On an idle box `--testTimeout=1500` fails exactly **2** of the three (**2086ms**
+  and **1885ms** as that run reports them), and `--testTimeout=2000` on the 119-file tree
+  failed exactly **1** and printed cycle 51's line back: **Test Files 1 failed | 118 passed
+  (119) / Tests 1 failed | 1086 passed (1087)**, with `Test timed out in 2000ms` raised by
+  `puts the cut below every capture whose published cheek level has moved` (**2034ms**) and
+  no assertion failing. **The fix is `testTimeout: 60_000` in
+  `vitest.config.ts`** — one value for the whole suite instead of the per-test
+  `{ timeout: N }` this repo had already been adding one test at a time (**2** cases in
+  `tests/cheek-clipping-signal.test.ts`, **3** in
+  `tests/blemish-perturbation-tolerance.test.ts`, whose comment at line **787** records a
+  case that "went red three times before this line"). Nothing any test asserts changed, no
+  test was skipped, retry-wrapped or quarantined, and a per-test value still wins where one
+  asks for more. **Proven both ways.** The same twelve busy-loops that produced the three
+  timeouts give **Test Files 120 passed (120) / Tests 1089 passed (1089)**, `Duration
+  87.27s`, with the value in place. `tests/vitest-timeout-budget.test.ts` (**2 passed**)
+  pins it: deleting the config line gives **2 failed**, reporting `expected 'import {
+  defineConfig } from "vitest/…' to match /\btestTimeout:\s*[\d_]+\s*,/`, and lowering it to
+  `10_000` gives **1 failed | 1 passed** on `expected 10000 to be greater than or equal to
+  20000`. **What this does NOT establish:** that this was cycle 51's failure. That test's
+  name was never captured, and 25 runs here did not reproduce it, so the mechanism is
+  recorded as the one that reproduces the signature — not as the diagnosis.
+
+  **UI/UX: all five locales measured, and the first merchant link was below the fold in
+  four of them.** Cycle 50 had measured `ko` (**0** px of scroll, box **738.3→783.3** of an
+  **800** px viewport) and `en` (**153** px, **908→953**); `ja`, `zh` and `ar` had never
+  been measured. Same method as
+  `tests/e2e/first-merchant-link-path.regression-36.spec.ts`, 360x800 under
+  `playwright.mobile.config.ts`: `zh` **18.7** px (**773.7→818.7**), `ja` **84.3**
+  (**839.3→884.3**), `ar` **145.7** (**900.7→945.7**). **Every block above the link was
+  measured per locale, and all of the extra height is copy wrapping, not layout.** Against
+  `ko`, the page header block goes **146.9 → 182.3** in the other four; the step tablist
+  **49.2 → 64.8** in `ja` and `en`; the "추천 기준" section **96.5 → 120.5** in `en`; and
+  inside the first product card the name/price row goes **68 → 112.8** in `en` and `ar`, the
+  highlight chips **27.3 → 59.5** in `ar`, the ingredient tags **49 → 82.3** in `ja`/`ar`/`en`
+  and the merchant note **16.7 → 33.3** in `ja`/`ar`/`en`. Not one of those can be shortened
+  by a layout change. **What could move is the one block whose POSITION was arbitrary.** The
+  "추천 기준" section — why these picks — rendered above the product grid; above it, section
+  plus margins occupied **150.5** px in `ko`/`zh`/`ja`/`ar` and **174.5** px in `en`. It now
+  renders after the grid. The copy, the styles and the render conditions are byte-identical;
+  only the DOM position changed. No copy was edited, no translation key was added or
+  changed, which picks are shown did not change, and `CommerceDisclosure` was not touched.
+  After the move the first link's box ends at **636.8** (`ko`), **672.2** (`zh`), **737.8**
+  (`ja`), **782.5** (`en`) and **799.2** (`ar`), so **all five** need **0** px of scroll.
+  **`ar` has 0.8 px of margin and that is the honest limit**: the next copy edit anywhere
+  above that card's buy button in `ar` puts it back under the fold, and the spec is what will
+  say so — the answer then is another layout move, not a shorter disclosure. **Measured
+  under both disclosure states.** With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` every number
+  above is byte-identical and the disclosure block stays **33.3** px in all five locales: the
+  longer affiliate sentence still wraps to two lines at 11.5px/1.45. Nothing was measured
+  about conversion — this puts the link on the first screen, and whether that earns anything
+  is unmeasurable while the revenue line reads zero.
+
+  **The ratchet, extended and broken two ways.** `regression-36` now runs all **5** locales
+  (**5 passed**, up from 2) with `SCROLL_BUDGET` **0** for every one — the budget is no
+  longer a measured distance plus room, because the thing worth ratcheting is that the
+  button stays on the first screen. It still drives every tap, still counts **4** screens,
+  **6** taps, **3** required survey fields and **4** merchant links per locale, and it now
+  prints `marginBelow` on every run: **163.2** (`ko`), **127.8** (`zh`), **62.2** (`ja`),
+  **17.5** (`en`), **0.8** (`ar`). Reverting `app/report/page.tsx` to `11e6c4f` and leaving
+  the spec: **4 failed | 1 passed**, reporting `en: the first merchant link needs 153px of
+  scroll (box 908→953), budget 0`, `ja: … 84.3px … (839.3→884.3)`, `zh: … 18.7px …
+  (773.7→818.7)` and `ar: … 145.7px … (900.7→945.7)` — `ko` passes, because `ko` was already
+  at 0. The disclosure assertion was also strengthened from "a matching `p` exists somewhere
+  on the page" to "it is inside the first merchant link's own card and above the link there",
+  and moving `CommerceDisclosure` below the buy button in
+  `app/components/product-card.tsx` gives **5 failed** on `the disclosure sits above the buy
+  button in the same card`. Both breaks were reverted and the file compared byte-for-byte
+  against its pre-break copy. The locale patterns match BOTH disclosure states in each
+  language, so the flag flip cannot turn the spec red, and the whole spec was run once with
+  `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**, same numbers.
+
+  **Research: Vitest's own documentation, from the tag this repo installs.** `vitest`
+  resolves to **4.1.9** (`node -e "console.log(require('vitest/package.json').version)"`),
+  so every file was fetched from `vitest-dev/vitest` at tag `v4.1.9` on
+  `raw.githubusercontent.com`. `docs/config/testtimeout.md`: HTTP **200**, **300** bytes,
+  sha256 `ba54937613d4e26d71b15c11e194d22cd78522b669fe1d05b55369dbc7595994`, and it states
+  the default as "`5_000` in Node.js, `15_000` if `browser.enabled` is `true`" with "Default
+  timeout of a test in milliseconds. Use `0` to disable timeout completely." That **5000** is
+  the number the three tests above were racing. `docs/config/sequence.md`: HTTP **200**,
+  **5098** bytes, sha256 `1e465ea06e1e82fa4eb30fd9c180236689ff226d9e515517988cbe2cc942def3`
+  — `sequence.shuffle` is `boolean | { files?, tests? }`, default `false`, and "If your files
+  and tests run in random order, you will lose this performance improvement, but it may be
+  useful to track tests that accidentally depend on another test run previously", which is
+  why 7 of the 25 runs used it. It also documents the sort CACHE ("Vitest usually uses cache
+  to sort tests, so long-running tests start earlier"), which is the reason a FIRST run is
+  not the same run as the tenth and why 6 of the 25 deleted `node_modules/.vite` and
+  `node_modules/.vitest` first. `docs/config/pool.md`: HTTP **200**, **2453** bytes, sha256
+  `66bd191036f6aa51235ef5e201538148ada24d55a0736c6e220e78d8d65b68c3` — default `'forks'`.
+  `docs/config/isolate.md`: HTTP **200**, **560** bytes, sha256
+  `cb0b7a8a2574241be54c50e00ca0e016b4ce923fdd11c27e85927dd41660f50d` — default `true`, "Run
+  tests in an isolated environment." Those two together are why the `process.env` writes in
+  `tests/api-json-boundaries.test.ts`, `tests/commerce.test.ts`,
+  `tests/cron-bearer-constant-time.test.ts`, `tests/funnel-flush.test.ts`,
+  `tests/funnel-ingest.test.ts` and `tests/llm-route-cost-exposure.regression-24.test.ts`
+  cannot leak between files, and why the shuffle runs are the check that they do not leak
+  within one. `docs/config/index.md` was fetched too (HTTP **200**, **3583** bytes, sha256
+  `29e03769a67402aeb52f56391f0bfdd4c8dc220d6116efaea24fb43bb6108ee0`) and is only a pointer
+  page at this tag. These are the docs source files in the repository, not a normative
+  specification, and they are quoted as the documented defaults.
+
+  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces
+  and the golden set is the standing blocker, so nothing was trivially advanceable.
+  `python3 ml/selftest.py` was run as a gate only. `git diff 11e6c4f -- ml/ public/models/`
+  is empty.
+
+  **Guardrails.** `git diff 11e6c4f --stat` touches **6** files and no others:
+  `app/report/page.tsx`, `tests/e2e/first-merchant-link-path.regression-36.spec.ts`,
+  `vitest.config.ts`, `tests/vitest-timeout-budget.test.ts` (new), `docs/AUTOPILOT.md` and
+  `docs/autopilot-changelog.md`. No translation string's content changed and no key was
+  added — `git diff 11e6c4f -- lib/` is empty, so `lib/consent.ts`, `lib/i18n/`,
+  `lib/commerce.ts` and `lib/recommend.ts` did not move. `git diff 11e6c4f -- app/scan/
+  app/api/ public/ ml/` is empty: the three `/scan` consent checkboxes, the API routes, the
+  model manifest and the Python pipeline were not touched. `efficacyClean()` is untouched and
+  still on every LLM product reason and the vision narrative. `NEXT_PUBLIC_FUNNEL_FLUSH` is
+  still unset everywhere; the one run that set `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` set it in
+  a shell for one Playwright invocation and nothing on disk records it. No provider was
+  called and no email was sent; nothing about the re-engage email changed. `shareUrl`,
+  `ALLOWED_HOSTS`, `metadataBase`, `blemishCount`, `toneSpread` and the manifest's
+  `status` / `promotionGate` / `minQwkGainOverHeuristic` were not touched. No dependency was
+  added, no guide page was added, `app/globals.css` has no diff, and no colour, font size or
+  spacing value changed anywhere — the `/report` change moves one existing `<section>` and
+  copies its `style` prop across unaltered.
+
+  **Docs and rotation.** Recent cycles holds 52/51/50; cycle 49's entry (**241** lines)
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 48, where it now
+  starts at line **10985**. No backlog item was ticked `[x]`, so nothing moved to "Closed
+  backlog items": the path item gained this cycle's five-locale measurement and the reorder,
+  and a new item records the flaky-test investigation, the candidates it enumerated and
+  what it did not establish.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files: **2419** + **10983** =
+  **13402** at `11e6c4f`, and the two halves sum to the same **13402** immediately after the
+  move (**2177** + **11225**). `sort -u` over both files at `11e6c4f` gives **11630** unique
+  lines; `comm -23` of that against `sort -u` over the final pair (**11875** unique lines,
+  **2440** + **11225**) drops **0** — every line present at `11e6c4f` is still present. Both
+  counts re-taken on the tree as committed, after the validation paragraph below.
+
+  **Validation on this tree, worker.**
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome |
+  head -1) npm run smoke` printed **Test Files 120 passed (120) / Tests 1089 passed (1089)**
+  (**119**/**1087** at `11e6c4f`, plus `tests/vitest-timeout-budget.test.ts`'s **2**),
+  **291 passed (11.4m)** for the e2e phase (the supervisor's **288** at `11e6c4f`, which was
+  not re-run here, plus regression-36's **3** new locales), and the literal line **Smoke test passed.** After it, on the same tree:
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged; `npx eslint .` **0 errors, 2
+  warnings** (the same pre-existing `_reads` / `_result`, run on its own and not beside
+  vitest); `python3 ml/selftest.py` **Ran 146 tests in 1.899s ... OK**. `git diff 11e6c4f
+  --stat` lists **6** files and `git diff 11e6c4f --stat -- lib/`, `-- app/scan/ app/api/
+  public/ ml/` and `-- app/globals.css` are each empty. The only thing not covered by that
+  smoke run is this paragraph and the line below it, which were written after it finished.
+
+  *Supervisor review:* sound. The timeout mechanism is established by breaking it, and
+  the entry is honest that it is not proven to be cycle 51's failure. The fold fix is a
+  reorder with byte-identical copy. Merged with one fragility recorded; no code change
+  from review.
+
+  *Reproduced here.*
+  - `npx vitest run` on this tree: **Test Files 120 passed (120) / Tests 1089 passed
+    (1089)**.
+  - Independent of the worker: before the branch existed, the supervisor ran `npx vitest
+    run` **12** times on `11e6c4f`, the first after `rm -rf node_modules/.vite
+    node_modules/.vitest`, and all **12** passed. That is consistent with the worker's
+    25-for-25 and with a load-dependent timeout rather than a deterministic defect.
+  - regression-36 on this tree, affiliate flag off:
+    - `[path] ko ... firstLinkBox=591.8->636.8 ... marginBelow=163.2`
+    - `en ... 737.5->782.5 ... 17.5`
+    - `ja ... 692.8->737.8 ... 62.2`
+    - `zh ... 627.2->672.2 ... 127.8`
+    - `ar ... 754.2->799.2 ... 0.8`
+    - **5 passed**.
+  - With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**.
+  - The reorder was checked in `app/report/page.tsx`. "추천 기준" is still inside `step ===
+    "picks"`, unconditionally rather than behind `picks.length`. It sits after the grid
+    and before the compare `<details>`. `result.note` still renders above the grid, and
+    `CommerceDisclosure` did not move.
+
+  *Fragility, recorded rather than changed.*
+  - `ar` clears the fold by **0.8** px and its budget is **0**. In this container
+    rendering is deterministic, so this is not a flake today. A Chromium or font upgrade
+    that shifts `ar` line boxes by 1 px would turn smoke red with no code change. If that
+    happens, read the printed `marginBelow` before touching the budget.
+  - "0 px in all five" holds for the path the spec drives: the first chip of each
+    required field. A survey that triggers `result.note`, the no-exact-budget-match note
+    above the grid, pushes the first link down by that note's height in every locale.
+    Nothing measured that case.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `11e6c4f`
+  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **291 passed (10.9m)**, **Smoke test passed.**
+
 - 2026-09-28 (cycle 51) — Branch `autopilot/2026-09-28-1239`. **The camera path was
   supposed to get shorter this cycle by pre-selecting 피부 타입 from the scan's oil
   reading. It was not built, and the reason is the oil index's own formula: on a capture
@@ -2175,245 +2477,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `eslint` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**. `npm run smoke`
   **Test Files 118 passed (118) / Tests 1081 passed (1081)**, **284 passed (9.7m)** (the
   worker's 282 plus the two retake-card cases), **Smoke test passed.**
-
-- 2026-09-27 (cycle 49) — Branch `autopilot/2026-09-27-1839`. **The first accessibility
-  pass on the conversion path found the primary CTA colour under WCAG AA by 0.099, and it
-  had been under it on every screen that asks for money since the token was written.
-  `--plum` #e0382c is 4.401:1 on white against a 4.5:1 floor, in both directions because
-  contrast is symmetric, and 60 of the 66 failing text nodes across 12 screen x locale
-  pairs were that one value: the /scan and /survey submit buttons, the three
-  "올리브영에서 제품 보기" buy links on /report picks, the ingredient names, the rank
-  badges, the required-field asterisks. `--orange` #ef8a1f is 2.522:1 against the 3:1
-  large-text floor on the step numerals on `/`. Both tokens darkened by the least amount
-  that clears the floor with 0.1 of margin. What the same audit found CLEAN is the larger
-  result: 0 of 186 interactive controls with no accessible name, 0 unlabelled form
-  controls, 0 images without `alt` or `aria-hidden`, and 164 keyboard focus stops every
-  one of which had a visible indicator. Alongside: the cycle-44 device-store item closed
-  on all three parts, and the flaky e2e case no longer waits on a 15 MB download.**
-
-  **Baselines, re-measured here on `43041ca`.** `node_modules` was absent, so `npm ci`
-  first (exit **0**). `npx vitest run` **Test Files 115 passed (115) / Tests 1063 passed
-  (1063)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
-  **Ran 146 tests in 1.960s ... OK**. All four match the supervisor's.
-
-  **Why the accessibility slot was never spent before, and it is not that it was
-  considered and declined.** At `43041ca`, `git show 43041ca:docs/AUTOPILOT.md | grep -c
-  -iE "accessib|a11y"` is **0** and the same grep for `wcag` is **0**. The single hit for
-  `contrast` (line **825**) is `tuned("oil")`'s image contrast in the ML pipeline, not a
-  colour ratio. Forty-eight cycles, no pass. What the repo did have is
-  `docs/tap-target-provenance.md` from cycle 27, and that doc is the reason this cycle did
-  not call three controls defects that are not.
-
-  **The audit, and what a container can and cannot establish about it.** A Playwright
-  probe at 360x800 against `npx next start` on a production build, `en` and `ko`, on `/`,
-  `/scan` (intro and `ready` through the canvas `captureStream()` camera shim the existing
-  specs use), `/survey`, `/report` picks and `/care` — **12** screen x locale pairs, no new
-  dependency and no axe. Per pair it collected every visible interactive control with its
-  accessible name and box, every `img`/`svg`, every element with a direct non-empty text
-  node with its computed colour composited against the first opaque ancestor background,
-  and a Tab walk of up to 40 stops reading `document.activeElement`'s outline and
-  box-shadow.
-
-  Clean, and these are the numbers: **186** interactive controls in total (**8** on `/`,
-  **4** on `/scan` intro, **7** on `/scan` ready, **42** on `/survey`, **19** on `/report`
-  picks, **13** on `/care` — **93** per locale, identical in both), of which **0** had no
-  accessible name.
-  The conversion path carries only **6** `input`/`select`/`textarea` controls at all —
-  the three consent checkboxes on `/scan` ready, times two locales — and **0** are
-  unlabelled, each named by the `<label>` wrapping it. That denominator is small enough
-  that the result is nearly vacuous and is reported as such. Of the **68** visible
-  `img`/`svg` elements, **0** reach the accessibility tree unnamed — no `img` without
-  `alt`, and no `svg` with neither a `role`/`aria-label` of its own nor an `aria-hidden`
-  ancestor. **164** focus stops, **0** with neither an outline
-  nor a box-shadow; every one resolved to `1px auto rgb(16, 16, 16)`, which is Chromium's
-  own ring — i.e. the repo has never overridden `:focus` into invisibility, which is the
-  common way this fails.
-
-  Not clean: **66** of the **580** text nodes measured failed, **60** of them involving
-  #e0382c and **6** #ef8a1f, and **0** involving any other colour — so two token edits cover the whole finding. The
-  ratios: #e0382c **4.401:1** against 4.5 for normal text, #ef8a1f **2.522:1** against 3
-  for large. Fixed to #d9362b **4.653:1** (97% of each channel) and #d57b1c **3.144:1**
-  (89%), in each case the least darkening that clears the floor with at least 0.1 of
-  margin. `--plum-press` #c22e23 is **5.662:1** and stays the darker pressed state.
-  `public/offline.html`'s button carried the same #e0382c literal and moved with it.
-
-  **The target findings, where cycle 27's doc changed two verdicts out of three.**
-  `--tap-min: 44px` is WCAG **2.5.5** Target Size (Enhanced), level **AAA**; the AA floor
-  is **2.5.8**'s 24x24 with four exceptions. Three controls measured under 44:
-  - `/survey`'s "카메라로 다시 살펴보기" link, **114.3x18.8** (ko) and **207.8x18.8** (en).
-    **Fixed** to `--tap-min` via `inline-flex` + `align-items`. It does **not** fail 2.5.8:
-    of the **42** targets the page carries (this link included), the nearest other one sits
-    **72.9px** from a 24px circle centred on its box, and the next two at **73.1** and
-    **101.3**, so the Spacing exception applies. It fails `--tap-min`, and it cannot claim the Inline exception because its
-    parent `div` has no text of its own.
-  - the two `/guide/` links on `/`, **164.8x15** and **108.7x15** (en), **173.1x38.4**
-    (ko, wrapped). **Left alone**, and that is a verdict rather than an omission: they are
-    `display: inline` inside a `<p>` whose own text nodes are `영문 가이드`, `:` and `·`,
-    so 2.5.8's Inline exception covers them exactly as written. Raising them would have
-    changed a sentence's line box for no standard's sake.
-  - the three consent checkboxes on `/scan` ready, **18x18** each. **Not a defect** — the
-    first pass measured the input and the target is the `<label>` around it, at
-    **290x57.2** with `min-height: 52px`. Recorded because the audit tool was wrong before
-    it was right, and a future pass should measure the label.
-
-  **What the accessibility pass did NOT establish.** Only `en` and `ko` were audited, so
-  `ja`/`zh`/`ar` are unmeasured — the contrast result is a property of tokens and carries
-  over, but wrapped geometry does not, and the one measured locale difference here
-  (**108.7x15** vs **173.1x38.4** on the same link) is exactly that. No screen reader was
-  run: "has an accessible name" is Chromium's computation, not evidence that the name is
-  *useful*. Nothing was tested at a zoom level, with `prefers-reduced-motion`, or against
-  1.4.11 Non-text Contrast for the SVG line art. `/report`'s other two steps, `/checkin`,
-  `/studio`, `/privacy` and the two guide pages were not audited at all.
-
-  **The bug fix — the cycle-44 device-store item, all three parts, closed.** Full numbers
-  and every break are in the ticked item above. In short: `/care` gained `isSkinReads`;
-  `shouldApplyScan` is now exported from `lib/recommend.ts` and `/survey` calls it instead
-  of keeping a copy whose `?? 0` disagreed with the shipped `?? 0.7` on a confidence-less
-  reading; and `SHELL_CACHE` is now named after a hash of `public/offline.html`, which is
-  what makes an edit to that page reach a returning visitor. Three new or extended test
-  files, **7** + **4** + **2** tests, and six breaks between them, one of them the shared
-  default itself rather than merely where it lives. `tests/sw-mediapipe-revalidate.test.ts`
-  had `aru-shell-v1` typed into it and now reads the name out of `public/sw.js`, so the
-  hash is not a thing two files have to agree about by hand.
-
-  **The flaky test — closed the first of the two ways the item offered.** Also above. The
-  finding's premise was half wrong and the measurement is the interesting part: the runtime
-  fetch (**3** requests, **15234257** bytes) starts on page mount at **606**/**1195**/
-  **1278** ms after navigation, not on the tap, and tap → checklist was **173**/**233**/
-  **241** ms against tap → phase ready at **163**/**222**/**228** ms. No timeout was
-  widened and the two `ja` cases were left as they are.
-
-  **Research — the contrast floors, from the W3C's own repository.** `w3.org` refuses this
-  container, so the normative source is `raw.githubusercontent.com/w3c/wcag/main`. All
-  `http=200`: `guidelines/sc/20/contrast-minimum.html` **1071** bytes sha256
-  `f1d819b44cc5ba64e962ce64889de2ab214af6911b27a119f7d24c43197b2e64`;
-  `guidelines/terms/20/contrast-ratio.html` **2179** /
-  `c279bc2f5dd510c7bc4a7a35d52004725e0bc5261ec13ee40680aa2d4510a6a2`;
-  `guidelines/terms/20/relative-luminance.html` **2550** /
-  `391cc0cc06fc31641e35465bb8af5cb4c861f709a1ebc0e0e490b53a0cb2eb69`;
-  `guidelines/terms/20/large-scale.html` **2246** /
-  `0b35ef88e20f8041de04f8a804ba902d8973465fb14f6f18d2b96346dc09e45a`;
-  `guidelines/sc/22/target-size-minimum.html` **1737** /
-  `b5cd439141c3771e69cd20596f6fbda5fadfe28967f8783559066a435a62b123`. That last sha256 is
-  **byte-identical to the one cycle 27 recorded** in `docs/tap-target-provenance.md` five
-  days ago, so that citation is live rather than remembered. `understanding/22/contrast-
-  minimum.html` is a **404** — 1.4.3 is a WCAG 2.0 criterion carried forward, so its
-  explanatory page lives under `20/` (**21170** bytes, `http=200`). Verbatim, 1.4.3: "The
-  visual presentation of text and images of text has a contrast ratio of at least 4.5:1",
-  with the Large Text exception "at least 3:1" and an **Incidental** exception for text
-  "that are part of an inactive user interface component". Verbatim, large scale: "with at
-  least 18 point or 14 point bold or font size that would yield equivalent size for
-  Chinese, Japanese and Korean (CJK) fonts". Full quotes, the luminance formula the spec
-  implements, and the four-row table of which threshold belongs to which criterion:
-  `docs/contrast-provenance.md`.
-
-  **The Incidental exception earned its keep immediately, on a number this cycle nearly
-  pinned wrong.** The first version of the spec measured `/survey`'s submit button without
-  seeding a survey, so it measured it **disabled**, and read **4.166:1** — a failure by the
-  bare arithmetic and not a defect, because a disabled button is an inactive user interface
-  component. The spec now seeds the survey and asserts `toBeEnabled()` before measuring,
-  so it pins the state the criterion actually governs. **What the audit did not do is
-  re-check the whole page set for this**: the **66** failing nodes were collected with a
-  survey seeded on `/survey` and `/report`, but the disabled-control question was not swept
-  anywhere else, so some fraction of a future run's failures may be exempt the same way.
-
-  **Pinned, and every fix broken at least once.** `tests/e2e/conversion-path-
-  accessibility.spec.ts`, **5 passed**, computes contrast in the page from the WCAG
-  formula against the colours the browser **resolves** rather than the hex literals, so a
-  token indirection that stops applying fails. Broken three ways, each reproducing the
-  audit's own number independently: `--plum` reverted → **2 failed | 3 passed**
-  (`/scan CTA ratio was 4.40113368087186`, `buy-link ratio was 4.40113368087186`);
-  `--orange` reverted → **1 failed | 4 passed** (`step numeral ratio was
-  2.522425007894083`); `retakeLinkStyle` reverted → **1 failed | 4 passed** (`re-scan link
-  height was 18.75 against --tap-min 44`). `page.accessibility` was the obvious tool for
-  the name check and **does not exist** in this repo's `@playwright/test` 1.61.1 — the
-  first version of the spec proved it with `TypeError: Cannot read properties of undefined
-  (reading 'snapshot')` — so the check counts `getByRole(role)` against
-  `getByRole(role, { name: /\S/ })`, which is still Playwright's own name computation.
-
-  **ML — skipped, nothing trivially advanceable.** `python3 ml/selftest.py` is green and
-  untouched (**Ran 146 tests ... OK**), and no file under `ml/` is in this diff.
-  `minQwkGainOverHeuristic` stays **0.0** and `status` / `promotionGate` in
-  `public/models/visible-attributes/manifest.json` were not opened.
-
-  **No guide page was added**, per the experiment's own rule in Backlog > Now.
-
-  **No translation string changed content**, and no key was added: the one label this
-  cycle could have needed an `aria-label` for did not need one, because the audit found
-  **0** controls without a name. `lib/consent.ts` was not opened, `NEXT_PUBLIC_FUNNEL_FLUSH`
-  is still unset everywhere, and no provider was called.
-
-  **Docs and rotation.** Both actioned items were ticked by appending, not by rewriting
-  their original wording — the only bytes of either that changed are `- [AI]` becoming
-  `- [x] [AI]` on its first line. Recent cycles holds 49/48/47; cycle 46's **255** lines
-  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 45, and the two
-  items this cycle ticked `[x]` moved to "Closed backlog items" there under "Now", per
-  step 8. **Byte-identical, not merely present**: the extracted cycle-46 text and the
-  matching tail of the new changelog both sha256 to
-  `8ab2f4b8f858311120649dd23a8b1eeb5013db41e97e3c48ea47796433061fd8`, and each moved
-  backlog item appears in the changelog exactly **1** time as an exact substring of its
-  extract (**50** and **37** lines, sha256 `f7dd5a243c534be3…` and `7b031a95c7477b56…`).
-  One pre-existing `[x]` item stays in "Now" — the `/report` Korean-characters item, which
-  is `[x]` at `43041ca` too (`grep -c` → **1**) and is not this cycle's to move.
-
-  **Nothing was lost, and the two lines that moved are accounted for.** `sort -u` over
-  both files at `43041ca` gives **10766** unique lines and over the final pair **10991**;
-  `comm -23` of the first against the second drops exactly **2**:
-  `- [AI] **One e2e case's 20s budget includes loading the 11 MB MediaPipe runtime, and it`
-  and `- [AI] **Three device-store reads still have no shape guard, and one cached file is`.
-  Both are the two items' opening lines before the tick, and both exist now in their
-  ticked form (`grep -c "^- \[x\] \[AI\] \*\*One e2e case's 20s budget"` →
-  **1**, same for the other). No other line present at `43041ca` is absent.
-
-  **Validation on this tree, worker.** Filled in below once the gating run finished, so
-  these are the committed tree's numbers and not an earlier tree's.
-  *(Supervisor: nothing was filled in below. The branch was pushed with this sentence
-  as the entry's last line and without the `*Supervisor review:* pending.` line. The
-  supervisor's own validation, which is the gate, follows.)*
-
-  **Supervisor review.** Sound, with one weak test hardened before merge. The owner
-  should hear about one visible change: the brand red.
-
-  *Contrast recomputed here, independently of the worker's harness.* WCAG relative
-  luminance against `#ffffff`:
-  - `#e0382c` **4.401**, `#d9362b` **4.653**, `#c22e23` **5.662**;
-  - `#ef8a1f` **2.522**, `#d57b1c` **3.144**.
-  All five match the worker's numbers. The primary CTA red changes on every screen. It is
-  the minimum darkening that clears AA, and the owner should know the brand colour moved.
-
-  *Where I disagreed and then did not.* Before the branch existed I predicted the
-  conservative default (`?? 0`) would be right for a reading with no `confidence`, and
-  that `?? 0.7` would let a record set `scanApplied` with nothing behind it. Since cycle
-  44, `isScanReads` requires finite `oil`/`redness`/`pores`, so a confidence-less record
-  that reaches `shouldApplyScan` does carry real reads. Applying it is not a camera claim
-  without data. The worker's choice is to agree on one function and keep what decides the
-  picks. It stands.
-
-  *Hardened here: `tests/device-store-guards.test.ts` passed with the guard removed.*
-  - Replacing `/care`'s `if (isSkinReads(parsedReads)) reads = parsedReads;` with a bare
-    cast gave **4 passed**. The check was "the file contains the word `isSkinReads`", and
-    the import line alone satisfies that.
-  - Its header said it "enumerates the readers instead of trusting a memory of them",
-    but the reader list was a fixed array of four files.
-  - It now walks every `.ts`/`.tsx` under `app/` and `lib/`. After each
-    `getItem(DEVICE_DATA_KEY.reads|scan)` it requires an `isSkinReads(` /
-    `isScanReads(` / `shouldApplyScan(` CALL within the next 800 characters, with
-    comment lines dropped.
-  - The same cast now gives **1 failed | 3 passed**. A guard left only in a comment next
-    to the read also gives **1 failed | 3 passed**. Clean is **4 passed**.
-
-  *Broken here, two more ways.*
-  - Restoring `/survey`'s local `(scan.confidence ?? 0) < 0.58` copy: **1 failed | 6
-    passed** on `tests/scan-confidence-agreement.test.ts`.
-  - Restoring `--plum: #e0382c`: **2 failed | 3 passed** on
-    `conversion-path-accessibility.spec.ts`. Clean is **5 passed**.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 117 passed (117)
-  / Tests 1076 passed (1076)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `43041ca` drops
-  **2** lines: the two backlog items' opening lines, which the worker ticked and moved to
-  the changelog (`docs/autopilot-changelog.md:32` and `:83`). Recent cycles holds
-  49/48/47, and cycle 46 sits after cycle 45 at the end of the changelog. `npm run smoke`
-  **Test Files 117 passed (117) / Tests 1076 passed (1076)**, **277 passed (9.6m)**,
-  **Smoke test passed.**

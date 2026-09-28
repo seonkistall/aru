@@ -775,6 +775,15 @@ was `4 failed | 4 passed`. So:
 - `ARU_REUSE_DEV_SERVER=1` is for an interactive edit loop only. It costs roughly 3-4 s of
   cold Turbopack compile to leave it unset (measured: 4930 / 5247 / 6072 ms to the first
   200 on `/` cold, 1958 ms warm), which is the price of the run meaning what it says.
+- **`vitest.config.ts` sets `testTimeout: 60_000`, and that is a correctness setting, not a
+  convenience.** Vitest's Node default is 5000ms. Three tests in this suite carry no timeout
+  of their own and run long enough that a loaded box makes the CLOCK the assertion: measured
+  2026-09-28 (cycle 52), `npx vitest run --testTimeout=5000` under twelve busy-loops on a
+  4-core container gives `Test Files 3 failed | 117 passed (120)` with three `Test timed out
+  in 5000ms` and zero assertion failures, while the same load with 60_000 in place is
+  `120 passed (120) / 1089 passed (1089)`. A red vitest run from a timeout looks exactly like
+  a broken measurement and is not one. `tests/vitest-timeout-budget.test.ts` fails if the
+  line is removed or set under 20_000.
 - `eslint` ignores `test-results/**` and `playwright-report/**`. It did not before, and
   because `smoke` runs `lint` first, one earlier failing e2e run turned `0 errors, 2
   warnings` into `215 errors, 4020 warnings` over 6366 files of captured trace JS.

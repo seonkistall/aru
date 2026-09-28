@@ -10981,3 +10981,245 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **0** lines. Recent cycles holds 48/47/46, and cycle 45 sits after cycle 44 at the end
   of the changelog. `npm run smoke` gave
   **272 passed (10.7m)** and `Smoke test passed.` on the first run.
+
+- 2026-09-27 (cycle 49) — Branch `autopilot/2026-09-27-1839`. **The first accessibility
+  pass on the conversion path found the primary CTA colour under WCAG AA by 0.099, and it
+  had been under it on every screen that asks for money since the token was written.
+  `--plum` #e0382c is 4.401:1 on white against a 4.5:1 floor, in both directions because
+  contrast is symmetric, and 60 of the 66 failing text nodes across 12 screen x locale
+  pairs were that one value: the /scan and /survey submit buttons, the three
+  "올리브영에서 제품 보기" buy links on /report picks, the ingredient names, the rank
+  badges, the required-field asterisks. `--orange` #ef8a1f is 2.522:1 against the 3:1
+  large-text floor on the step numerals on `/`. Both tokens darkened by the least amount
+  that clears the floor with 0.1 of margin. What the same audit found CLEAN is the larger
+  result: 0 of 186 interactive controls with no accessible name, 0 unlabelled form
+  controls, 0 images without `alt` or `aria-hidden`, and 164 keyboard focus stops every
+  one of which had a visible indicator. Alongside: the cycle-44 device-store item closed
+  on all three parts, and the flaky e2e case no longer waits on a 15 MB download.**
+
+  **Baselines, re-measured here on `43041ca`.** `node_modules` was absent, so `npm ci`
+  first (exit **0**). `npx vitest run` **Test Files 115 passed (115) / Tests 1063 passed
+  (1063)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings** (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py`
+  **Ran 146 tests in 1.960s ... OK**. All four match the supervisor's.
+
+  **Why the accessibility slot was never spent before, and it is not that it was
+  considered and declined.** At `43041ca`, `git show 43041ca:docs/AUTOPILOT.md | grep -c
+  -iE "accessib|a11y"` is **0** and the same grep for `wcag` is **0**. The single hit for
+  `contrast` (line **825**) is `tuned("oil")`'s image contrast in the ML pipeline, not a
+  colour ratio. Forty-eight cycles, no pass. What the repo did have is
+  `docs/tap-target-provenance.md` from cycle 27, and that doc is the reason this cycle did
+  not call three controls defects that are not.
+
+  **The audit, and what a container can and cannot establish about it.** A Playwright
+  probe at 360x800 against `npx next start` on a production build, `en` and `ko`, on `/`,
+  `/scan` (intro and `ready` through the canvas `captureStream()` camera shim the existing
+  specs use), `/survey`, `/report` picks and `/care` — **12** screen x locale pairs, no new
+  dependency and no axe. Per pair it collected every visible interactive control with its
+  accessible name and box, every `img`/`svg`, every element with a direct non-empty text
+  node with its computed colour composited against the first opaque ancestor background,
+  and a Tab walk of up to 40 stops reading `document.activeElement`'s outline and
+  box-shadow.
+
+  Clean, and these are the numbers: **186** interactive controls in total (**8** on `/`,
+  **4** on `/scan` intro, **7** on `/scan` ready, **42** on `/survey`, **19** on `/report`
+  picks, **13** on `/care` — **93** per locale, identical in both), of which **0** had no
+  accessible name.
+  The conversion path carries only **6** `input`/`select`/`textarea` controls at all —
+  the three consent checkboxes on `/scan` ready, times two locales — and **0** are
+  unlabelled, each named by the `<label>` wrapping it. That denominator is small enough
+  that the result is nearly vacuous and is reported as such. Of the **68** visible
+  `img`/`svg` elements, **0** reach the accessibility tree unnamed — no `img` without
+  `alt`, and no `svg` with neither a `role`/`aria-label` of its own nor an `aria-hidden`
+  ancestor. **164** focus stops, **0** with neither an outline
+  nor a box-shadow; every one resolved to `1px auto rgb(16, 16, 16)`, which is Chromium's
+  own ring — i.e. the repo has never overridden `:focus` into invisibility, which is the
+  common way this fails.
+
+  Not clean: **66** of the **580** text nodes measured failed, **60** of them involving
+  #e0382c and **6** #ef8a1f, and **0** involving any other colour — so two token edits cover the whole finding. The
+  ratios: #e0382c **4.401:1** against 4.5 for normal text, #ef8a1f **2.522:1** against 3
+  for large. Fixed to #d9362b **4.653:1** (97% of each channel) and #d57b1c **3.144:1**
+  (89%), in each case the least darkening that clears the floor with at least 0.1 of
+  margin. `--plum-press` #c22e23 is **5.662:1** and stays the darker pressed state.
+  `public/offline.html`'s button carried the same #e0382c literal and moved with it.
+
+  **The target findings, where cycle 27's doc changed two verdicts out of three.**
+  `--tap-min: 44px` is WCAG **2.5.5** Target Size (Enhanced), level **AAA**; the AA floor
+  is **2.5.8**'s 24x24 with four exceptions. Three controls measured under 44:
+  - `/survey`'s "카메라로 다시 살펴보기" link, **114.3x18.8** (ko) and **207.8x18.8** (en).
+    **Fixed** to `--tap-min` via `inline-flex` + `align-items`. It does **not** fail 2.5.8:
+    of the **42** targets the page carries (this link included), the nearest other one sits
+    **72.9px** from a 24px circle centred on its box, and the next two at **73.1** and
+    **101.3**, so the Spacing exception applies. It fails `--tap-min`, and it cannot claim the Inline exception because its
+    parent `div` has no text of its own.
+  - the two `/guide/` links on `/`, **164.8x15** and **108.7x15** (en), **173.1x38.4**
+    (ko, wrapped). **Left alone**, and that is a verdict rather than an omission: they are
+    `display: inline` inside a `<p>` whose own text nodes are `영문 가이드`, `:` and `·`,
+    so 2.5.8's Inline exception covers them exactly as written. Raising them would have
+    changed a sentence's line box for no standard's sake.
+  - the three consent checkboxes on `/scan` ready, **18x18** each. **Not a defect** — the
+    first pass measured the input and the target is the `<label>` around it, at
+    **290x57.2** with `min-height: 52px`. Recorded because the audit tool was wrong before
+    it was right, and a future pass should measure the label.
+
+  **What the accessibility pass did NOT establish.** Only `en` and `ko` were audited, so
+  `ja`/`zh`/`ar` are unmeasured — the contrast result is a property of tokens and carries
+  over, but wrapped geometry does not, and the one measured locale difference here
+  (**108.7x15** vs **173.1x38.4** on the same link) is exactly that. No screen reader was
+  run: "has an accessible name" is Chromium's computation, not evidence that the name is
+  *useful*. Nothing was tested at a zoom level, with `prefers-reduced-motion`, or against
+  1.4.11 Non-text Contrast for the SVG line art. `/report`'s other two steps, `/checkin`,
+  `/studio`, `/privacy` and the two guide pages were not audited at all.
+
+  **The bug fix — the cycle-44 device-store item, all three parts, closed.** Full numbers
+  and every break are in the ticked item above. In short: `/care` gained `isSkinReads`;
+  `shouldApplyScan` is now exported from `lib/recommend.ts` and `/survey` calls it instead
+  of keeping a copy whose `?? 0` disagreed with the shipped `?? 0.7` on a confidence-less
+  reading; and `SHELL_CACHE` is now named after a hash of `public/offline.html`, which is
+  what makes an edit to that page reach a returning visitor. Three new or extended test
+  files, **7** + **4** + **2** tests, and six breaks between them, one of them the shared
+  default itself rather than merely where it lives. `tests/sw-mediapipe-revalidate.test.ts`
+  had `aru-shell-v1` typed into it and now reads the name out of `public/sw.js`, so the
+  hash is not a thing two files have to agree about by hand.
+
+  **The flaky test — closed the first of the two ways the item offered.** Also above. The
+  finding's premise was half wrong and the measurement is the interesting part: the runtime
+  fetch (**3** requests, **15234257** bytes) starts on page mount at **606**/**1195**/
+  **1278** ms after navigation, not on the tap, and tap → checklist was **173**/**233**/
+  **241** ms against tap → phase ready at **163**/**222**/**228** ms. No timeout was
+  widened and the two `ja` cases were left as they are.
+
+  **Research — the contrast floors, from the W3C's own repository.** `w3.org` refuses this
+  container, so the normative source is `raw.githubusercontent.com/w3c/wcag/main`. All
+  `http=200`: `guidelines/sc/20/contrast-minimum.html` **1071** bytes sha256
+  `f1d819b44cc5ba64e962ce64889de2ab214af6911b27a119f7d24c43197b2e64`;
+  `guidelines/terms/20/contrast-ratio.html` **2179** /
+  `c279bc2f5dd510c7bc4a7a35d52004725e0bc5261ec13ee40680aa2d4510a6a2`;
+  `guidelines/terms/20/relative-luminance.html` **2550** /
+  `391cc0cc06fc31641e35465bb8af5cb4c861f709a1ebc0e0e490b53a0cb2eb69`;
+  `guidelines/terms/20/large-scale.html` **2246** /
+  `0b35ef88e20f8041de04f8a804ba902d8973465fb14f6f18d2b96346dc09e45a`;
+  `guidelines/sc/22/target-size-minimum.html` **1737** /
+  `b5cd439141c3771e69cd20596f6fbda5fadfe28967f8783559066a435a62b123`. That last sha256 is
+  **byte-identical to the one cycle 27 recorded** in `docs/tap-target-provenance.md` five
+  days ago, so that citation is live rather than remembered. `understanding/22/contrast-
+  minimum.html` is a **404** — 1.4.3 is a WCAG 2.0 criterion carried forward, so its
+  explanatory page lives under `20/` (**21170** bytes, `http=200`). Verbatim, 1.4.3: "The
+  visual presentation of text and images of text has a contrast ratio of at least 4.5:1",
+  with the Large Text exception "at least 3:1" and an **Incidental** exception for text
+  "that are part of an inactive user interface component". Verbatim, large scale: "with at
+  least 18 point or 14 point bold or font size that would yield equivalent size for
+  Chinese, Japanese and Korean (CJK) fonts". Full quotes, the luminance formula the spec
+  implements, and the four-row table of which threshold belongs to which criterion:
+  `docs/contrast-provenance.md`.
+
+  **The Incidental exception earned its keep immediately, on a number this cycle nearly
+  pinned wrong.** The first version of the spec measured `/survey`'s submit button without
+  seeding a survey, so it measured it **disabled**, and read **4.166:1** — a failure by the
+  bare arithmetic and not a defect, because a disabled button is an inactive user interface
+  component. The spec now seeds the survey and asserts `toBeEnabled()` before measuring,
+  so it pins the state the criterion actually governs. **What the audit did not do is
+  re-check the whole page set for this**: the **66** failing nodes were collected with a
+  survey seeded on `/survey` and `/report`, but the disabled-control question was not swept
+  anywhere else, so some fraction of a future run's failures may be exempt the same way.
+
+  **Pinned, and every fix broken at least once.** `tests/e2e/conversion-path-
+  accessibility.spec.ts`, **5 passed**, computes contrast in the page from the WCAG
+  formula against the colours the browser **resolves** rather than the hex literals, so a
+  token indirection that stops applying fails. Broken three ways, each reproducing the
+  audit's own number independently: `--plum` reverted → **2 failed | 3 passed**
+  (`/scan CTA ratio was 4.40113368087186`, `buy-link ratio was 4.40113368087186`);
+  `--orange` reverted → **1 failed | 4 passed** (`step numeral ratio was
+  2.522425007894083`); `retakeLinkStyle` reverted → **1 failed | 4 passed** (`re-scan link
+  height was 18.75 against --tap-min 44`). `page.accessibility` was the obvious tool for
+  the name check and **does not exist** in this repo's `@playwright/test` 1.61.1 — the
+  first version of the spec proved it with `TypeError: Cannot read properties of undefined
+  (reading 'snapshot')` — so the check counts `getByRole(role)` against
+  `getByRole(role, { name: /\S/ })`, which is still Playwright's own name computation.
+
+  **ML — skipped, nothing trivially advanceable.** `python3 ml/selftest.py` is green and
+  untouched (**Ran 146 tests ... OK**), and no file under `ml/` is in this diff.
+  `minQwkGainOverHeuristic` stays **0.0** and `status` / `promotionGate` in
+  `public/models/visible-attributes/manifest.json` were not opened.
+
+  **No guide page was added**, per the experiment's own rule in Backlog > Now.
+
+  **No translation string changed content**, and no key was added: the one label this
+  cycle could have needed an `aria-label` for did not need one, because the audit found
+  **0** controls without a name. `lib/consent.ts` was not opened, `NEXT_PUBLIC_FUNNEL_FLUSH`
+  is still unset everywhere, and no provider was called.
+
+  **Docs and rotation.** Both actioned items were ticked by appending, not by rewriting
+  their original wording — the only bytes of either that changed are `- [AI]` becoming
+  `- [x] [AI]` on its first line. Recent cycles holds 49/48/47; cycle 46's **255** lines
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 45, and the two
+  items this cycle ticked `[x]` moved to "Closed backlog items" there under "Now", per
+  step 8. **Byte-identical, not merely present**: the extracted cycle-46 text and the
+  matching tail of the new changelog both sha256 to
+  `8ab2f4b8f858311120649dd23a8b1eeb5013db41e97e3c48ea47796433061fd8`, and each moved
+  backlog item appears in the changelog exactly **1** time as an exact substring of its
+  extract (**50** and **37** lines, sha256 `f7dd5a243c534be3…` and `7b031a95c7477b56…`).
+  One pre-existing `[x]` item stays in "Now" — the `/report` Korean-characters item, which
+  is `[x]` at `43041ca` too (`grep -c` → **1**) and is not this cycle's to move.
+
+  **Nothing was lost, and the two lines that moved are accounted for.** `sort -u` over
+  both files at `43041ca` gives **10766** unique lines and over the final pair **10991**;
+  `comm -23` of the first against the second drops exactly **2**:
+  `- [AI] **One e2e case's 20s budget includes loading the 11 MB MediaPipe runtime, and it`
+  and `- [AI] **Three device-store reads still have no shape guard, and one cached file is`.
+  Both are the two items' opening lines before the tick, and both exist now in their
+  ticked form (`grep -c "^- \[x\] \[AI\] \*\*One e2e case's 20s budget"` →
+  **1**, same for the other). No other line present at `43041ca` is absent.
+
+  **Validation on this tree, worker.** Filled in below once the gating run finished, so
+  these are the committed tree's numbers and not an earlier tree's.
+  *(Supervisor: nothing was filled in below. The branch was pushed with this sentence
+  as the entry's last line and without the `*Supervisor review:* pending.` line. The
+  supervisor's own validation, which is the gate, follows.)*
+
+  **Supervisor review.** Sound, with one weak test hardened before merge. The owner
+  should hear about one visible change: the brand red.
+
+  *Contrast recomputed here, independently of the worker's harness.* WCAG relative
+  luminance against `#ffffff`:
+  - `#e0382c` **4.401**, `#d9362b` **4.653**, `#c22e23` **5.662**;
+  - `#ef8a1f` **2.522**, `#d57b1c` **3.144**.
+  All five match the worker's numbers. The primary CTA red changes on every screen. It is
+  the minimum darkening that clears AA, and the owner should know the brand colour moved.
+
+  *Where I disagreed and then did not.* Before the branch existed I predicted the
+  conservative default (`?? 0`) would be right for a reading with no `confidence`, and
+  that `?? 0.7` would let a record set `scanApplied` with nothing behind it. Since cycle
+  44, `isScanReads` requires finite `oil`/`redness`/`pores`, so a confidence-less record
+  that reaches `shouldApplyScan` does carry real reads. Applying it is not a camera claim
+  without data. The worker's choice is to agree on one function and keep what decides the
+  picks. It stands.
+
+  *Hardened here: `tests/device-store-guards.test.ts` passed with the guard removed.*
+  - Replacing `/care`'s `if (isSkinReads(parsedReads)) reads = parsedReads;` with a bare
+    cast gave **4 passed**. The check was "the file contains the word `isSkinReads`", and
+    the import line alone satisfies that.
+  - Its header said it "enumerates the readers instead of trusting a memory of them",
+    but the reader list was a fixed array of four files.
+  - It now walks every `.ts`/`.tsx` under `app/` and `lib/`. After each
+    `getItem(DEVICE_DATA_KEY.reads|scan)` it requires an `isSkinReads(` /
+    `isScanReads(` / `shouldApplyScan(` CALL within the next 800 characters, with
+    comment lines dropped.
+  - The same cast now gives **1 failed | 3 passed**. A guard left only in a comment next
+    to the read also gives **1 failed | 3 passed**. Clean is **4 passed**.
+
+  *Broken here, two more ways.*
+  - Restoring `/survey`'s local `(scan.confidence ?? 0) < 0.58` copy: **1 failed | 6
+    passed** on `tests/scan-confidence-agreement.test.ts`.
+  - Restoring `--plum: #e0382c`: **2 failed | 3 passed** on
+    `conversion-path-accessibility.spec.ts`. Clean is **5 passed**.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 117 passed (117)
+  / Tests 1076 passed (1076)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. The rotation check against `43041ca` drops
+  **2** lines: the two backlog items' opening lines, which the worker ticked and moved to
+  the changelog (`docs/autopilot-changelog.md:32` and `:83`). Recent cycles holds
+  49/48/47, and cycle 46 sits after cycle 45 at the end of the changelog. `npm run smoke`
+  **Test Files 117 passed (117) / Tests 1076 passed (1076)**, **277 passed (9.6m)**,
+  **Smoke test passed.**
