@@ -1856,7 +1856,56 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   same code with different JSDoc text also printed **288 passed (14.4m)** and **Smoke test
   passed.**; the run above is the one on the tree being pushed.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, and the parser finding is the most useful thing a contrast
+  cycle has produced. It explains why two sweeps read green on a surface that was red. One
+  place the fix also had to hold was ported here, and one vitest failure is recorded that
+  this review could not identify.
+
+  *Reproduced here.*
+  - `--danger` is used at `d10acf7:app/checkin/page.tsx:167` and
+    `d10acf7:app/components/product-card.tsx:98`, and `git grep` finds no definition.
+  - The parser mechanism, broken both ways on the ingredient tag with `color: var(--plum)`
+    restored:
+    - with `parse` reverted to rgb-only, regression-35 reads **9 passed**, which is the
+      false green;
+    - with the `color(srgb …)` branch in, it reads **2 failed | 7 passed**, reporting
+      `"Heartleaf extract" rgb(217, 54, 43) on rgb(252, 239, 238) = 4.145877021275885:1`.
+  - The matrix, broken two ways the worker did not try:
+    - `--plum-soft` restored to #fbe6e4 gives **2 failed** ("every pair established to
+      render as text clears its floor" and the under-floor snapshot);
+    - an undefined `color: var(--warning)` on product-card's highlight chip gives **1
+      failed | 5 passed**, `--warning is used as a colour … but is not defined`.
+  - The other `color-mix()` text surfaces were computed: `watchOutStyle` `--plum-press` on
+    plum 6% is **5.1941** and `/care`'s `safetyCard` holds `--ink` at **15.9661**.
+
+  *Ported: `tests/e2e/conversion-path-accessibility.spec.ts` kept the rgb-only `parse`.*
+  The worker's own comment says the rig "and the sweep that shares its formula" were
+  blind, and it fixed one of the two. It now carries the same `color(srgb …)` branch.
+  Regression-35 and that spec together: **14 passed**.
+
+  *Limits, stated rather than fixed.*
+  - `RENDERS` is a hand-kept list. The matrix fails when a TOKEN moves under a pair it
+    lists, or when a colour is used but undefined. It does not fail when new code puts an
+    already-listed under-floor pair (say `--plum` on `--surface-tint`) on screen. That
+    still needs a render.
+  - Its `luminance` uses the 0.03928 knee where the e2e rigs use 0.04045. No 8-bit
+    channel falls between them (10/255 < 0.03928 and 11/255 > 0.04045), so no ratio
+    differs.
+  - The skin-type pre-fill was correctly not built: a level-2 shine reading is T-zone
+    against cheek, which is 복합성 evidence rather than 지성, and the scan already votes
+    through the 유분 concern.
+
+  *Unidentified vitest failure.* The first `npx vitest run` on this branch printed **Test
+  Files 1 failed | 118 passed (119) / Tests 1 failed | 1086 passed (1087)**. The output
+  was piped through a filter that dropped the test's name. Nine following runs on the
+  same tree printed **119 passed (119)** each. The failing test is unknown, so it is
+  recorded as unknown, not called a flake. The next cycle should run vitest ten times with
+  full output kept and name it.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 119 passed (119) /
+  Tests 1087 passed (1087)** (the nine runs above), `tsc` **13**, `eslint` **0 errors, 2
+  warnings**, `python3 ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both
+  files at `d10acf7` against this pair drops **0** lines. SMOKE_RESULT
 
 - 2026-09-28 (cycle 50) — Branch `autopilot/2026-09-28-0039`. **The path from the landing
   page to the first link that can earn money had never been measured, and it is 4 screens
