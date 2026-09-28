@@ -1851,7 +1851,9 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree, supervisor:* `npx vitest run` **Test Files 118 passed (118) / Tests
   1081 passed (1081)**, `tsc` **13**,
-  `eslint` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**. SMOKE_RESULT
+  `eslint` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**. `npm run smoke`
+  **Test Files 118 passed (118) / Tests 1081 passed (1081)**, **284 passed (9.7m)** (the
+  worker's 282 plus the two retake-card cases), **Smoke test passed.**
 
 - 2026-09-27 (cycle 49) — Branch `autopilot/2026-09-27-1839`. **The first accessibility
   pass on the conversion path found the primary CTA colour under WCAG AA by 0.099, and it
