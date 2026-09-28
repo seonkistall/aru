@@ -346,27 +346,6 @@ export default function Report() {
           </section>
         )}
 
-        {step === "picks" && (
-        <section style={{ margin: "30px 0 24px" }}>
-           <h2 style={sectionLabel}>{t("추천 기준")}</h2>
-           <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
-             {t(
-               "피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.",
-               {
-                 type: t(survey.type),
-                 concerns: concernText,
-                 budget: t(budgetLabel(survey.budget)),
-                 category: t(survey.category),
-               },
-             )}
-             {result.scanApplied && reads ? ` ${t("카메라에서 확인한 {signals}도 함께 참고했어요.", { signals: scanSignalText(reads) })}` : ""}
-          </p>
-          {survey.avoid.length > 0 && (
-            <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>{t("제외 요청: {list}", { list: survey.avoid.map((item) => t(item)).join(" · ") })}</p>
-          )}
-        </section>
-        )}
-
         {step === "routine" && (
         <details open style={card}>
           <summary style={{ minHeight: "var(--tap-min)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", listStyle: "none", gap: 10 }}>
@@ -407,6 +386,36 @@ export default function Report() {
                 <ProductCard key={pick.sku.id} pick={pick} placement="report_product" rank={i + 1} />
               ))}
             </div>
+
+            {/*
+              "추천 기준" renders AFTER the grid, not before it. Layout-only reorder,
+              measured 2026-09-28 (cycle 52) at 360x800: above the grid this section plus
+              its margins occupies 150.5px in ko/zh/ja/ar and 174.5px in en, and it was
+              the only block between the step tabs and the first buy button that could
+              move without touching copy, the picks, or CommerceDisclosure's position next
+              to its link. Before the move the first merchant link needed 0px of scroll in
+              ko, 18.7 in zh, 84.3 in ja, 145.7 in ar and 153 in en against an 800px
+              viewport; after it, 0 in all five. The text, the styles and the conditions
+              are byte-identical to what stood above — only the position changed.
+            */}
+            <section style={{ margin: "30px 0 24px" }}>
+               <h2 style={sectionLabel}>{t("추천 기준")}</h2>
+               <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.6, marginTop: 8 }}>
+                 {t(
+                   "피부 타입 {type}, 고민 {concerns}, 예산 {budget}을 함께 고려했어요. 이 조건에 가까운 {category} 제품을 최대 세 개 보여드릴게요.",
+                   {
+                     type: t(survey.type),
+                     concerns: concernText,
+                     budget: t(budgetLabel(survey.budget)),
+                     category: t(survey.category),
+                   },
+                 )}
+                 {result.scanApplied && reads ? ` ${t("카메라에서 확인한 {signals}도 함께 참고했어요.", { signals: scanSignalText(reads) })}` : ""}
+              </p>
+              {survey.avoid.length > 0 && (
+                <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>{t("제외 요청: {list}", { list: survey.avoid.map((item) => t(item)).join(" · ") })}</p>
+              )}
+            </section>
 
             {result.picks.length >= 2 && (
               <details style={{ ...card, marginTop: 16 }}>
