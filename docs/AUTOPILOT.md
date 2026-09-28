@@ -1938,7 +1938,8 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
   ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `11e6c4f`
-  against this pair drops **0** lines. SMOKE_RESULT
+  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **291 passed (10.9m)**, **Smoke test passed.**
 
 - 2026-09-28 (cycle 51) — Branch `autopilot/2026-09-28-1239`. **The camera path was
   supposed to get shorter this cycle by pre-selecting 피부 타입 from the scan's oil
