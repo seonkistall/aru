@@ -42,7 +42,16 @@
      the least darkening (89% of each channel) that clears 3 with at least 0.1 of margin. */
   --orange: #d57b1c;       /* flow / arrows / A→B */
   --blue: #2f6de0;         /* AI / system / 2nd-layer notes */
-  --bronze: #767676;       /* labels = quiet */
+  /* Darkened from #767676, which is 4.540:1 on white — it clears the 4.5:1 WCAG 2.2 AA
+     floor (SC 1.4.3) by 0.040, so ANY tinted surface takes it under. On
+     `--surface-tint` #f5f5f5 it measures 4.166:1, and that is where it renders on
+     `/privacy`: the two `noticeStyle` cards' `sectionLabel` eyebrows. Cycle 49's audit
+     computed every token against #ffffff only, which is why this one read clean.
+     #6e6e6e is 4.677:1 on the tint and 5.099:1 on white. It is `--text-muted`'s value,
+     deliberately: the least darkening that clears 4.5 with 0.1 of margin is #6f6f6f at
+     4.607:1, and adding a twentieth grey to the palette for 0.07 of ratio is not worth
+     it while #6e6e6e is already in it. */
+  --bronze: #6e6e6e;       /* labels = quiet */
   --rose: #f5f5f5;
   --peach: #f5f5f5;
   --on-plum: #ffffff;

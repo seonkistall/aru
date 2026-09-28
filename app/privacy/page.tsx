@@ -220,4 +220,11 @@ const detailsSummary: React.CSSProperties = { minHeight: "var(--tap-min)", displ
 const detailTitle: React.CSSProperties = { fontFamily: "var(--font-ko-serif)", fontSize: 17, color: "var(--ink)", margin: "16px 0 5px" };
 const outlineLink: React.CSSProperties = { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "13px 14px", fontSize: 14, fontWeight: 800, textDecoration: "none" };
 const outlineBtn: React.CSSProperties = { background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "start" };
-const dangerBtn: React.CSSProperties = { background: "transparent", color: "var(--plum)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "start" };
+// `--plum-press`, not `--plum`. Three of this button's six uses sit in a `noticeStyle`
+// card, whose background is `--surface-tint` #f5f5f5 and not white, and `--plum` #d9362b
+// measures 4.653:1 on white but 4.268:1 there — under the 4.5:1 WCAG 2.2 AA floor
+// (SC 1.4.3). `--plum-press` #c22e23 is 5.194:1 on the tint and 5.662:1 on white, so it
+// clears the floor in both cards, and it is the right red for a destructive action
+// anyway. The brand `--plum` is deliberately left alone: it moved last cycle and it is
+// the primary CTA colour on every screen, so the narrow fix is this one call site.
+const dangerBtn: React.CSSProperties = { background: "transparent", color: "var(--plum-press)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", fontSize: 14, fontWeight: 800, cursor: "pointer", textAlign: "start" };

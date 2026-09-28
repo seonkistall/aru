@@ -515,38 +515,55 @@ used externally as if they proved purchases, efficacy or failure prevention.
 
 ### Accessibility
 
-Audited for the first time in cycle 49, at 360x800 on a production build, `en` and `ko`,
-over the conversion path (`/`, `/scan` intro and ready, `/survey`, `/report` picks,
-`/care`) — 12 screen x locale pairs. What holds today, measured rather than asserted:
+Audited for the first time in cycle 49 over the conversion path, and extended in cycle 50
+to every screen a visitor reaches: 360x800 on a production build, `en` and `ko`, over `/`,
+`/scan`, `/survey`, `/report`'s three steps, `/care`, `/checkin`, `/studio`, `/privacy` and
+`/unsubscribe` — 22 screen x locale pairs. What holds today, measured rather than asserted:
 
-- **Accessible names.** 186 visible interactive controls, 0 without an accessible name.
-  0 of 68 visible `img`/`svg` elements reach the accessibility tree unnamed. The path
-  holds only 6 `input`/`select`/`textarea` controls (the `/scan` consent checkboxes) and
-  all 6 are labelled — a thin result, reported as one.
-- **Keyboard focus.** 164 Tab stops, every one with a visible indicator.
-- **Text contrast (WCAG 2.2 SC 1.4.3, level AA).** Body and CTA text clears 4.5:1, and
-  text at 24px or 18.66px bold clears 3:1. This is what moved two shipped tokens:
-  `--plum` was `#e0382c` at 4.401:1 and is now `#d9362b` at 4.653:1; `--orange` was
-  `#ef8a1f` at 2.522:1 against the large-text floor and is now `#d57b1c` at 3.144:1. A
-  new colour on text has to clear its floor, and
-  `tests/e2e/conversion-path-accessibility.spec.ts` computes the ratio from the colours
-  the browser resolves, not from the hex literals.
+- **Accessible names.** 284 visible interactive controls across the 22 pairs, 0 without an
+  accessible name; cycle 49's narrower sweep found 0 of 68 visible `img`/`svg` elements
+  reaching the accessibility tree unnamed. Cycle 50 re-checked `img` alone (0 of 6 without
+  `alt` or `aria-hidden`) and found 0 `input`/`select`/`textarea` controls without a
+  programmatic label — no denominator is claimed for that last one, only the zero.
+- **Keyboard focus.** Every Tab stop on `/`, `/scan`, `/survey`, `/care`, `/checkin`,
+  `/studio`, `/privacy` and `/unsubscribe` has a visible indicator. `/report`'s picks and
+  routine steps are the one gap: cycle 50's script-driven `.focus()` harness and a
+  `Tab`-driven probe disagreed there, so neither result is reported as fact.
+- **Text contrast (WCAG 2.2 SC 1.4.3, level AA).** 0 of 904 visible leaf text nodes are
+  under their floor: 4.5:1 for body text, 3:1 at 24px or 18.66px bold. This has moved
+  three shipped tokens. `--plum` was `#e0382c` at 4.401:1 and is now `#d9362b` at 4.653:1;
+  `--orange` was `#ef8a1f` at 2.522:1 against the large-text floor and is now `#d57b1c` at
+  3.144:1 (both cycle 49). `--bronze` was `#767676` and is now `#6e6e6e` (cycle 50).
+- **A ratio is a property of a colour PAIR, not of a token.** Cycle 49 computed every token
+  against `#ffffff`, and that is not where all of them render. On `--surface-tint`
+  `#f5f5f5` every ratio drops by about 8%: `--bronze` `#767676` was 4.540:1 on white and
+  4.166:1 on the tint, and `--plum` `#d9362b` is 4.653:1 on white and 4.268:1 on it. Both
+  rendered on `/privacy`'s notice cards. So a new colour has to clear its floor against the
+  surface it actually sits on, and `dangerBtn` there takes `--plum-press` `#c22e23`
+  (5.194:1 on the tint) rather than the brand red. Both
+  `tests/e2e/conversion-path-accessibility.spec.ts` and
+  `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` compute the ratio from the
+  colours the browser resolves, walking the ancestor chain for the background, not from the
+  hex literals.
 - **Target size.** `--tap-min: 44px` is the repo's contract and it is **WCAG 2.5.5, level
   AAA** — stricter than the AA floor, which is 2.5.8's 24x24 with Spacing, Equivalent,
   Inline, User Agent Control and Essential exceptions. A control under 44px is therefore
   not automatically a WCAG failure, and two of the three found under it were correctly
   left alone: the `/guide/` links on `/` are inline in a sentence, and the `/scan` consent
-  checkboxes are 18x18 inputs inside 290x57.2 labels, which is the real target.
+  checkboxes are 18x18 inputs inside 290x57.2 labels, which is the real target. One control
+  found in cycle 50 is still open and filed in `docs/AUTOPILOT.md`: `/report`'s routine step
+  puts the reengage checkbox at 15x15 (`ko`) / 13x15 (`en`), which needs the same
+  is-the-label-the-target judgement made and measured before anything is resized.
   Provenance for every threshold above, with the normative quotes and fetch hashes:
   [docs/contrast-provenance.md](docs/contrast-provenance.md) and
   [docs/tap-target-provenance.md](docs/tap-target-provenance.md).
 
-Not yet established, and not to be read as passing: `ja`/`zh`/`ar` were not audited (the
-contrast result is a property of tokens and carries over; wrapped geometry does not), no
-screen reader was run, and zoom, `prefers-reduced-motion` and SC 1.4.11 Non-text Contrast
-for the SVG line art are untested. `/report`'s other two steps, `/checkin`, `/studio`,
-`/privacy` and the two guide pages have not been audited at all. Open items are in
-`docs/AUTOPILOT.md`.
+Not yet established, and not to be read as passing: `ja`/`zh`/`ar` were not audited (a
+contrast result carries over only where the same colour pair renders — cycle 50 is what
+made that qualification necessary; wrapped geometry does not carry over at all), no screen
+reader was run, and zoom, `prefers-reduced-motion` and SC 1.4.11 Non-text Contrast for the
+SVG line art are untested. The two guide pages have not been audited at all, and
+`/report`'s focus visibility is unresolved (above). Open items are in `docs/AUTOPILOT.md`.
 
 ## Repository layout
 
@@ -721,7 +738,13 @@ was `4 failed | 4 passed`. So:
   `next dev` — what killing a smoke run mid-suite leaves behind — used to hang the run
   with no verdict at all.
 - **Do not kill a smoke run with a `pkill -f` pattern** that also matches your own shell.
-  That is how the orphan gets created; kill by PID.
+  That is how the orphan gets created; kill by PID. And after killing one, check the new
+  server actually BOUND before believing a number off it. Cycle 50 lost a whole measurement
+  run to this: `npx next start` failed with `EADDRINUSE`, the old process kept serving HTML
+  that named a CSS chunk the new `npm run build` had replaced, and every page rendered
+  unstyled — `curl` on the chunk gave `404`, `--bronze` resolved to the empty string,
+  `body` had the UA's 8px margin, and `/studio` showed a phantom `scrollWidth` of 412
+  against a `clientWidth` of 360. Nothing was wrong with the tree.
 - `ARU_REUSE_DEV_SERVER=1` is for an interactive edit loop only. It costs roughly 3-4 s of
   cold Turbopack compile to leave it unset (measured: 4930 / 5247 / 6072 ms to the first
   200 on `/` cold, 1958 ms warm), which is the price of the run meaning what it says.
