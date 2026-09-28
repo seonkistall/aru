@@ -1900,7 +1900,45 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   public/ ml/` and `-- app/globals.css` are each empty. The only thing not covered by that
   smoke run is this paragraph and the line below it, which were written after it finished.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound. The timeout mechanism is established by breaking it, and
+  the entry is honest that it is not proven to be cycle 51's failure. The fold fix is a
+  reorder with byte-identical copy. Merged with one fragility recorded; no code change
+  from review.
+
+  *Reproduced here.*
+  - `npx vitest run` on this tree: **Test Files 120 passed (120) / Tests 1089 passed
+    (1089)**.
+  - Independent of the worker: before the branch existed, the supervisor ran `npx vitest
+    run` **12** times on `11e6c4f`, the first after `rm -rf node_modules/.vite
+    node_modules/.vitest`, and all **12** passed. That is consistent with the worker's
+    25-for-25 and with a load-dependent timeout rather than a deterministic defect.
+  - regression-36 on this tree, affiliate flag off:
+    - `[path] ko ... firstLinkBox=591.8->636.8 ... marginBelow=163.2`
+    - `en ... 737.5->782.5 ... 17.5`
+    - `ja ... 692.8->737.8 ... 62.2`
+    - `zh ... 627.2->672.2 ... 127.8`
+    - `ar ... 754.2->799.2 ... 0.8`
+    - **5 passed**.
+  - With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**.
+  - The reorder was checked in `app/report/page.tsx`. "추천 기준" is still inside `step ===
+    "picks"`, unconditionally rather than behind `picks.length`. It sits after the grid
+    and before the compare `<details>`. `result.note` still renders above the grid, and
+    `CommerceDisclosure` did not move.
+
+  *Fragility, recorded rather than changed.*
+  - `ar` clears the fold by **0.8** px and its budget is **0**. In this container
+    rendering is deterministic, so this is not a flake today. A Chromium or font upgrade
+    that shifts `ar` line boxes by 1 px would turn smoke red with no code change. If that
+    happens, read the printed `marginBelow` before touching the budget.
+  - "0 px in all five" holds for the path the spec drives: the first chip of each
+    required field. A survey that triggers `result.note`, the no-exact-budget-match note
+    above the grid, pushes the first link down by that note's height in every locale.
+    Nothing measured that case.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `11e6c4f`
+  against this pair drops **0** lines. SMOKE_RESULT
 
 - 2026-09-28 (cycle 51) — Branch `autopilot/2026-09-28-1239`. **The camera path was
   supposed to get shorter this cycle by pre-selecting 피부 타입 from the scan's oil
