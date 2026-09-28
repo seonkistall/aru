@@ -999,6 +999,60 @@ partly done and stays here.
   `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts`. `/care`'s scroll offset went
   **400 → 400 → 0** with **1062** px still scrollable in ja, measured and not explained.
   Seven screens and the real phone are still unmeasured for mid-session switching.
+  **2026-09-28, cycle 50: the six screens' physical-property candidates are re-grepped and
+  both survivors measure CLEAN, so this item's layout half has nothing left to fix at
+  360x800.** The grep the item asks for (`left:`, `right:`, `paddingLeft`, `marginLeft`,
+  `borderLeft`, `textAlign: "left"/"right"`, plus the `Right` variants) over the six
+  screens' own files returns **3** hits and **2** candidates today. Per file, `grep -c`:
+  `app/page.tsx` **1**, `app/scan/page.tsx` **1**, `app/scan/scan-controls.tsx` **1**,
+  and `app/survey/page.tsx`, `app/studio/page.tsx`, `app/privacy/page.tsx`,
+  `app/unsubscribe/page.tsx`, `app/unsubscribe/unsubscribe-form.tsx` **0** each. The
+  `app/scan/page.tsx` hit is line **401**, a `left: 6, right: 6` staff-mode debug overlay
+  — symmetric on both edges, so direction cannot move it — which leaves the two below. Both were rendered under `en` and `ar` at 360x800 on a production
+  build. `app/page.tsx:62` (the decorative `aria-hidden` arrow beside the mascot,
+  `position: absolute; left: -8`) is **byte-identical in both directions**: box
+  **94…136**, parent **102…258**, offset from the parent's left **-8** under `en` and
+  **-8** under `ar` — its containing block is `margin: 6px auto 0` centred and symmetric,
+  so a physical `left` lands in the same place either way. `scan-controls.tsx:111`'s
+  `privacyPill` `textAlign: "right"` still paints nothing under `ar`, the same verdict
+  cycle 41 reached and for the same reason, re-measured: **1** line, box
+  **35…195.7**, text extent **44…186.7** against a content box of **43…187.7**, so the
+  text fills its line. Under `en` the same pill now wraps to **2** lines (box
+  **146.5…325**, extent **160.5…316**), where `right` IS the reading end and is what the
+  `space-between` row wants — so switching it to `end` would change nothing in `en` and
+  nothing measurable in `ar`, and it was left alone rather than churned. `scrollWidth ===
+  clientWidth === 360` on `/scan` under both. No spec was added for a non-defect.
+  **Still open, unchanged:** `app/care/page.tsx`'s `linkBtn` / `otherMerchantsBtn`
+  `textAlign: "left"`, mid-session switching on seven of the nine screens, and a real
+  phone on all nine.
+- [AI] **The path from `/` to the first merchant link is 4 screens and 6 taps, and no step
+  can be cut cheaply.** Measured 2026-09-28 (cycle 50) at 360x800 on a production build,
+  `ko` and `en`, survey-only path: **4** screens (`/`, `/survey`, `/report` analysis,
+  `/report` picks), **6** taps, **3** required survey fields, and the first merchant link
+  needs **0** px of scroll on the picks step in `ko` (box **738.3→783.3** of an **800**
+  viewport) and **153** px in `en` (**908→953**). The scan path is the same tail plus
+  **3** screens and **3** taps and saves **0** required fields — it pre-selects three
+  `고민` chips and `고민` is optional. The cut the cycle looked for does not exist: every
+  required field moves the picks (budget **120** of **320** combinations, skin type
+  **184** of **320**, category **200** of **200** — `tests/recommend-required-fields.test.ts`),
+  and the remaining taps are the entry choice, the submit and the step tab. Pinned as a
+  ratchet by `tests/e2e/first-merchant-link-path.regression-36.spec.ts`. What a future
+  cycle could still weigh, and this one did not: landing survey-only visitors on the picks
+  step instead of the analysis step (it would drop the scan nudge from their first screen,
+  so it is a flow decision, not a defect fix), and the **153** px of English copy above
+  the first buy button.
+- [AI] **`/report`'s routine step has a 13x15 checkbox, under both the 24x24 AA floor and
+  `--tap-min`.** Found 2026-09-28 (cycle 50) by extending cycle 49's target sweep to
+  `/report`'s other two steps: the `ReengageOptIn` checkbox measures **15x15** under `ko`
+  and **13x15** under `en`, against SC 2.5.8's **24**x24 (AA) and `--tap-min` **44**. Not
+  fixed here because it is outside the four screens this cycle was scoped to and because
+  the `/scan` consent checkboxes are the same shape and cycle 49 cleared them on the
+  Spacing/label-is-the-target reading (README, "Target size") — whoever takes this has to
+  decide whether the surrounding `<label>` is the real target here too, and measure it,
+  rather than resizing the input on sight. Everything else on the same sweep was clean:
+  **0** of **284** controls without an accessible name, **0** unlabelled form controls,
+  **0** of **6** images without `alt`/`aria-hidden`, **0** of **904** text nodes under
+  their contrast floor across **22** screen x locale pairs.
 - [AI] **The English dictionary is still in every visitor's first load, and only a URL
   decision gets it out.** Opened 2026-09-25 (cycle 40), which moved ja/zh/ar behind a
   dynamic `import()` and cut `/`'s initial JS from **1050358** to **783030** bytes raw
@@ -1533,6 +1587,274 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-28 (cycle 50) — Branch `autopilot/2026-09-28-0039`. **The path from the landing
+  page to the first link that can earn money had never been measured, and it is 4 screens
+  and 6 taps: nothing in it can be cut, because all three required survey fields provably
+  move the picks. Alongside it, cycle 49's accessibility pass turned out to have a hole
+  wider than the screens it skipped — it computed every colour token against #ffffff only,
+  and two tokens that clear WCAG AA on white fail on `--surface-tint` #f5f5f5. Both render
+  on /privacy's notice cards: `--bronze` #767676 is 4.542:1 on white and 4.166:1 on the
+  tint, and `--plum` #d9362b is 4.653:1 on white and 4.268:1 there. Fixed with the
+  narrowest change that clears both without moving the brand red again. The RTL sweep's
+  six remaining screens were re-grepped and both surviving candidates measure clean.**
+
+  **Baselines, re-measured here on `da6b21d`.** `node_modules` was absent, so `npm ci`
+  first (exit **0**). `npx vitest run` **Test Files 117 passed (117) / Tests 1076 passed
+  (1076)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
+  warnings**, `python3 ml/selftest.py` **Ran 146 tests in 1.719s ... OK**. All four match
+  the supervisor's.
+
+  **UI/UX: the path length, measured.** 360x800, production build (`npm run build` +
+  `next start`), Playwright driving real clicks, no new dependency. Survey-only path,
+  identical in `ko` and `en`: **4** screens — `/`, `/survey`, `/report` analysis step,
+  `/report` picks step. **6** taps — the landing "카메라 없이 설문으로 시작하기" link, one
+  chip for each of the **3** required fields (제품 종류 / 피부 타입 / 예산), the submit
+  button, and the "2. 살펴볼 제품 후보" step tab. **2** survey sections are optional (고민,
+  피하고 싶은 성분) and were not touched. The `/report` analysis step carries **0** merchant
+  links, which is why the sixth tap exists. On the picks step there are **4** merchant
+  links; the first one's box sits at **738.3→783.3** in `ko` against an **800** px
+  viewport, so it needs **0** px of scroll, and at **908→953** in `en`, needing **153** px
+  — the gap is English copy above it, not a layout defect.
+
+  **The scan path is longer and saves nothing.** `/` → `/scan` intro → `/scan` ready →
+  capture → `/scan` result → `/survey` → `/report` analysis → `/report` picks: **7**
+  screens and **9** taps, i.e. **3** and **3** more than the survey-only path. The camera
+  shim reaches `phase === "ready"` and stops there: with the canvas `captureStream()`
+  pattern the existing specs use, `scan-capture` stayed disabled for **45** s in both
+  locales reading `측정영역을 맞추는 중...` / `Aligning capture area...`, with the status
+  line `얼굴을 화면 안에 맞춰주세요` / `Fit your face inside the screen` — the landmarker
+  needs a real face and a painted ellipse is not one, which
+  `tests/e2e/mobile-layout.spec.ts` already says in its own comment. So the capture tap is
+  counted from the code and the tail was measured from the hand-off `/scan`'s result screen
+  makes (`a[href="/survey"]`, "설문으로 이어가기"), with a seeded reading. The finding that
+  matters: the scan pre-selects **3** chips (유분·붉은기·모공 / Oil·Redness·Pores) and they
+  are all in `고민`, which is **optional** — the required counter still reads `필수 항목
+  0/3` on arrival, so **0** of the **3** required taps are saved by having scanned. The
+  **3** consent/option checkboxes on `/scan` are `[true, false, false]` at `ready` and
+  none is required to capture; they were not touched.
+
+  **No step was cut, and the reason is a measurement, not caution.** The cheap cut the
+  brief named — a required field that does not change the picks — does not exist. Holding
+  the other fields and varying one, `recommend()`'s picks change for budget in **120** of
+  **320** combinations, for skin type in **184** of **320**, and for category in **200** of
+  **200**; the optional `고민` field, for scale, in **206** of **400**. The catalogue is why
+  budget is not inert: **22** SKUs across **8** categories with per-category price ranges
+  from **1800**–**3000** (마스크팩) to **22000**–**30000** (아이크림), so the lowest chip's
+  **19000** ceiling filters real products out. Enumerated in
+  `tests/recommend-required-fields.test.ts` (**5 passed**), which asserts the counts
+  exactly rather than "greater than zero". The other three taps are the entry choice, the
+  submit and the step tab — none removable without changing the flow, and the two
+  alternatives (landing survey-only visitors on the picks step; moving the buy button above
+  the disclosure) were rejected: the first drops the scan nudge from a survey-only
+  visitor's first screen, and the second touches `app/components/commerce-disclosure.tsx`'s
+  position next to the link, which is the one thing the brief fenced off. Pinned instead as
+  a ratchet: `tests/e2e/first-merchant-link-path.regression-36.spec.ts` (**2 passed**)
+  drives every tap, counts the required fields off the DOM's `*` markers, and asserts the
+  scroll distance against a budget. **Broken two ways.** Marking `고민` `required` in
+  `app/survey/page.tsx`: **2 failed**, `Expected: 3 / Received: 4` with the message
+  `required fields on /survey: 제품 종류, 피부 타입, 고민 * · …, 예산`. Inserting a 300 px
+  block above the product grid on the picks step: **2 failed** at
+  `ko: the first merchant link needs 283.3px of scroll (box 1038.3→1083.3), budget 120` and
+  `en: … needs 453px of scroll (box 1208→1253), budget 260`. Clean is **2 passed**. It also
+  asserts the disclosure is still visible, so the ratchet cannot be satisfied by deleting
+  it.
+
+  **Bug fix: contrast is not a property of a token, and cycle 49's audit assumed it was.**
+  That audit measured every token against `#ffffff`. `--surface-tint` is `#f5f5f5`, and on
+  it every ratio drops by about 8%. Two tokens land on the wrong side of the **4.5**:1 AA
+  floor (SC 1.4.3) there, and both render on `/privacy`'s two `noticeStyle` cards:
+  `--bronze` **#767676** is **4.542**:1 on white and **4.166**:1 on the tint (the cards'
+  `sectionLabel` eyebrow, 11px/700), and `--plum` **#d9362b** is **4.653**:1 on white and
+  **4.268**:1 on the tint (`dangerBtn`, 14px/800). Both failed in `ko` and `en`, with the
+  same ratios, because the ratio is a property of the colour pair and not of the string.
+  **The fix is deliberately narrow.** `--bronze` becomes **#6e6e6e** — **4.677**:1 on the
+  tint, **5.099**:1 on white — which is `--text-muted`'s existing value; the strictly least
+  darkening that clears 4.5 with 0.1 of margin is **#6f6f6f** at **4.609**:1, and a
+  twentieth grey for **0.07** of ratio is not worth the palette. `dangerBtn` takes
+  `--plum-press` **#c22e23** — **5.193**:1 on the tint, **5.662**:1 on white — rather than
+  darkening `--plum` a second time: it is the primary CTA colour on every screen, it moved
+  last cycle and the supervisor flagged that as owner-visible, and the darker red is the
+  right one for a destructive action anyway. `--plum` is pinned **unchanged** at `#d9362b`
+  by the new spec. **The other 7 `--surface-tint` backgrounds in `app/*.tsx` were grepped
+  and checked, not assumed**: `app/components/product-card.tsx:109,115`,
+  `app/report/page.tsx:633,642`, `app/checkin/page.tsx:240`, `app/studio/page.tsx:173,180`
+  carry `--ink`, `--ink-soft`, `--success` or `--text-muted` #6e6e6e and pass, and the two
+  disabled submit buttons that put `--muted` on the tint (`app/survey/page.tsx:245`,
+  `app/checkin/page.tsx:225`) are an inactive user interface component, which SC 1.4.3's
+  Incidental exception excludes — the same reading cycle 49 used for the disabled `/survey`
+  CTA. Pinned by `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` (**3 passed**),
+  which measures every visible leaf text node inside a non-white `<section>` against the
+  colours the browser resolves, and asserts the cards are actually tinted so a white card
+  cannot make the check vacuous. **Broken twice.** Restoring `--bronze: #767676`: **3
+  failed**, reporting `"전체 기기 데이터" rgb(118, 118, 118) on rgb(245, 245, 245) =
+  4.166:1 (11px/700)` and the `en` equivalent `"All device data"`. Restoring `dangerBtn`'s
+  `color: var(--plum)`: **3 failed**, reporting `"이 기기의 ARU 데이터 모두 지우기" rgb(217,
+  54, 43) on rgb(245, 245, 245) = 4.268:1 (14px/800)` and `"Delete all ARU data on this
+  device"`. Clean is **3 passed**.
+
+  **What the same sweep found CLEAN, which is most of it.** Cycle 49's five checks were run
+  on `/checkin`, `/studio`, `/privacy` and `/unsubscribe` in `ko` and `en` — the four the
+  brief named — and, because the harness was already written, on `/`, `/scan`, `/survey`,
+  `/report`'s three steps and `/care` as well: **22** screen x locale pairs. After the fix:
+  **0** of **904** visible leaf text nodes under their floor (4.5, or 3 at 24px / 18.66px
+  bold), **0** of **284** interactive controls with no accessible name, **0** unlabelled
+  `input`/`select`/`textarea`, **0** of **6** `img` elements without `alt` or
+  `aria-hidden`, and `scrollWidth === clientWidth === 360` on every pair. Target sizes:
+  **5** hits under SC 2.5.8's 24x24 across the 22 pairs, and they are two controls, not
+  five: the `/guide/` links on `/` (**1** hit in `ko` — `Serums for combination skin` at
+  **164.8x15** — and **2** in `en`, adding `Toners for oily skin` at **108.7x15**), which
+  cycle 49 documented as taking the Inline exception, and the `/report` routine step's
+  reengage checkbox (**15x15** in `ko`, **13x15** in `en`), filed in the backlog rather
+  than resized on sight. `/unsubscribe` was rendered with
+  `?token=measure-only-never-submitted` and its button was never clicked, so **no** request
+  reached `/api/reengage/unsubscribe` and nothing was sent.
+
+  **One result from that harness is NOT a claim, and it is recorded rather than dropped.**
+  The focus-visibility check drove `el.focus()` from script. On the four screens in scope it
+  found a visible indicator on **62** of **62** Tab stops. On `/report`'s picks and routine
+  steps the same harness reported **58** stops with no indicator, and an independent run
+  with real `page.keyboard.press("Tab")` on the picks step contradicted it flatly — **19**
+  of **19** stops with a ring, **19** of **19** matching `:focus-visible`, and **18** of
+  **18** with a ring under programmatic focus too. The disagreement is unexplained, so
+  nothing on `/report` is claimed here either way and `/report`'s focus visibility stays
+  unestablished by this cycle.
+
+  **A false-green trap in the measurement rig itself, worth writing down.** The first full
+  post-fix sweep read **0** contrast failures for the wrong reason: `npx next start` had
+  failed with `EADDRINUSE` (the earlier server was still bound to 3199 and its PID file had
+  been overwritten), so the OLD process kept serving HTML that referenced a CSS chunk the
+  new `npm run build` had replaced. `curl` on it returned **404 9**, `document.styleSheets`
+  was **1** but `--bronze` resolved to the empty string, `body` had the UA's **8px** margin
+  and `main`'s `padding-left` was **0px** — every page unstyled, which also produced a
+  phantom `/studio` overflow of `scrollWidth` **412** against `clientWidth` **360**. That
+  phantom is gone on the correctly-served build (**360/360**), and
+  `tests/e2e/studio-label-fit.spec.ts` was asserting no overflow the whole time. The lesson
+  is the README's, one layer out: kill the old server BY PID and check the new one bound
+  before believing a number off it.
+
+  **Research: CSS Logical Properties, from the primary source.** `css-logical-1/Overview.bs`
+  from `w3c/csswg-drafts` on `raw.githubusercontent.com`, fetched here: HTTP **200**,
+  **39421** bytes, sha256
+  `9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41`. Status line in the
+  metadata block: `Status: ED` (Editor's Draft; `ED: https://drafts.csswg.org/css-logical-1/`,
+  `TR: https://www.w3.org/TR/css-logical-1/`). The mapping this repo's RTL work relies on is
+  stated twice. In the module's own opening example (lines 104-109):
+  `text-align: start; /* left in latin, right in arabic */`,
+  `margin-inline-start: 0px; /* margin-left in latin, margin-right in arabic */`,
+  `border-inline-start: 5px solid gray; /* border-left in latin, border-right in arabic */`,
+  `padding-inline-start: 5px; /* padding-left in latin, padding-right in arabic */`. And
+  normatively for the margins (lines 575-576): "These properties correspond to the
+  'margin-top', 'margin-bottom', 'margin-left', and 'margin-right' properties. The mapping
+  depends on the element's 'writing-mode', 'direction', and 'text-orientation'." The
+  qualifier is the part that matters for this cycle's two cleared candidates: the
+  correspondence is a mapping through `direction`, so a physical value is only wrong where
+  the direction actually changes which edge it names — and on a centred, symmetric
+  containing block, or on a single line that fills its box, it names the same pixels either
+  way. That is what both measurements showed. The document also says the opposite case out
+  loud (lines 111-114): "Documents might need both logical and physical properties. For
+  instance the drop shadows on buttons on a page must remain consistent throughout, so
+  their offset will be chosen based on visual considerations and physical directions."
+  URL: https://raw.githubusercontent.com/w3c/csswg-drafts/main/css-logical-1/Overview.bs
+
+  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces
+  and the golden set is the standing blocker, so nothing here was trivially advanceable.
+  `python3 ml/selftest.py` was run as a gate only: **Ran 146 tests ... OK**. Nothing under
+  `ml/` or `public/models/` was touched.
+
+  **Guardrails.** No translation string's content changed and no key was added — the fix is
+  two colour values, and `git diff --stat -- lib/ app/api/ public/ ml/` is **empty**, so
+  nothing under `lib/i18n/`, the API routes, the model manifest or the Python pipeline moved
+  at all. `lib/consent.ts` was not opened; the three `/scan` checkboxes were read and not
+  changed; `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere; no provider was called and
+  no email was sent; `app/components/commerce-disclosure.tsx` is untouched and the new path
+  spec asserts it is still visible next to the merchant link; `shareUrl`, `ALLOWED_HOSTS`,
+  `metadataBase` and the manifest's gate fields were not touched; no guide page was added.
+
+  **Docs and rotation.** The RTL backlog item was ticked by appending — it stays `[~]`
+  because mid-session switching and a real phone are still unmeasured on seven and nine
+  screens — and its original wording is unchanged. Two new backlog items were filed under
+  "Now": the path measurement and the routine-step checkbox. Recent cycles holds 50/49/48;
+  cycle 47's entry moved verbatim to the end of `docs/autopilot-changelog.md` after cycle
+  46. No item was ticked `[x]` this cycle, so nothing moved to "Closed backlog items".
+
+  **Nothing was lost in the rotation.** `sort -u` over both files at `da6b21d` gives
+  **11034** unique lines and over the final pair **11279**; `comm -23` of the
+  first against the second drops **0** — every line present at `da6b21d` is still present.
+
+  **Validation on this tree, worker.** Run on the final committed tree, not an earlier one.
+  `npx vitest run` **Test Files 118 passed (118) / Tests 1081 passed (1081)** (117/1076 at
+  `da6b21d` plus `tests/recommend-required-fields.test.ts`'s **5**), `npx tsc --noEmit |
+  grep -c "error TS"` **13** — unchanged, `npx eslint .` **0 errors, 2 warnings** (the same
+  pre-existing `_reads` / `_result`, run on its own and not beside vitest), `python3
+  ml/selftest.py` **Ran 146 tests in 1.682s ... OK**.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` printed **Test Files 118 passed (118) /
+  Tests 1081 passed (1081)**, **282 passed (10.0m)** for the e2e phase (**277** at
+  `da6b21d`, plus this cycle's **5** new e2e cases), and the literal line **Smoke test
+  passed.**
+
+  *Supervisor review:* sound where it measured, with one miss of the defect class it
+  fixed, one latent red, and three numbers that were not command output. All fixed before
+  merge.
+
+  *Missed: `--surface-tint` is not the only tint.* The sweep grepped `--surface-tint` and
+  rendered `/report` in its non-retake state, where the confidence card is white. With
+  `retakeRecommended: true` the card turns `--plum-soft` #fbe6e4, and `--bronze`/
+  `--text-muted` #6e6e6e on it is **4.259**:1: the card's 11px "분석 신뢰도" label and
+  its 12px "의료 진단이 아니라…" line. That second line is the no-medical-claim notice,
+  and the retake state is the one a low-confidence scan (bad light) lands in. Fixed here:
+  `--plum-soft` moves to **#fdf1f0**, which is #fbe6e4 moved 43% toward white and the least
+  that clears 4.5 with 0.1 of margin. #6e6e6e is **4.617**:1 on it and `--plum-press`
+  **5.127**:1, which is the selected survey/checkin chips' text. Pinned by two new
+  cases in `tinted-surface-contrast.regression-35.spec.ts` that render the retake card
+  (`ko`/`en`), with the same vacuity guards as the `/privacy` cases. With #fbe6e4 restored:
+  **2 failed**, the browser reporting `"분석 신뢰도" rgb(110, 110, 110) on rgb(251, 230,
+  228) = 4.259:1 (11px/700)` and the same for the disclaimer line in both locales.
+  Clean: **7 passed** across regressions 35 and 36. The other `--plum-soft` uses were read:
+  survey/checkin chips (`--plum-press` text), `/care`'s `warnBadge` (`--plum-press`), and
+  `/ops` and `/pilot` (research only). `app/scan/scan-styles.ts`'s `confidenceBox` has no
+  caller.
+
+  *Latent red: regression-36's `en` disclosure match.* It matched only "ARU earns no
+  commission from this link", the `affiliateDisclosureActive() === false` sentence. The
+  day the owner sets `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, which is the revenue step, the
+  disclosure reads "These go to the retailer through an affiliate link…" and the spec would
+  fail. Confirmed by running the spec with that env on: the worker's matcher gives **1
+  failed | 1 passed**. The matcher is now `/go(es)? to the retailer/`, which covers both
+  states: **2 passed** with it on, and it also passes with it off (above).
+
+  *Numbers that were not output.* `#767676` on white was written **4.540**:1 in five places.
+  The spec's own formula gives **4.542224959605253**. `#6f6f6f` on the tint was written 4.607
+  (actual **4.608991208868503**), and `#c22e23` on the tint was written 5.194 (actual
+  **5.193397765117946**). Corrected in `app/globals.css`, `app/privacy/page.tsx`, this
+  file, README and the spec. Regression-35's header said "The 6 other `--surface-tint`
+  backgrounds" and listed 7; corrected with a note on the uses it does not list. The
+  pushed commit message still says 4.540; it cannot be edited without rewriting history.
+
+  *What held.*
+  - The `recommend()` sweep is sound and its counts are asserted exactly. No required
+    field is inert, so "no cut" is a measured answer.
+  - The path numbers reproduce here: `[path] ko: screens=4 taps=6 requiredFields=3 ...
+    firstLinkBox=738.3->783.3 ... scrollNeeded=0` and `en ... firstLinkBox=908->953 ...
+    scrollNeeded=153`.
+  - In regression-36, `screens`/`taps` are pushed by the test itself, so their
+    `toHaveLength` checks are tautological. The ratchet still holds because the
+    DOM-derived counts (required `*` sections, 3 tabs, `waitForURL`) fail on an added step.
+  - The camera-overlay geometry in `app/scan/guide.tsx` (왼볼/오른볼 zones, corners,
+    landmarks) is face-physical and was correctly left physical.
+  - Rotation: `comm -23` of `sort -u` over both files at `da6b21d` against this pair drops
+    **0** lines.
+
+  *Next-cycle candidate from this measurement:* the scan path adds 3 screens and 3 taps
+  and saves 0 required fields. A scan that pre-selected 피부 타입 from its oil reading
+  (a suggestion the user can change, not a verdict) would make the camera path shorter
+  than the survey path instead of longer. Filed here, not built.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 118 passed (118) / Tests
+  1081 passed (1081)**, `tsc` **13**,
+  `eslint` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**. `npm run smoke`
+  **Test Files 118 passed (118) / Tests 1081 passed (1081)**, **284 passed (9.7m)** (the
+  worker's 282 plus the two retake-card cases), **Smoke test passed.**
+
 - 2026-09-27 (cycle 49) — Branch `autopilot/2026-09-27-1839`. **The first accessibility
   pass on the conversion path found the primary CTA colour under WCAG AA by 0.099, and it
   had been under it on every screen that asks for money since the token was written.
@@ -2012,270 +2334,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **0** lines. Recent cycles holds 48/47/46, and cycle 45 sits after cycle 44 at the end
   of the changelog. `npm run smoke` gave
   **272 passed (10.7m)** and `Smoke test passed.` on the first run.
-
-- 2026-09-27 (cycle 47) — Branch `autopilot/2026-09-27-0639`. **The two guide pages were
-  an English body wearing whatever chrome the visitor had saved, and for `ar` that chrome
-  was right-to-left. Measured before it was touched: under a saved `ar` the guide's
-  `<ul>` lost its indent to the far side, every prose line right-aligned, the primary
-  CTA's `→` crossed to the wrong side of its own label, and the closing "Another guide:
-  <link>" sentence reversed its two runs — 9 of the 23 fields a production-build probe
-  measured differed from `en` on both pages. Under a saved `ko` the English `h1` was drawn in the Korean hand-drawn
-  display face, which the stylesheet's own comment asks it not to be. After the fix, 0
-  fields differ under any of the four non-`en` locales. The compliance half closed the
-  cycle 46 review's finding: the claim lists banned words that NAME a state and none that
-  claims to CHANGE one, so "reduces excess sebum" passed in every language while
-  "improves skin tone" did not.**
-
-  **Baselines, re-measured here on `ac9688d`.** `node_modules` was absent, so `npm ci`
-  first. `npx vitest run` **Test Files 114 passed (114) / Tests 1046 passed (1046)**,
-  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
-  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 146
-  tests in 2.560s ... OK**. All four match the supervisor's.
-
-  **Bug fix — an English guide inside a non-English, RTL chrome.** The guide bodies
-  (`app/guide/guide-view.tsx`) are English by design, but they render inside
-  `LanguageProvider`, which writes `document.documentElement.lang` and `dir` from the
-  visitor's SAVED language (`lib/i18n.tsx`). Measured on a production build at 360x800
-  with `aru.lang` set to each of en/ko/ja/zh/ar, as viewport x-coordinates on
-  `/guide/serum-for-combination-skin`. Under `ar`:
-  - the `<ul>`'s `padding-inline-start: 18px` resolved as `padding-right`, so the English
-    list lost its indent: `padding-left` **0px** / `padding-right` **18px** and the first
-    `<li>` box at x **20** — the same x as the sibling paragraph above it — against
-    **18px** / **0px** and x **38** under `en`;
-  - the `<dd>` "Breakouts, Redness, Pores, Oil" ran **148.7…325** against **35…211.3**;
-  - both `h1` lines ended flush at **340**, starting **190.83** and **108.98**, against
-    **20…169.17** and **20…251.02**;
-  - the primary CTA's `→` sat at **41.83…61.92** with the `T` of "Take" at
-    **67.44…79.31**, i.e. the arrow rendered BEFORE the words, against **298.08…318.17**
-    and **41.83…53.7** under `en`;
-  - the closing "Another guide: <link>" reversed its two runs — label **142.44…231.3**,
-    link **231.3…340** — against label **20…108.86**, link **108.86…217.56**;
-  - the breadcrumb's `ARU` link moved from **20…45.5** to **270.56…296.06**.
-
-  Under `ko` the defect is quieter and it is a font, not a direction. `html[lang="ko"]`
-  is the one locale `app/globals.css` does NOT hand `--font-display: var(--font-sans)`,
-  so the Korean hand-drawn face and its **1.1** leading landed on an English `h1`: the
-  serum heading was **36.7**px tall on one line where `en` needs **73.41** on two.
-  `ja` and `zh` get the same override as `en`, so for those two the defect was
-  `html[lang]` misdescribing Latin text and nothing visual at all. Nothing overflowed in
-  any locale, before or after: `scrollWidth` **360** against `clientWidth` **360** in all
-  **10** (page × locale) combinations.
-
-  **The fix and the assertion it is pinned with.** `lang="en" dir="ltr"` plus
-  `data-guide-root` on the guide's own root `<main>`, and one companion rule in
-  `app/globals.css` — `[data-guide-root] { --font-display: var(--font-sans); }` and
-  `[data-guide-root] .locale-display { line-height: 1.2; }` — because the rules those
-  override are anchored to `html[lang]` and no attribute on an inner element can reach
-  them. What the spec asserts is the invariant rather than the pixel values: a **19**-field
-  snapshot of computed styles, bounding boxes and text-run rects is IDENTICAL under every
-  saved language. The before/after is from a separate **23**-field probe run against a
-  production build: `ar` differed from `en` in **9** of those fields on both pages and
-  `ko` in **6** (serum) / **2** (toner); after the fix, **0** differ on either page under
-  any of the four non-`en` locales. `tests/e2e/guide-ltr-in-rtl-chrome.regression-34.spec.ts` gives
-  **8 passed**.
-
-  **Broken four ways, including the two weaker fixes the brief named.**
-  - The whole fix reverted (no `lang`/`dir`/`data-guide-root`, no CSS companion):
-    **8 failed**.
-  - `dir` set but not `lang`, CSS companion kept — the plausible half-fix, since `lang`
-    alone moves no pixel: **2 failed | 6 passed**, and both failures are the semantic
-    cases, which is why they exist separately from the geometry.
-  - The attributes moved to the `h1`, an inner element that misses the list:
-    **6 failed | 2 passed**.
-  - `lang`/`dir` kept but the CSS companion removed, i.e. the `ko` half alone:
-    **4 failed | 4 passed**.
-  All four were reverted and the restored tree gives **8 passed** again.
-
-  **The cycle-42 hold DOES make the guide's CTAs unclickable, and it was deliberately not
-  changed.** With the `ar` dictionary chunk delayed **4000**ms and `aru.lang` already
-  `ar`, `<body>` goes `inert` **133**ms in, the scan CTA is visible at opacity **0.55**,
-  `elementFromPoint` at its centre (**180**, **540.2**) returns `HTML` rather than the
-  link, and a real mouse click there does not navigate (URL unchanged). But that window
-  cannot reach the visitor these pages exist for, which was measured and not reasoned:
-  a searcher arriving from Google has no saved language, `defaultLang()` returns `en`, and
-  the same delayed-chunk probe with no `aru.lang` set saw `inert` **never** over
-  **6093**ms of polling. Narrowing the hold means editing `lib/i18n.tsx`, the cycle-42
-  fix itself, which is not this cycle's subject — recorded here as a finding instead.
-
-  **Compliance — the claim lists had no verb for changing a condition.** The cycle 46
-  review found `BANNED` (Korean, `lib/recommend.ts`) had no 감소 and `BANNED_BY_LANG.en`
-  no reduce / control / minimise / prevent / fade / brighten / firm. Added: 감소 / 예방 /
-  억제 to the Korean list (so `efficacyClean()` covers all five locales, the same reason
-  the 2026-09-20 additions only mattered for the four non-Korean lists); reduce /
-  control / minimise / minimize / prevent / fade / brighten / firm to `en`; 減少 / 予防 /
-  抑制 / 引き締め to `ja`; 减少 / 预防 / 抑制 to `zh`; تقليل / يقلل / وقاية / يمنع / تفتيح
-  to `ar`. `tests/claim-filter.test.ts` goes **8 passed → 12 passed**.
-
-  **What the additions cost, enumerated rather than asserted.** Nothing on a reason path
-  trips them: **100** pre-approved reason templates (4 surveys × 2 scan states × 5
-  languages × the picks each returns) and **95** heroNotes (**19** distinct ingredient
-  pairs × 5 languages) pass both gates, **0** rejected; and the new English group gives
-  **0** hits in either guide page's full serialised data (**5430** and **4601**
-  characters). What it does cost is one SKU NAME: over all **110** (SKU name × language)
-  pairs the count the per-language gate rejects moves from **6** to **7**, and the
-  newcomer is `en: Brightening Calming Spot Serum` on `brighten`. SKU names are never
-  themselves filtered — the gate's only input is the LLM candidate in
-  `app/api/reason/route.ts:81` — so the cost is that a candidate echoing that one product
-  name is refused and the pre-approved template shows instead, which here reads
-  "With Pores, Oil concerns and a ₩30,000 budget in mind, this Toner is one option to
-  explore." The other **6** are pre-existing (`sooth` in `en`, 舒缓 / 淡斑 in `zh`).
-
-  **Nine shipped dictionary values DO contain the new words, and none of them is on a
-  reason path.** Swept over all four dictionaries: `en` **4** of **914** values, `zh`
-  **4** of **910**, `ar` **1** of **914**, `ja` **0** of **910**, and **0** of the **914**
-  Korean keys. Three are the same sentence in three languages — the care tip "…to reduce
-  overnight tightness" (`lib/recommend.ts:376`) — and the rest are camera-glare coaching
-  ("Reduce direct light or visible shine") and routine step text
-  (`lib/recommend.ts:269,271`), plus the SKU name above. None of them passes through
-  `reasonClean()` or `efficacyClean()`: `efficacyClean()` gates the reason template
-  (`lib/recommend.ts:213`), the heroNote (`:411`) and the vision narrative
-  (`app/api/analyze/route.ts:89`), and routine titles and bodies are gated by neither.
-  So the sweep is a statement about what WOULD fire if that copy were ever routed through
-  the gate, not a live false positive.
-
-  **Two blunter entries were rejected on measurement, and both near-misses are pinned.**
-  Arabic matches as a substring, so bare `منع` (prevent) fires on `منعش` — the
-  catalogue's own word for 산뜻 (`lib/i18n/ar.ts:320-321`) — and bare `شد` (firm) on
-  `الشد`, the care tip for 밤사이 당김. `يمنع` is used instead and the existing
-  `شد البشرة` phrase is left alone; the list also keeps English `\bfirm\b` word-bounded,
-  which is what stops it firing on the shipped "Capture quality confirmed." Broken three
-  ways, each **1 failed | 11 passed**: the `en` verb group removed; the three Korean
-  verbs removed; and bare `منع`/`شد` substituted for `يمنع`/`شد البشرة`.
-
-  **Research — every primary Korean source refused this container, recorded verbatim
-  rather than worked around.** The additions therefore rest on inference, which both
-  files say in their own comments.
-
-  ```
-  --- https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=0&efYd=0
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://www.law.go.kr/법령/화장품법시행규칙
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://www.law.go.kr/DRF/lawService.do?OC=test&target=law&type=HTML&LM=화장품법
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://www.law.go.kr/flDownload.do?gubun=&flSeq=108687011&bylClsCd=110201
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://www.mfds.go.kr/brd/m_99/list.do
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://nedrug.mfds.go.kr/index
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://easylaw.go.kr/CSP/CnpClsMain.laf?popMenu=ov&csmSeq=1301&ccfNo=4&cciNo=2&cnpClsNo=1
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://kcia.or.kr/inc/down.php?dir=BOARD&file_name=202508_175547601592435_2.pdf
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://elaw.klri.re.kr/eng_service/lawView.do?hseq=61024&lang=ENG
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32013R0655
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://www.fda.gov/cosmetics/cosmetics-laws-regulations/it-cosmetic-drug-or-both-or-it-soap
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  --- https://ko.wikisource.org/wiki/화장품법
-  curl: (56) CONNECT tunnel failed, response 403
-  http=000 bytes=0
-  ```
-
-  The refusal is the proxy's policy, not a broken proxy: `raw.githubusercontent.com` on
-  the same tunnel answers `http=200 bytes=24644` for
-  `google/robotstxt/master/robots.cc`, and
-  `curl -sS "$HTTPS_PROXY/__agentproxy/status"` lists each denial as
-  `"kind": "connect_rejected", "detail": "gateway answered 403 to CONNECT (policy denial
-  or upstream failure)"` against `"host": "www.law.go.kr:443"` and
-  `"host": "www.mfds.go.kr:443"`. `WebFetch` is a separate egress path and refuses the
-  same hosts with `EGRESS_BLOCKED`. **So no sentence in this cycle quotes 화장품법, 별표 5
-  or MFDS guidance, and nothing here claims the new entries are legally required.** They
-  are labelled INFERENCE in `lib/recommend.ts` and `lib/claim-filter.ts`, resting on two
-  things: the lists' own internal logic — a verb claiming to change a condition is the
-  concept class of 개선 and 완화, which have been banned since the first list — and the
-  header's stated asymmetry, that a false positive costs one pre-approved template. **The
-  owner should put the list in front of counsel before relying on it.** This is not legal
-  advice.
-
-  **ML — skipped deliberately.** Nothing in the scan pipeline is trivially advanceable
-  from a locale-rendering and compliance cycle, and `python3 ml/selftest.py` was run to
-  confirm it stays green rather than to claim progress: **Ran 146 tests ... OK**,
-  unchanged.
-
-  **No guide page was added**, per the experiment's own rule in Backlog > Now: the kill
-  criterion has not been read, so nothing scales the guides up. This cycle changed how
-  the two existing pages render and added no route, no `SEO_ROUTES` entry and no
-  `<loc>` — `/sitemap.xml` still lists the same **6**.
-
-  **Docs and rotation.** The claim-verb finding is ticked with what landed. Recent cycles
-  holds 47/46/45; cycle 44's **229** lines moved verbatim to the end of
-  `docs/autopilot-changelog.md` after cycle 43. `docs/AUTOPILOT.md` **2234** → **2004**
-  lines by the move alone, and `docs/autopilot-changelog.md` **9656** → **9886**
-  (+**230** including the separating blank line). The moved text is byte-identical, not
-  merely present: the **229** lines extracted from `ac9688d` and the last **229** lines of
-  the new changelog both sha256 to
-  `16da44d976b3ff67d2c290428d78b474d25634d2d807fe030c8edb70ab7f1d91`. **Nothing was lost,
-  and the one thing that changed is accounted for**: `sort -u` over both files at
-  `ac9688d` gives **10283** unique lines and over the final pair **10488**, and
-  `comm -23` of the first against the second drops **10** lines — all **10** are the
-  unticked `- [ ]` body of the claim-verb finding that the ticked version above replaces,
-  and **0** of them belong to cycle 44. No backlog item was
-  ticked `[x]`, so nothing moved to "Closed backlog items". With this entry, the backlog
-  annotation and the ticked finding in, `docs/AUTOPILOT.md` is **2259**
-  lines.
-
-  **Validation on this tree, worker:** `npx vitest run` **Test Files 114 passed (114) /
-  Tests 1050 passed (1050)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .`
-  **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.500s ... OK**.
-  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` **272 passed (12.9m)** and
-  `Smoke test passed.`, first try — no re-run was needed or spent. The mobile suite is
-  **272** specs, up from cycle 46's **264** by this cycle's **8**. Smoke ran a second time
-  on the exact committed tree, because two JSDoc-only edits landed while the first run was
-  in flight: **272 passed (12.1m)** and `Smoke test passed.` again, with the working tree
-  reporting no diff and no untracked file. So the gating run is the code that ships; the
-  only edits after it are this validation block and the line count above.
-
-  **Supervisor review.** Sound, and no correction needed. There is one note on the doc
-  rotation and one tooling note.
-
-  *Predicted by reading, before the branch existed:* existing English copy already says
-  "reduce": `lib/i18n/en.ts:52` and `:254` (camera glare tips) and `:353` (a routine
-  line). Adding the verb could have sent that copy to fallback. It cannot, because the
-  filters only run on reason paths: `app/api/reason/route.ts:81`,
-  `app/api/analyze/route.ts:89`, and `lib/recommend.ts:217` and `:415` (grep of every
-  `reasonClean(`/`efficacyClean(` call). Routine lines and camera tips never pass
-  through them.
-
-  *Broken here, four ways, on the committed tree.*
-  - Dropping `"감소"` from `BANNED`: **1 failed | 11 passed** on
-    `tests/claim-filter.test.ts`.
-  - Narrowing `en` to bare `reduce` with no inflections: **1 failed | 11 passed**.
-  - Removing `dir="ltr"` from the guide root while keeping `lang`: **6 failed | 2
-    passed** on `guide-ltr-in-rtl-chrome.regression-34.spec.ts`.
-  - Removing the `[data-guide-root] { --font-display: ... }` rule: **4 failed | 4
-    passed**.
-  Clean is **12 passed** and **8 passed**.
-
-  *Tooling note: a stale dev cache produced a false red.* One clean run of
-  regression-34 gave **4 failed | 4 passed**, with the h1 still in `"Nanum Pen Script"`
-  under `ko`. After `rm -rf .next` the same tree gave **8 passed**. The dev server
-  had served an older `app/globals.css` out of its cache. A red run of an e2e spec that
-  depends on a CSS change should be re-checked on a cleared `.next` before it is
-  believed, and the same holds the other way before a green one is trusted.
-
-  *Rotation note.* The comm check drops **10** lines, all of them the claim-verb
-  finding's original wording, which the worker rewrote in place into its actioned form
-  instead of ticking and appending. Nothing substantive is lost: the finding's text is
-  in the cycle 46 review and in git history (`ac9688d:docs/AUTOPILOT.md`). Future
-  cycles should tick and append instead.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
-  / Tests 1050 passed (1050)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **Ran 146 tests ... OK**. Recent cycles holds 47/46/45, and cycle 44
-  sits after cycle 43 at the end of the changelog. `npm run smoke` gave
-  **272 passed (9.2m)** and `Smoke test passed.`
-

@@ -10477,3 +10477,269 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **0** lines. Recent cycles holds 46/45/44, and cycle 43 sits after cycle 42 at the end
   of the changelog. `npm run smoke` gave
   **264 passed (10.4m)** and `Smoke test passed.`
+
+- 2026-09-27 (cycle 47) — Branch `autopilot/2026-09-27-0639`. **The two guide pages were
+  an English body wearing whatever chrome the visitor had saved, and for `ar` that chrome
+  was right-to-left. Measured before it was touched: under a saved `ar` the guide's
+  `<ul>` lost its indent to the far side, every prose line right-aligned, the primary
+  CTA's `→` crossed to the wrong side of its own label, and the closing "Another guide:
+  <link>" sentence reversed its two runs — 9 of the 23 fields a production-build probe
+  measured differed from `en` on both pages. Under a saved `ko` the English `h1` was drawn in the Korean hand-drawn
+  display face, which the stylesheet's own comment asks it not to be. After the fix, 0
+  fields differ under any of the four non-`en` locales. The compliance half closed the
+  cycle 46 review's finding: the claim lists banned words that NAME a state and none that
+  claims to CHANGE one, so "reduces excess sebum" passed in every language while
+  "improves skin tone" did not.**
+
+  **Baselines, re-measured here on `ac9688d`.** `node_modules` was absent, so `npm ci`
+  first. `npx vitest run` **Test Files 114 passed (114) / Tests 1046 passed (1046)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2 warnings**
+  (the same `_reads` / `_result` at `lib/care.ts:70`), `python3 ml/selftest.py` **Ran 146
+  tests in 2.560s ... OK**. All four match the supervisor's.
+
+  **Bug fix — an English guide inside a non-English, RTL chrome.** The guide bodies
+  (`app/guide/guide-view.tsx`) are English by design, but they render inside
+  `LanguageProvider`, which writes `document.documentElement.lang` and `dir` from the
+  visitor's SAVED language (`lib/i18n.tsx`). Measured on a production build at 360x800
+  with `aru.lang` set to each of en/ko/ja/zh/ar, as viewport x-coordinates on
+  `/guide/serum-for-combination-skin`. Under `ar`:
+  - the `<ul>`'s `padding-inline-start: 18px` resolved as `padding-right`, so the English
+    list lost its indent: `padding-left` **0px** / `padding-right` **18px** and the first
+    `<li>` box at x **20** — the same x as the sibling paragraph above it — against
+    **18px** / **0px** and x **38** under `en`;
+  - the `<dd>` "Breakouts, Redness, Pores, Oil" ran **148.7…325** against **35…211.3**;
+  - both `h1` lines ended flush at **340**, starting **190.83** and **108.98**, against
+    **20…169.17** and **20…251.02**;
+  - the primary CTA's `→` sat at **41.83…61.92** with the `T` of "Take" at
+    **67.44…79.31**, i.e. the arrow rendered BEFORE the words, against **298.08…318.17**
+    and **41.83…53.7** under `en`;
+  - the closing "Another guide: <link>" reversed its two runs — label **142.44…231.3**,
+    link **231.3…340** — against label **20…108.86**, link **108.86…217.56**;
+  - the breadcrumb's `ARU` link moved from **20…45.5** to **270.56…296.06**.
+
+  Under `ko` the defect is quieter and it is a font, not a direction. `html[lang="ko"]`
+  is the one locale `app/globals.css` does NOT hand `--font-display: var(--font-sans)`,
+  so the Korean hand-drawn face and its **1.1** leading landed on an English `h1`: the
+  serum heading was **36.7**px tall on one line where `en` needs **73.41** on two.
+  `ja` and `zh` get the same override as `en`, so for those two the defect was
+  `html[lang]` misdescribing Latin text and nothing visual at all. Nothing overflowed in
+  any locale, before or after: `scrollWidth` **360** against `clientWidth` **360** in all
+  **10** (page × locale) combinations.
+
+  **The fix and the assertion it is pinned with.** `lang="en" dir="ltr"` plus
+  `data-guide-root` on the guide's own root `<main>`, and one companion rule in
+  `app/globals.css` — `[data-guide-root] { --font-display: var(--font-sans); }` and
+  `[data-guide-root] .locale-display { line-height: 1.2; }` — because the rules those
+  override are anchored to `html[lang]` and no attribute on an inner element can reach
+  them. What the spec asserts is the invariant rather than the pixel values: a **19**-field
+  snapshot of computed styles, bounding boxes and text-run rects is IDENTICAL under every
+  saved language. The before/after is from a separate **23**-field probe run against a
+  production build: `ar` differed from `en` in **9** of those fields on both pages and
+  `ko` in **6** (serum) / **2** (toner); after the fix, **0** differ on either page under
+  any of the four non-`en` locales. `tests/e2e/guide-ltr-in-rtl-chrome.regression-34.spec.ts` gives
+  **8 passed**.
+
+  **Broken four ways, including the two weaker fixes the brief named.**
+  - The whole fix reverted (no `lang`/`dir`/`data-guide-root`, no CSS companion):
+    **8 failed**.
+  - `dir` set but not `lang`, CSS companion kept — the plausible half-fix, since `lang`
+    alone moves no pixel: **2 failed | 6 passed**, and both failures are the semantic
+    cases, which is why they exist separately from the geometry.
+  - The attributes moved to the `h1`, an inner element that misses the list:
+    **6 failed | 2 passed**.
+  - `lang`/`dir` kept but the CSS companion removed, i.e. the `ko` half alone:
+    **4 failed | 4 passed**.
+  All four were reverted and the restored tree gives **8 passed** again.
+
+  **The cycle-42 hold DOES make the guide's CTAs unclickable, and it was deliberately not
+  changed.** With the `ar` dictionary chunk delayed **4000**ms and `aru.lang` already
+  `ar`, `<body>` goes `inert` **133**ms in, the scan CTA is visible at opacity **0.55**,
+  `elementFromPoint` at its centre (**180**, **540.2**) returns `HTML` rather than the
+  link, and a real mouse click there does not navigate (URL unchanged). But that window
+  cannot reach the visitor these pages exist for, which was measured and not reasoned:
+  a searcher arriving from Google has no saved language, `defaultLang()` returns `en`, and
+  the same delayed-chunk probe with no `aru.lang` set saw `inert` **never** over
+  **6093**ms of polling. Narrowing the hold means editing `lib/i18n.tsx`, the cycle-42
+  fix itself, which is not this cycle's subject — recorded here as a finding instead.
+
+  **Compliance — the claim lists had no verb for changing a condition.** The cycle 46
+  review found `BANNED` (Korean, `lib/recommend.ts`) had no 감소 and `BANNED_BY_LANG.en`
+  no reduce / control / minimise / prevent / fade / brighten / firm. Added: 감소 / 예방 /
+  억제 to the Korean list (so `efficacyClean()` covers all five locales, the same reason
+  the 2026-09-20 additions only mattered for the four non-Korean lists); reduce /
+  control / minimise / minimize / prevent / fade / brighten / firm to `en`; 減少 / 予防 /
+  抑制 / 引き締め to `ja`; 减少 / 预防 / 抑制 to `zh`; تقليل / يقلل / وقاية / يمنع / تفتيح
+  to `ar`. `tests/claim-filter.test.ts` goes **8 passed → 12 passed**.
+
+  **What the additions cost, enumerated rather than asserted.** Nothing on a reason path
+  trips them: **100** pre-approved reason templates (4 surveys × 2 scan states × 5
+  languages × the picks each returns) and **95** heroNotes (**19** distinct ingredient
+  pairs × 5 languages) pass both gates, **0** rejected; and the new English group gives
+  **0** hits in either guide page's full serialised data (**5430** and **4601**
+  characters). What it does cost is one SKU NAME: over all **110** (SKU name × language)
+  pairs the count the per-language gate rejects moves from **6** to **7**, and the
+  newcomer is `en: Brightening Calming Spot Serum` on `brighten`. SKU names are never
+  themselves filtered — the gate's only input is the LLM candidate in
+  `app/api/reason/route.ts:81` — so the cost is that a candidate echoing that one product
+  name is refused and the pre-approved template shows instead, which here reads
+  "With Pores, Oil concerns and a ₩30,000 budget in mind, this Toner is one option to
+  explore." The other **6** are pre-existing (`sooth` in `en`, 舒缓 / 淡斑 in `zh`).
+
+  **Nine shipped dictionary values DO contain the new words, and none of them is on a
+  reason path.** Swept over all four dictionaries: `en` **4** of **914** values, `zh`
+  **4** of **910**, `ar` **1** of **914**, `ja` **0** of **910**, and **0** of the **914**
+  Korean keys. Three are the same sentence in three languages — the care tip "…to reduce
+  overnight tightness" (`lib/recommend.ts:376`) — and the rest are camera-glare coaching
+  ("Reduce direct light or visible shine") and routine step text
+  (`lib/recommend.ts:269,271`), plus the SKU name above. None of them passes through
+  `reasonClean()` or `efficacyClean()`: `efficacyClean()` gates the reason template
+  (`lib/recommend.ts:213`), the heroNote (`:411`) and the vision narrative
+  (`app/api/analyze/route.ts:89`), and routine titles and bodies are gated by neither.
+  So the sweep is a statement about what WOULD fire if that copy were ever routed through
+  the gate, not a live false positive.
+
+  **Two blunter entries were rejected on measurement, and both near-misses are pinned.**
+  Arabic matches as a substring, so bare `منع` (prevent) fires on `منعش` — the
+  catalogue's own word for 산뜻 (`lib/i18n/ar.ts:320-321`) — and bare `شد` (firm) on
+  `الشد`, the care tip for 밤사이 당김. `يمنع` is used instead and the existing
+  `شد البشرة` phrase is left alone; the list also keeps English `\bfirm\b` word-bounded,
+  which is what stops it firing on the shipped "Capture quality confirmed." Broken three
+  ways, each **1 failed | 11 passed**: the `en` verb group removed; the three Korean
+  verbs removed; and bare `منع`/`شد` substituted for `يمنع`/`شد البشرة`.
+
+  **Research — every primary Korean source refused this container, recorded verbatim
+  rather than worked around.** The additions therefore rest on inference, which both
+  files say in their own comments.
+
+  ```
+  --- https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=0&efYd=0
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.law.go.kr/법령/화장품법시행규칙
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.law.go.kr/DRF/lawService.do?OC=test&target=law&type=HTML&LM=화장품법
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.law.go.kr/flDownload.do?gubun=&flSeq=108687011&bylClsCd=110201
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.mfds.go.kr/brd/m_99/list.do
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://nedrug.mfds.go.kr/index
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://easylaw.go.kr/CSP/CnpClsMain.laf?popMenu=ov&csmSeq=1301&ccfNo=4&cciNo=2&cnpClsNo=1
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://kcia.or.kr/inc/down.php?dir=BOARD&file_name=202508_175547601592435_2.pdf
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://elaw.klri.re.kr/eng_service/lawView.do?hseq=61024&lang=ENG
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32013R0655
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://www.fda.gov/cosmetics/cosmetics-laws-regulations/it-cosmetic-drug-or-both-or-it-soap
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  --- https://ko.wikisource.org/wiki/화장품법
+  curl: (56) CONNECT tunnel failed, response 403
+  http=000 bytes=0
+  ```
+
+  The refusal is the proxy's policy, not a broken proxy: `raw.githubusercontent.com` on
+  the same tunnel answers `http=200 bytes=24644` for
+  `google/robotstxt/master/robots.cc`, and
+  `curl -sS "$HTTPS_PROXY/__agentproxy/status"` lists each denial as
+  `"kind": "connect_rejected", "detail": "gateway answered 403 to CONNECT (policy denial
+  or upstream failure)"` against `"host": "www.law.go.kr:443"` and
+  `"host": "www.mfds.go.kr:443"`. `WebFetch` is a separate egress path and refuses the
+  same hosts with `EGRESS_BLOCKED`. **So no sentence in this cycle quotes 화장품법, 별표 5
+  or MFDS guidance, and nothing here claims the new entries are legally required.** They
+  are labelled INFERENCE in `lib/recommend.ts` and `lib/claim-filter.ts`, resting on two
+  things: the lists' own internal logic — a verb claiming to change a condition is the
+  concept class of 개선 and 완화, which have been banned since the first list — and the
+  header's stated asymmetry, that a false positive costs one pre-approved template. **The
+  owner should put the list in front of counsel before relying on it.** This is not legal
+  advice.
+
+  **ML — skipped deliberately.** Nothing in the scan pipeline is trivially advanceable
+  from a locale-rendering and compliance cycle, and `python3 ml/selftest.py` was run to
+  confirm it stays green rather than to claim progress: **Ran 146 tests ... OK**,
+  unchanged.
+
+  **No guide page was added**, per the experiment's own rule in Backlog > Now: the kill
+  criterion has not been read, so nothing scales the guides up. This cycle changed how
+  the two existing pages render and added no route, no `SEO_ROUTES` entry and no
+  `<loc>` — `/sitemap.xml` still lists the same **6**.
+
+  **Docs and rotation.** The claim-verb finding is ticked with what landed. Recent cycles
+  holds 47/46/45; cycle 44's **229** lines moved verbatim to the end of
+  `docs/autopilot-changelog.md` after cycle 43. `docs/AUTOPILOT.md` **2234** → **2004**
+  lines by the move alone, and `docs/autopilot-changelog.md` **9656** → **9886**
+  (+**230** including the separating blank line). The moved text is byte-identical, not
+  merely present: the **229** lines extracted from `ac9688d` and the last **229** lines of
+  the new changelog both sha256 to
+  `16da44d976b3ff67d2c290428d78b474d25634d2d807fe030c8edb70ab7f1d91`. **Nothing was lost,
+  and the one thing that changed is accounted for**: `sort -u` over both files at
+  `ac9688d` gives **10283** unique lines and over the final pair **10488**, and
+  `comm -23` of the first against the second drops **10** lines — all **10** are the
+  unticked `- [ ]` body of the claim-verb finding that the ticked version above replaces,
+  and **0** of them belong to cycle 44. No backlog item was
+  ticked `[x]`, so nothing moved to "Closed backlog items". With this entry, the backlog
+  annotation and the ticked finding in, `docs/AUTOPILOT.md` is **2259**
+  lines.
+
+  **Validation on this tree, worker:** `npx vitest run` **Test Files 114 passed (114) /
+  Tests 1050 passed (1050)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .`
+  **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests in 2.500s ... OK**.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` **272 passed (12.9m)** and
+  `Smoke test passed.`, first try — no re-run was needed or spent. The mobile suite is
+  **272** specs, up from cycle 46's **264** by this cycle's **8**. Smoke ran a second time
+  on the exact committed tree, because two JSDoc-only edits landed while the first run was
+  in flight: **272 passed (12.1m)** and `Smoke test passed.` again, with the working tree
+  reporting no diff and no untracked file. So the gating run is the code that ships; the
+  only edits after it are this validation block and the line count above.
+
+  **Supervisor review.** Sound, and no correction needed. There is one note on the doc
+  rotation and one tooling note.
+
+  *Predicted by reading, before the branch existed:* existing English copy already says
+  "reduce": `lib/i18n/en.ts:52` and `:254` (camera glare tips) and `:353` (a routine
+  line). Adding the verb could have sent that copy to fallback. It cannot, because the
+  filters only run on reason paths: `app/api/reason/route.ts:81`,
+  `app/api/analyze/route.ts:89`, and `lib/recommend.ts:217` and `:415` (grep of every
+  `reasonClean(`/`efficacyClean(` call). Routine lines and camera tips never pass
+  through them.
+
+  *Broken here, four ways, on the committed tree.*
+  - Dropping `"감소"` from `BANNED`: **1 failed | 11 passed** on
+    `tests/claim-filter.test.ts`.
+  - Narrowing `en` to bare `reduce` with no inflections: **1 failed | 11 passed**.
+  - Removing `dir="ltr"` from the guide root while keeping `lang`: **6 failed | 2
+    passed** on `guide-ltr-in-rtl-chrome.regression-34.spec.ts`.
+  - Removing the `[data-guide-root] { --font-display: ... }` rule: **4 failed | 4
+    passed**.
+  Clean is **12 passed** and **8 passed**.
+
+  *Tooling note: a stale dev cache produced a false red.* One clean run of
+  regression-34 gave **4 failed | 4 passed**, with the h1 still in `"Nanum Pen Script"`
+  under `ko`. After `rm -rf .next` the same tree gave **8 passed**. The dev server
+  had served an older `app/globals.css` out of its cache. A red run of an e2e spec that
+  depends on a CSS change should be re-checked on a cleared `.next` before it is
+  believed, and the same holds the other way before a green one is trusted.
+
+  *Rotation note.* The comm check drops **10** lines, all of them the claim-verb
+  finding's original wording, which the worker rewrote in place into its actioned form
+  instead of ticking and appending. Nothing substantive is lost: the finding's text is
+  in the cycle 46 review and in git history (`ac9688d:docs/AUTOPILOT.md`). Future
+  cycles should tick and append instead.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 114 passed (114)
+  / Tests 1050 passed (1050)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **Ran 146 tests ... OK**. Recent cycles holds 47/46/45, and cycle 44
+  sits after cycle 43 at the end of the changelog. `npm run smoke` gave
+  **272 passed (9.2m)** and `Smoke test passed.`
