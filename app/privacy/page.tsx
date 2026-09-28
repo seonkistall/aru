@@ -223,7 +223,7 @@ const outlineBtn: React.CSSProperties = { background: "var(--paper)", color: "va
 // `--plum-press`, not `--plum`. Three of this button's six uses sit in a `noticeStyle`
 // card, whose background is `--surface-tint` #f5f5f5 and not white, and `--plum` #d9362b
 // measures 4.653:1 on white but 4.268:1 there — under the 4.5:1 WCAG 2.2 AA floor
-// (SC 1.4.3). `--plum-press` #c22e23 is 5.194:1 on the tint and 5.662:1 on white, so it
+// (SC 1.4.3). `--plum-press` #c22e23 is 5.193:1 on the tint and 5.662:1 on white, so it
 // clears the floor in both cards, and it is the right red for a destructive action
 // anyway. The brand `--plum` is deliberately left alone: it moved last cycle and it is
 // the primary CTA colour on every screen, so the narrow fix is this one call site.

@@ -1593,7 +1593,7 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   move the picks. Alongside it, cycle 49's accessibility pass turned out to have a hole
   wider than the screens it skipped — it computed every colour token against #ffffff only,
   and two tokens that clear WCAG AA on white fail on `--surface-tint` #f5f5f5. Both render
-  on /privacy's notice cards: `--bronze` #767676 is 4.540:1 on white and 4.166:1 on the
+  on /privacy's notice cards: `--bronze` #767676 is 4.542:1 on white and 4.166:1 on the
   tint, and `--plum` #d9362b is 4.653:1 on white and 4.268:1 there. Fixed with the
   narrowest change that clears both without moving the brand red again. The RTL sweep's
   six remaining screens were re-grepped and both surviving candidates measure clean.**
@@ -1663,15 +1663,15 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   That audit measured every token against `#ffffff`. `--surface-tint` is `#f5f5f5`, and on
   it every ratio drops by about 8%. Two tokens land on the wrong side of the **4.5**:1 AA
   floor (SC 1.4.3) there, and both render on `/privacy`'s two `noticeStyle` cards:
-  `--bronze` **#767676** is **4.540**:1 on white and **4.166**:1 on the tint (the cards'
+  `--bronze` **#767676** is **4.542**:1 on white and **4.166**:1 on the tint (the cards'
   `sectionLabel` eyebrow, 11px/700), and `--plum` **#d9362b** is **4.653**:1 on white and
   **4.268**:1 on the tint (`dangerBtn`, 14px/800). Both failed in `ko` and `en`, with the
   same ratios, because the ratio is a property of the colour pair and not of the string.
   **The fix is deliberately narrow.** `--bronze` becomes **#6e6e6e** — **4.677**:1 on the
   tint, **5.099**:1 on white — which is `--text-muted`'s existing value; the strictly least
-  darkening that clears 4.5 with 0.1 of margin is **#6f6f6f** at **4.607**:1, and a
+  darkening that clears 4.5 with 0.1 of margin is **#6f6f6f** at **4.609**:1, and a
   twentieth grey for **0.07** of ratio is not worth the palette. `dangerBtn` takes
-  `--plum-press` **#c22e23** — **5.194**:1 on the tint, **5.662**:1 on white — rather than
+  `--plum-press` **#c22e23** — **5.193**:1 on the tint, **5.662**:1 on white — rather than
   darkening `--plum` a second time: it is the primary CTA colour on every screen, it moved
   last cycle and the supervisor flagged that as owner-visible, and the darker red is the
   right one for a destructive action anyway. `--plum` is pinned **unchanged** at `#d9362b`
@@ -1792,7 +1792,66 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `da6b21d`, plus this cycle's **5** new e2e cases), and the literal line **Smoke test
   passed.**
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound where it measured, with one miss of the defect class it
+  fixed, one latent red, and three numbers that were not command output. All fixed before
+  merge.
+
+  *Missed: `--surface-tint` is not the only tint.* The sweep grepped `--surface-tint` and
+  rendered `/report` in its non-retake state, where the confidence card is white. With
+  `retakeRecommended: true` the card turns `--plum-soft` #fbe6e4, and `--bronze`/
+  `--text-muted` #6e6e6e on it is **4.259**:1: the card's 11px "분석 신뢰도" label and
+  its 12px "의료 진단이 아니라…" line. That second line is the no-medical-claim notice,
+  and the retake state is the one a low-confidence scan (bad light) lands in. Fixed here:
+  `--plum-soft` moves to **#fdf1f0**, which is #fbe6e4 moved 43% toward white and the least
+  that clears 4.5 with 0.1 of margin. #6e6e6e is **4.617**:1 on it and `--plum-press`
+  **5.127**:1, which is the selected survey/checkin chips' text. Pinned by two new
+  cases in `tinted-surface-contrast.regression-35.spec.ts` that render the retake card
+  (`ko`/`en`), with the same vacuity guards as the `/privacy` cases. With #fbe6e4 restored:
+  **2 failed**, the browser reporting `"분석 신뢰도" rgb(110, 110, 110) on rgb(251, 230,
+  228) = 4.259:1 (11px/700)` and the same for the disclaimer line in both locales.
+  Clean: **7 passed** across regressions 35 and 36. The other `--plum-soft` uses were read:
+  survey/checkin chips (`--plum-press` text), `/care`'s `warnBadge` (`--plum-press`), and
+  `/ops` and `/pilot` (research only). `app/scan/scan-styles.ts`'s `confidenceBox` has no
+  caller.
+
+  *Latent red: regression-36's `en` disclosure match.* It matched only "ARU earns no
+  commission from this link", the `affiliateDisclosureActive() === false` sentence. The
+  day the owner sets `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, which is the revenue step, the
+  disclosure reads "These go to the retailer through an affiliate link…" and the spec would
+  fail. Confirmed by running the spec with that env on: the worker's matcher gives **1
+  failed | 1 passed**. The matcher is now `/go(es)? to the retailer/`, which covers both
+  states: **2 passed** with it on, and it also passes with it off (above).
+
+  *Numbers that were not output.* `#767676` on white was written **4.540**:1 in five places.
+  The spec's own formula gives **4.542224959605253**. `#6f6f6f` on the tint was written 4.607
+  (actual **4.608991208868503**), and `#c22e23` on the tint was written 5.194 (actual
+  **5.193397765117946**). Corrected in `app/globals.css`, `app/privacy/page.tsx`, this
+  file, README and the spec. Regression-35's header said "The 6 other `--surface-tint`
+  backgrounds" and listed 7; corrected with a note on the uses it does not list. The
+  pushed commit message still says 4.540; it cannot be edited without rewriting history.
+
+  *What held.*
+  - The `recommend()` sweep is sound and its counts are asserted exactly. No required
+    field is inert, so "no cut" is a measured answer.
+  - The path numbers reproduce here: `[path] ko: screens=4 taps=6 requiredFields=3 ...
+    firstLinkBox=738.3->783.3 ... scrollNeeded=0` and `en ... firstLinkBox=908->953 ...
+    scrollNeeded=153`.
+  - In regression-36, `screens`/`taps` are pushed by the test itself, so their
+    `toHaveLength` checks are tautological. The ratchet still holds because the
+    DOM-derived counts (required `*` sections, 3 tabs, `waitForURL`) fail on an added step.
+  - The camera-overlay geometry in `app/scan/guide.tsx` (왼볼/오른볼 zones, corners,
+    landmarks) is face-physical and was correctly left physical.
+  - Rotation: `comm -23` of `sort -u` over both files at `da6b21d` against this pair drops
+    **0** lines.
+
+  *Next-cycle candidate from this measurement:* the scan path adds 3 screens and 3 taps
+  and saves 0 required fields. A scan that pre-selected 피부 타입 from its oil reading
+  (a suggestion the user can change, not a verdict) would make the camera path shorter
+  than the survey path instead of longer. Filed here, not built.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 118 passed (118) / Tests
+  1081 passed (1081)**, `tsc` **13**,
+  `eslint` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**. SMOKE_RESULT
 
 - 2026-09-27 (cycle 49) — Branch `autopilot/2026-09-27-1839`. **The first accessibility
   pass on the conversion path found the primary CTA colour under WCAG AA by 0.099, and it

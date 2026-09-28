@@ -151,7 +151,10 @@ for (const lang of ["ko", "en"] as const) {
 
     // The affiliate disclosure is a legal requirement and travels with the link, so the
     // ratchet is not allowed to be satisfied by deleting it.
-    const disclosure = page.locator("p").filter({ hasText: lang === "ko" ? "판매처로 이동하는" : "ARU earns no commission from this link" });
+    // Both states of `CommerceDisclosure` (no affiliate id yet / affiliate on) must pass:
+    // matching only the "no commission" sentence would turn this spec red the day the
+    // owner switches `NEXT_PUBLIC_COMMERCE_AFFILIATE` on. (Supervisor, cycle 50 review.)
+    const disclosure = page.locator("p").filter({ hasText: lang === "ko" ? "판매처로 이동하는" : /go(es)? to the retailer/ });
     await expect(disclosure.first()).toBeVisible();
   });
 }

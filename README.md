@@ -536,11 +536,11 @@ to every screen a visitor reaches: 360x800 on a production build, `en` and `ko`,
   3.144:1 (both cycle 49). `--bronze` was `#767676` and is now `#6e6e6e` (cycle 50).
 - **A ratio is a property of a colour PAIR, not of a token.** Cycle 49 computed every token
   against `#ffffff`, and that is not where all of them render. On `--surface-tint`
-  `#f5f5f5` every ratio drops by about 8%: `--bronze` `#767676` was 4.540:1 on white and
+  `#f5f5f5` every ratio drops by about 8%: `--bronze` `#767676` was 4.542:1 on white and
   4.166:1 on the tint, and `--plum` `#d9362b` is 4.653:1 on white and 4.268:1 on it. Both
   rendered on `/privacy`'s notice cards. So a new colour has to clear its floor against the
   surface it actually sits on, and `dangerBtn` there takes `--plum-press` `#c22e23`
-  (5.194:1 on the tint) rather than the brand red. Both
+  (5.193:1 on the tint) rather than the brand red. Both
   `tests/e2e/conversion-path-accessibility.spec.ts` and
   `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` compute the ratio from the
   colours the browser resolves, walking the ancestor chain for the background, not from the
