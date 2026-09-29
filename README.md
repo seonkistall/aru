@@ -786,7 +786,7 @@ was `4 failed | 4 passed`. So:
   line is removed or set under 20_000.
 - **Two sweeps in the e2e phase are slow on purpose, and one of them decides whether a new
   composed string is safe.** `tests/e2e/hangul-leak-sweep.regression-37.spec.ts` renders 43
-  states in each of `en`, `ja`, `zh` and `ar` — 172 renders, about 4.6 minutes — and fails on
+  states in each of `en`, `ja`, `zh` and `ar` — 172 renders — and fails on
   any Hangul a non-Korean reader can see that is not in its commented allowlist. Read it before
   adding a string that is COMPOSED or interpolated at runtime rather than written as a
   `t("…")` literal: `tests/i18n-coverage.test.ts` scans literals and cannot see a composed one,
@@ -795,6 +795,18 @@ was `4 failed | 4 passed`. So:
   label or SKU name is swept without editing the spec — and a hand-written fixture is exactly
   how the first two passes of that sweep reported 8 and then 192 hits that the product
   cannot produce.
+  **Do not put a `waitForLoadState("networkidle")` or a flat `waitForTimeout` into it.**
+  Both were there and both came out on 2026-09-29 (cycle 54): timed phase by phase across
+  the 172 renders they cost 110,395 ms and 53,060 ms of a 306,244 ms state loop, more than
+  the 60,229 ms of `page.goto` they were waiting behind. `settle()` replaces them — the
+  page's non-empty text-node count has to hold still for 250 ms, `html[lang]` has to be
+  the locale under test and the fonts have to be in — and it is the stricter wait, because
+  a render still adding nodes never satisfies it. The two specs went from 9 passed (5.8m)
+  to 9 passed (3.6m) with all 172 renders reporting byte-identical node, character and hit
+  counts, and `npm run smoke` on this container from 300 passed (17.7m) on the merge base to
+  300 passed (15.8m). Sweeping the four locales CONCURRENTLY was measured and rejected in the same
+  cycle: four MediaPipe runtimes on four cores drop `/scan ready` from 41 rendered text
+  nodes to 23, so it sweeps less.
 - `eslint` ignores `test-results/**` and `playwright-report/**`. It did not before, and
   because `smoke` runs `lint` first, one earlier failing e2e run turned `0 errors, 2
   warnings` into `215 errors, 4020 warnings` over 6366 files of captured trace JS.
