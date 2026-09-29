@@ -11761,3 +11761,250 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   files at `d10acf7` against this pair drops **0** lines. `npm run smoke` **Test Files 119
   passed (119) / Tests 1087 passed (1087)**, **288 passed (10.8m)**, **Smoke test passed.**
 
+
+- 2026-09-28 (cycle 52) — Branch `autopilot/2026-09-28-1839`. **Cycle 51's unnamed vitest
+  failure did not reproduce in 25 runs, so the cycle went after the one mechanism that
+  produces its exact line from a tree with no defect in it — and found it. Vitest's
+  `testTimeout` default is 5000ms, and three tests in this suite carry no timeout of their
+  own while running long enough that a loaded container turns the CLOCK into the assertion:
+  run with `--testTimeout=5000` under twelve busy-loops the suite reads `Test Files 3 failed
+  | 117 passed (120)` with three `Test timed out in 5000ms` and not one assertion failing.
+  On the 119-file tree `--testTimeout=2000` reproduces cycle 51's line verbatim —
+  `Test Files 1 failed | 118 passed (119) / Tests 1 failed | 1086 passed (1087)` — from one
+  test. Alongside it, the first merchant link was measured in all five locales for the first
+  time and four of the five were below the fold; one layout-only reorder puts it in the
+  first viewport in every one, `ar` by 0.8 px, which is stated as the limit it is.**
+
+  **Baselines, re-measured here on `11e6c4f`.** `node_modules` was absent, so `npm ci`
+  first (exit **0**). `npx vitest run` **Test Files 119 passed (119) / Tests 1087 passed
+  (1087)**, on **25** separate runs described below. `npx tsc --noEmit | grep -c "error
+  TS"` **13**, `npx eslint .` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146
+  tests in 2.063s ... OK** — those three measured in a detached `git worktree` of
+  `11e6c4f` with `node_modules` symlinked in, so the working tree was never disturbed to
+  get them. All four match the supervisor's.
+
+  **Bug fix: the flaky test did not reproduce, and the mechanism that makes that line
+  possible is now named and fixed.** `npx vitest run` was run **25** times on `11e6c4f`
+  with every run's full output kept in its own file: **6** cold (`node_modules/.vite` and
+  `node_modules/.vitest` removed immediately before), **7** warm, **7** with
+  `--sequence.shuffle`, **2** as two concurrent vitest processes started in the same
+  second, **2** with `--reporter=json`, and **1** cold under six busy-loops on this 4-core
+  box. The **23** runs on the default reporter each printed **Test Files 119 passed (119) /
+  Tests 1087 passed (1087)**, and `grep -c failed` over the 20 numbered logs gives **0**
+  each; the **2** JSON runs report `numTotalTests` **1087**, `numPassedTests` **1087**,
+  `numFailedTests` **0**. Wall time moved from **23.30s**
+  (cold, idle) to **52.47s** under six busy-loops and **38.47s / 38.31s** for the
+  concurrent pair, so the load was real and the suite stayed green through it.
+  **So the candidates were enumerated instead, and one of them is a live defect.** There
+  are **0** `setTimeout`, `await new Promise` or `useFakeTimers` occurrences in
+  `tests/*.test.ts`, and nothing in the suite asserts a duration by default
+  (`tests/scan-cost-benchmark.test.ts` says so in its own header and puts its timing sweep
+  behind `ARU_PRINT_SCAN_COST`). `performance.now` appears in **1** unit test and
+  `Math.random` in **2**, and the **10** `readdirSync` call sites in `tests/*.test.ts`
+  (across **9** files) walk `app`, `lib`, `scripts`, `docs`, `public` or
+  `public/vendor/mediapipe` — **0** of them walk `tests/`, which rules out the cycle-20
+  lint race repeating inside vitest against the modules
+  `tests/blemish-perturbation-tolerance.test.ts` writes and deletes under
+  `tests/.blemish-perturb-tmp/`. The concurrent pair was the direct test of that dir as a
+  cross-process hazard and both processes passed. What is left is the clock itself. Per-test durations from
+  `--reporter=json`: idle the slowest test with no `{ timeout: N }` of its own is
+  `tests/cheek-clipping-signal.test.ts > 노출 여유: the cheek's 8-bit ceiling > puts the cut
+  below every capture whose published cheek level has moved` at **2187.3** ms, and under
+  six busy-loops **4451.1** ms — **548.9** ms short of the **5000** ms default. Run at the
+  default spelled out (`--testTimeout=5000`) under twelve busy-loops, **3** tests time out:
+  that one at **8462ms**, `tests/blemish-plateau-census.test.ts > … > reports no tie on a
+  frame with real pixel noise, at any frame size or noise level` at **7141ms**, and
+  `tests/ita-guard-decision.test.ts > … > is never entered by a capture: 121 blue gains step
+  straight over it` at **6489ms** — `Test Files 3 failed | 117 passed (120) / Tests 3 failed
+  | 1086 passed (1089)`, `grep -c "Test timed out in 5000ms"` **3**, and **0** assertion
+  failures. On an idle box `--testTimeout=1500` fails exactly **2** of the three (**2086ms**
+  and **1885ms** as that run reports them), and `--testTimeout=2000` on the 119-file tree
+  failed exactly **1** and printed cycle 51's line back: **Test Files 1 failed | 118 passed
+  (119) / Tests 1 failed | 1086 passed (1087)**, with `Test timed out in 2000ms` raised by
+  `puts the cut below every capture whose published cheek level has moved` (**2034ms**) and
+  no assertion failing. **The fix is `testTimeout: 60_000` in
+  `vitest.config.ts`** — one value for the whole suite instead of the per-test
+  `{ timeout: N }` this repo had already been adding one test at a time (**2** cases in
+  `tests/cheek-clipping-signal.test.ts`, **3** in
+  `tests/blemish-perturbation-tolerance.test.ts`, whose comment at line **787** records a
+  case that "went red three times before this line"). Nothing any test asserts changed, no
+  test was skipped, retry-wrapped or quarantined, and a per-test value still wins where one
+  asks for more. **Proven both ways.** The same twelve busy-loops that produced the three
+  timeouts give **Test Files 120 passed (120) / Tests 1089 passed (1089)**, `Duration
+  87.27s`, with the value in place. `tests/vitest-timeout-budget.test.ts` (**2 passed**)
+  pins it: deleting the config line gives **2 failed**, reporting `expected 'import {
+  defineConfig } from "vitest/…' to match /\btestTimeout:\s*[\d_]+\s*,/`, and lowering it to
+  `10_000` gives **1 failed | 1 passed** on `expected 10000 to be greater than or equal to
+  20000`. **What this does NOT establish:** that this was cycle 51's failure. That test's
+  name was never captured, and 25 runs here did not reproduce it, so the mechanism is
+  recorded as the one that reproduces the signature — not as the diagnosis.
+
+  **UI/UX: all five locales measured, and the first merchant link was below the fold in
+  four of them.** Cycle 50 had measured `ko` (**0** px of scroll, box **738.3→783.3** of an
+  **800** px viewport) and `en` (**153** px, **908→953**); `ja`, `zh` and `ar` had never
+  been measured. Same method as
+  `tests/e2e/first-merchant-link-path.regression-36.spec.ts`, 360x800 under
+  `playwright.mobile.config.ts`: `zh` **18.7** px (**773.7→818.7**), `ja` **84.3**
+  (**839.3→884.3**), `ar` **145.7** (**900.7→945.7**). **Every block above the link was
+  measured per locale, and all of the extra height is copy wrapping, not layout.** Against
+  `ko`, the page header block goes **146.9 → 182.3** in the other four; the step tablist
+  **49.2 → 64.8** in `ja` and `en`; the "추천 기준" section **96.5 → 120.5** in `en`; and
+  inside the first product card the name/price row goes **68 → 112.8** in `en` and `ar`, the
+  highlight chips **27.3 → 59.5** in `ar`, the ingredient tags **49 → 82.3** in `ja`/`ar`/`en`
+  and the merchant note **16.7 → 33.3** in `ja`/`ar`/`en`. Not one of those can be shortened
+  by a layout change. **What could move is the one block whose POSITION was arbitrary.** The
+  "추천 기준" section — why these picks — rendered above the product grid; above it, section
+  plus margins occupied **150.5** px in `ko`/`zh`/`ja`/`ar` and **174.5** px in `en`. It now
+  renders after the grid. The copy, the styles and the render conditions are byte-identical;
+  only the DOM position changed. No copy was edited, no translation key was added or
+  changed, which picks are shown did not change, and `CommerceDisclosure` was not touched.
+  After the move the first link's box ends at **636.8** (`ko`), **672.2** (`zh`), **737.8**
+  (`ja`), **782.5** (`en`) and **799.2** (`ar`), so **all five** need **0** px of scroll.
+  **`ar` has 0.8 px of margin and that is the honest limit**: the next copy edit anywhere
+  above that card's buy button in `ar` puts it back under the fold, and the spec is what will
+  say so — the answer then is another layout move, not a shorter disclosure. **Measured
+  under both disclosure states.** With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` every number
+  above is byte-identical and the disclosure block stays **33.3** px in all five locales: the
+  longer affiliate sentence still wraps to two lines at 11.5px/1.45. Nothing was measured
+  about conversion — this puts the link on the first screen, and whether that earns anything
+  is unmeasurable while the revenue line reads zero.
+
+  **The ratchet, extended and broken two ways.** `regression-36` now runs all **5** locales
+  (**5 passed**, up from 2) with `SCROLL_BUDGET` **0** for every one — the budget is no
+  longer a measured distance plus room, because the thing worth ratcheting is that the
+  button stays on the first screen. It still drives every tap, still counts **4** screens,
+  **6** taps, **3** required survey fields and **4** merchant links per locale, and it now
+  prints `marginBelow` on every run: **163.2** (`ko`), **127.8** (`zh`), **62.2** (`ja`),
+  **17.5** (`en`), **0.8** (`ar`). Reverting `app/report/page.tsx` to `11e6c4f` and leaving
+  the spec: **4 failed | 1 passed**, reporting `en: the first merchant link needs 153px of
+  scroll (box 908→953), budget 0`, `ja: … 84.3px … (839.3→884.3)`, `zh: … 18.7px …
+  (773.7→818.7)` and `ar: … 145.7px … (900.7→945.7)` — `ko` passes, because `ko` was already
+  at 0. The disclosure assertion was also strengthened from "a matching `p` exists somewhere
+  on the page" to "it is inside the first merchant link's own card and above the link there",
+  and moving `CommerceDisclosure` below the buy button in
+  `app/components/product-card.tsx` gives **5 failed** on `the disclosure sits above the buy
+  button in the same card`. Both breaks were reverted and the file compared byte-for-byte
+  against its pre-break copy. The locale patterns match BOTH disclosure states in each
+  language, so the flag flip cannot turn the spec red, and the whole spec was run once with
+  `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**, same numbers.
+
+  **Research: Vitest's own documentation, from the tag this repo installs.** `vitest`
+  resolves to **4.1.9** (`node -e "console.log(require('vitest/package.json').version)"`),
+  so every file was fetched from `vitest-dev/vitest` at tag `v4.1.9` on
+  `raw.githubusercontent.com`. `docs/config/testtimeout.md`: HTTP **200**, **300** bytes,
+  sha256 `ba54937613d4e26d71b15c11e194d22cd78522b669fe1d05b55369dbc7595994`, and it states
+  the default as "`5_000` in Node.js, `15_000` if `browser.enabled` is `true`" with "Default
+  timeout of a test in milliseconds. Use `0` to disable timeout completely." That **5000** is
+  the number the three tests above were racing. `docs/config/sequence.md`: HTTP **200**,
+  **5098** bytes, sha256 `1e465ea06e1e82fa4eb30fd9c180236689ff226d9e515517988cbe2cc942def3`
+  — `sequence.shuffle` is `boolean | { files?, tests? }`, default `false`, and "If your files
+  and tests run in random order, you will lose this performance improvement, but it may be
+  useful to track tests that accidentally depend on another test run previously", which is
+  why 7 of the 25 runs used it. It also documents the sort CACHE ("Vitest usually uses cache
+  to sort tests, so long-running tests start earlier"), which is the reason a FIRST run is
+  not the same run as the tenth and why 6 of the 25 deleted `node_modules/.vite` and
+  `node_modules/.vitest` first. `docs/config/pool.md`: HTTP **200**, **2453** bytes, sha256
+  `66bd191036f6aa51235ef5e201538148ada24d55a0736c6e220e78d8d65b68c3` — default `'forks'`.
+  `docs/config/isolate.md`: HTTP **200**, **560** bytes, sha256
+  `cb0b7a8a2574241be54c50e00ca0e016b4ce923fdd11c27e85927dd41660f50d` — default `true`, "Run
+  tests in an isolated environment." Those two together are why the `process.env` writes in
+  `tests/api-json-boundaries.test.ts`, `tests/commerce.test.ts`,
+  `tests/cron-bearer-constant-time.test.ts`, `tests/funnel-flush.test.ts`,
+  `tests/funnel-ingest.test.ts` and `tests/llm-route-cost-exposure.regression-24.test.ts`
+  cannot leak between files, and why the shuffle runs are the check that they do not leak
+  within one. `docs/config/index.md` was fetched too (HTTP **200**, **3583** bytes, sha256
+  `29e03769a67402aeb52f56391f0bfdd4c8dc220d6116efaea24fb43bb6108ee0`) and is only a pointer
+  page at this tag. These are the docs source files in the repository, not a normative
+  specification, and they are quoted as the documented defaults.
+
+  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces
+  and the golden set is the standing blocker, so nothing was trivially advanceable.
+  `python3 ml/selftest.py` was run as a gate only. `git diff 11e6c4f -- ml/ public/models/`
+  is empty.
+
+  **Guardrails.** `git diff 11e6c4f --stat` touches **6** files and no others:
+  `app/report/page.tsx`, `tests/e2e/first-merchant-link-path.regression-36.spec.ts`,
+  `vitest.config.ts`, `tests/vitest-timeout-budget.test.ts` (new), `docs/AUTOPILOT.md` and
+  `docs/autopilot-changelog.md`. No translation string's content changed and no key was
+  added — `git diff 11e6c4f -- lib/` is empty, so `lib/consent.ts`, `lib/i18n/`,
+  `lib/commerce.ts` and `lib/recommend.ts` did not move. `git diff 11e6c4f -- app/scan/
+  app/api/ public/ ml/` is empty: the three `/scan` consent checkboxes, the API routes, the
+  model manifest and the Python pipeline were not touched. `efficacyClean()` is untouched and
+  still on every LLM product reason and the vision narrative. `NEXT_PUBLIC_FUNNEL_FLUSH` is
+  still unset everywhere; the one run that set `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` set it in
+  a shell for one Playwright invocation and nothing on disk records it. No provider was
+  called and no email was sent; nothing about the re-engage email changed. `shareUrl`,
+  `ALLOWED_HOSTS`, `metadataBase`, `blemishCount`, `toneSpread` and the manifest's
+  `status` / `promotionGate` / `minQwkGainOverHeuristic` were not touched. No dependency was
+  added, no guide page was added, `app/globals.css` has no diff, and no colour, font size or
+  spacing value changed anywhere — the `/report` change moves one existing `<section>` and
+  copies its `style` prop across unaltered.
+
+  **Docs and rotation.** Recent cycles holds 52/51/50; cycle 49's entry (**241** lines)
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 48, where it now
+  starts at line **10985**. No backlog item was ticked `[x]`, so nothing moved to "Closed
+  backlog items": the path item gained this cycle's five-locale measurement and the reorder,
+  and a new item records the flaky-test investigation, the candidates it enumerated and
+  what it did not establish.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files: **2419** + **10983** =
+  **13402** at `11e6c4f`, and the two halves sum to the same **13402** immediately after the
+  move (**2177** + **11225**). `sort -u` over both files at `11e6c4f` gives **11630** unique
+  lines; `comm -23` of that against `sort -u` over the final pair (**11875** unique lines,
+  **2440** + **11225**) drops **0** — every line present at `11e6c4f` is still present. Both
+  counts re-taken on the tree as committed, after the validation paragraph below.
+
+  **Validation on this tree, worker.**
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome |
+  head -1) npm run smoke` printed **Test Files 120 passed (120) / Tests 1089 passed (1089)**
+  (**119**/**1087** at `11e6c4f`, plus `tests/vitest-timeout-budget.test.ts`'s **2**),
+  **291 passed (11.4m)** for the e2e phase (the supervisor's **288** at `11e6c4f`, which was
+  not re-run here, plus regression-36's **3** new locales), and the literal line **Smoke test passed.** After it, on the same tree:
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged; `npx eslint .` **0 errors, 2
+  warnings** (the same pre-existing `_reads` / `_result`, run on its own and not beside
+  vitest); `python3 ml/selftest.py` **Ran 146 tests in 1.899s ... OK**. `git diff 11e6c4f
+  --stat` lists **6** files and `git diff 11e6c4f --stat -- lib/`, `-- app/scan/ app/api/
+  public/ ml/` and `-- app/globals.css` are each empty. The only thing not covered by that
+  smoke run is this paragraph and the line below it, which were written after it finished.
+
+  *Supervisor review:* sound. The timeout mechanism is established by breaking it, and
+  the entry is honest that it is not proven to be cycle 51's failure. The fold fix is a
+  reorder with byte-identical copy. Merged with one fragility recorded; no code change
+  from review.
+
+  *Reproduced here.*
+  - `npx vitest run` on this tree: **Test Files 120 passed (120) / Tests 1089 passed
+    (1089)**.
+  - Independent of the worker: before the branch existed, the supervisor ran `npx vitest
+    run` **12** times on `11e6c4f`, the first after `rm -rf node_modules/.vite
+    node_modules/.vitest`, and all **12** passed. That is consistent with the worker's
+    25-for-25 and with a load-dependent timeout rather than a deterministic defect.
+  - regression-36 on this tree, affiliate flag off:
+    - `[path] ko ... firstLinkBox=591.8->636.8 ... marginBelow=163.2`
+    - `en ... 737.5->782.5 ... 17.5`
+    - `ja ... 692.8->737.8 ... 62.2`
+    - `zh ... 627.2->672.2 ... 127.8`
+    - `ar ... 754.2->799.2 ... 0.8`
+    - **5 passed**.
+  - With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**.
+  - The reorder was checked in `app/report/page.tsx`. "추천 기준" is still inside `step ===
+    "picks"`, unconditionally rather than behind `picks.length`. It sits after the grid
+    and before the compare `<details>`. `result.note` still renders above the grid, and
+    `CommerceDisclosure` did not move.
+
+  *Fragility, recorded rather than changed.*
+  - `ar` clears the fold by **0.8** px and its budget is **0**. In this container
+    rendering is deterministic, so this is not a flake today. A Chromium or font upgrade
+    that shifts `ar` line boxes by 1 px would turn smoke red with no code change. If that
+    happens, read the printed `marginBelow` before touching the budget.
+  - "0 px in all five" holds for the path the spec drives: the first chip of each
+    required field. A survey that triggers `result.note`, the no-exact-budget-match note
+    above the grid, pushes the first link down by that note's height in every locale.
+    Nothing measured that case.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `11e6c4f`
+  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **291 passed (10.9m)**, **Smoke test passed.**
+

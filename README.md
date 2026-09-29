@@ -807,6 +807,21 @@ was `4 failed | 4 passed`. So:
   300 passed (15.8m). Sweeping the four locales CONCURRENTLY was measured and rejected in the same
   cycle: four MediaPipe runtimes on four cores drop `/scan ready` from 41 rendered text
   nodes to 23, so it sweeps less.
+- **A Playwright wait and a `document.querySelectorAll` read do not see the same page, and
+  under `next dev` that difference has a button in it.** CSS selectors given to
+  `page.locator()` pierce open shadow DOM; `document.querySelectorAll` inside
+  `page.evaluate` does not. `next dev` mounts `<nextjs-portal>`, whose shadow root holds
+  exactly one button and it carries `aria-controls`
+  (`#next-logo[aria-controls="nextjs-dev-tools-menu"]`) — measured on `/`, `/care`, `/scan`
+  and `/report`. It is on the page ~100 ms before a route paints (95–448 ms over 14 loads of
+  `/care`), so `page.locator("button[aria-controls]").first().waitFor()` can pass while the
+  light DOM holds none: on `/care` with no survey, which renders no toggles at all, that wait
+  resolves in 203 ms against the overlay's button. That is what failed
+  `care-merchant-disclosure.regression-12` once in cycle 54's smoke and was reproduced 3
+  times in 120 loads on 2026-09-29 (cycle 55). **Wait on the DOM your assertions read** — one
+  `page.waitForFunction` over `document.querySelectorAll`, requiring every `aria-controls`
+  target to exist and the count to hold still — rather than on a locator that can match
+  something the assertion cannot see.
 - `eslint` ignores `test-results/**` and `playwright-report/**`. It did not before, and
   because `smoke` runs `lint` first, one earlier failing e2e run turned `0 errors, 2
   warnings` into `215 errors, 4020 warnings` over 6366 files of captured trace JS.
