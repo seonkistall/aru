@@ -2021,7 +2021,8 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
   ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `979a8ad`
-  against this pair drops **0** lines. SMOKE_RESULT
+  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **300 passed (13.4m)**, **Smoke test passed.**
 
 - 2026-09-29 (cycle 54) — Branch `autopilot/2026-09-29-0639`. **The gate's two newest specs
   cost 5.8m of a 15.1m smoke, and the cost was in the WAITS rather than in the work: timed
