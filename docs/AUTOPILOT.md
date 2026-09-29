@@ -1827,6 +1827,139 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-29 (cycle 56) — Branch `autopilot/2026-09-29-1839`. **The e2e gate stopped
+  measuring `next dev`. One run each on the same tree, this container: dev
+  **300 passed (19.6m)**; `next build` + `next start` **4 failed | 296 passed (16.9m)**
+  INCLUDING its own build. So production is the cheaper of the two as well as the one a
+  visitor actually meets, and every one of the 4 failures was a single spec asking for
+  something only a dev server serves — with that spec fixed the suite reads
+  **300 passed (14.8m)** on production.** Shell-measured wall clock either side of the two
+  measurement runs: **1180s** dev, **1013s** production; the whole `npm run smoke` on the
+  final tree took **945s**.
+
+  **What differed, and it was one spec.** `tests/e2e/discovery-metadata.regression-26.spec.ts`
+  put `/ops`, `/pilot` and `/eval` in its over-HTTP `NOINDEX` list and asserted
+  `status === 200` plus a noindex meta tag on each. `proxy.ts` → `internalAccessDecision()`
+  returns `"allow"` only when `NODE_ENV !== "production"`, and with no `INTERNAL_TOOLS_USER`
+  / `INTERNAL_TOOLS_PASSWORD` in the environment — no `.env.local` exists in this tree —
+  production answers **404**. Measured with `curl` against the gate's own running server:
+  `ops_status=404` and `x-robots-tag: noindex, nofollow`. The three route tests did not fail
+  on the status: `head()` collects the head tags before the status is asserted, so each one
+  spent the full **Test timeout of 30000ms exceeded** waiting for
+  `locator('head meta[name="description"]')` on a body that has none — **90s** of the
+  production run's 1013s was those three waits. The fourth failure, the title-uniqueness
+  test, read `Expected length: 14` / `Received length: 11`, the 3 missing titles being the
+  same three routes.
+
+  **Nothing else behaved differently, including the two candidates worth naming.**
+  `funnel-page-view-once.regression-20` asserts each screen records its event exactly once in
+  4 languages and is the spec StrictMode's double-invoked effects would break — it passed on
+  both servers. And no e2e spec flips `NEXT_PUBLIC_COMMERCE_AFFILIATE`, so the
+  build-time-inlining problem an affiliate-on spec would have raised does not exist here:
+  `grep -rn "COMMERCE_AFFILIATE" tests/e2e/*.ts` returns **4** lines in **2** files
+  (`care-first-merchant-link.regression-38.spec.ts:33,54`,
+  `first-merchant-link-path.regression-36.spec.ts:32,99`), all of them comments recording
+  that those specs are written to pass under either state.
+
+  **The switch, and why it costs no gate time at all.** `playwright.mobile.config.ts` runs
+  `npm run build && npm run start` as one command, so `next start` can never answer from a
+  build of an older tree — the `.next/dev` failure of cycle 47 in a new coat.
+  `ARU_E2E_SERVER=dev` opts back into `next dev` for an interactive loop and is the only var
+  that changes the gate's shape; `ARU_REUSE_DEV_SERVER=1` is now honoured only alongside it,
+  because reusing a listener under a production command would hand the run to some other
+  build. `webServer.timeout` is **600_000** ms on the production path against a measured
+  **25** s from run start to `.next/BUILD_ID` (`✓ Compiled successfully in 7.7s`,
+  `Finished TypeScript in 14.0s`, `✓ Generating static pages using 3 workers (27/27) in
+  501ms`), and the build's output is piped so a build error names itself instead of arriving
+  as a bare `Process from config.webServer was not able to start`. The build is not new work:
+  `scripts/smoke-test.mjs` already ran `npm run build` right after the e2e phase to feed its
+  HTTP phase, and that second build is now gone — it runs only on the dev opt-in. So the gate
+  makes exactly one production build either way, and the e2e phase's own cost fell.
+
+  **The spec was changed to assert what each server serves, not to accept either answer.**
+  `/ops`, `/pilot` and `/eval` moved out of `NOINDEX` into their own `INTERNAL` list with
+  their own test, which branches on the declared server (`process.env.ARU_E2E_SERVER`) rather
+  than on what it observes: on production the route must be **404** and carry
+  `X-Robots-Tag: noindex, nofollow`, which is a strictly stronger statement than the meta tag
+  — it also pins that an internal route is not publicly reachable — and a 401 is deliberately
+  not accepted, because a 401 would mean credentials reached the gate's environment. Under
+  the dev opt-in the page renders and its own
+  `<meta name="robots" content="noindex, nofollow"/>` (the exact serialization, read off the
+  running server) has to carry it. The robots.txt and sitemap.xml tests still cover all three
+  paths. Title/description uniqueness over HTTP now covers **11** paths on production and the
+  same **14** as before under the dev opt-in; for the internal three in production it is
+  `tests/seo-metadata.test.ts` that holds them apart, at its own `new Set(titles)` /
+  `new Set(descriptions)` checks on lines **97** and **98**, with the routes listed on line
+  **20**. No spec was skipped, weakened or deleted, and no product code changed.
+
+  **What this did NOT establish.** Each server was measured **once**, not repeatedly, so the
+  16.9m / 19.6m gap carries no variance estimate — and this container is the slow one: the
+  supervisor's dev-path `npm run smoke` on the merge base read **300 passed (13.4m)** where
+  this worker's dev run of the same suite read 19.6m, so the two are not comparable across
+  machines and the ~20% budget was judged on the same-container pair only. Nothing was
+  measured about whether production changes what the specs *detect* rather than how long they
+  take: a defect that only a dev build surfaces would now be missed, and the reverse (cycle
+  55's overlay button) is the case that motivated the move. `next build` was not measured
+  from a cold `.next`; the 25 s figure is with the previous run's artefacts on disk. And
+  nothing about CI was changed, because there is none in this repository to change: `ls .github/workflows/`
+  fails and there is no `.github` directory, so the gate is whatever a worker or the owner
+  runs by hand.
+
+  **Research.** Two primary sources, both fetched here:
+  `https://raw.githubusercontent.com/vercel/next.js/canary/docs/01-app/03-api-reference/06-cli/next.mdx`
+  (`http=200`, **25860** bytes, sha256
+  `7f497919fc1e303a6d691c414f569692abcb3de5ee338c2f27a3339a77c5b471`), which states at line
+  114: "`next start` starts the application in production mode. The application should be
+  compiled with [`next build`](#next-build-options) first." — the `&&` in one command is that
+  sentence, enforced. And
+  `https://raw.githubusercontent.com/microsoft/playwright/main/docs/src/test-webserver-js.md`
+  (`http=200`, **6424** bytes, sha256
+  `ef4ebf44402ce355f618bdf885fa067da801f6efe28d2ec6a4635a6d6a8efbe5`), whose line 8 frames the
+  feature as "the ability to launch a local dev server before running your tests... ideal for
+  when writing your tests during development and when you don't have a staging or production
+  url to test against", and whose `reuseExistingServer` row says it "should be commonly set to
+  `!process.env.CI`". Playwright documents no objection to a production command; the dev
+  server is its convenience default, not its requirement.
+
+  **ML: skipped this cycle**, as the brief directed. `python3 ml/selftest.py` was still run
+  and is green (below).
+
+  **Docs and rotation.** Recent cycles holds 56/55/54; cycle 53's entry (**227** lines)
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 52. Every item
+  under "Supervisor findings not yet actioned" was already ticked `[x]` before this cycle
+  and cycle 55's review recorded no new one, so nothing was appended there. No backlog item
+  was ticked `[x]`.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files at `8548ad5`: **2478** +
+  **12010** = **14488**. The final pair is **2349** + **12239** = **14588**. `cmp` of the
+  extracted cycle 53 entry against lines **12012**–**12238** of the changelog reports no
+  difference. `sort -u` over both files at `8548ad5` gives **12607** unique lines and over
+  the final pair **12696**; `comm -23` of the first against the second drops **0** — every
+  line at `8548ad5` is still present, so there is no missing line to account for.
+
+  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
+  **Test Files 120 passed (120) / Tests 1089 passed (1089)** for the vitest phase,
+  **300 passed (14.8m)** for the e2e phase — the first time that phase ran against a
+  production build — **Ran 146 tests in 2.518s** / **OK** for `ml/selftest.py`, all **12**
+  HTTP route checks `ok` with `/pilot`, `/ops` and `/eval` each `-> 404`, and the literal
+  line **Smoke test passed.** at log line **1035**. The whole gate took **945s** of wall
+  clock, against **1180s** for the dev e2e phase alone earlier in this cycle. Re-run
+  afterwards on the committed tree, each on its own: `npx vitest run` **Test Files 120
+  passed (120) / Tests 1089 passed (1089)**; `npx tsc --noEmit | grep -c "error TS"` **13**
+  — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing
+  `_reads` / `_result`, not run beside vitest); `python3 ml/selftest.py` **Ran 146 tests in
+  2.527s** / **OK**. `git diff 8548ad5 --stat` lists **6** files (**444** insertions,
+  **252** deletions) and the same command over `app/ lib/ public/ ml/ vitest.config.ts
+  package.json package-lock.json` is empty. What the smoke run does not cover: this paragraph
+  and the rotation numbers above it, and two comment-only edits made after it finished — a
+  rewrapped comment line in `playwright.mobile.config.ts` and a stray ` *` removed from the
+  spec's doc comment. With those in, `npx tsc --noEmit | grep -c "error TS"` is still **13**,
+  `npx eslint .` still **0 errors**, and the edited spec re-run on its own against a
+  production server reads **18 passed (36.8s)**.
+
+  *Supervisor review:* pending.
+
 - 2026-09-29 (cycle 55) — Branch `autopilot/2026-09-29-1239`. **What replaced `/care`'s DOM
   between cycle 54's `waitFor` and the next read: nothing did. `page.locator(css)` pierces
   open shadow roots and `document.querySelectorAll(css)` does not, and `next dev` mounts a
@@ -2248,231 +2381,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
     toggles inside a `waitForFunction` that also checks every `aria-controls` target
     exists, so the assertion reads a DOM that is not mid-replacement. Before that, find
     what replaced it: a Next dev full reload is the leading guess, and it is not shown.
-
-- 2026-09-29 (cycle 53) — Branch `autopilot/2026-09-29-0039`. **The Korean-leak sweep the
-  brief asked for found NO defect, and the first thing it found was a defect in ITSELF: two
-  passes with hand-written readings reported 8 then 192 Hangul hits across 96 and 228
-  renders, and every one of them was a string the product cannot produce — invented signal
-  details, invented bucket labels, SKU ids that are not in the catalogue, and in one state a
-  drive step that tapped the language switcher and turned the whole page Korean. Rebuilt with
-  every fixture DERIVED from the shipped producers, the sweep renders 43 states in each of
-  en / ja / zh / ar — 172 renders — and finds exactly one Hangul string, the language
-  switcher's own `한국어`, which is intended and now allowlisted with the evidence for it.
-  Alongside it `/care`'s first merchant link was measured for the first time in all five
-  locales and needs 0 px of scroll in every one, so nothing was changed there either; the
-  tightest locale clears the fold by 138.3 px.**
-
-  **Baselines, re-measured here on `ce7f472`.** `node_modules` was absent, so `npm ci` first
-  (exit **0**). `npx vitest run` **Test Files 120 passed (120) / Tests 1089 passed (1089)**,
-  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **✖ 2 problems (0 errors, 2
-  warnings)**, `python3 ml/selftest.py` **Ran 146 tests in 1.802s ... OK**. All four match the
-  supervisor's.
-
-  **Bug fix: the sweep, and why its first two passes were worthless.** Cycle 43 found
-  `노출 여유 확인` rendering in Korean in every non-Korean locale because `signalCheck`
-  (`lib/report-trust.ts`) COMPOSES `${signal.label} 확인` and `/report` passes the result to
-  `t()` — a string the `t("…")`-literal scan in `tests/i18n-coverage.test.ts` cannot see.
-  Nothing had swept the rendered pages for that class since. Pass one rendered **96** states
-  (4 locales × 24) and reported **8** Hangul hits, all of them `빛이 부족해요` and
-  `노출 여유가 부족해요` on `/report`'s retake card. Both are strings **this codebase never
-  produces**: `retakeReasons` is `failedSignals.map((s) => s.detail)`
-  (`lib/skin.ts:1226`) plus one burst line (`:1230`), and all **10** of the strings those two
-  lines can yield are keys in every dictionary — `grep -cF '  "<string>":' lib/i18n/{en,ja,zh,ar}.ts`
-  is **1** for each of the **10**, in each of the **4** files. Pass two widened to **228**
-  renders and reported **192** hits, and they broke down the same way: `집중 관리 권장` and
-  `결 거칠어 보임` are not in `overallFor` (which returns only 재촬영 권장 / 균형 관리 필요 /
-  대체로 안정) or in `SKIN_LABELS.pores` (결 매끈 / 결 약간 보임 / 결 뚜렷); `그린티 밸런싱
-  토너 EX` and `그린티 시드 세럼` are not in `SKUS` and their sku ids `to1` / `se2` are not
-  either, so `/checkin` fell through `sku?.brand ?? productUse.name` to the invented name; and
-  **40** of the 192 came from one state whose drive step clicked every `<button>` on the page,
-  the language switcher included, after which the page was legitimately in `ko`. **So the
-  fixtures were rebuilt to be derived rather than typed.**
-  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts` imports `SKIN_LABELS`, `headlineFor`,
-  `narrativeFor`, `overallFor` and `confidenceLabel` from `lib/skin.ts` and `SKUS` from
-  `lib/skus.ts`, and reads `buildSignals`' **4** labels with their **9** details, the burst
-  retake line and the two extra reads' label/value/note literals out of the `lib/skin.ts`
-  source at test time — the trick `tests/report-trust-chip-keys.test.ts` already used. Its six
-  `/report` step-0 readings put all **9** `SKIN_LABELS` values on screen and take all **5**
-  `headlineFor` branches; signals, extras, confidence and source rotate across them so all
-  four signals appear in both states, `조명`'s third detail appears, all three `톤 균일감` and
-  all three `T존 반사광` variants appear, and `retakeReasons` renders both the failing signal
-  details and the burst line. **The result is 0 defects across 172 renders**: **43** states ×
-  **4** locales, `4.6m`, and **4 passed** — `/`, `/scan` intro and its camera-shim `ready`
-  screen with the three consent boxes checked, `/survey` empty / with one chip per section /
-  with a scan hint, `/report` × six readings on step 0 plus steps 1 and 2 under four survey
-  shapes plus all three survey-only steps, `/care` under four surveys plus merchants expanded
-  plus no survey, `/checkin` at 2주 / 4주 / not-yet-due / already-answered / empty / answered
-  in the run, `/studio` presets and from-scan, `/privacy` with a populated device, both
-  `/unsubscribe` states, both guide pages, `not-found`, and the language switcher open.
-  `<details>` are forced open before collecting, because their shut content is
-  `display: none` and would otherwise escape the sweep. **The one hit is intended.** `한국어`
-  appears once per locale, on the switcher-open state only, and it is allowlisted on the
-  evidence that the decision is already recorded in the dictionaries: `"한국어": "한국어"` is
-  the value in all four of `lib/i18n/{en,ja,zh,ar}.ts` and the ONLY Hangul-bearing value any
-  of them carries — over **914** / **910** / **910** / **914** values the counts per Unicode
-  block are Hangul Jamo **0**, Hangul Compatibility Jamo **0**, Hangul Syllables **3** in each
-  file, and all three of those syllables are that one string. **Proven to fail, twice, by
-  reintroducing a leak.** Deleting `"노출 여유 확인"` from `lib/i18n/ja.ts` — cycle 43's exact
-  defect — gives **1 failed** naming
-  `ja /report reads1 step0: [text] <span> body>main>div>section>div>span :: 노출 여유 확인`
-  and the same on `reads4 step0`. Deleting the burst line
-  `"촬영 프레임 사이에 신호가 조금 흔들렸어요"` from `lib/i18n/en.ts` gives **1 failed** naming
-  the same two states — **and `npx vitest run` with that key gone is still Test Files 120
-  passed (120) / Tests 1089 passed (1089)**, so that string had nothing holding it before this
-  spec: `tests/i18n-coverage.test.ts` collects `reads.signals` strings and its file list does
-  not include `lib/skin.ts`, and `tests/report-trust-chip-keys.test.ts` covers
-  `trust.checks`, not `trust.reasons`. A third break checks the allowlist itself rather than the
-  screens: renaming its entry's `text` from `한국어` to `Korean` gives **1 failed** on
-  `allowlist entry "Korean" has no Hangul in it`, so an entry that cannot be absorbing a hit —
-  a dead one, or a widening added while fixing a red run — fails rather than passing quietly.
-  All three files were restored and `git diff --stat` on each is empty.
-  **What this does NOT establish.** `/scan`'s own result card
-  (`app/scan/result-card.tsx`) was never rendered: `phase === "result"` follows a real
-  capture, and seeding `gyeol_reads` leaves `/scan` on its intro screen — **28** text nodes and
-  **466** characters, byte-for-byte the cold `/scan` figure. Its strings are the ones `/report`
-  renders through `ConfidenceBridge` and `analysisRows`, plus the FULL `retakeReasons` list
-  where `/report` shows `slice(0, 3)`. The error boundary was not reached either: a stored
-  reading that passes `isScanReads` with wrong-shaped `signals` did not throw — it rendered
-  `/report`'s no-reads state at **42** nodes / **379** characters, the same as `/report` with no
-  survey at all. And the sweep says nothing about the LLM `narrative`, which
-  `localizedNarrative` returns only under `ko`.
-
-  **UI/UX: `/care`'s first merchant link is already on the first screen in all five locales,
-  so nothing was changed.** `/care` is ARU's second commerce surface — `/report`'s routine step
-  sends people here with "제품과 상담 정보 보기" — and cycle 52 measured `/report` without ever
-  measuring this page. Same method as
-  `tests/e2e/first-merchant-link-path.regression-36.spec.ts` at 360x800 with a valid survey in
-  session storage: `zh` box **494.5→552.9** (**0** px of scroll, **247.1** px of margin below),
-  `ko` **517.7→576.1** (**0**, **223.9**), `ar` **577.1→635.6** (**0**, **164.4**), `ja`
-  **581.5→639.9** (**0**, **160.1**), `en` **603.3→661.8** (**0**, **138.3**). No locale needs
-  scroll, so the layout-only change the brief asked for was not needed and none was made.
-  **Why `/care` is shorter above its link than `/report` was**, measured per block in `en`, the
-  tightest locale: the eyebrow **16.5** px (**36→52.5**), `FlowSteps` **73**
-  (**54.5→127.5**), the title **69.6** (**141.5→211.1**), the lead paragraph **46.4**
-  (**219.1→265.5**), then inside the first section the head row **33** (**308.5→341.5**), the
-  compare-intro row with its mascot **60.5** (**353.5→413.9**) and `CommerceDisclosure`
-  **33.3** (**415.9→449.3**) — **463.3** px of blocks before the first product row, against the
-  **737.5** `/report` reaches in `en` after cycle 52's reorder. The link sits **109.4** px into
-  a **249.5** px product row (**463.3→712.8**), under a **113** px name/reason block. **Both
-  disclosure states measured**: with `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` every number above is
-  identical and the disclosure block stays **33.3** px in all five locales, so the longer
-  affiliate sentence still wraps to two lines here as it does on `/report`.
-
-  **The `/care` ratchet, and it fails two ways.** `tests/e2e/care-first-merchant-link.regression-38.spec.ts`
-  drives all **5** locales (**5 passed** in `10.5s` with the flag off and `10.4s` with it on),
-  prints `marginBelow` on every run (**223.9** `ko`, **138.3** `en`, **160.1** `ja`,
-  **247.1** `zh`, **164.4** `ar`), and holds `SCROLL_BUDGET` at **0** for every locale. A hard
-  zero is affordable here in a way it is not on `/report`: the tightest locale has **138.3** px
-  of headroom against `ar`'s **0.8** px there, so a font-metric shift cannot turn this red on
-  its own. Unlike `/report`, `/care`'s merchant links are `<button>`s calling `window.open`
-  rather than `a[href^="/api/out"]` anchors, so the spec locates them through the
-  `care-merchants-<sku id>` panel and asserts **3** panels with **1** link in the collapsed
-  first one. Break one, `leadStyle`'s `marginBottom` 24 → 324: **5 failed**, reporting `ko: the
-  first merchant link needs 76.1px of scroll (box 817.7→876.1), budget 0`, `en: … 161.8px …
-  (903.3→961.8)`, `ja: … 139.9px … (881.5→939.9)`, `zh: … 52.9px … (794.5→852.9)` and `ar: …
-  135.6px … (877.1→935.6)`. Break two, moving `CommerceDisclosure` from above the product rows
-  to the end of the same section: **5 failed** on `the disclosure sits above the first buy
-  button in its section`, so the ratchet cannot be satisfied by winning pixels off the
-  disclosure. `app/care/page.tsx` was restored after each and `git diff --stat` on it is empty.
-  Nothing was measured about conversion; this only says the button is on the first screen.
-
-  **Research: one question, and the primary source was refused.** The sweep widens the repo's
-  usual `[가-힣]` to the three Hangul blocks the brief named (U+1100–11FF, U+3130–318F,
-  U+AC00–D7A3), and whether that widening can false-positive on a TRANSLATED string is the one
-  mechanism that had to be checked. `www.unicode.org/Public/UNIDATA/Blocks.txt` returned
-  `curl: (56) CONNECT tunnel failed, response 403` from this container, so the block boundaries
-  rest on the brief and are NOT verified against Unicode's own data file — recorded as
-  unverified. What was measured instead is the question that actually matters, on the committed
-  files: across the **914** / **910** / **910** / **914** translated values in
-  `lib/i18n/{en,ja,zh,ar}.ts` the wider range matches **3** characters in each file and they
-  are all `한국어`, with **0** in the two Jamo blocks — so on this repository the widening adds
-  no false positive at all. Over the **914** distinct dictionary keys, `[가-힣]` matches
-  **914** and the wider range matches **914**, so it also adds no coverage on today's keys; it
-  is insurance against a composed string that reaches for a Jamo, not a change in what is
-  caught today.
-
-  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces and
-  the golden set is the standing blocker, so nothing was trivially advanceable.
-  `python3 ml/selftest.py` was run as a gate only. `git diff ce7f472 -- ml/ public/` is empty.
-
-  **Guardrails.** `git diff ce7f472 --stat` touches **5** files and no others:
-  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts` (new),
-  `tests/e2e/care-first-merchant-link.regression-38.spec.ts` (new), `README.md`,
-  `docs/AUTOPILOT.md` and `docs/autopilot-changelog.md`. **No product code changed at all** —
-  `git diff ce7f472 -- app/ lib/ public/ ml/ scripts/ vitest.config.ts package.json` is empty,
-  which is the honest shape of a cycle whose two investigations both found nothing to fix. So no translation string's content
-  changed and no key was added or removed: the two deletions above were breaks, each restored
-  and compared. `lib/consent.ts`, the three `/scan` consent checkboxes, the re-engage email and
-  its Korean-canonical opt-in `context`, `efficacyClean()`, `shareUrl`, `ALLOWED_HOSTS`,
-  `metadataBase`, `blemishCount`, `toneSpread` and the manifest's `status` /
-  `promotionGate` / `minQwkGainOverHeuristic` were not touched. `NEXT_PUBLIC_FUNNEL_FLUSH` is
-  still unset everywhere; `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` was set in a shell for two
-  Playwright invocations and nothing on disk records it. No provider was called and no email
-  was sent — `/unsubscribe` was rendered and never submitted. No dependency was added, no guide
-  page was added, and no colour, font size or spacing value changed anywhere. Both new specs
-  match both disclosure sentences per locale, so the day the owner flips the affiliate flag
-  neither turns red: `regression-38` was run with it on and gave **5 passed**.
-
-  **Docs and rotation.** Recent cycles holds 53/52/51; cycle 50's entry (**267** lines) moved
-  verbatim to the end of `docs/autopilot-changelog.md` after cycle 49, where it now starts at
-  line **11227**. `cmp` of the extracted entry against the moved text reports no difference. No
-  backlog item was ticked `[x]`: the `/report`-to-first-link item gained the `/care`
-  measurement, the RTL-sweep item gained the rendered-Hangul result, and a new item records
-  what the sweep could not reach.
-
-  **Nothing was lost in the rotation.** `wc -l` on both files: **2479** + **11225** =
-  **13704** at `ce7f472`. Immediately after the move the two halves are **2212** + **11493** =
-  **13705** — **+1**, for the blank line the changelog puts between entries (the separation
-  cycles 48→49 and 49→50 already use; AUTOPILOT's own list has no blank line between entries,
-  so the separator had to be added rather than moved, and it is the only line the rotation
-  itself added). The final pair is **2459** + **11493** = **13952**. `sort -u`
-  over both files at `ce7f472` gives **11910** unique lines and over the final pair **12140**;
-  `comm -23` of the first against the second drops **0** — every line at `ce7f472` is
-  still present. Both counts re-taken on the tree as committed, after the paragraph below.
-
-  **Validation on this tree, worker.**
-  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome |
-  head -1) npm run smoke` printed **Test Files 120 passed (120) / Tests 1089 passed
-  (1089)** for the vitest phase (unchanged from `ce7f472`: this cycle added no unit test),
-  **300 passed (13.5m)** for the e2e phase (**291** at `ce7f472`, plus regression-37's
-  **4** locale sweeps and regression-38's **5**), and the literal line
-  **Smoke test passed.** After it, on the same tree: `npx tsc --noEmit | grep -c "error TS"`
-  **13** — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing `_reads` /
-  `_result`, run on its own and not beside vitest); `python3 ml/selftest.py`
-  **Ran 146 tests in 1.724s ... OK**. `git diff ce7f472 --stat` lists **5** files, and `git diff ce7f472 --stat --
-  app/ lib/ public/ ml/ scripts/ vitest.config.ts package.json package-lock.json` is empty. The
-  only thing that smoke run does not cover is this paragraph and the rotation numbers above it,
-  which were written after it finished.
-
-  *Supervisor review:* sound. No product code changed, and both specs fail when the thing
-  they guard is broken, including one way the worker did not try. The one cost is gate
-  time.
-
-  *Reproduced here.*
-  - Both specs on this tree: **9 passed (5.6m)**.
-  - `[care-fold]` lines match the worker's: `ko ... 517.7->576.1 ... marginBelow=223.9`,
-    `en ... 603.3->661.8 ... 138.3`, `ja ... 581.5->639.9 ... 160.1`, `zh ... 494.5->552.9
-    ... 247.1`, `ar ... 577.1->635.6 ... 164.4`.
-
-  *Broken here, a way the worker did not try.* An attribute leak on a merchant link, not
-  a text node: `aria-label="판매처로 이동"` on `ProductCard`'s buy link. `-g "ja"` fails
-  and names each site, e.g. `ja /report plain step1: [aria-label] <a>
-  body>main>div>div>div>a :: 판매처로 이동`. A screen-reader label in Korean is exactly
-  the kind of leak no text-node sweep would see.
-
-  *Checked, not assumed.* `/unsubscribe with token` renders only. The form's `fetch` to
-  `/api/reengage/unsubscribe` sits behind `onClick`
-  (`app/unsubscribe/unsubscribe-form.tsx:39`, `:66`), and the sweep does not click it,
-  so nothing reaches Resend or Supabase.
-
-  *Cost, recorded.* The two new specs take **5.6m** of the e2e phase on their own. The
-  Hangul sweep is almost all of that: 172 renders, one page load each. Smoke was
-  **10.9m** on cycle 52's tree. If gate time starts to squeeze the cycle, the sweep
-  could reuse a page across states per locale, but that is not done here.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors**, `python3
-  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `ce7f472`
-  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, **300 passed (15.1m)** (10.9m on cycle 52's tree), **Smoke
-  test passed.**

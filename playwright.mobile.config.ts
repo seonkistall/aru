@@ -44,6 +44,22 @@ const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?.trim();
 // deterministic path is the default everywhere, not only under `npm run smoke`.
 const reuseDevServer = process.env.ARU_REUSE_DEV_SERVER === "1";
 
+// The gate measures a PRODUCTION build, not `next dev`. Dev mode puts machinery into every
+// page the suite loads that no visitor ever meets: the dev-tools portal whose shadow-root
+// button made a cycle 55 wait resolve on the overlay instead of the page, on-demand route
+// compilation on the first hit of each route (inside timed specs), Fast Refresh, and
+// dev-mode React. Measured on this container, same tree, 2026-09-29 (cycle 56), one run
+// each: `next dev` `300 passed (19.6m)`; `next build` + `next start`
+// `4 failed | 296 passed (16.9m)` INCLUDING its own build, and all 4 failures were one
+// spec asking for what only dev serves (`discovery-metadata.regression-26`, fixed in the
+// same cycle; with the fix in, `300 passed (14.8m)`). So production is the faster of the
+// two as well as the honest one, and the build is not extra work: `scripts/smoke-test.mjs` needs a production build anyway for
+// its HTTP phase and now uses the one made here instead of making a second.
+//
+// `ARU_E2E_SERVER=dev` opts back into `next dev` for local debugging. Nothing in the gate
+// sets it.
+const devServer = process.env.ARU_E2E_SERVER === "dev";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
@@ -57,12 +73,26 @@ export default defineConfig({
     ...(chromiumExecutable ? { launchOptions: { executablePath: chromiumExecutable } } : {}),
   },
   webServer: {
-    // The clear is the first link of the command, not a module-level side effect: the
-    // config is re-imported by every worker, and clearing there deletes the cache from
-    // under the running server. See scripts/clear-dev-cache.mjs.
-    command: `${reuseDevServer ? "" : "node scripts/clear-dev-cache.mjs && "}npm run dev -- --hostname ${host} --port ${port}`,
+    // Production: build, then serve what was built, in one command — so `next start` can
+    // never answer from a build of an older tree, which is the same failure mode the
+    // `.next/dev` cache produced in cycle 47. Dev: the clear is the first link of the
+    // command, not a module-level side effect, because the config is re-imported by every
+    // worker and clearing there deletes the cache from under the running server. See
+    // scripts/clear-dev-cache.mjs.
+    command: devServer
+      ? `${reuseDevServer ? "" : "node scripts/clear-dev-cache.mjs && "}npm run dev -- --hostname ${host} --port ${port}`
+      : `npm run build && npm run start -- -H ${host} -p ${port}`,
     url: baseURL,
-    reuseExistingServer: reuseDevServer,
-    timeout: 120_000,
+    // Reuse is a dev-loop convenience and nothing else: against a production command it
+    // would hand the run to a server started from some other build.
+    reuseExistingServer: devServer && reuseDevServer,
+    // The production command has a build in front of the server. Measured here on
+    // 2026-09-29: `.next/BUILD_ID` was written 25 s after the run started, with Next
+    // reporting `✓ Compiled successfully in 7.7s`, `Finished TypeScript in 14.0s` and
+    // `✓ Generating static pages using 3 workers (27/27) in 501ms`.
+    timeout: devServer ? 120_000 : 600_000,
+    // Show the build. A red gate whose cause is a build error is otherwise a bare
+    // "Process from config.webServer was not able to start".
+    ...(devServer ? {} : { stdout: "pipe" as const }),
   },
 });

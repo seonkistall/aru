@@ -752,14 +752,36 @@ git diff --check
 `scripts/smoke-test.mjs` calls `lint`, `test`, `test:mobile-ui`, `build`,
 `py_compile`, `ml/selftest.py` and the HTTP route checks — and not that config.
 
-**Running the gate so its answer means something.** The e2e phase starts its own
-`next dev`, and as of 2026-09-27 it refuses to borrow one. `reuseExistingServer` is off
-unless you set `ARU_REUSE_DEV_SERVER=1`, and `webServer.command` clears Turbopack's
-persistent `.next/dev` cache first (`scripts/clear-dev-cache.mjs`). Before that, a dev
-server left alive from an earlier run was silently reused: with a CSS rule deleted,
-`guide-ltr-in-rtl-chrome.regression-34` reported `8 passed` where the tree's true result
-was `4 failed | 4 passed`. So:
+**Running the gate so its answer means something.** The e2e phase starts its own server
+and refuses to borrow one. As of 2026-09-29 (cycle 56) that server is a production build:
+`webServer.command` is `npm run build && npm run start`. Before that it was `next dev`,
+which put the dev-tools portal, on-demand route compilation, Fast Refresh and dev-mode
+React into every page the gate measured. `reuseExistingServer` is off unless you are on the
+dev opt-in AND set `ARU_REUSE_DEV_SERVER=1`; on the dev path `webServer.command` also
+clears Turbopack's persistent `.next/dev` cache first (`scripts/clear-dev-cache.mjs`).
+Before that clear existed, a dev server left alive from an earlier run was silently reused:
+with a CSS rule deleted, `guide-ltr-in-rtl-chrome.regression-34` reported `8 passed` where
+the tree's true result was `4 failed | 4 passed`. So:
 
+- **The e2e phase measures `next build` + `next start`, and it is the cheaper of the two.**
+  One run each on the same tree, 2026-09-29 (cycle 56), this container: `next dev`
+  `300 passed (19.6m)`; production `4 failed | 296 passed (16.9m)` **including its own
+  build**, where all 4 failures were `discovery-metadata.regression-26` asking for what only
+  a dev server serves — `/ops`, `/pilot` and `/eval` render outside `NODE_ENV=production`
+  and 404 inside it, so three route tests spent 30 s each timing out on a `<head>` tag that
+  a 404 has not got, and the title-uniqueness test read `Expected length: 14 / Received
+  length: 11`. That spec now asserts what each server actually serves, and the
+  production suite reads `300 passed (14.8m)` inside a `npm run smoke` that took 945 s
+  end to end. The build is not an added cost: the gate needed a production
+  build anyway for its HTTP phase, so `scripts/smoke-test.mjs` no longer runs a second one —
+  `.next/BUILD_ID` was written 25 s after the run started (`✓ Compiled successfully in
+  7.7s`, `Finished TypeScript in 14.0s`, `✓ Generating static pages using 3 workers (27/27)
+  in 501ms`).
+- **`ARU_E2E_SERVER=dev` runs the suite against `next dev` instead**, for an interactive
+  debugging loop where a rebuild per edit is the wrong trade. It is the only var that
+  changes the gate's shape: `scripts/smoke-test.mjs` then runs `npm run build` itself,
+  because the e2e phase no longer did. Nothing in the gate sets it, and a result measured
+  under it is a dev-mode result — say so if you quote a number from one.
 - **Nothing else may be listening on `MOBILE_UI_PORT` (3102).** `npm run smoke` now checks
   this before the e2e phase and stops with a named error rather than hanging; a wedged
   `next dev` — what killing a smoke run mid-suite leaves behind — used to hang the run
@@ -772,7 +794,9 @@ was `4 failed | 4 passed`. So:
   unstyled — `curl` on the chunk gave `404`, `--bronze` resolved to the empty string,
   `body` had the UA's 8px margin, and `/studio` showed a phantom `scrollWidth` of 412
   against a `clientWidth` of 360. Nothing was wrong with the tree.
-- `ARU_REUSE_DEV_SERVER=1` is for an interactive edit loop only. It costs roughly 3-4 s of
+- `ARU_REUSE_DEV_SERVER=1` is for an interactive edit loop only, and only alongside
+  `ARU_E2E_SERVER=dev` — the production path ignores it, because reusing a listener there
+  would hand the run to a server started from some other build. It costs roughly 3-4 s of
   cold Turbopack compile to leave it unset (measured: 4930 / 5247 / 6072 ms to the first
   200 on `/` cold, 1958 ms warm), which is the price of the run meaning what it says.
 - **`vitest.config.ts` sets `testTimeout: 60_000`, and that is a correctness setting, not a
@@ -808,7 +832,9 @@ was `4 failed | 4 passed`. So:
   cycle: four MediaPipe runtimes on four cores drop `/scan ready` from 41 rendered text
   nodes to 23, so it sweeps less.
 - **A Playwright wait and a `document.querySelectorAll` read do not see the same page, and
-  under `next dev` that difference has a button in it.** CSS selectors given to
+  under `next dev` that difference has a button in it.** (The gate stopped running `next
+  dev` in cycle 56, so this is now a hazard of the `ARU_E2E_SERVER=dev` opt-in — and of any
+  future dev-only measurement.) CSS selectors given to
   `page.locator()` pierce open shadow DOM; `document.querySelectorAll` inside
   `page.evaluate` does not. `next dev` mounts `<nextjs-portal>`, whose shadow root holds
   exactly one button and it carries `aria-controls`

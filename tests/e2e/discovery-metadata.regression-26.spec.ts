@@ -11,14 +11,30 @@ import { expect, test, type Page } from "@playwright/test";
  * The unit test (`tests/seo-metadata.test.ts`) pins the route table. This pins
  * what a crawler is actually served over HTTP, which is the only thing that
  * matters: a table can be right while a layout is missing.
- *
- * `/ops`, `/pilot` and `/eval` are reachable here because `proxy.ts` allows them
- * outside `NODE_ENV=production`; in production they answer 404 or 401 and the
- * noindex tag below is their second layer.
  */
 
 const INDEXABLE = ["/", "/scan", "/survey", "/privacy", "/guide/serum-for-combination-skin", "/guide/toner-for-oily-skin"];
-const NOINDEX = ["/report", "/care", "/checkin", "/studio", "/unsubscribe", "/ops", "/pilot", "/eval"];
+const NOINDEX = ["/report", "/care", "/checkin", "/studio", "/unsubscribe"];
+
+/**
+ * `/ops`, `/pilot` and `/eval` are internal, and what a crawler is served for them
+ * depends on which server started: `proxy.ts` -> `internalAccessDecision()` returns
+ * "allow" only when `NODE_ENV !== "production"`. Since cycle 56 the gate runs against
+ * `next build` + `next start`, where — with no `INTERNAL_TOOLS_USER` /
+ * `INTERNAL_TOOLS_PASSWORD` in the gate's environment, and the gate sets none — the proxy
+ * answers 404 with `X-Robots-Tag: noindex, nofollow` before the page renders. Measured
+ * against the running gate server on 2026-09-29: `ops_status=404` and
+ * `x-robots-tag: noindex, nofollow`.
+ *
+ * So they are asserted separately, and per server rather than as an either/or: under the
+ * `ARU_E2E_SERVER=dev` opt-in the page renders and its own meta tag has to carry the
+ * noindex; under the production default the route must not be reachable at all and the
+ * header has to carry it. A 401 in the production branch would mean credentials reached
+ * the gate's environment, which is why it is not accepted here.
+ */
+const INTERNAL = ["/ops", "/pilot", "/eval"];
+const internalRendersHere = process.env.ARU_E2E_SERVER === "dev";
+
 const ORIGIN = "https://aru-beauty.vercel.app";
 
 async function head(page: Page, path: string) {
@@ -46,7 +62,7 @@ test("robots.txt allows the site, disallows /api/ and points at the sitemap", as
   expect(body).toContain("Disallow: /api/");
   expect(body).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
   // A Disallow would stop a crawler reading the noindex tag it is meant to obey.
-  for (const path of NOINDEX) expect(body).not.toContain(`Disallow: ${path}`);
+  for (const path of [...NOINDEX, ...INTERNAL]) expect(body).not.toContain(`Disallow: ${path}`);
 });
 
 test("sitemap.xml lists the indexable pages and nothing that is noindex", async ({ request }) => {
@@ -56,7 +72,7 @@ test("sitemap.xml lists the indexable pages and nothing that is noindex", async 
   const body = await response.text();
   const locations = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
   expect(locations).toEqual(INDEXABLE.map((path) => (path === "/" ? ORIGIN : `${ORIGIN}${path}`)));
-  for (const path of NOINDEX) expect(locations).not.toContain(`${ORIGIN}${path}`);
+  for (const path of [...NOINDEX, ...INTERNAL]) expect(locations).not.toContain(`${ORIGIN}${path}`);
   expect(body).not.toContain("<lastmod>");
   // No per-locale URLs exist, so no alternate can honestly be claimed.
   expect(body).not.toContain("hreflang");
@@ -98,6 +114,19 @@ test.describe("noindex routes, as served", () => {
   }
 });
 
+for (const path of INTERNAL) {
+  test(`${path} is kept out of a crawler's index the way this server serves it`, async ({ request }) => {
+    const response = await request.get(path);
+    if (internalRendersHere) {
+      expect(response.status()).toBe(200);
+      expect(await response.text()).toMatch(/<meta name="robots" content="noindex, nofollow"\s*\/?>/);
+      return;
+    }
+    expect(response.status()).toBe(404);
+    expect(response.headers()["x-robots-tag"]).toBe("noindex, nofollow");
+  });
+}
+
 /**
  * Read over plain HTTP rather than in a page: `/report` client-redirects to
  * `/survey` on a first visit with empty storage, which tears the document out
@@ -107,7 +136,9 @@ test.describe("noindex routes, as served", () => {
 test("no two pages share a title or a description", async ({ request }) => {
   const titles: string[] = [];
   const descriptions: string[] = [];
-  for (const path of [...INDEXABLE, ...NOINDEX]) {
+  // The internal three serve no document in production, where `tests/seo-metadata.test.ts`
+  // is what holds their titles and descriptions apart (its own `new Set(...)` checks).
+  for (const path of [...INDEXABLE, ...NOINDEX, ...(internalRendersHere ? INTERNAL : [])]) {
     const html = await (await request.get(path)).text();
     titles.push(html.match(/<title[^>]*>([^<]*)<\/title>/)?.[1] ?? "");
     descriptions.push(html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? "");

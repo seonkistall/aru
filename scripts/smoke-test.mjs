@@ -259,7 +259,12 @@ async function main() {
   // Must match `playwright.mobile.config.ts`'s own default, which reads the same var.
   await assertPortFree(Number(process.env.MOBILE_UI_PORT ?? 3102), "test:mobile-ui");
   await run(npmCmd, ["run", "test:mobile-ui"]);
-  await run(npmCmd, ["run", "build"]);
+  // The e2e phase runs against `next build` + `next start` (playwright.mobile.config.ts),
+  // so the production build is already made and a red build fails that phase rather than
+  // this line. `smokeHttp()` below serves the same build. Under the `ARU_E2E_SERVER=dev`
+  // opt-in the e2e phase starts a dev server instead and nothing has built yet, so the
+  // build still has to happen here — this is the only thing in the gate that var changes.
+  if (process.env.ARU_E2E_SERVER === "dev") await run(npmCmd, ["run", "build"]);
   await run(pythonCmd, ["-m", "py_compile", ...mlFiles]);
   // py_compile only proves the files parse. selftest.py exercises the rules they
   // enforce — licence tiers, tone bands, fold leakage, adapter spec validation —
