@@ -784,6 +784,17 @@ was `4 failed | 4 passed`. So:
   `120 passed (120) / 1089 passed (1089)`. A red vitest run from a timeout looks exactly like
   a broken measurement and is not one. `tests/vitest-timeout-budget.test.ts` fails if the
   line is removed or set under 20_000.
+- **Two sweeps in the e2e phase are slow on purpose, and one of them decides whether a new
+  composed string is safe.** `tests/e2e/hangul-leak-sweep.regression-37.spec.ts` renders 43
+  states in each of `en`, `ja`, `zh` and `ar` — 172 renders, about 4.6 minutes — and fails on
+  any Hangul a non-Korean reader can see that is not in its commented allowlist. Read it before
+  adding a string that is COMPOSED or interpolated at runtime rather than written as a
+  `t("…")` literal: `tests/i18n-coverage.test.ts` scans literals and cannot see a composed one,
+  which is how `노출 여유 확인` shipped in four locales (cycle 43). Its fixtures are derived
+  from `lib/skin.ts` and `lib/skus.ts` rather than written out, so a new signal detail, bucket
+  label or SKU name is swept without editing the spec — and a hand-written fixture is exactly
+  how the first two passes of that sweep reported 8 and then 192 hits that the product
+  cannot produce.
 - `eslint` ignores `test-results/**` and `playwright-report/**`. It did not before, and
   because `smoke` runs `lint` first, one earlier failing e2e run turned `0 errors, 2
   warnings` into `215 errors, 4020 warnings` over 6366 files of captured trace JS.

@@ -1025,6 +1025,16 @@ partly done and stays here.
   **Still open, unchanged:** `app/care/page.tsx`'s `linkBtn` / `otherMerchantsBtn`
   `textAlign: "left"`, mid-session switching on seven of the nine screens, and a real
   phone on all nine.
+  **2026-09-29, cycle 53: this item's text half — "no Korean leaks" — is now measured by
+  RENDERING rather than by composing, and it holds.** **43** states in each of `en`, `ja`, `zh`
+  and `ar` at 360x800, **172** renders, every visible text node and every `aria-label` / `alt` /
+  `title` / `placeholder` checked against three Hangul blocks, `<details>` forced open first:
+  **0** leaks. The one Hangul string any screen shows is the language switcher's `한국어`, on
+  the switcher-open state only, and it is intended — `"한국어": "한국어"` is the value in all
+  four dictionaries and the only Hangul-bearing value any of them carries. Pinned by
+  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts`. **Still open, unchanged:**
+  `app/care/page.tsx`'s `linkBtn` / `otherMerchantsBtn` `textAlign: "left"`, mid-session
+  switching on seven of the nine screens, and a real phone on all nine.
 - [AI] **The path from `/` to the first merchant link is 4 screens and 6 taps, and no step
   can be cut cheaply.** Measured 2026-09-28 (cycle 50) at 360x800 on a production build,
   `ko` and `en`, survey-only path: **4** screens (`/`, `/survey`, `/report` analysis,
@@ -1100,6 +1110,28 @@ partly done and stays here.
   and when it does, the answer is another layout move, not a shorter disclosure. The two
   candidates cycle 50 listed are still untouched: landing survey-only visitors on the picks
   step, and the English copy above the button.
+
+  **Appended 2026-09-29 (cycle 53): `/care`, the other screen that carries merchant links, was
+  measured for the first time and needs 0 px of scroll in all five locales — so nothing was
+  changed there.** `/report`'s routine step sends people to `/care` with "제품과 상담 정보
+  보기", and until now only `/report` had ever been measured. Same method, 360x800, valid survey
+  in session storage: `zh` box **494.5→552.9** (**0** px of scroll, **247.1** px of margin
+  below), `ko` **517.7→576.1** (**0**, **223.9**), `ar` **577.1→635.6** (**0**, **164.4**),
+  `ja` **581.5→639.9** (**0**, **160.1**), `en` **603.3→661.8** (**0**, **138.3**). `/care` is
+  shorter above its link than `/report` because the button sits in the first product row of the
+  first section: in `en` the eyebrow **16.5** px, `FlowSteps` **73**, the title **69.6**, the
+  lead **46.4**, the section head **33**, the compare-intro row **60.5** and
+  `CommerceDisclosure` **33.3** come to **463.3** px before that row, against `/report`'s
+  **737.5**. Identical with `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, disclosure block **33.3** px
+  in every locale either way. Pinned by
+  `tests/e2e/care-first-merchant-link.regression-38.spec.ts` (**5 passed**, `SCROLL_BUDGET`
+  **0** per locale, `marginBelow` printed on every run), which a hard zero suits here in a way
+  it does not on `/report`: the tightest locale has **138.3** px of headroom against `ar`'s
+  **0.8** px there. Broken two ways — `leadStyle` `marginBottom` 24 → 324 gives **5 failed**
+  (`ko` **76.1** px, `zh` **52.9**, `ar` **135.6**, `ja` **139.9**, `en` **161.8**), and moving
+  `CommerceDisclosure` below the product rows gives **5 failed** on the disclosure-order
+  assertion. Still untouched, from cycle 50: landing survey-only visitors on the picks step,
+  and the English copy above `/report`'s button.
 - [~] [AI] **Cycle 51's unnamed vitest failure did not reproduce in 25 runs; the clock
   mechanism that produces its line is fixed, the diagnosis is still open.** Opened
   2026-09-28 (cycle 52). `npx vitest run` was run **25** times on `11e6c4f` with full
@@ -1130,6 +1162,24 @@ partly done and stays here.
   the wall-clock DATE rather than on elapsed time — `Date.now()` appears in the re-engage and
   funnel tests, all of it as offsets from now rather than as absolute dates, read but not
   proven safe across a day or month boundary.
+- [~] [AI] **Two user-facing states the Korean-leak sweep could not render, so "0 leaks" does
+  not cover them.** Opened 2026-09-29 (cycle 53) by
+  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts`, which renders **43** states in each of
+  `en`/`ja`/`zh`/`ar` (**172** renders) and finds **0** leaks plus one intended `한국어`.
+  (a) `/scan`'s own result card, `app/scan/result-card.tsx`. `phase === "result"` follows a real
+  capture and the canvas `captureStream()` shim cannot produce a face, so seeding `gyeol_reads`
+  leaves `/scan` on its intro screen — **28** text nodes and **466** characters, the same as a
+  cold `/scan`. It renders the FULL `retakeReasons` list where `/report` shows `slice(0, 3)`,
+  and `t(extra.note)` for both extra reads, so it is the one screen that can show a retake
+  reason past the third. Either a real capture fixture or a `phase` override reachable from a
+  test would settle it; do not add a production code path just to test it.
+  (b) The error boundary, `app/error.tsx`. A stored reading that passes `isScanReads` with
+  wrong-shaped `signals` did NOT throw — `/report` rendered its no-reads state at **42** nodes /
+  **379** characters, identical to `/report` with no survey — so nothing in this container has
+  ever rendered that boundary in a non-Korean locale. All four of its strings are `t("…")`
+  literals, so `tests/i18n-coverage.test.ts` sees them; what is unmeasured is the LAYOUT, not
+  the translation. Also still uncovered and deliberately so: the LLM `narrative`, which
+  `localizedNarrative` returns only under `ko`.
 - [AI] **`/report`'s routine step has a 13x15 checkbox, under both the 24x24 AA floor and
   `--tap-min`.** Found 2026-09-28 (cycle 50) by extending cycle 49's target sweep to
   `/report`'s other two steps: the `ReengageOptIn` checkbox measures **15x15** under `ko`
@@ -1695,6 +1745,203 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-29 (cycle 53) — Branch `autopilot/2026-09-29-0039`. **The Korean-leak sweep the
+  brief asked for found NO defect, and the first thing it found was a defect in ITSELF: two
+  passes with hand-written readings reported 8 then 192 Hangul hits across 96 and 228
+  renders, and every one of them was a string the product cannot produce — invented signal
+  details, invented bucket labels, SKU ids that are not in the catalogue, and in one state a
+  drive step that tapped the language switcher and turned the whole page Korean. Rebuilt with
+  every fixture DERIVED from the shipped producers, the sweep renders 43 states in each of
+  en / ja / zh / ar — 172 renders — and finds exactly one Hangul string, the language
+  switcher's own `한국어`, which is intended and now allowlisted with the evidence for it.
+  Alongside it `/care`'s first merchant link was measured for the first time in all five
+  locales and needs 0 px of scroll in every one, so nothing was changed there either; the
+  tightest locale clears the fold by 138.3 px.**
+
+  **Baselines, re-measured here on `ce7f472`.** `node_modules` was absent, so `npm ci` first
+  (exit **0**). `npx vitest run` **Test Files 120 passed (120) / Tests 1089 passed (1089)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **✖ 2 problems (0 errors, 2
+  warnings)**, `python3 ml/selftest.py` **Ran 146 tests in 1.802s ... OK**. All four match the
+  supervisor's.
+
+  **Bug fix: the sweep, and why its first two passes were worthless.** Cycle 43 found
+  `노출 여유 확인` rendering in Korean in every non-Korean locale because `signalCheck`
+  (`lib/report-trust.ts`) COMPOSES `${signal.label} 확인` and `/report` passes the result to
+  `t()` — a string the `t("…")`-literal scan in `tests/i18n-coverage.test.ts` cannot see.
+  Nothing had swept the rendered pages for that class since. Pass one rendered **96** states
+  (4 locales × 24) and reported **8** Hangul hits, all of them `빛이 부족해요` and
+  `노출 여유가 부족해요` on `/report`'s retake card. Both are strings **this codebase never
+  produces**: `retakeReasons` is `failedSignals.map((s) => s.detail)`
+  (`lib/skin.ts:1226`) plus one burst line (`:1230`), and all **10** of the strings those two
+  lines can yield are keys in every dictionary — `grep -cF '  "<string>":' lib/i18n/{en,ja,zh,ar}.ts`
+  is **1** for each of the **10**, in each of the **4** files. Pass two widened to **228**
+  renders and reported **192** hits, and they broke down the same way: `집중 관리 권장` and
+  `결 거칠어 보임` are not in `overallFor` (which returns only 재촬영 권장 / 균형 관리 필요 /
+  대체로 안정) or in `SKIN_LABELS.pores` (결 매끈 / 결 약간 보임 / 결 뚜렷); `그린티 밸런싱
+  토너 EX` and `그린티 시드 세럼` are not in `SKUS` and their sku ids `to1` / `se2` are not
+  either, so `/checkin` fell through `sku?.brand ?? productUse.name` to the invented name; and
+  **40** of the 192 came from one state whose drive step clicked every `<button>` on the page,
+  the language switcher included, after which the page was legitimately in `ko`. **So the
+  fixtures were rebuilt to be derived rather than typed.**
+  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts` imports `SKIN_LABELS`, `headlineFor`,
+  `narrativeFor`, `overallFor` and `confidenceLabel` from `lib/skin.ts` and `SKUS` from
+  `lib/skus.ts`, and reads `buildSignals`' **4** labels with their **9** details, the burst
+  retake line and the two extra reads' label/value/note literals out of the `lib/skin.ts`
+  source at test time — the trick `tests/report-trust-chip-keys.test.ts` already used. Its six
+  `/report` step-0 readings put all **9** `SKIN_LABELS` values on screen and take all **5**
+  `headlineFor` branches; signals, extras, confidence and source rotate across them so all
+  four signals appear in both states, `조명`'s third detail appears, all three `톤 균일감` and
+  all three `T존 반사광` variants appear, and `retakeReasons` renders both the failing signal
+  details and the burst line. **The result is 0 defects across 172 renders**: **43** states ×
+  **4** locales, `4.6m`, and **4 passed** — `/`, `/scan` intro and its camera-shim `ready`
+  screen with the three consent boxes checked, `/survey` empty / with one chip per section /
+  with a scan hint, `/report` × six readings on step 0 plus steps 1 and 2 under four survey
+  shapes plus all three survey-only steps, `/care` under four surveys plus merchants expanded
+  plus no survey, `/checkin` at 2주 / 4주 / not-yet-due / already-answered / empty / answered
+  in the run, `/studio` presets and from-scan, `/privacy` with a populated device, both
+  `/unsubscribe` states, both guide pages, `not-found`, and the language switcher open.
+  `<details>` are forced open before collecting, because their shut content is
+  `display: none` and would otherwise escape the sweep. **The one hit is intended.** `한국어`
+  appears once per locale, on the switcher-open state only, and it is allowlisted on the
+  evidence that the decision is already recorded in the dictionaries: `"한국어": "한국어"` is
+  the value in all four of `lib/i18n/{en,ja,zh,ar}.ts` and the ONLY Hangul-bearing value any
+  of them carries — over **914** / **910** / **910** / **914** values the counts per Unicode
+  block are Hangul Jamo **0**, Hangul Compatibility Jamo **0**, Hangul Syllables **3** in each
+  file, and all three of those syllables are that one string. **Proven to fail, twice, by
+  reintroducing a leak.** Deleting `"노출 여유 확인"` from `lib/i18n/ja.ts` — cycle 43's exact
+  defect — gives **1 failed** naming
+  `ja /report reads1 step0: [text] <span> body>main>div>section>div>span :: 노출 여유 확인`
+  and the same on `reads4 step0`. Deleting the burst line
+  `"촬영 프레임 사이에 신호가 조금 흔들렸어요"` from `lib/i18n/en.ts` gives **1 failed** naming
+  the same two states — **and `npx vitest run` with that key gone is still Test Files 120
+  passed (120) / Tests 1089 passed (1089)**, so that string had nothing holding it before this
+  spec: `tests/i18n-coverage.test.ts` collects `reads.signals` strings and its file list does
+  not include `lib/skin.ts`, and `tests/report-trust-chip-keys.test.ts` covers
+  `trust.checks`, not `trust.reasons`. A third break checks the allowlist itself rather than the
+  screens: renaming its entry's `text` from `한국어` to `Korean` gives **1 failed** on
+  `allowlist entry "Korean" has no Hangul in it`, so an entry that cannot be absorbing a hit —
+  a dead one, or a widening added while fixing a red run — fails rather than passing quietly.
+  All three files were restored and `git diff --stat` on each is empty.
+  **What this does NOT establish.** `/scan`'s own result card
+  (`app/scan/result-card.tsx`) was never rendered: `phase === "result"` follows a real
+  capture, and seeding `gyeol_reads` leaves `/scan` on its intro screen — **28** text nodes and
+  **466** characters, byte-for-byte the cold `/scan` figure. Its strings are the ones `/report`
+  renders through `ConfidenceBridge` and `analysisRows`, plus the FULL `retakeReasons` list
+  where `/report` shows `slice(0, 3)`. The error boundary was not reached either: a stored
+  reading that passes `isScanReads` with wrong-shaped `signals` did not throw — it rendered
+  `/report`'s no-reads state at **42** nodes / **379** characters, the same as `/report` with no
+  survey at all. And the sweep says nothing about the LLM `narrative`, which
+  `localizedNarrative` returns only under `ko`.
+
+  **UI/UX: `/care`'s first merchant link is already on the first screen in all five locales,
+  so nothing was changed.** `/care` is ARU's second commerce surface — `/report`'s routine step
+  sends people here with "제품과 상담 정보 보기" — and cycle 52 measured `/report` without ever
+  measuring this page. Same method as
+  `tests/e2e/first-merchant-link-path.regression-36.spec.ts` at 360x800 with a valid survey in
+  session storage: `zh` box **494.5→552.9** (**0** px of scroll, **247.1** px of margin below),
+  `ko` **517.7→576.1** (**0**, **223.9**), `ar` **577.1→635.6** (**0**, **164.4**), `ja`
+  **581.5→639.9** (**0**, **160.1**), `en` **603.3→661.8** (**0**, **138.3**). No locale needs
+  scroll, so the layout-only change the brief asked for was not needed and none was made.
+  **Why `/care` is shorter above its link than `/report` was**, measured per block in `en`, the
+  tightest locale: the eyebrow **16.5** px (**36→52.5**), `FlowSteps` **73**
+  (**54.5→127.5**), the title **69.6** (**141.5→211.1**), the lead paragraph **46.4**
+  (**219.1→265.5**), then inside the first section the head row **33** (**308.5→341.5**), the
+  compare-intro row with its mascot **60.5** (**353.5→413.9**) and `CommerceDisclosure`
+  **33.3** (**415.9→449.3**) — **463.3** px of blocks before the first product row, against the
+  **737.5** `/report` reaches in `en` after cycle 52's reorder. The link sits **109.4** px into
+  a **249.5** px product row (**463.3→712.8**), under a **113** px name/reason block. **Both
+  disclosure states measured**: with `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` every number above is
+  identical and the disclosure block stays **33.3** px in all five locales, so the longer
+  affiliate sentence still wraps to two lines here as it does on `/report`.
+
+  **The `/care` ratchet, and it fails two ways.** `tests/e2e/care-first-merchant-link.regression-38.spec.ts`
+  drives all **5** locales (**5 passed** in `10.5s` with the flag off and `10.4s` with it on),
+  prints `marginBelow` on every run (**223.9** `ko`, **138.3** `en`, **160.1** `ja`,
+  **247.1** `zh`, **164.4** `ar`), and holds `SCROLL_BUDGET` at **0** for every locale. A hard
+  zero is affordable here in a way it is not on `/report`: the tightest locale has **138.3** px
+  of headroom against `ar`'s **0.8** px there, so a font-metric shift cannot turn this red on
+  its own. Unlike `/report`, `/care`'s merchant links are `<button>`s calling `window.open`
+  rather than `a[href^="/api/out"]` anchors, so the spec locates them through the
+  `care-merchants-<sku id>` panel and asserts **3** panels with **1** link in the collapsed
+  first one. Break one, `leadStyle`'s `marginBottom` 24 → 324: **5 failed**, reporting `ko: the
+  first merchant link needs 76.1px of scroll (box 817.7→876.1), budget 0`, `en: … 161.8px …
+  (903.3→961.8)`, `ja: … 139.9px … (881.5→939.9)`, `zh: … 52.9px … (794.5→852.9)` and `ar: …
+  135.6px … (877.1→935.6)`. Break two, moving `CommerceDisclosure` from above the product rows
+  to the end of the same section: **5 failed** on `the disclosure sits above the first buy
+  button in its section`, so the ratchet cannot be satisfied by winning pixels off the
+  disclosure. `app/care/page.tsx` was restored after each and `git diff --stat` on it is empty.
+  Nothing was measured about conversion; this only says the button is on the first screen.
+
+  **Research: one question, and the primary source was refused.** The sweep widens the repo's
+  usual `[가-힣]` to the three Hangul blocks the brief named (U+1100–11FF, U+3130–318F,
+  U+AC00–D7A3), and whether that widening can false-positive on a TRANSLATED string is the one
+  mechanism that had to be checked. `www.unicode.org/Public/UNIDATA/Blocks.txt` returned
+  `curl: (56) CONNECT tunnel failed, response 403` from this container, so the block boundaries
+  rest on the brief and are NOT verified against Unicode's own data file — recorded as
+  unverified. What was measured instead is the question that actually matters, on the committed
+  files: across the **914** / **910** / **910** / **914** translated values in
+  `lib/i18n/{en,ja,zh,ar}.ts` the wider range matches **3** characters in each file and they
+  are all `한국어`, with **0** in the two Jamo blocks — so on this repository the widening adds
+  no false positive at all. Over the **914** distinct dictionary keys, `[가-힣]` matches
+  **914** and the wider range matches **914**, so it also adds no coverage on today's keys; it
+  is insurance against a composed string that reaches for a Jamo, not a change in what is
+  caught today.
+
+  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces and
+  the golden set is the standing blocker, so nothing was trivially advanceable.
+  `python3 ml/selftest.py` was run as a gate only. `git diff ce7f472 -- ml/ public/` is empty.
+
+  **Guardrails.** `git diff ce7f472 --stat` touches **5** files and no others:
+  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts` (new),
+  `tests/e2e/care-first-merchant-link.regression-38.spec.ts` (new), `README.md`,
+  `docs/AUTOPILOT.md` and `docs/autopilot-changelog.md`. **No product code changed at all** —
+  `git diff ce7f472 -- app/ lib/ public/ ml/ scripts/ vitest.config.ts package.json` is empty,
+  which is the honest shape of a cycle whose two investigations both found nothing to fix. So no translation string's content
+  changed and no key was added or removed: the two deletions above were breaks, each restored
+  and compared. `lib/consent.ts`, the three `/scan` consent checkboxes, the re-engage email and
+  its Korean-canonical opt-in `context`, `efficacyClean()`, `shareUrl`, `ALLOWED_HOSTS`,
+  `metadataBase`, `blemishCount`, `toneSpread` and the manifest's `status` /
+  `promotionGate` / `minQwkGainOverHeuristic` were not touched. `NEXT_PUBLIC_FUNNEL_FLUSH` is
+  still unset everywhere; `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` was set in a shell for two
+  Playwright invocations and nothing on disk records it. No provider was called and no email
+  was sent — `/unsubscribe` was rendered and never submitted. No dependency was added, no guide
+  page was added, and no colour, font size or spacing value changed anywhere. Both new specs
+  match both disclosure sentences per locale, so the day the owner flips the affiliate flag
+  neither turns red: `regression-38` was run with it on and gave **5 passed**.
+
+  **Docs and rotation.** Recent cycles holds 53/52/51; cycle 50's entry (**267** lines) moved
+  verbatim to the end of `docs/autopilot-changelog.md` after cycle 49, where it now starts at
+  line **11227**. `cmp` of the extracted entry against the moved text reports no difference. No
+  backlog item was ticked `[x]`: the `/report`-to-first-link item gained the `/care`
+  measurement, the RTL-sweep item gained the rendered-Hangul result, and a new item records
+  what the sweep could not reach.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files: **2479** + **11225** =
+  **13704** at `ce7f472`. Immediately after the move the two halves are **2212** + **11493** =
+  **13705** — **+1**, for the blank line the changelog puts between entries (the separation
+  cycles 48→49 and 49→50 already use; AUTOPILOT's own list has no blank line between entries,
+  so the separator had to be added rather than moved, and it is the only line the rotation
+  itself added). The final pair is **2459** + **11493** = **13952**. `sort -u`
+  over both files at `ce7f472` gives **11910** unique lines and over the final pair **12140**;
+  `comm -23` of the first against the second drops **0** — every line at `ce7f472` is
+  still present. Both counts re-taken on the tree as committed, after the paragraph below.
+
+  **Validation on this tree, worker.**
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome |
+  head -1) npm run smoke` printed **Test Files 120 passed (120) / Tests 1089 passed
+  (1089)** for the vitest phase (unchanged from `ce7f472`: this cycle added no unit test),
+  **300 passed (13.5m)** for the e2e phase (**291** at `ce7f472`, plus regression-37's
+  **4** locale sweeps and regression-38's **5**), and the literal line
+  **Smoke test passed.** After it, on the same tree: `npx tsc --noEmit | grep -c "error TS"`
+  **13** — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing `_reads` /
+  `_result`, run on its own and not beside vitest); `python3 ml/selftest.py`
+  **Ran 146 tests in 1.724s ... OK**. `git diff ce7f472 --stat` lists **5** files, and `git diff ce7f472 --stat --
+  app/ lib/ public/ ml/ scripts/ vitest.config.ts package.json package-lock.json` is empty. The
+  only thing that smoke run does not cover is this paragraph and the rotation numbers above it,
+  which were written after it finished.
+
+  *Supervisor review:* pending.
+
 - 2026-09-28 (cycle 52) — Branch `autopilot/2026-09-28-1839`. **Cycle 51's unnamed vitest
   failure did not reproduce in 25 runs, so the cycle went after the one mechanism that
   produces its exact line from a tree with no defect in it — and found it. Vitest's
@@ -2210,270 +2457,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   files at `d10acf7` against this pair drops **0** lines. `npm run smoke` **Test Files 119
   passed (119) / Tests 1087 passed (1087)**, **288 passed (10.8m)**, **Smoke test passed.**
 
-- 2026-09-28 (cycle 50) — Branch `autopilot/2026-09-28-0039`. **The path from the landing
-  page to the first link that can earn money had never been measured, and it is 4 screens
-  and 6 taps: nothing in it can be cut, because all three required survey fields provably
-  move the picks. Alongside it, cycle 49's accessibility pass turned out to have a hole
-  wider than the screens it skipped — it computed every colour token against #ffffff only,
-  and two tokens that clear WCAG AA on white fail on `--surface-tint` #f5f5f5. Both render
-  on /privacy's notice cards: `--bronze` #767676 is 4.542:1 on white and 4.166:1 on the
-  tint, and `--plum` #d9362b is 4.653:1 on white and 4.268:1 there. Fixed with the
-  narrowest change that clears both without moving the brand red again. The RTL sweep's
-  six remaining screens were re-grepped and both surviving candidates measure clean.**
-
-  **Baselines, re-measured here on `da6b21d`.** `node_modules` was absent, so `npm ci`
-  first (exit **0**). `npx vitest run` **Test Files 117 passed (117) / Tests 1076 passed
-  (1076)**, `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **0 errors, 2
-  warnings**, `python3 ml/selftest.py` **Ran 146 tests in 1.719s ... OK**. All four match
-  the supervisor's.
-
-  **UI/UX: the path length, measured.** 360x800, production build (`npm run build` +
-  `next start`), Playwright driving real clicks, no new dependency. Survey-only path,
-  identical in `ko` and `en`: **4** screens — `/`, `/survey`, `/report` analysis step,
-  `/report` picks step. **6** taps — the landing "카메라 없이 설문으로 시작하기" link, one
-  chip for each of the **3** required fields (제품 종류 / 피부 타입 / 예산), the submit
-  button, and the "2. 살펴볼 제품 후보" step tab. **2** survey sections are optional (고민,
-  피하고 싶은 성분) and were not touched. The `/report` analysis step carries **0** merchant
-  links, which is why the sixth tap exists. On the picks step there are **4** merchant
-  links; the first one's box sits at **738.3→783.3** in `ko` against an **800** px
-  viewport, so it needs **0** px of scroll, and at **908→953** in `en`, needing **153** px
-  — the gap is English copy above it, not a layout defect.
-
-  **The scan path is longer and saves nothing.** `/` → `/scan` intro → `/scan` ready →
-  capture → `/scan` result → `/survey` → `/report` analysis → `/report` picks: **7**
-  screens and **9** taps, i.e. **3** and **3** more than the survey-only path. The camera
-  shim reaches `phase === "ready"` and stops there: with the canvas `captureStream()`
-  pattern the existing specs use, `scan-capture` stayed disabled for **45** s in both
-  locales reading `측정영역을 맞추는 중...` / `Aligning capture area...`, with the status
-  line `얼굴을 화면 안에 맞춰주세요` / `Fit your face inside the screen` — the landmarker
-  needs a real face and a painted ellipse is not one, which
-  `tests/e2e/mobile-layout.spec.ts` already says in its own comment. So the capture tap is
-  counted from the code and the tail was measured from the hand-off `/scan`'s result screen
-  makes (`a[href="/survey"]`, "설문으로 이어가기"), with a seeded reading. The finding that
-  matters: the scan pre-selects **3** chips (유분·붉은기·모공 / Oil·Redness·Pores) and they
-  are all in `고민`, which is **optional** — the required counter still reads `필수 항목
-  0/3` on arrival, so **0** of the **3** required taps are saved by having scanned. The
-  **3** consent/option checkboxes on `/scan` are `[true, false, false]` at `ready` and
-  none is required to capture; they were not touched.
-
-  **No step was cut, and the reason is a measurement, not caution.** The cheap cut the
-  brief named — a required field that does not change the picks — does not exist. Holding
-  the other fields and varying one, `recommend()`'s picks change for budget in **120** of
-  **320** combinations, for skin type in **184** of **320**, and for category in **200** of
-  **200**; the optional `고민` field, for scale, in **206** of **400**. The catalogue is why
-  budget is not inert: **22** SKUs across **8** categories with per-category price ranges
-  from **1800**–**3000** (마스크팩) to **22000**–**30000** (아이크림), so the lowest chip's
-  **19000** ceiling filters real products out. Enumerated in
-  `tests/recommend-required-fields.test.ts` (**5 passed**), which asserts the counts
-  exactly rather than "greater than zero". The other three taps are the entry choice, the
-  submit and the step tab — none removable without changing the flow, and the two
-  alternatives (landing survey-only visitors on the picks step; moving the buy button above
-  the disclosure) were rejected: the first drops the scan nudge from a survey-only
-  visitor's first screen, and the second touches `app/components/commerce-disclosure.tsx`'s
-  position next to the link, which is the one thing the brief fenced off. Pinned instead as
-  a ratchet: `tests/e2e/first-merchant-link-path.regression-36.spec.ts` (**2 passed**)
-  drives every tap, counts the required fields off the DOM's `*` markers, and asserts the
-  scroll distance against a budget. **Broken two ways.** Marking `고민` `required` in
-  `app/survey/page.tsx`: **2 failed**, `Expected: 3 / Received: 4` with the message
-  `required fields on /survey: 제품 종류, 피부 타입, 고민 * · …, 예산`. Inserting a 300 px
-  block above the product grid on the picks step: **2 failed** at
-  `ko: the first merchant link needs 283.3px of scroll (box 1038.3→1083.3), budget 120` and
-  `en: … needs 453px of scroll (box 1208→1253), budget 260`. Clean is **2 passed**. It also
-  asserts the disclosure is still visible, so the ratchet cannot be satisfied by deleting
-  it.
-
-  **Bug fix: contrast is not a property of a token, and cycle 49's audit assumed it was.**
-  That audit measured every token against `#ffffff`. `--surface-tint` is `#f5f5f5`, and on
-  it every ratio drops by about 8%. Two tokens land on the wrong side of the **4.5**:1 AA
-  floor (SC 1.4.3) there, and both render on `/privacy`'s two `noticeStyle` cards:
-  `--bronze` **#767676** is **4.542**:1 on white and **4.166**:1 on the tint (the cards'
-  `sectionLabel` eyebrow, 11px/700), and `--plum` **#d9362b** is **4.653**:1 on white and
-  **4.268**:1 on the tint (`dangerBtn`, 14px/800). Both failed in `ko` and `en`, with the
-  same ratios, because the ratio is a property of the colour pair and not of the string.
-  **The fix is deliberately narrow.** `--bronze` becomes **#6e6e6e** — **4.677**:1 on the
-  tint, **5.099**:1 on white — which is `--text-muted`'s existing value; the strictly least
-  darkening that clears 4.5 with 0.1 of margin is **#6f6f6f** at **4.609**:1, and a
-  twentieth grey for **0.07** of ratio is not worth the palette. `dangerBtn` takes
-  `--plum-press` **#c22e23** — **5.193**:1 on the tint, **5.662**:1 on white — rather than
-  darkening `--plum` a second time: it is the primary CTA colour on every screen, it moved
-  last cycle and the supervisor flagged that as owner-visible, and the darker red is the
-  right one for a destructive action anyway. `--plum` is pinned **unchanged** at `#d9362b`
-  by the new spec. **The other 7 `--surface-tint` backgrounds in `app/*.tsx` were grepped
-  and checked, not assumed**: `app/components/product-card.tsx:109,115`,
-  `app/report/page.tsx:633,642`, `app/checkin/page.tsx:240`, `app/studio/page.tsx:173,180`
-  carry `--ink`, `--ink-soft`, `--success` or `--text-muted` #6e6e6e and pass, and the two
-  disabled submit buttons that put `--muted` on the tint (`app/survey/page.tsx:245`,
-  `app/checkin/page.tsx:225`) are an inactive user interface component, which SC 1.4.3's
-  Incidental exception excludes — the same reading cycle 49 used for the disabled `/survey`
-  CTA. Pinned by `tests/e2e/tinted-surface-contrast.regression-35.spec.ts` (**3 passed**),
-  which measures every visible leaf text node inside a non-white `<section>` against the
-  colours the browser resolves, and asserts the cards are actually tinted so a white card
-  cannot make the check vacuous. **Broken twice.** Restoring `--bronze: #767676`: **3
-  failed**, reporting `"전체 기기 데이터" rgb(118, 118, 118) on rgb(245, 245, 245) =
-  4.166:1 (11px/700)` and the `en` equivalent `"All device data"`. Restoring `dangerBtn`'s
-  `color: var(--plum)`: **3 failed**, reporting `"이 기기의 ARU 데이터 모두 지우기" rgb(217,
-  54, 43) on rgb(245, 245, 245) = 4.268:1 (14px/800)` and `"Delete all ARU data on this
-  device"`. Clean is **3 passed**.
-
-  **What the same sweep found CLEAN, which is most of it.** Cycle 49's five checks were run
-  on `/checkin`, `/studio`, `/privacy` and `/unsubscribe` in `ko` and `en` — the four the
-  brief named — and, because the harness was already written, on `/`, `/scan`, `/survey`,
-  `/report`'s three steps and `/care` as well: **22** screen x locale pairs. After the fix:
-  **0** of **904** visible leaf text nodes under their floor (4.5, or 3 at 24px / 18.66px
-  bold), **0** of **284** interactive controls with no accessible name, **0** unlabelled
-  `input`/`select`/`textarea`, **0** of **6** `img` elements without `alt` or
-  `aria-hidden`, and `scrollWidth === clientWidth === 360` on every pair. Target sizes:
-  **5** hits under SC 2.5.8's 24x24 across the 22 pairs, and they are two controls, not
-  five: the `/guide/` links on `/` (**1** hit in `ko` — `Serums for combination skin` at
-  **164.8x15** — and **2** in `en`, adding `Toners for oily skin` at **108.7x15**), which
-  cycle 49 documented as taking the Inline exception, and the `/report` routine step's
-  reengage checkbox (**15x15** in `ko`, **13x15** in `en`), filed in the backlog rather
-  than resized on sight. `/unsubscribe` was rendered with
-  `?token=measure-only-never-submitted` and its button was never clicked, so **no** request
-  reached `/api/reengage/unsubscribe` and nothing was sent.
-
-  **One result from that harness is NOT a claim, and it is recorded rather than dropped.**
-  The focus-visibility check drove `el.focus()` from script. On the four screens in scope it
-  found a visible indicator on **62** of **62** Tab stops. On `/report`'s picks and routine
-  steps the same harness reported **58** stops with no indicator, and an independent run
-  with real `page.keyboard.press("Tab")` on the picks step contradicted it flatly — **19**
-  of **19** stops with a ring, **19** of **19** matching `:focus-visible`, and **18** of
-  **18** with a ring under programmatic focus too. The disagreement is unexplained, so
-  nothing on `/report` is claimed here either way and `/report`'s focus visibility stays
-  unestablished by this cycle.
-
-  **A false-green trap in the measurement rig itself, worth writing down.** The first full
-  post-fix sweep read **0** contrast failures for the wrong reason: `npx next start` had
-  failed with `EADDRINUSE` (the earlier server was still bound to 3199 and its PID file had
-  been overwritten), so the OLD process kept serving HTML that referenced a CSS chunk the
-  new `npm run build` had replaced. `curl` on it returned **404 9**, `document.styleSheets`
-  was **1** but `--bronze` resolved to the empty string, `body` had the UA's **8px** margin
-  and `main`'s `padding-left` was **0px** — every page unstyled, which also produced a
-  phantom `/studio` overflow of `scrollWidth` **412** against `clientWidth` **360**. That
-  phantom is gone on the correctly-served build (**360/360**), and
-  `tests/e2e/studio-label-fit.spec.ts` was asserting no overflow the whole time. The lesson
-  is the README's, one layer out: kill the old server BY PID and check the new one bound
-  before believing a number off it.
-
-  **Research: CSS Logical Properties, from the primary source.** `css-logical-1/Overview.bs`
-  from `w3c/csswg-drafts` on `raw.githubusercontent.com`, fetched here: HTTP **200**,
-  **39421** bytes, sha256
-  `9b4a85569bcacff752f797fb6214a9eb04fca7173b93a160bcf8a47e39ed2b41`. Status line in the
-  metadata block: `Status: ED` (Editor's Draft; `ED: https://drafts.csswg.org/css-logical-1/`,
-  `TR: https://www.w3.org/TR/css-logical-1/`). The mapping this repo's RTL work relies on is
-  stated twice. In the module's own opening example (lines 104-109):
-  `text-align: start; /* left in latin, right in arabic */`,
-  `margin-inline-start: 0px; /* margin-left in latin, margin-right in arabic */`,
-  `border-inline-start: 5px solid gray; /* border-left in latin, border-right in arabic */`,
-  `padding-inline-start: 5px; /* padding-left in latin, padding-right in arabic */`. And
-  normatively for the margins (lines 575-576): "These properties correspond to the
-  'margin-top', 'margin-bottom', 'margin-left', and 'margin-right' properties. The mapping
-  depends on the element's 'writing-mode', 'direction', and 'text-orientation'." The
-  qualifier is the part that matters for this cycle's two cleared candidates: the
-  correspondence is a mapping through `direction`, so a physical value is only wrong where
-  the direction actually changes which edge it names — and on a centred, symmetric
-  containing block, or on a single line that fills its box, it names the same pixels either
-  way. That is what both measurements showed. The document also says the opposite case out
-  loud (lines 111-114): "Documents might need both logical and physical properties. For
-  instance the drop shadows on buttons on a page must remain consistent throughout, so
-  their offset will be chosen based on visual considerations and physical directions."
-  URL: https://raw.githubusercontent.com/w3c/csswg-drafts/main/css-logical-1/Overview.bs
-
-  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces
-  and the golden set is the standing blocker, so nothing here was trivially advanceable.
-  `python3 ml/selftest.py` was run as a gate only: **Ran 146 tests ... OK**. Nothing under
-  `ml/` or `public/models/` was touched.
-
-  **Guardrails.** No translation string's content changed and no key was added — the fix is
-  two colour values, and `git diff --stat -- lib/ app/api/ public/ ml/` is **empty**, so
-  nothing under `lib/i18n/`, the API routes, the model manifest or the Python pipeline moved
-  at all. `lib/consent.ts` was not opened; the three `/scan` checkboxes were read and not
-  changed; `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere; no provider was called and
-  no email was sent; `app/components/commerce-disclosure.tsx` is untouched and the new path
-  spec asserts it is still visible next to the merchant link; `shareUrl`, `ALLOWED_HOSTS`,
-  `metadataBase` and the manifest's gate fields were not touched; no guide page was added.
-
-  **Docs and rotation.** The RTL backlog item was ticked by appending — it stays `[~]`
-  because mid-session switching and a real phone are still unmeasured on seven and nine
-  screens — and its original wording is unchanged. Two new backlog items were filed under
-  "Now": the path measurement and the routine-step checkbox. Recent cycles holds 50/49/48;
-  cycle 47's entry moved verbatim to the end of `docs/autopilot-changelog.md` after cycle
-  46. No item was ticked `[x]` this cycle, so nothing moved to "Closed backlog items".
-
-  **Nothing was lost in the rotation.** `sort -u` over both files at `da6b21d` gives
-  **11034** unique lines and over the final pair **11279**; `comm -23` of the
-  first against the second drops **0** — every line present at `da6b21d` is still present.
-
-  **Validation on this tree, worker.** Run on the final committed tree, not an earlier one.
-  `npx vitest run` **Test Files 118 passed (118) / Tests 1081 passed (1081)** (117/1076 at
-  `da6b21d` plus `tests/recommend-required-fields.test.ts`'s **5**), `npx tsc --noEmit |
-  grep -c "error TS"` **13** — unchanged, `npx eslint .` **0 errors, 2 warnings** (the same
-  pre-existing `_reads` / `_result`, run on its own and not beside vitest), `python3
-  ml/selftest.py` **Ran 146 tests in 1.682s ... OK**.
-  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=... npm run smoke` printed **Test Files 118 passed (118) /
-  Tests 1081 passed (1081)**, **282 passed (10.0m)** for the e2e phase (**277** at
-  `da6b21d`, plus this cycle's **5** new e2e cases), and the literal line **Smoke test
-  passed.**
-
-  *Supervisor review:* sound where it measured, with one miss of the defect class it
-  fixed, one latent red, and three numbers that were not command output. All fixed before
-  merge.
-
-  *Missed: `--surface-tint` is not the only tint.* The sweep grepped `--surface-tint` and
-  rendered `/report` in its non-retake state, where the confidence card is white. With
-  `retakeRecommended: true` the card turns `--plum-soft` #fbe6e4, and `--bronze`/
-  `--text-muted` #6e6e6e on it is **4.259**:1: the card's 11px "분석 신뢰도" label and
-  its 12px "의료 진단이 아니라…" line. That second line is the no-medical-claim notice,
-  and the retake state is the one a low-confidence scan (bad light) lands in. Fixed here:
-  `--plum-soft` moves to **#fdf1f0**, which is #fbe6e4 moved 43% toward white and the least
-  that clears 4.5 with 0.1 of margin. #6e6e6e is **4.617**:1 on it and `--plum-press`
-  **5.127**:1, which is the selected survey/checkin chips' text. Pinned by two new
-  cases in `tinted-surface-contrast.regression-35.spec.ts` that render the retake card
-  (`ko`/`en`), with the same vacuity guards as the `/privacy` cases. With #fbe6e4 restored:
-  **2 failed**, the browser reporting `"분석 신뢰도" rgb(110, 110, 110) on rgb(251, 230,
-  228) = 4.259:1 (11px/700)` and the same for the disclaimer line in both locales.
-  Clean: **7 passed** across regressions 35 and 36. The other `--plum-soft` uses were read:
-  survey/checkin chips (`--plum-press` text), `/care`'s `warnBadge` (`--plum-press`), and
-  `/ops` and `/pilot` (research only). `app/scan/scan-styles.ts`'s `confidenceBox` has no
-  caller.
-
-  *Latent red: regression-36's `en` disclosure match.* It matched only "ARU earns no
-  commission from this link", the `affiliateDisclosureActive() === false` sentence. The
-  day the owner sets `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, which is the revenue step, the
-  disclosure reads "These go to the retailer through an affiliate link…" and the spec would
-  fail. Confirmed by running the spec with that env on: the worker's matcher gives **1
-  failed | 1 passed**. The matcher is now `/go(es)? to the retailer/`, which covers both
-  states: **2 passed** with it on, and it also passes with it off (above).
-
-  *Numbers that were not output.* `#767676` on white was written **4.540**:1 in five places.
-  The spec's own formula gives **4.542224959605253**. `#6f6f6f` on the tint was written 4.607
-  (actual **4.608991208868503**), and `#c22e23` on the tint was written 5.194 (actual
-  **5.193397765117946**). Corrected in `app/globals.css`, `app/privacy/page.tsx`, this
-  file, README and the spec. Regression-35's header said "The 6 other `--surface-tint`
-  backgrounds" and listed 7; corrected with a note on the uses it does not list. The
-  pushed commit message still says 4.540; it cannot be edited without rewriting history.
-
-  *What held.*
-  - The `recommend()` sweep is sound and its counts are asserted exactly. No required
-    field is inert, so "no cut" is a measured answer.
-  - The path numbers reproduce here: `[path] ko: screens=4 taps=6 requiredFields=3 ...
-    firstLinkBox=738.3->783.3 ... scrollNeeded=0` and `en ... firstLinkBox=908->953 ...
-    scrollNeeded=153`.
-  - In regression-36, `screens`/`taps` are pushed by the test itself, so their
-    `toHaveLength` checks are tautological. The ratchet still holds because the
-    DOM-derived counts (required `*` sections, 3 tabs, `waitForURL`) fail on an added step.
-  - The camera-overlay geometry in `app/scan/guide.tsx` (왼볼/오른볼 zones, corners,
-    landmarks) is face-physical and was correctly left physical.
-  - Rotation: `comm -23` of `sort -u` over both files at `da6b21d` against this pair drops
-    **0** lines.
-
-  *Next-cycle candidate from this measurement:* the scan path adds 3 screens and 3 taps
-  and saves 0 required fields. A scan that pre-selected 피부 타입 from its oil reading
-  (a suggestion the user can change, not a verdict) would make the camera path shorter
-  than the survey path instead of longer. Filed here, not built.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 118 passed (118) / Tests
-  1081 passed (1081)**, `tsc` **13**,
-  `eslint` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146 tests ... OK**. `npm run smoke`
-  **Test Files 118 passed (118) / Tests 1081 passed (1081)**, **284 passed (9.7m)** (the
-  worker's 282 plus the two retake-card cases), **Smoke test passed.**
