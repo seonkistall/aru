@@ -280,9 +280,73 @@ type State = {
   minNodes: number;
 };
 
+/**
+ * How long the non-empty text-node count has to hold still before a render counts as
+ * finished. See `settle`.
+ */
+const SETTLE_QUIET_MS = 250;
+
+/**
+ * Wait for the RENDER to stop changing, instead of for the network to go quiet.
+ *
+ * This spec used to wait `networkidle` and then sleep a flat 300 ms on every one of its
+ * 172 renders. Timed phase by phase here on 2026-09-29 (cycle 54), over those 172
+ * renders that pair cost 110,395 ms and 53,060 ms against a `page.goto` of 60,229 ms, a
+ * `document.fonts` wait of 5,245 ms and a collect of 6,309 ms — i.e. more wall clock
+ * than loading the pages they were waiting behind, and 53% of the 306,244 ms the state
+ * loop spent in total. Neither wait is what the sweep needs. `networkidle` is a 500 ms
+ * quiet period by construction and answers a question about sockets; a flat sleep
+ * answers nothing at all.
+ *
+ * What the sweep needs is that the locale chunk has landed (`html[lang]` is the locale
+ * under test — `lib/i18n.tsx` remounts the whole subtree when it does), that the fonts
+ * are in (a swap changes the boxes `visible()` measures), and that the page has stopped
+ * adding text, because text is what the sweep reads. The last one is the real guard and
+ * it is STRICTER than the sleep it replaces: a render that is still adding nodes never
+ * satisfies it, where 300 ms of sleep would collect whatever had arrived by then. It
+ * watches the COUNT, not the text, so a string that keeps updating does not hold it
+ * open.
+ *
+ * Failure is swallowed exactly as the two waits it replaces swallowed theirs: the
+ * `lang`, `dir` and `minNodes` assertions in the sweep are what report a page that never
+ * rendered, and they name the state.
+ */
+async function settle(page: import("@playwright/test").Page, minNodes: number, lang?: string) {
+  await page
+    .waitForFunction(
+      ([expected, min, quiet]) => {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let n = 0;
+        while (walker.nextNode()) if ((walker.currentNode.nodeValue || "").trim()) n += 1;
+        const w = window as unknown as { __aruSettle?: { n: number; since: number } };
+        const now = Date.now();
+        const seen = (w.__aruSettle ??= { n: -1, since: now });
+        if (n !== seen.n) {
+          seen.n = n;
+          seen.since = now;
+          return false;
+        }
+        if (expected !== null && document.documentElement.lang !== expected) return false;
+        if (document.fonts.status !== "loaded") return false;
+        return n >= (min as number) && now - seen.since >= (quiet as number);
+      },
+      [lang ?? null, minNodes, SETTLE_QUIET_MS] as const,
+      { timeout: 20_000, polling: 50 },
+    )
+    .catch(() => {});
+}
+
 const tab = (index: number) => async (p: import("@playwright/test").Page) => {
+  // Forget the pre-click count first (supervisor, cycle 54 review). `settle` keeps its
+  // last count on `window`, and a tab swap keeps the same window: if the first poll after
+  // the click still sees the old panel's count, the old "held still since" timestamp
+  // would let it return at once and the sweep would read the panel it just left. With
+  // the state cleared, the count has to hold for a full SETTLE_QUIET_MS after the click.
+  await p.evaluate(() => { delete (window as unknown as { __aruSettle?: unknown }).__aruSettle; });
   await p.getByRole("tab").nth(index).click({ timeout: 10_000 });
-  await p.waitForTimeout(600);
+  // Was a flat 600 ms. A step tab swaps one panel for another, so the same
+  // count-holds-still test says when the swap is done, and says it sooner.
+  await settle(p, 1);
 };
 const reportStore = (reads: ReadsFixture, survey: unknown): Array<[string, string, unknown]> => [
   ["session", "gyeol_reads", reads],
@@ -426,9 +490,21 @@ STATES.push(
   },
 );
 
+/**
+ * ONE TEST PER LOCALE, RUN SERIALLY, and that is a measurement and not an oversight.
+ * Sweeping the four locales CONCURRENTLY inside one test (four contexts against the one
+ * dev server, since `playwright.mobile.config.ts` pins `workers: 1` so that the geometry
+ * and timing specs are never run beside each other) was tried here on 2026-09-29 and
+ * REJECTED: it changes what the sweep sees. `/scan ready` renders 41 non-empty text
+ * nodes in every locale serially and only 23 with four MediaPipe runtimes competing for
+ * the same four cores, and that state took 30,263 ms instead of 5,761. A gate that
+ * sweeps fewer strings when the box is busy is worse than a slow one, so the cost came
+ * out of the waits above instead.
+ */
 for (const locale of LOCALES) {
   test(`no Korean leaks into any ${locale} screen`, async ({ browser }) => {
     test.setTimeout(20 * 60_000);
+    const expectedLang = locale === "zh" ? "zh-CN" : locale;
     const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
     await context.addInitScript((l) => { try { localStorage.setItem("aru.lang", l as string); } catch {} }, locale);
     await context.addInitScript(FAKE_CAMERA);
@@ -456,18 +532,27 @@ for (const locale of LOCALES) {
         },
         state.store ?? [],
       );
+      const started = Date.now();
       await page.goto(state.path, { timeout: 45_000 });
-      await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
-      await page.waitForFunction(() => document.fonts.status === "loaded", undefined, { timeout: 8000 }).catch(() => {});
-      await page.waitForTimeout(300);
+      // The floor is the POST-drive one, so a driven state cannot use it here: `/scan
+      // ready` loads `/scan`, which renders 28 nodes against that state's floor of 30
+      // until the drive starts the camera, and passing it in made `settle` sit out its
+      // whole 20,000 ms timeout — measured, 24,387 ms for that state against 7,646 ms
+      // before this change, while every other state got faster. For a driven state the
+      // stability, locale and font checks are the whole wait; `minNodes` is asserted
+      // after the drive either way.
+      await settle(page, state.drive ? 1 : state.minNodes, expectedLang);
       if (state.drive) await state.drive(page);
 
       const out = (await page.evaluate(([src]) => eval(src as string), [COLLECT] as const)) as Collected;
       renders += 1;
+      console.log(
+        `[hangul] ${locale} | ${state.name} | nodes=${out.nodes} chars=${out.chars} detailsOpened=${out.opened} hangulHits=${out.hits.length} ms=${Date.now() - started}`,
+      );
       // The locale has to still be the one under test — a drive step that taps the
       // language switcher would otherwise turn the whole page Korean and the sweep
       // would call it a product defect.
-      expect(out.lang, `${state.name}: the page is no longer in ${locale}`).toBe(locale === "zh" ? "zh-CN" : locale);
+      expect(out.lang, `${state.name}: the page is no longer in ${locale}`).toBe(expectedLang);
       expect(out.dir).toBe(locale === "ar" ? "rtl" : "ltr");
       // Assert the state actually RENDERED. A route that answered with a skeleton or
       // an empty <main> has no Hangul in it and would pass the leak check for free.
@@ -477,7 +562,6 @@ for (const locale of LOCALES) {
         if (ALLOWED.some((a) => a.text === hit.text)) continue;
         leaks.push(`${locale} ${state.name}: [${hit.kind}] <${hit.tag}> ${hit.path} :: ${hit.text}`);
       }
-      console.log(`[hangul] ${locale} | ${state.name} | nodes=${out.nodes} chars=${out.chars} detailsOpened=${out.opened} hangulHits=${out.hits.length}`);
     }
     console.log(`[hangul] ${locale}: ${renders} renders, ${leaks.length} leaks`);
     expect(renders, "every state should have been rendered").toBe(STATES.length);
