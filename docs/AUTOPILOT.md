@@ -1940,7 +1940,36 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   only thing that smoke run does not cover is this paragraph and the rotation numbers above it,
   which were written after it finished.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound. No product code changed, and both specs fail when the thing
+  they guard is broken, including one way the worker did not try. The one cost is gate
+  time.
+
+  *Reproduced here.*
+  - Both specs on this tree: **9 passed (5.6m)**.
+  - `[care-fold]` lines match the worker's: `ko ... 517.7->576.1 ... marginBelow=223.9`,
+    `en ... 603.3->661.8 ... 138.3`, `ja ... 581.5->639.9 ... 160.1`, `zh ... 494.5->552.9
+    ... 247.1`, `ar ... 577.1->635.6 ... 164.4`.
+
+  *Broken here, a way the worker did not try.* An attribute leak on a merchant link, not
+  a text node: `aria-label="판매처로 이동"` on `ProductCard`'s buy link. `-g "ja"` fails
+  and names each site, e.g. `ja /report plain step1: [aria-label] <a>
+  body>main>div>div>div>a :: 판매처로 이동`. A screen-reader label in Korean is exactly
+  the kind of leak no text-node sweep would see.
+
+  *Checked, not assumed.* `/unsubscribe with token` renders only. The form's `fetch` to
+  `/api/reengage/unsubscribe` sits behind `onClick`
+  (`app/unsubscribe/unsubscribe-form.tsx:39`, `:66`), and the sweep does not click it,
+  so nothing reaches Resend or Supabase.
+
+  *Cost, recorded.* The two new specs take **5.6m** of the e2e phase on their own. The
+  Hangul sweep is almost all of that: 172 renders, one page load each. Smoke was
+  **10.9m** on cycle 52's tree. If gate time starts to squeeze the cycle, the sweep
+  could reuse a page across states per locale, but that is not done here.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `ce7f472`
+  against this pair drops **0** lines. SMOKE_RESULT
 
 - 2026-09-28 (cycle 52) — Branch `autopilot/2026-09-28-1839`. **Cycle 51's unnamed vitest
   failure did not reproduce in 25 runs, so the cycle went after the one mechanism that
