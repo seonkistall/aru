@@ -1958,7 +1958,30 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `npx eslint .` still **0 errors**, and the edited spec re-run on its own against a
   production server reads **18 passed (36.8s)**.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, and the most useful gate change in several cycles. The
+  gate now measures what visitors get, runs faster, and its one semantic change makes a
+  spec stricter, not looser.
+
+  *Reproduced here.* `npm run smoke` on this tree: **Test Files 120 passed (120) / Tests
+  1089 passed (1089)**, **300 passed (12.2m)**, **Smoke test passed.** That compares with
+  **13.4m** for the dev-server gate on cycle 55's tree in this container.
+
+  *Checked, both switches the plan depends on.*
+  - `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` is now inlined at build time. The config's
+    `webServer.command` builds in the same environment Playwright runs in, so setting it
+    on the command still reaches the page. Regression-36 plus regression-38 with it on,
+    against the production build: **10 passed (36.6s)**.
+  - `ARU_E2E_SERVER=dev` still works: regression-26 under the dev opt-in gives **18
+    passed (25.0s)**, which exercises the per-server branch the worker added.
+
+  *The regression-26 change is a tightening.* On production it asserts `/ops`, `/pilot`
+  and `/eval` answer **404** with `X-Robots-Tag: noindex, nofollow`. Before this, nothing
+  in the gate checked that the research-only surfaces are unreachable in production. That
+  is the behaviour `proxy.ts` intends, and now a test pins it.
+
+  *Validation on this tree, supervisor:* smoke as above; `tsc` **13**, `eslint` **0
+  errors, 2 warnings**. Rotation: `comm -23` over `sort -u` of both files at `8548ad5`
+  against this pair drops **0** lines.
 
 - 2026-09-29 (cycle 55) — Branch `autopilot/2026-09-29-1239`. **What replaced `/care`'s DOM
   between cycle 54's `waitFor` and the next read: nothing did. `page.locator(css)` pierces
