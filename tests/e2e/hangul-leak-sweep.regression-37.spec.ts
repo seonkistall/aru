@@ -337,6 +337,12 @@ async function settle(page: import("@playwright/test").Page, minNodes: number, l
 }
 
 const tab = (index: number) => async (p: import("@playwright/test").Page) => {
+  // Forget the pre-click count first (supervisor, cycle 54 review). `settle` keeps its
+  // last count on `window`, and a tab swap keeps the same window: if the first poll after
+  // the click still sees the old panel's count, the old "held still since" timestamp
+  // would let it return at once and the sweep would read the panel it just left. With
+  // the state cleared, the count has to hold for a full SETTLE_QUIET_MS after the click.
+  await p.evaluate(() => { delete (window as unknown as { __aruSettle?: unknown }).__aruSettle; });
   await p.getByRole("tab").nth(index).click({ timeout: 10_000 });
   // Was a flat 600 ms. A step tab swaps one panel for another, so the same
   // count-holds-still test says when the swap is done, and says it sooner.

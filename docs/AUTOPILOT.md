@@ -1969,7 +1969,38 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   package-lock.json` is empty. The only thing the smoke run does not cover is this paragraph
   and the rotation numbers above it, which were written after it finished.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound. One race in the new wait was closed here. The note
+  measurement is recorded rather than fixed, and "no layout-only fix" is the right call
+  because moving the note would separate it from the picks it qualifies.
+
+  *Fixed here: `settle` could read the panel a tab click was leaving.*
+  - `settle` keeps its last count and "held still since" time on `window`, and a step-tab
+    swap keeps the same window.
+  - The first poll after the click can still see the OLD panel's count, since React
+    commits after the click resolves. Its old timestamp is already more than
+    `SETTLE_QUIET_MS` in the past, so `settle` returns at once and `COLLECT` reads the
+    panel being left.
+  - The worker's "0 of 172 pairs differ" shows the race did not fire on this container.
+    It does not show that it cannot.
+  - `tab()` now deletes `window.__aruSettle` before clicking, so the count must hold for a
+    full 250 ms after the click.
+  - Re-run: `[hangul] en: 43 renders, 0 leaks`, the same for `ja`/`zh`/`ar`, **4 passed
+    (3.9m)**.
+  - The supervisor's attribute break (`aria-label="판매처로 이동"` on `ProductCard`'s buy
+    link) still fails and names every `/report` picks state: `plain`, `many`,
+    `note+avoid`, `dry` and `survey-only`, e.g. `ja /report many step1: [aria-label] <a>
+    ... :: 판매처로 이동`.
+
+  *Checked.* The "4.9 px" in this entry is `en` with the note absent ON THE
+  NOTE-TRIGGERING SURVEY. It does not contradict cycle 52's **17.5** on regression-36's
+  own survey path. The rejected parallel sweep's reason (`/scan ready` at 23 nodes
+  instead of 41) is the right one: a gate that sees less when the box is busy is worse
+  than a slow gate.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `fd09407`
+  against this pair drops **0** lines. SMOKE_RESULT
 
 - 2026-09-29 (cycle 53) — Branch `autopilot/2026-09-29-0039`. **The Korean-leak sweep the
   brief asked for found NO defect, and the first thing it found was a defect in ITSELF: two
