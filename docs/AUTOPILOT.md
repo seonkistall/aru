@@ -1998,7 +1998,30 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   only thing the smoke run does not cover is this paragraph and the rotation numbers above
   it, which were written after it finished.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound. The root cause is named and reproduced, and it corrects this
+  supervisor's cycle 54 reading: nothing replaced `/care`'s DOM. The wait had matched a
+  different element.
+
+  *Reproduced independently.* A throwaway probe (deleted after the run) loaded `/care`
+  with no survey, so the route has no app toggles. Result: `[probe] playwright=1
+  lightDom=0 shadowHosts=NEXTJS-PORTAL:1,NEXT-ROUTE-ANNOUNCER:0`. Playwright's locator
+  counts the dev overlay's shadow-root button, and `document.querySelectorAll` does not.
+  This is exactly the gap the old `waitFor` fell through.
+
+  *Correction to cycle 54's review.* It said "the DOM changed between the wait and the
+  read: something replaced the subtree for an instant" and named a Next dev full reload
+  as the leading guess. Both were wrong. The subtree was never replaced. The wait
+  resolved on `#next-logo` inside `<nextjs-portal>` before the route painted. The
+  failure snapshot's three toggles were there because the snapshot was taken later. The
+  lesson for this reviewer is that "the snapshot shows it" says when the snapshot was
+  taken, not when the read happened.
+
+  *Re-run here.* Regression-38 plus regression-12, **3** times: **8 passed** each.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `979a8ad`
+  against this pair drops **0** lines. SMOKE_RESULT
 
 - 2026-09-29 (cycle 54) — Branch `autopilot/2026-09-29-0639`. **The gate's two newest specs
   cost 5.8m of a 15.1m smoke, and the cost was in the WAITS rather than in the work: timed
