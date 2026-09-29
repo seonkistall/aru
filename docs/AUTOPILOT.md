@@ -2000,7 +2000,34 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
   ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `fd09407`
-  against this pair drops **0** lines. SMOKE_RESULT
+  against this pair drops **0** lines.
+
+  *Gate, told in full.* The first `npm run smoke` on this tree printed **Test Files 120
+  passed (120) / Tests 1089 passed (1089)**, then **1 failed / 299 passed (14.3m)** and
+  `Smoke test failed: npm run test:mobile-ui exited with 1`.
+  - The failure was `tests/e2e/care-merchant-disclosure.regression-12.spec.ts:36` (test
+    6 of 300): `no merchant disclosure rendered; the fixture reached the wrong page`,
+    `Expected: > 0 / Received: 0`.
+  - That spec's helper had just passed `page.locator("button[aria-controls]").first()
+    .waitFor()`. The `querySelectorAll("button[aria-controls]")` that followed found
+    none.
+  - The failure's page snapshot showed **three** "다른 판매처 보기" toggles on the page.
+    So the DOM changed between the wait and the read: something replaced the subtree for
+    an instant.
+  - For `ko` it is not `LanguageProvider`'s `key={active}` remount, as far as the code
+    shows. The mechanism is **not identified**, and the trace was lost to a later local
+    run that cleared `test-results/`.
+  - This cycle's diff does not touch that spec, `/care`, or anything that runs before
+    it. The only changed spec runs after it in the file order.
+  - It did not reproduce: that spec plus regression-38 ran together **3** times here,
+    **8 passed** each.
+  - Smoke was re-run ONCE, per the one-re-run rule, and that is the gate this merge rests
+    on: **Test Files 120 passed (120) / Tests 1089 passed (1089)**, **300 passed
+    (13.9m)**, **Smoke test passed.**
+  - Filed as a supervisor finding for the next cycle, and not called a flake. Read the
+    toggles inside a `waitForFunction` that also checks every `aria-controls` target
+    exists, so the assertion reads a DOM that is not mid-replacement. Before that, find
+    what replaced it: a Next dev full reload is the leading guess, and it is not shown.
 
 - 2026-09-29 (cycle 53) — Branch `autopilot/2026-09-29-0039`. **The Korean-leak sweep the
   brief asked for found NO defect, and the first thing it found was a defect in ITSELF: two
