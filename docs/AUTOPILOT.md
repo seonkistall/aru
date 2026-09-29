@@ -1969,7 +1969,9 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors**, `python3
   ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `ce7f472`
-  against this pair drops **0** lines. SMOKE_RESULT
+  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **300 passed (15.1m)** (10.9m on cycle 52's tree), **Smoke
+  test passed.**
 
 - 2026-09-28 (cycle 52) — Branch `autopilot/2026-09-28-1839`. **Cycle 51's unnamed vitest
   failure did not reproduce in 25 runs, so the cycle went after the one mechanism that
