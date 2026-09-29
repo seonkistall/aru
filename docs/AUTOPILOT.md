@@ -1671,6 +1671,29 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [x] **2026-09-29 — `/care`'s DOM was not replaced between a `waitFor` and the next read;
+  the wait matched a button the read cannot see (cycle 54 review).** **Actioned 2026-09-29
+  (cycle 55): named, reproduced, and fixed in the spec — it was a `next dev` artifact, not a
+  product flicker.** `page.locator(css)` pierces open shadow roots and
+  `document.querySelectorAll(css)` does not. `next dev` mounts `<nextjs-portal>`, whose
+  shadow root holds exactly **1** button and it carries `aria-controls`
+  (`#next-logo[aria-controls="nextjs-dev-tools-menu"]`). At the instant the helper waited,
+  Playwright saw **4** matches where the light DOM held **3**. On `/care` with no survey —
+  the fallback page, which renders **0** app toggles — the old wait still resolved in
+  **203** ms against `root=NEXTJS-PORTAL #next-logo`, which is the cycle 54 failure
+  signature exactly: the wait passes, the `querySelectorAll` that follows returns **0**.
+  Nothing was replaced: the MutationObserver recorded one `mut +3 -0` per load and never a
+  removal, `performance.getEntriesByType("navigation")[0].type` stayed `navigate`, and the
+  init script ran once per load. Fixed by waiting on the DOM the assertions read. Full
+  numbers in the cycle 55 entry.
+
+  Original finding, for the record: `tests/e2e/care-merchant-disclosure.regression-12.spec.ts:36`
+  failed as test 6 of 300 in cycle 54's first smoke — `no merchant disclosure rendered; the
+  fixture reached the wrong page`, `Expected: > 0 / Received: 0` — after
+  `page.locator("button[aria-controls]").first().waitFor()` had just passed, while the
+  failure snapshot showed three toggles. A Next dev full reload was the leading guess and it
+  was not shown.
+
 - [x] **2026-09-27 — neither claim list covers "reduce / control / minimise" (cycle 46
   review).** **Actioned 2026-09-27 (cycle 47): the verbs added in all five languages,
   and what the additions cost measured rather than asserted.** `lib/recommend.ts`
@@ -1803,6 +1826,203 @@ up rather than rediscover them.
 The last three cycles in full, which is what stops a cycle redoing last night's work.
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
+
+- 2026-09-29 (cycle 55) — Branch `autopilot/2026-09-29-1239`. **What replaced `/care`'s DOM
+  between cycle 54's `waitFor` and the next read: nothing did. `page.locator(css)` pierces
+  open shadow roots and `document.querySelectorAll(css)` does not, and `next dev` mounts a
+  `<nextjs-portal>` whose shadow root holds exactly one button — and that button carries
+  `aria-controls`. For ~100 ms of every `/care` load it is the ONLY `button[aria-controls]`
+  on the page, so the helper's wait could pass over a light DOM holding none. Shown
+  deterministically rather than argued: on the `/care` fallback page, which renders 0 app
+  toggles, the old wait resolves in 203 ms against `root=NEXTJS-PORTAL #next-logo` and the
+  new one times out. The race reproduced 3 times in 120 instrumented loads before the fix
+  and 0 times in 10 runs after it. The three candidates the brief named — a Fast Refresh
+  full reload, `/care` re-keying its own cards, `LanguageProvider`'s `key={active}` remount
+  — are each ruled out on recorded evidence, not on reasoning.**
+
+  **Baselines, re-measured here on `979a8ad`.** `node_modules` was absent, so `npm ci` first
+  (exit **0**). `npx vitest run` **Test Files 120 passed (120) / Tests 1089 passed (1089)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **✖ 2 problems (0 errors, 2
+  warnings)**, `python3 ml/selftest.py` **Ran 146 tests in 2.645s ... OK**. All four match
+  the supervisor's.
+
+  **The mechanism, named.** Playwright's CSS engine pierces open shadow roots (Research,
+  below); `document.querySelectorAll` does not cross a shadow boundary. `next dev` mounts
+  two shadow hosts on every route — `SHADOW HOSTS: NEXTJS-PORTAL,NEXT-ROUTE-ANNOUNCER` — and
+  `NEXTJS-PORTAL`'s shadow root holds **1** button in total, which is
+  `#next-logo[aria-controls="nextjs-dev-tools-menu"]`. So at the instant the helper's wait
+  resolved on a healthy load, Playwright counted **4** `button[aria-controls]` where the
+  light DOM held **3**: `AT-WAIT pwCount=4 lightCount=3`, the fourth being
+  `MATCH 3: root=NEXTJS-PORTAL aria-controls=nextjs-dev-tools-menu text= id=next-logo`
+  against three `root=DOCUMENT` matches on `care-merchants-tn1/tn2/tn3`. The overlay button
+  sits last in document order, so `.first()` is the product's toggle whenever one exists —
+  and the overlay's whenever none does.
+
+  **The window it opens, measured on every load rather than on the failing ones.** A 2 ms
+  sampler recorded, per load, the first time the light DOM held a `button[aria-controls]`
+  and the first time `nextjs-portal`'s shadow root did. Over 15 loads (the captured output
+  holds 14 of them, ITER 1–14) the overlay button was first in **14 of 14** and the gap
+  before the page's own toggles arrived was **105 / 95 / 108 / 104 / 113 / 95 / 132 / 123 /
+  114 / 123 / 99 / 448 / 125 / 111** ms. `page.goto` resolves on `load`, which usually falls
+  after the cards render — `lightAtWait=3` in all 14 — so the wait normally never polls
+  inside that window. It is the loads where `load` fires first that lose.
+
+  **Reproduced before the fix, and counted.** Five instrumented runs of the helper's exact
+  sequence, fresh browser context each iteration: `PROBE RESULT: 2 zero of 20 runs`, then
+  `0 zero of 25 runs`, `0 zero of 25 runs` (that one under four busy-loops on a 4-core box),
+  `1 zero of 25 runs`, `0 zero of 25 runs` — **3** of **120** loads where the wait passed and
+  the very next `document.querySelectorAll("button[aria-controls]")` returned **0**. That is
+  the cycle 54 signature reproduced, at a rate that explains one failure in one smoke.
+
+  **And reproduced deterministically, which is what makes it a mechanism rather than a
+  correlation.** `/care` with no survey renders the "아직 이어서 볼 리포트가 없어요" fallback,
+  which has **0** `button[aria-controls]` in the light DOM, permanently. The old wait still
+  passes: `PROBE4 waitFor resolved in 203ms; pwCount=1 lightCount=0; first match
+  root=NEXTJS-PORTAL #next-logo aria-controls=nextjs-dev-tools-menu`. Same page, both waits,
+  one run: `PROBE6 lightCount=0 | OLD wait PASSED in 205ms | NEW wait timed out after
+  5009ms`.
+
+  **The three candidates, each ruled out on what was recorded.** (a) A Next dev full reload
+  or Fast Refresh: on the reproduced zero loads
+  `performance.getEntriesByType("navigation")[0].type` was **`navigate`**, not `reload`; the
+  `addInitScript` wrote exactly **1** `init` line into a `sessionStorage` log that survives a
+  same-tab document swap, so only one document existed; and no
+  `Fast Refresh had to perform a full reload` line appeared in any iteration whose console
+  was printed. `[Fast Refresh] rebuilding` / `done in 119ms` / `done in 458ms` did appear on
+  healthy loads and replaced nothing. The second `framenavigated` to the same URL that shows
+  on every load is same-document, by the same two facts. (b) `/care` re-keying its cards: a
+  MutationObserver on `document.documentElement` recorded one `mut +3 -0 now=3 lang=ko` per
+  healthy load and **0** removals of a `button[aria-controls]`, ever; on a zero load it
+  recorded no add at all, because the cards had not rendered yet. (c) `LanguageProvider`'s
+  `key={active}` remount for `ko`: the single mutation that adds the toggles already reads
+  `lang=ko`, so the remount has already happened by the time any toggle exists. (The first
+  pass at (b) reported `cbs=0` and no mutations on a page that plainly had three toggles —
+  that was an instrumentation defect, `MutationObserver.observe` called while
+  `document.documentElement` was still `null` at init-script time; the observer was attached
+  on `readystatechange` after that and the numbers above are from the corrected probe.)
+
+  **The fix is in the spec, because the artifact is the dev server's.** `openCare` no longer
+  calls `page.locator("button[aria-controls]").first().waitFor()`. It waits with one
+  `page.waitForFunction` that reads the same DOM the assertions read — `document
+  .querySelectorAll` — and returns only when there is at least one toggle, EVERY toggle's
+  `aria-controls` names an element that exists, and the count has held still for **250** ms.
+  Nothing else in the file changed: `git diff 979a8ad -- tests/e2e/care-merchant-disclosure.regression-12.spec.ts --stat`
+  is **31 insertions, 1 deletion**, the **1** deleted line being the old wait. No product
+  code was touched, because there is no product defect here: the `<nextjs-portal>` element
+  exists only under `next dev`, which is what `playwright.mobile.config.ts` runs against.
+
+  **Proven clean after the fix, and proven still able to fail.** The spec alone, fresh dev
+  server and cleared Turbopack cache each time: **3 passed** five times (**15.6s / 14.5s /
+  15.0s / 15.0s / 14.9s**). Run after `care-first-merchant-link.regression-38` in file order,
+  under four busy-loops on a 4-core box: **8 passed** five times (**26.8s / 26.9s / 27.2s /
+  28.4s / 27.8s**). **10** runs, **0** failures. Then the guarded defect was put back —
+  `id={merchantPanelId}` moved from the inner grid to the outer one, so the panel contains
+  its own toggle again — and the spec failed: **2 failed** / **1 passed (18.5s)**, naming
+  `care-merchant-disclosure.regression-12.spec.ts:66` (`the merchant disclosure does not name
+  a panel that contains it`) and `:97` (`expanding the disclosure changes the panel it names,
+  and nothing else`) at line **114**, `the expanded panel swallowed its own toggle`.
+  `app/care/page.tsx` was restored and `git status --porcelain` lists only the spec.
+
+  **Every other wait in the suite was checked against the same mechanism, by measurement.**
+  `grep -rn "\.waitFor(" tests/e2e/*.spec.ts` gives **4** sites and
+  `grep -rn "waitForSelector" tests/e2e/*.spec.ts` gives **1**. Counting matches INSIDE each
+  shadow root on `/`, `/care`, `/scan` and `/report`: `NEXTJS-PORTAL` has
+  `button[aria-controls]=1` and `main [data-quality-checklist]=0`, `[role="listbox"]=0`,
+  `input[type="email"]=0`; `main h1=0` and `[id^="care-merchants-"] button=0` on `/` and
+  `/care`; `NEXT-ROUTE-ANNOUNCER` is **0** for all of them. So
+  `hangul-leak-sweep.regression-37` (two sites), `reengage-optin-field-width.regression-23`
+  and `report-header-fit.regression-25` cannot be satisfied by the overlay, and none of them
+  reads the same selector back through `document.querySelectorAll` anyway. **One spec shares
+  the SHAPE and is listed rather than changed**: `care-first-merchant-link.regression-38`
+  waits with `expect(page.locator('[id^="care-merchants-"] button').first()).toBeVisible()`
+  and then reads `document.querySelectorAll('[id^="care-merchants-"]')` — a shadow-piercing
+  wait feeding a light-DOM read — but its selector matches **0** elements in either shadow
+  root, so it cannot be satisfied by anything the light DOM lacks.
+
+  **Research: Playwright's own docs, because the fix rests on one sentence of them.**
+  `https://raw.githubusercontent.com/microsoft/playwright/main/docs/src/other-locators.md`,
+  `status=200`, **27950** bytes, sha256
+  `274c91bd56bfb7f74460398392670d3b7dd2213b6a0e22774c831d54bd4acc8d`. Line **40**, under
+  "Playwright augments standard CSS selectors in two ways": "CSS selectors pierce open shadow
+  DOM." Line **538**: "XPath does not pierce shadow roots." That asymmetry is the whole bug:
+  the wait used the engine that pierces and the assertions used the API that does not.
+
+  **ML: skipped, as the brief said to.** `python3 ml/selftest.py` was run as a gate only.
+  `git diff 979a8ad -- ml/ public/` is empty.
+
+  **Guardrails.** `git diff 979a8ad --stat` lists **4** files and no others —
+  `tests/e2e/care-merchant-disclosure.regression-12.spec.ts`, `README.md`,
+  `docs/AUTOPILOT.md` and `docs/autopilot-changelog.md` — at **489** insertions and **248**
+  deletions. **No product code changed** — `git diff 979a8ad -- app/ lib/ public/ ml/ scripts/ vitest.config.ts
+  playwright.mobile.config.ts package.json package-lock.json` is empty. No translation
+  string's content changed and no key was added or removed. `lib/consent.ts`, the three
+  `/scan` consent checkboxes, the re-engage email, `efficacyClean()`, `shareUrl`,
+  `ALLOWED_HOSTS`, `metadataBase`, `blemishCount`, `toneSpread` and the manifest's `status` /
+  `promotionGate` / `minQwkGainOverHeuristic` were not touched.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere. No provider was called and no email
+  was sent. No dependency was added, no guide page was added, and no colour, font size or
+  spacing value changed anywhere. The five probe specs written for this investigation were
+  deleted before the gate ran; `git status --porcelain` names none of them.
+
+  **What this did NOT establish.** The cycle 54 failure itself was not reproduced in situ —
+  test 6 of a cold 300-spec smoke — only its signature, 3 times in 120 loads and once
+  deterministically. The **3 in 120** rate is this container's, under a reused dev server,
+  and says nothing about the supervisor's box. And the fix removes the spec's exposure to the
+  overlay; it does not stop `next dev` from putting an `aria-controls` button on every page,
+  so a future spec that waits on a bare `button[aria-controls]` will meet the same thing.
+
+  **Docs and rotation.** Recent cycles holds 55/54/53; cycle 52's entry (**246** lines) moved
+  verbatim to the end of `docs/autopilot-changelog.md` after cycle 51. The supervisor finding
+  from cycle 54's review was appended to "Supervisor findings not yet actioned" and ticked in
+  the same edit, since it was actioned here. No backlog item was ticked `[x]`.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files at `979a8ad`: **2505** +
+  **11763** = **14268**. The final pair is **2454** + **12010** = **14464**. `cmp` of the
+  extracted cycle 52 entry against the last **246** lines of the changelog reports no
+  difference. `sort -u` over both files at `979a8ad` gives **12420** unique lines and over
+  the final pair **12590**; `comm -23` of the first against the second drops **0** — every
+  line at `979a8ad` is still present, so there is no missing line to account for.
+
+  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
+  **Test Files 120 passed (120) / Tests 1089 passed (1089)** for the vitest phase,
+  **300 passed (15.1m)** for the e2e phase, and the literal line **Smoke test passed.**
+  Test **6** of **300**, `care-merchant-disclosure.regression-12`, is the one cycle 54 lost
+  and it passed. Re-run afterwards on the committed tree, each on its own: `npx vitest run`
+  **Test Files 120 passed (120) / Tests 1089 passed (1089)**; `npx tsc --noEmit | grep -c
+  "error TS"` **13** — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the
+  same pre-existing `_reads` / `_result`, not run beside vitest); `python3 ml/selftest.py`
+  **Ran 146 tests in 2.186s ... OK**. `git diff 979a8ad --stat` lists **4** files (**489**
+  insertions, **248** deletions) and the same command over `app/ lib/ public/ ml/ scripts/
+  vitest.config.ts playwright.mobile.config.ts package.json package-lock.json` is empty. The
+  only thing the smoke run does not cover is this paragraph and the rotation numbers above
+  it, which were written after it finished.
+
+  *Supervisor review:* sound. The root cause is named and reproduced, and it corrects this
+  supervisor's cycle 54 reading: nothing replaced `/care`'s DOM. The wait had matched a
+  different element.
+
+  *Reproduced independently.* A throwaway probe (deleted after the run) loaded `/care`
+  with no survey, so the route has no app toggles. Result: `[probe] playwright=1
+  lightDom=0 shadowHosts=NEXTJS-PORTAL:1,NEXT-ROUTE-ANNOUNCER:0`. Playwright's locator
+  counts the dev overlay's shadow-root button, and `document.querySelectorAll` does not.
+  This is exactly the gap the old `waitFor` fell through.
+
+  *Correction to cycle 54's review.* It said "the DOM changed between the wait and the
+  read: something replaced the subtree for an instant" and named a Next dev full reload
+  as the leading guess. Both were wrong. The subtree was never replaced. The wait
+  resolved on `#next-logo` inside `<nextjs-portal>` before the route painted. The
+  failure snapshot's three toggles were there because the snapshot was taken later. The
+  lesson for this reviewer is that "the snapshot shows it" says when the snapshot was
+  taken, not when the read happened.
+
+  *Re-run here.* Regression-38 plus regression-12, **3** times: **8 passed** each.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `979a8ad`
+  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **300 passed (13.4m)**, **Smoke test passed.**
 
 - 2026-09-29 (cycle 54) — Branch `autopilot/2026-09-29-0639`. **The gate's two newest specs
   cost 5.8m of a 15.1m smoke, and the cost was in the WAITS rather than in the work: timed
@@ -2256,250 +2476,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, **300 passed (15.1m)** (10.9m on cycle 52's tree), **Smoke
   test passed.**
-
-- 2026-09-28 (cycle 52) — Branch `autopilot/2026-09-28-1839`. **Cycle 51's unnamed vitest
-  failure did not reproduce in 25 runs, so the cycle went after the one mechanism that
-  produces its exact line from a tree with no defect in it — and found it. Vitest's
-  `testTimeout` default is 5000ms, and three tests in this suite carry no timeout of their
-  own while running long enough that a loaded container turns the CLOCK into the assertion:
-  run with `--testTimeout=5000` under twelve busy-loops the suite reads `Test Files 3 failed
-  | 117 passed (120)` with three `Test timed out in 5000ms` and not one assertion failing.
-  On the 119-file tree `--testTimeout=2000` reproduces cycle 51's line verbatim —
-  `Test Files 1 failed | 118 passed (119) / Tests 1 failed | 1086 passed (1087)` — from one
-  test. Alongside it, the first merchant link was measured in all five locales for the first
-  time and four of the five were below the fold; one layout-only reorder puts it in the
-  first viewport in every one, `ar` by 0.8 px, which is stated as the limit it is.**
-
-  **Baselines, re-measured here on `11e6c4f`.** `node_modules` was absent, so `npm ci`
-  first (exit **0**). `npx vitest run` **Test Files 119 passed (119) / Tests 1087 passed
-  (1087)**, on **25** separate runs described below. `npx tsc --noEmit | grep -c "error
-  TS"` **13**, `npx eslint .` **0 errors, 2 warnings**, `python3 ml/selftest.py` **Ran 146
-  tests in 2.063s ... OK** — those three measured in a detached `git worktree` of
-  `11e6c4f` with `node_modules` symlinked in, so the working tree was never disturbed to
-  get them. All four match the supervisor's.
-
-  **Bug fix: the flaky test did not reproduce, and the mechanism that makes that line
-  possible is now named and fixed.** `npx vitest run` was run **25** times on `11e6c4f`
-  with every run's full output kept in its own file: **6** cold (`node_modules/.vite` and
-  `node_modules/.vitest` removed immediately before), **7** warm, **7** with
-  `--sequence.shuffle`, **2** as two concurrent vitest processes started in the same
-  second, **2** with `--reporter=json`, and **1** cold under six busy-loops on this 4-core
-  box. The **23** runs on the default reporter each printed **Test Files 119 passed (119) /
-  Tests 1087 passed (1087)**, and `grep -c failed` over the 20 numbered logs gives **0**
-  each; the **2** JSON runs report `numTotalTests` **1087**, `numPassedTests` **1087**,
-  `numFailedTests` **0**. Wall time moved from **23.30s**
-  (cold, idle) to **52.47s** under six busy-loops and **38.47s / 38.31s** for the
-  concurrent pair, so the load was real and the suite stayed green through it.
-  **So the candidates were enumerated instead, and one of them is a live defect.** There
-  are **0** `setTimeout`, `await new Promise` or `useFakeTimers` occurrences in
-  `tests/*.test.ts`, and nothing in the suite asserts a duration by default
-  (`tests/scan-cost-benchmark.test.ts` says so in its own header and puts its timing sweep
-  behind `ARU_PRINT_SCAN_COST`). `performance.now` appears in **1** unit test and
-  `Math.random` in **2**, and the **10** `readdirSync` call sites in `tests/*.test.ts`
-  (across **9** files) walk `app`, `lib`, `scripts`, `docs`, `public` or
-  `public/vendor/mediapipe` — **0** of them walk `tests/`, which rules out the cycle-20
-  lint race repeating inside vitest against the modules
-  `tests/blemish-perturbation-tolerance.test.ts` writes and deletes under
-  `tests/.blemish-perturb-tmp/`. The concurrent pair was the direct test of that dir as a
-  cross-process hazard and both processes passed. What is left is the clock itself. Per-test durations from
-  `--reporter=json`: idle the slowest test with no `{ timeout: N }` of its own is
-  `tests/cheek-clipping-signal.test.ts > 노출 여유: the cheek's 8-bit ceiling > puts the cut
-  below every capture whose published cheek level has moved` at **2187.3** ms, and under
-  six busy-loops **4451.1** ms — **548.9** ms short of the **5000** ms default. Run at the
-  default spelled out (`--testTimeout=5000`) under twelve busy-loops, **3** tests time out:
-  that one at **8462ms**, `tests/blemish-plateau-census.test.ts > … > reports no tie on a
-  frame with real pixel noise, at any frame size or noise level` at **7141ms**, and
-  `tests/ita-guard-decision.test.ts > … > is never entered by a capture: 121 blue gains step
-  straight over it` at **6489ms** — `Test Files 3 failed | 117 passed (120) / Tests 3 failed
-  | 1086 passed (1089)`, `grep -c "Test timed out in 5000ms"` **3**, and **0** assertion
-  failures. On an idle box `--testTimeout=1500` fails exactly **2** of the three (**2086ms**
-  and **1885ms** as that run reports them), and `--testTimeout=2000` on the 119-file tree
-  failed exactly **1** and printed cycle 51's line back: **Test Files 1 failed | 118 passed
-  (119) / Tests 1 failed | 1086 passed (1087)**, with `Test timed out in 2000ms` raised by
-  `puts the cut below every capture whose published cheek level has moved` (**2034ms**) and
-  no assertion failing. **The fix is `testTimeout: 60_000` in
-  `vitest.config.ts`** — one value for the whole suite instead of the per-test
-  `{ timeout: N }` this repo had already been adding one test at a time (**2** cases in
-  `tests/cheek-clipping-signal.test.ts`, **3** in
-  `tests/blemish-perturbation-tolerance.test.ts`, whose comment at line **787** records a
-  case that "went red three times before this line"). Nothing any test asserts changed, no
-  test was skipped, retry-wrapped or quarantined, and a per-test value still wins where one
-  asks for more. **Proven both ways.** The same twelve busy-loops that produced the three
-  timeouts give **Test Files 120 passed (120) / Tests 1089 passed (1089)**, `Duration
-  87.27s`, with the value in place. `tests/vitest-timeout-budget.test.ts` (**2 passed**)
-  pins it: deleting the config line gives **2 failed**, reporting `expected 'import {
-  defineConfig } from "vitest/…' to match /\btestTimeout:\s*[\d_]+\s*,/`, and lowering it to
-  `10_000` gives **1 failed | 1 passed** on `expected 10000 to be greater than or equal to
-  20000`. **What this does NOT establish:** that this was cycle 51's failure. That test's
-  name was never captured, and 25 runs here did not reproduce it, so the mechanism is
-  recorded as the one that reproduces the signature — not as the diagnosis.
-
-  **UI/UX: all five locales measured, and the first merchant link was below the fold in
-  four of them.** Cycle 50 had measured `ko` (**0** px of scroll, box **738.3→783.3** of an
-  **800** px viewport) and `en` (**153** px, **908→953**); `ja`, `zh` and `ar` had never
-  been measured. Same method as
-  `tests/e2e/first-merchant-link-path.regression-36.spec.ts`, 360x800 under
-  `playwright.mobile.config.ts`: `zh` **18.7** px (**773.7→818.7**), `ja` **84.3**
-  (**839.3→884.3**), `ar` **145.7** (**900.7→945.7**). **Every block above the link was
-  measured per locale, and all of the extra height is copy wrapping, not layout.** Against
-  `ko`, the page header block goes **146.9 → 182.3** in the other four; the step tablist
-  **49.2 → 64.8** in `ja` and `en`; the "추천 기준" section **96.5 → 120.5** in `en`; and
-  inside the first product card the name/price row goes **68 → 112.8** in `en` and `ar`, the
-  highlight chips **27.3 → 59.5** in `ar`, the ingredient tags **49 → 82.3** in `ja`/`ar`/`en`
-  and the merchant note **16.7 → 33.3** in `ja`/`ar`/`en`. Not one of those can be shortened
-  by a layout change. **What could move is the one block whose POSITION was arbitrary.** The
-  "추천 기준" section — why these picks — rendered above the product grid; above it, section
-  plus margins occupied **150.5** px in `ko`/`zh`/`ja`/`ar` and **174.5** px in `en`. It now
-  renders after the grid. The copy, the styles and the render conditions are byte-identical;
-  only the DOM position changed. No copy was edited, no translation key was added or
-  changed, which picks are shown did not change, and `CommerceDisclosure` was not touched.
-  After the move the first link's box ends at **636.8** (`ko`), **672.2** (`zh`), **737.8**
-  (`ja`), **782.5** (`en`) and **799.2** (`ar`), so **all five** need **0** px of scroll.
-  **`ar` has 0.8 px of margin and that is the honest limit**: the next copy edit anywhere
-  above that card's buy button in `ar` puts it back under the fold, and the spec is what will
-  say so — the answer then is another layout move, not a shorter disclosure. **Measured
-  under both disclosure states.** With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` every number
-  above is byte-identical and the disclosure block stays **33.3** px in all five locales: the
-  longer affiliate sentence still wraps to two lines at 11.5px/1.45. Nothing was measured
-  about conversion — this puts the link on the first screen, and whether that earns anything
-  is unmeasurable while the revenue line reads zero.
-
-  **The ratchet, extended and broken two ways.** `regression-36` now runs all **5** locales
-  (**5 passed**, up from 2) with `SCROLL_BUDGET` **0** for every one — the budget is no
-  longer a measured distance plus room, because the thing worth ratcheting is that the
-  button stays on the first screen. It still drives every tap, still counts **4** screens,
-  **6** taps, **3** required survey fields and **4** merchant links per locale, and it now
-  prints `marginBelow` on every run: **163.2** (`ko`), **127.8** (`zh`), **62.2** (`ja`),
-  **17.5** (`en`), **0.8** (`ar`). Reverting `app/report/page.tsx` to `11e6c4f` and leaving
-  the spec: **4 failed | 1 passed**, reporting `en: the first merchant link needs 153px of
-  scroll (box 908→953), budget 0`, `ja: … 84.3px … (839.3→884.3)`, `zh: … 18.7px …
-  (773.7→818.7)` and `ar: … 145.7px … (900.7→945.7)` — `ko` passes, because `ko` was already
-  at 0. The disclosure assertion was also strengthened from "a matching `p` exists somewhere
-  on the page" to "it is inside the first merchant link's own card and above the link there",
-  and moving `CommerceDisclosure` below the buy button in
-  `app/components/product-card.tsx` gives **5 failed** on `the disclosure sits above the buy
-  button in the same card`. Both breaks were reverted and the file compared byte-for-byte
-  against its pre-break copy. The locale patterns match BOTH disclosure states in each
-  language, so the flag flip cannot turn the spec red, and the whole spec was run once with
-  `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**, same numbers.
-
-  **Research: Vitest's own documentation, from the tag this repo installs.** `vitest`
-  resolves to **4.1.9** (`node -e "console.log(require('vitest/package.json').version)"`),
-  so every file was fetched from `vitest-dev/vitest` at tag `v4.1.9` on
-  `raw.githubusercontent.com`. `docs/config/testtimeout.md`: HTTP **200**, **300** bytes,
-  sha256 `ba54937613d4e26d71b15c11e194d22cd78522b669fe1d05b55369dbc7595994`, and it states
-  the default as "`5_000` in Node.js, `15_000` if `browser.enabled` is `true`" with "Default
-  timeout of a test in milliseconds. Use `0` to disable timeout completely." That **5000** is
-  the number the three tests above were racing. `docs/config/sequence.md`: HTTP **200**,
-  **5098** bytes, sha256 `1e465ea06e1e82fa4eb30fd9c180236689ff226d9e515517988cbe2cc942def3`
-  — `sequence.shuffle` is `boolean | { files?, tests? }`, default `false`, and "If your files
-  and tests run in random order, you will lose this performance improvement, but it may be
-  useful to track tests that accidentally depend on another test run previously", which is
-  why 7 of the 25 runs used it. It also documents the sort CACHE ("Vitest usually uses cache
-  to sort tests, so long-running tests start earlier"), which is the reason a FIRST run is
-  not the same run as the tenth and why 6 of the 25 deleted `node_modules/.vite` and
-  `node_modules/.vitest` first. `docs/config/pool.md`: HTTP **200**, **2453** bytes, sha256
-  `66bd191036f6aa51235ef5e201538148ada24d55a0736c6e220e78d8d65b68c3` — default `'forks'`.
-  `docs/config/isolate.md`: HTTP **200**, **560** bytes, sha256
-  `cb0b7a8a2574241be54c50e00ca0e016b4ce923fdd11c27e85927dd41660f50d` — default `true`, "Run
-  tests in an isolated environment." Those two together are why the `process.env` writes in
-  `tests/api-json-boundaries.test.ts`, `tests/commerce.test.ts`,
-  `tests/cron-bearer-constant-time.test.ts`, `tests/funnel-flush.test.ts`,
-  `tests/funnel-ingest.test.ts` and `tests/llm-route-cost-exposure.regression-24.test.ts`
-  cannot leak between files, and why the shuffle runs are the check that they do not leak
-  within one. `docs/config/index.md` was fetched too (HTTP **200**, **3583** bytes, sha256
-  `29e03769a67402aeb52f56391f0bfdd4c8dc220d6116efaea24fb43bb6108ee0`) and is only a pointer
-  page at this tag. These are the docs source files in the repository, not a normative
-  specification, and they are quoted as the documented defaults.
-
-  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces
-  and the golden set is the standing blocker, so nothing was trivially advanceable.
-  `python3 ml/selftest.py` was run as a gate only. `git diff 11e6c4f -- ml/ public/models/`
-  is empty.
-
-  **Guardrails.** `git diff 11e6c4f --stat` touches **6** files and no others:
-  `app/report/page.tsx`, `tests/e2e/first-merchant-link-path.regression-36.spec.ts`,
-  `vitest.config.ts`, `tests/vitest-timeout-budget.test.ts` (new), `docs/AUTOPILOT.md` and
-  `docs/autopilot-changelog.md`. No translation string's content changed and no key was
-  added — `git diff 11e6c4f -- lib/` is empty, so `lib/consent.ts`, `lib/i18n/`,
-  `lib/commerce.ts` and `lib/recommend.ts` did not move. `git diff 11e6c4f -- app/scan/
-  app/api/ public/ ml/` is empty: the three `/scan` consent checkboxes, the API routes, the
-  model manifest and the Python pipeline were not touched. `efficacyClean()` is untouched and
-  still on every LLM product reason and the vision narrative. `NEXT_PUBLIC_FUNNEL_FLUSH` is
-  still unset everywhere; the one run that set `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` set it in
-  a shell for one Playwright invocation and nothing on disk records it. No provider was
-  called and no email was sent; nothing about the re-engage email changed. `shareUrl`,
-  `ALLOWED_HOSTS`, `metadataBase`, `blemishCount`, `toneSpread` and the manifest's
-  `status` / `promotionGate` / `minQwkGainOverHeuristic` were not touched. No dependency was
-  added, no guide page was added, `app/globals.css` has no diff, and no colour, font size or
-  spacing value changed anywhere — the `/report` change moves one existing `<section>` and
-  copies its `style` prop across unaltered.
-
-  **Docs and rotation.** Recent cycles holds 52/51/50; cycle 49's entry (**241** lines)
-  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 48, where it now
-  starts at line **10985**. No backlog item was ticked `[x]`, so nothing moved to "Closed
-  backlog items": the path item gained this cycle's five-locale measurement and the reorder,
-  and a new item records the flaky-test investigation, the candidates it enumerated and
-  what it did not establish.
-
-  **Nothing was lost in the rotation.** `wc -l` on both files: **2419** + **10983** =
-  **13402** at `11e6c4f`, and the two halves sum to the same **13402** immediately after the
-  move (**2177** + **11225**). `sort -u` over both files at `11e6c4f` gives **11630** unique
-  lines; `comm -23` of that against `sort -u` over the final pair (**11875** unique lines,
-  **2440** + **11225**) drops **0** — every line present at `11e6c4f` is still present. Both
-  counts re-taken on the tree as committed, after the validation paragraph below.
-
-  **Validation on this tree, worker.**
-  `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome |
-  head -1) npm run smoke` printed **Test Files 120 passed (120) / Tests 1089 passed (1089)**
-  (**119**/**1087** at `11e6c4f`, plus `tests/vitest-timeout-budget.test.ts`'s **2**),
-  **291 passed (11.4m)** for the e2e phase (the supervisor's **288** at `11e6c4f`, which was
-  not re-run here, plus regression-36's **3** new locales), and the literal line **Smoke test passed.** After it, on the same tree:
-  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged; `npx eslint .` **0 errors, 2
-  warnings** (the same pre-existing `_reads` / `_result`, run on its own and not beside
-  vitest); `python3 ml/selftest.py` **Ran 146 tests in 1.899s ... OK**. `git diff 11e6c4f
-  --stat` lists **6** files and `git diff 11e6c4f --stat -- lib/`, `-- app/scan/ app/api/
-  public/ ml/` and `-- app/globals.css` are each empty. The only thing not covered by that
-  smoke run is this paragraph and the line below it, which were written after it finished.
-
-  *Supervisor review:* sound. The timeout mechanism is established by breaking it, and
-  the entry is honest that it is not proven to be cycle 51's failure. The fold fix is a
-  reorder with byte-identical copy. Merged with one fragility recorded; no code change
-  from review.
-
-  *Reproduced here.*
-  - `npx vitest run` on this tree: **Test Files 120 passed (120) / Tests 1089 passed
-    (1089)**.
-  - Independent of the worker: before the branch existed, the supervisor ran `npx vitest
-    run` **12** times on `11e6c4f`, the first after `rm -rf node_modules/.vite
-    node_modules/.vitest`, and all **12** passed. That is consistent with the worker's
-    25-for-25 and with a load-dependent timeout rather than a deterministic defect.
-  - regression-36 on this tree, affiliate flag off:
-    - `[path] ko ... firstLinkBox=591.8->636.8 ... marginBelow=163.2`
-    - `en ... 737.5->782.5 ... 17.5`
-    - `ja ... 692.8->737.8 ... 62.2`
-    - `zh ... 627.2->672.2 ... 127.8`
-    - `ar ... 754.2->799.2 ... 0.8`
-    - **5 passed**.
-  - With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: **5 passed**.
-  - The reorder was checked in `app/report/page.tsx`. "추천 기준" is still inside `step ===
-    "picks"`, unconditionally rather than behind `picks.length`. It sits after the grid
-    and before the compare `<details>`. `result.note` still renders above the grid, and
-    `CommerceDisclosure` did not move.
-
-  *Fragility, recorded rather than changed.*
-  - `ar` clears the fold by **0.8** px and its budget is **0**. In this container
-    rendering is deterministic, so this is not a flake today. A Chromium or font upgrade
-    that shifts `ar` line boxes by 1 px would turn smoke red with no code change. If that
-    happens, read the printed `marginBelow` before touching the budget.
-  - "0 px in all five" holds for the path the spec drives: the first chip of each
-    required field. A survey that triggers `result.note`, the no-exact-budget-match note
-    above the grid, pushes the first link down by that note's height in every locale.
-    Nothing measured that case.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `11e6c4f`
-  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, **291 passed (10.9m)**, **Smoke test passed.**
-

@@ -30,7 +30,37 @@ async function openCare(page: Page, lang: string) {
   await page.goto("/care");
   // Structural rather than by label: the toggle's copy is translated, and this
   // helper is used by the locale sweep below.
-  await page.locator("button[aria-controls]").first().waitFor();
+  //
+  // Deliberately NOT `page.locator("button[aria-controls]").first().waitFor()`, which
+  // is what stood here and what cost cycle 54 a red gate. Playwright's CSS engine
+  // pierces open shadow roots; `next dev` mounts a `<nextjs-portal>` whose shadow root
+  // holds exactly one button, `#next-logo[aria-controls="nextjs-dev-tools-menu"]`, and
+  // it is on the page ~100ms before this route paints its cards. In that window the
+  // overlay's button is the only match, so the wait passes over a light DOM that still
+  // holds none — and every read below is `document.querySelectorAll`, which does not
+  // cross a shadow boundary. Wait on the DOM those reads use instead, and require each
+  // named panel to exist and the count to hold still, so nothing is read mid-render.
+  await page.waitForFunction(
+    (stableMs) => {
+      const toggles = Array.from(document.querySelectorAll("button[aria-controls]"));
+      const w = window as unknown as { __careToggles?: { n: number; since: number } };
+      const ready =
+        toggles.length > 0 &&
+        toggles.every((toggle) => document.getElementById(toggle.getAttribute("aria-controls") ?? ""));
+      if (!ready) {
+        w.__careToggles = undefined;
+        return false;
+      }
+      const now = performance.now();
+      if (!w.__careToggles || w.__careToggles.n !== toggles.length) {
+        w.__careToggles = { n: toggles.length, since: now };
+        return false;
+      }
+      return now - w.__careToggles.since >= stableMs;
+    },
+    250,
+    { timeout: 30_000 }
+  );
 }
 
 test("the merchant disclosure does not name a panel that contains it", async ({ page }) => {
