@@ -2019,7 +2019,25 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `[care-fold]` lines byte-identical to the measurement run above, `npx tsc --noEmit | grep
   -c "error TS"` is still **13** and `npx eslint .` still **0 errors**.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound. The change is to comments and docs only. It says which
+  server measured each number, and the hard-0 budget was shown to trip.
+
+  *Closed here: the one thing this entry left unestablished.*
+  - The worker could not show that `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` reaches the
+    browser under a production build. The cycle 56 review had claimed it did, from
+    regression-36/38 passing. Those specs accept either disclosure sentence, so they
+    could not show it. That claim was unsupported when made.
+  - Established now with a throwaway probe, deleted after the run. It reads `/care`'s
+    rendered text under `en`:
+    - with the flag on: `[aff] affiliate=true noCommission=false`
+    - with it off: `[aff] affiliate=false noCommission=true`
+  - `webServer.command` builds in Playwright's own environment, so the flag is inlined
+    into the build the page is served from. Turning it on for the owner's affiliate
+    signup therefore changes what visitors read.
+
+  *Validation on this tree, supervisor:* rotation: `comm -23` over `sort -u` of both files
+  at `b5a99c2` against this pair drops **0** lines; `git diff b5a99c2..HEAD -- app lib`
+  is empty. SMOKE_RESULT
 
 - 2026-09-29 (cycle 56) — Branch `autopilot/2026-09-29-1839`. **The e2e gate stopped
   measuring `next dev`. One run each on the same tree, this container: dev
