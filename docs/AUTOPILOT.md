@@ -1334,8 +1334,46 @@ partly done and stays here.
   below describes: once a route knows its language on the server, the server renders that
   language, the hydration render matches it, and every dictionary including English
   becomes per-locale. Nothing smaller works, and no cycle should invent the URL structure
-  on its own. Also unmeasured and cheap to do: `/` is the only route whose initial JS was
-  counted, before or after.
+  on its own.
+
+  **2026-09-30 (cycle 60): all five funnel screens are now counted, and two of the
+  numbers above need reading with a correction.** `docs/first-load-js.md` has the method,
+  the exact commands and the full per-route chunk listing. What a browser downloads before
+  the page is interactive, `gzip -9` per file and summed: `/` **672119** raw / **201102**
+  gzipped, `/survey` **667597** / **200355**, `/scan` **720028** / **218841**, `/report`
+  **714373** / **215103**, `/care` **678806** / **203251**. The English dictionary is
+  **82569** raw / **28307** gzipped of every one of the five, so the cost this item
+  describes is not `/`-only — it is the whole path. And cycle 40's own figures counted a
+  `noModule` polyfill chunk (`0cz1d0mv5g_q7.js`, **112594** raw / **39392** gzipped) that
+  the container's Chromium skipped on all ten rows of a Playwright run, so `/`'s
+  **1050358** → **783030** raw and **322373** → **240097** gzipped are each that much
+  larger than what the browser fetched. The saving cycle 40 measured is unaffected: the
+  chunk is on both sides of it. Nothing about the fix changes — it is still the
+  per-locale-URL decision, still the owner's.
+
+- [AI] **Nothing else on the funnel path is worth moving behind a dynamic `import()`, and
+  there is no first-load ceiling in the gate.** Opened 2026-09-30 (cycle 60), which looked
+  for a module a funnel route ships on first load but does not render or run before the
+  first user action, at a bar of **20480** bytes gzipped. Nothing clears it, so no product
+  code changed. Exactly four first-load files anywhere on the path are over that bar and
+  all four are accounted for: React/react-dom (**72373** gzip) and the app-router client
+  (**38480**) both run at hydration; the `noModule` polyfill (**39392**) is not downloaded;
+  the English dictionary (**28307**) is the language the server rendered and belongs to the
+  item above. The two obvious libraries are already lazy —
+  `app/components/share-card.tsx:62` awaits `import("html-to-image")` and
+  `app/scan/create-landmarker.ts:6` awaits `import("@mediapipe/tasks-vision")`. The one
+  genuine ships-but-does-not-run-until-a-tap module, `lib/skin.ts` (**67485** bytes of
+  source), lands in chunks whose WHOLE gzipped size is **12631** on `/scan` and **19345**
+  on `/report`, so it is under the bar on both even counting its chunk-mates as if they
+  were part of it — and moving it would sit inside `/scan`'s capture path. What is left
+  open, and what a cycle could do without the owner: (a) no ceiling is pinned anywhere, so
+  any of these numbers can drift upward with nothing noticing — a unit test over the
+  prerendered HTML's `<script src>` set would catch it, and `docs/first-load-js.md` has the
+  command it would be built from; (b) per-module attribution inside a chunk was bounded by
+  the chunk total rather than measured, because Turbopack emits no module ids into the
+  output (`grep -o '\[project\]/[^ "]*'` over the four largest chunks returns nothing);
+  (c) nothing here measures parse or time-to-interactive on a real phone, which is what the
+  weight is a proxy for.
 
 - [OWNER] **Apply to the affiliate programmes** — 쿠팡 파트너스 (self-serve, accepts a
   website or app URL as the channel), 올리브영 쇼핑 큐레이터 (in-app, 7%/3%), 네이버 쇼핑
@@ -1880,6 +1918,216 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-30 (cycle 60) — Branch `autopilot/2026-09-30-1839`. **All five screens on the
+  path to the first merchant link now have a first-load JS number, and the measurement
+  found a flaw in cycle 40's method rather than a module to move. What the browser
+  downloads before the page is interactive: `/` **672119** bytes raw / **201102** gzipped,
+  `/survey` **667597** / **200355**, `/scan` **720028** / **218841**, `/report` **714373** /
+  **215103**, `/care` **678806** / **203251**. Cycle 40 counted a `noModule` polyfill chunk
+  of **112594** raw / **39392** gzipped that a modern browser skips, so its **783030** /
+  **240097** for `/` is that much larger than what a visitor fetched. Nothing on the path
+  clears the 20 KB-gzipped bar for a dynamic `import()`, so `app/`, `lib/`, `public/` and
+  `ml/` are untouched and no test was added.**
+
+  **The method, and the one place it had to differ from cycle 40's.** Turbopack prints no
+  first-load column, so the numbers come from the `<script src>` set in the prerendered
+  `.next/server/app/<route>.html`, raw bytes summed and each file gzipped at level 9 and
+  summed — cycle 40's method exactly, which is what makes `/` comparable across twenty
+  cycles. The difference is that cycle 40 took every `<script src>`; this cycle also read
+  the tag's attributes, and one of the thirteen on `/` carries `noModule`. Both figures are
+  in `docs/first-load-js.md` with the exact commands so the next cycle can re-run either.
+  On cycle 40's own method, unchanged, this tree reads:
+
+  ```
+  index scripts=13 raw=784713 gzip=240494
+  survey scripts=13 raw=780191 gzip=239747
+  scan scripts=14 raw=832622 gzip=258233
+  report scripts=14 raw=826967 gzip=254495
+  care scripts=13 raw=791400 gzip=242643
+  ```
+
+  `/`'s **784713** raw against cycle 40's **783030** is **1683** bytes of drift over twenty
+  cycles. The split cycle 40 made still holds: the ja, zh and ar dictionary chunks
+  (`2ju8yzfndwcag.js` **91733** raw / **29230** gzip, `1v0h5r-biq8qi.js` **77159** /
+  **27187**, `3v8lhb0_stdmj.js` **100349** / **29691**) are referenced from no prerendered
+  HTML at all.
+
+  **The `noModule` finding, which is a correction to the measurement and not to the
+  product.** `0cz1d0mv5g_q7.js` is **112594** raw / **39392** gzipped and is tagged
+  `noModule` in all five documents — it is the legacy-browser polyfill bundle, and a
+  browser with ES-module support never requests it. So cycle 40's **1050358** → **783030**
+  raw and **322373** → **240097** gzipped for `/` are each **112594** raw and **39392** gzip
+  above what the browser actually fetched. The saving cycle 40 measured is unaffected,
+  because the chunk sits on both sides of it. Nothing needs fixing: dropping the chunk would
+  save a modern browser nothing, since it never asks for it, and would remove the only
+  reason it exists. The backlog item and `README.md` now both carry the correction beside
+  the old numbers rather than replacing them.
+
+  **Checked in a real browser, not only in the HTML.** A throwaway Playwright run at
+  360x800 against `npx next start` on port **3108** loaded each route, recorded every
+  script response, and split them into the ones the document references and the ones that
+  arrive after. Two storage states, `empty` (a first-time visitor) and `aru.lang=ko`:
+
+  ```
+  [first-load] empty / url=/ lang=en docScripts=13 downloadedFromDoc=12 raw=672119 gzip=201102 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  [first-load] empty /survey url=/survey lang=en docScripts=13 downloadedFromDoc=12 raw=667597 gzip=200355 | extraAfter=3 extraRaw=142549 extraGzip=47733
+  [first-load] empty /scan url=/scan lang=en docScripts=14 downloadedFromDoc=13 raw=720028 gzip=218841 | extraAfter=1 extraRaw=47320 extraGzip=14997
+  [first-load] empty /report url=/survey lang=en docScripts=14 downloadedFromDoc=13 raw=714373 gzip=215103 | extraAfter=4 extraRaw=185347 extraGzip=61983
+  [first-load] empty /care url=/care lang=en docScripts=13 downloadedFromDoc=12 raw=678806 gzip=203251 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  [first-load] ko / url=/ lang=ko docScripts=13 downloadedFromDoc=12 raw=672119 gzip=201102 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  [first-load] ko /survey url=/survey lang=ko docScripts=13 downloadedFromDoc=12 raw=667597 gzip=200355 | extraAfter=3 extraRaw=142549 extraGzip=47733
+  [first-load] ko /scan url=/scan lang=ko docScripts=14 downloadedFromDoc=13 raw=720028 gzip=218841 | extraAfter=1 extraRaw=47320 extraGzip=14997
+  [first-load] ko /report url=/survey lang=ko docScripts=14 downloadedFromDoc=13 raw=714373 gzip=215103 | extraAfter=4 extraRaw=185347 extraGzip=61983
+  [first-load] ko /care url=/care lang=ko docScripts=13 downloadedFromDoc=12 raw=678806 gzip=203251 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  ```
+
+  `downloadedFromDoc` is `docScripts` minus **1** on all ten rows and the `raw` / `gzip`
+  pairs are byte-identical to the noModule-dropped table, which is what establishes that
+  the skipped file is the `noModule` chunk and that the HTML-derived number is right. `ko`
+  and `empty` download the same bytes on every route — Korean needs no dictionary and
+  English is a static import, so the product's own market pays the English dictionary and
+  gains nothing for its own language. `lang=en` under `empty` and `lang=ko` under `ko`
+  confirm the two states really differed rather than both falling back. The brief asked for
+  `ko` AND an empty storage state; those are two different states in this product
+  (`lib/i18n.tsx` makes English the first-visit default), so both were run rather than one
+  guessed at.
+
+  **`/report` on an empty storage state reports `url=/survey`.** With no stored result it
+  redirects. The bytes above are `/report`'s own document, fetched before the redirect,
+  which is what a visitor who lands on `/report` pays. `extraAfter` is the app router
+  prefetching linked routes after hydration and is reported separately because it is not
+  first-load weight.
+
+  **The three largest chunks are the same three files on every route.**
+  `0i7h8_tk58lvw.js` **232787** raw / **72373** gzip is React and react-dom
+  (`grep -o -F react-dom` **1** hit, `createRoot` **2**, `useMemo` **13**, `Fragment` **8**); `11oof8oxnxiv9.js` **141598** /
+  **38480** is the app-router client (`Router` **33**, `prefetch` **49**);
+  `39680g4crf4zr.js` **82569** / **28307** is the English dictionary
+  (`Turn camera back on` **1** hit, the ja/zh/ar equivalents **0** each). The `noModule`
+  chunk would be third by size and is excluded because it is not downloaded. The largest
+  route-specific files are `/scan`'s `0nbqz_u5xt-55.js` **62927** / **20105**, `/report`'s
+  `05nl_w77jzrvo.js` **55225** / **19345**, `/care`'s `1lid53sf9e4no.js` **54007** /
+  **17146**, `/` `0o58hq7nka77u.js` **47320** / **14997** and `/survey`'s
+  `10ajzjvbtk999.js` **42798** / **14250**.
+
+  **Why no product code changed.** The bar was a module a route ships on first load but
+  does not render or run before the first user action, at **≥ 20 KB gzipped** = **20480**
+  bytes. Exactly four first-load files anywhere on the path are over it and every one is
+  accounted for: react-dom (**72373**) and the app-router client (**38480**) both run at
+  hydration; the `noModule` polyfill (**39392**) is not downloaded; the English dictionary
+  (**28307**) is the language the server rendered, so it is not unrendered — and it is the
+  owner's URL decision, which the brief put out of scope. The two obvious libraries are
+  already lazy: `app/components/share-card.tsx:62` awaits `import("html-to-image")` inside
+  the share handler and `app/scan/create-landmarker.ts:6` awaits
+  `import("@mediapipe/tasks-vision")`. The largest route-specific file, `/scan`'s
+  **20105** gzip, is **375** bytes under the bar as a WHOLE chunk and holds several modules
+  (`getUserMedia` **2** hits, `landmark` **8**, `consent` **4**), so nothing inside it is
+  near.
+
+  **The one real candidate, and why it does not qualify.** `lib/skin.ts` is the analysis
+  runtime, **67485** bytes of source per `wc -c`, reaching `/scan` through
+  `app/scan/use-capture-analysis.ts:13`-`18` and `/report` through `app/report/page.tsx:14`, and
+  nothing in it runs until the visitor captures a frame — a genuine ships-but-does-not-run
+  module. Grepping its `CHEEKS` landmark array
+  (`50,101,118,117,116,205,36,280,330,347,346,345,425,266`) across `.next/static/chunks`
+  puts it in `2rkq86eu5t2oh.js` on `/scan` and `05nl_w77jzrvo.js` on `/report`, chunks whose
+  WHOLE gzipped size is **12631** and **19345** bytes. So it is under the **20480**-byte bar
+  on both routes even if its entire chunk were counted as `lib/skin.ts`, and moving it would
+  also sit inside `/scan`'s capture path, which the brief fenced off. Measured, not assumed:
+  the same grep over `/`'s twelve downloaded chunks returns nothing, so `lib/skin.ts` is not
+  on the landing page's first load at all.
+
+  **No change, therefore no regression test and no break to prove.** The brief made the
+  test conditional on making a change ("If you do make a change, add a regression test"),
+  and there is no change, so there is nothing whose saving a test could pin. A ceiling on
+  numbers this cycle did not move would be a new contract rather than a guard on this
+  cycle's work, and it is filed as open backlog instead, with the command it would be built
+  from. `git diff ba67ed0 --stat -- app lib public ml tests scripts package.json
+  package-lock.json playwright.mobile.config.ts next.config.ts` prints nothing: this cycle
+  is three docs and nothing else.
+
+  **What this does NOT establish.** Every `gzip` figure is `gzip -9` over the file on disk,
+  summed per route, which is cycle 40's method and comparable with it — it is not what
+  `next start` puts on the socket and it is not Brotli, which a real CDN would serve.
+  Nothing here measures parse, compile or time-to-interactive, on this container or on the
+  mid-range phone the item is about; weight is a proxy for the cost, not the cost. The
+  `noModule` skip was observed in the container's Chromium only. Per-module attribution
+  inside a chunk is bounded by the chunk total rather than measured, because Turbopack emits
+  no module ids into the output (`grep -o '\[project\]/[^ "]*'` over the four largest chunks
+  returns nothing). One build, one Playwright run per route per state, so no figure carries
+  a variance estimate. And only the five funnel routes were measured: `/checkin`,
+  `/privacy`, `/reco`, `/studio`, the two `/guide/*` pages and the research-mode `/eval`,
+  `/ops` and `/pilot` were not.
+
+  **ML:** skipped this cycle, as the item said to. `python3 ml/selftest.py` was still run
+  and is green (below).
+
+  **Rotation.** Cycle 57's entry (**177** lines) moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 56; `cmp` of the extracted block against
+  changelog lines **12820**–**12996** reports no difference. `sort -u` over both files at
+  `ba67ed0` gives **13176** unique lines and over this pair **13367**; `comm -23` of the
+  first against the second drops **2** lines. Both are from the English-dictionary backlog
+  item, whose closing sentence this cycle rewrote because the measurement made it false —
+  the dropped lines are `  on its own. Also unmeasured and cheap to do: ...` and
+  `  counted, before or after.`, and what replaced them is the paragraph of numbers now in
+  that item. Nothing else was lost.
+
+  **Reproduced on a second, independent build.** The gate's own `npm run build` replaced
+  the `.next` the numbers came from, and both commands re-run against it print the same
+  lines byte-for-byte — command (1) `index scripts=13 raw=784713 gzip=240494` through
+  `care scripts=13 raw=791400 gzip=242643`, command (2) `index scripts=12 raw=672119
+  gzip=201102` through `care scripts=12 raw=678806 gzip=203251`. The chunk names are
+  content hashes, so an unchanged tree rebuilds to the same ones; that is the only
+  reproduction claim here, and it is not a variance estimate.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files  120 passed (120)` / `Tests  1089 passed (1089)`,
+  **311 passed (13.9m)**, `✖ 2 problems (0 errors, 2 warnings)`, `ml/selftest.py`
+  `Ran 146 tests in 2.323s` / **OK**, **Smoke test passed.** at log line **1164**, exit
+  **0**. Re-run afterwards, each on its own: `npx tsc --noEmit | grep -c "error TS"`
+  **13**; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing
+  `_reads` / `_result` at `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in
+  2.252s` / **OK**. The suite is **311** here and **311** on the supervisor's `ba67ed0`,
+  which is what a cycle that added no test should read. `git status --porcelain` after the
+  run lists the three modified docs and the one new one and no product file, and
+  `ss -ltnp` afterwards shows nothing listening on 3100-3109. What the smoke run does not
+  cover: the three doc files themselves, including this validation paragraph, which were
+  written around it — `tsc`, `eslint` and `ml/selftest.py` above were all re-run after the
+  last doc edit. Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` against
+  this pair drops **2** lines, both named above.
+
+  *Supervisor review:* sound, merged. This is a measurement cycle with no product change:
+  `git diff --stat ba67ed0..HEAD` touches only `README.md`, `docs/AUTOPILOT.md`,
+  `docs/autopilot-changelog.md` and the new `docs/first-load-js.md`.
+
+  I reproduced the headline table independently. On a fresh `npm run build` of this tree,
+  command (2) from `docs/first-load-js.md` printed:
+  - `index scripts=12 raw=672119 gzip=201102`
+  - `survey scripts=12 raw=667597 gzip=200355`
+  - `scan scripts=13 raw=720028 gzip=218841`
+  - `report scripts=13 raw=714373 gzip=215103`
+  - `care scripts=12 raw=678806 gzip=203251`
+
+  That is byte-identical to the doc on all five routes. The English dictionary check
+  also matched: `grep -l 'Turn camera back on'` finds one chunk,
+  `39680g4crf4zr.js`, at **82569** raw / **28307** gzipped. `index.html` carries
+  **1** `noModule` tag.
+
+  Nothing was broken on purpose this cycle, because no test was added to prove live.
+
+  Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` drops **2** lines. Both
+  are from the English-dictionary backlog item's old "Also unmeasured and cheap to do"
+  sentence, which the worker rewrote to point at the new doc. Nothing was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **311 passed (16.9m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards; `git status` clean.
+
 - 2026-09-30 (cycle 59) — Branch `autopilot/2026-09-30-1239`. **The last open tap-target
   item from cycle 50 is closed by measurement, and it closes with no product change. The
   `ReengageOptIn` checkbox really is 15x15 / 13.046875x15 / 13x15, but the `<label>` around
@@ -2143,181 +2391,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree, supervisor:* smoke as above; `tsc` **13**. Rotation: `comm
   -23` over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
-
-- 2026-09-30 (cycle 57) — Branch `autopilot/2026-09-30-0039`. **Every pixel the e2e gate
-  pins for the fold was re-measured on the production server cycle 56 switched it to, and
-  not one digit moved. All ten boxes and all ten margins across the two specs came back
-  identical to the `next dev` figures their own comments quote, `scrollNeeded` is **0** in
-  all ten, and `ar`'s **0.8** px of margin on `/report` is therefore a production fact and
-  not a dev artefact. No budget was changed; the comments now say which server produced
-  which number.**
-
-  **What was run, and what it printed.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npx playwright test --config
-  playwright.mobile.config.ts tests/e2e/first-merchant-link-path.regression-36.spec.ts
-  tests/e2e/care-first-merchant-link.regression-38.spec.ts` on the production default,
-  **10 passed (37.3s)**, exit **0**. The printed lines, verbatim apart from the trailing
-  `taps=[…]` list:
-
-  ```
-  [care-fold] ko: panels=3 linksInFirstPanel=1 firstLinkBox=517.7->576.1 viewport=800 scrollNeeded=0 marginBelow=223.9
-  [care-fold] en: panels=3 linksInFirstPanel=1 firstLinkBox=603.3->661.8 viewport=800 scrollNeeded=0 marginBelow=138.3
-  [care-fold] ja: panels=3 linksInFirstPanel=1 firstLinkBox=581.5->639.9 viewport=800 scrollNeeded=0 marginBelow=160.1
-  [care-fold] zh: panels=3 linksInFirstPanel=1 firstLinkBox=494.5->552.9 viewport=800 scrollNeeded=0 marginBelow=247.1
-  [care-fold] ar: panels=3 linksInFirstPanel=1 firstLinkBox=577.1->635.6 viewport=800 scrollNeeded=0 marginBelow=164.4
-  [path] ko: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=591.8->636.8 viewport=800 scrollNeeded=0 marginBelow=163.2
-  [path] en: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=737.5->782.5 viewport=800 scrollNeeded=0 marginBelow=17.5
-  [path] ja: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=692.8->737.8 viewport=800 scrollNeeded=0 marginBelow=62.2
-  [path] zh: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=627.2->672.2 viewport=800 scrollNeeded=0 marginBelow=127.8
-  [path] ar: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=754.2->799.2 viewport=800 scrollNeeded=0 marginBelow=0.8
-  ```
-
-  **The dev/production comparison, box by box.** `regression-36`'s comment quotes first-link
-  box bottoms of **636.8** (`ko`), **672.2** (`zh`), **737.8** (`ja`), **782.5** (`en`),
-  **799.2** (`ar`) and cycle 52's changelog entry quotes `marginBelow` **163.2** / **127.8**
-  / **62.2** / **17.5** / **0.8**; production printed the same ten numbers.
-  `regression-38`'s comment quotes **517.7→576.1** / **223.9** (`ko`), **494.5→552.9** /
-  **247.1** (`zh`), **577.1→635.6** / **164.4** (`ar`), **581.5→639.9** / **160.1** (`ja`),
-  **603.3→661.8** / **138.3** (`en`); production printed the same ten numbers. So the delta
-  between the two servers is **0** px on every figure either spec pins or prints, in both
-  locales' directions and on both surfaces. That is the answer to the question the item
-  asked: the cycle 50–54 fold measurements were not distorted by `next dev`, and nothing
-  had to be re-baselined numerically — only re-attributed.
-
-  **Which server produced which historical number, which is what the comments got wrong.**
-  `regression-36`'s header opened "Measured at 360x800 on a production build" — a phrase
-  written in cycle 50, when `ko` and `en` were hand-measured with `npm run build` +
-  `next start` (`git show 97363a3:tests/e2e/first-merchant-link-path.regression-36.spec.ts`
-  shows that line above a two-locale block). Cycle 52 replaced the block underneath it with
-  all five locales measured through `playwright.mobile.config.ts`, whose `webServer.command`
-  at that commit was `npm run dev` — `git show 1165b91:playwright.mobile.config.ts` prints
-  `command:` with `npm run dev -- --hostname ${host} --port ${port}`, and
-  `git show 40da7d6:playwright.mobile.config.ts` (cycle 53, which produced `regression-38`'s
-  numbers) prints the same. So "on a production build" had come to sit above five
-  dev-measured numbers. Both headers now name the server per measurement, carry the cycle 57
-  production re-measurement, and `regression-38`'s `SCROLL_BUDGET` comment says its **138.3**
-  px of `en` headroom holds on production too. One stale cross-file claim was fixed while in
-  there: `regression-36` pointed at "the cycle 50 entry of docs/AUTOPILOT.md", and rotation
-  moved that entry to `docs/autopilot-changelog.md` (it is at line **11227** there,
-  `grep -n "^- 2026-.*cycle 50)" docs/autopilot-changelog.md`).
-
-  **`ar` is at 0.8 px on production, so the decision the item demanded.** The budget stays a
-  hard **0** in all five locales, on both specs. The reason is that `neededScroll <= 0` is not
-  a budget at all — it is the property "the first buy button is inside the first screen",
-  stated as an inequality. Every looser form asserts something weaker: a budget of 8 px passes
-  a link whose box ends 8 px past the bottom of the **800** px viewport the run reports,
-  which is a link the visitor cannot see without scrolling, which is the only defect this
-  spec was written to catch. `ar`'s **0.8** px is brittleness in the product, not in the assertion, and the
-  spec's own comment already names the fix (another layout move) and fences the disclosure
-  off from being the thing that gives way. Slackening the assertion would convert a true
-  statement about the product into a false one.
-
-  **Proved a live tripwire and not a formality.** `app/report/page.tsx:380` is the flex row
-  holding the picks-step section header; its `marginBottom` was changed **14** → **24**, one
-  line, and `regression-36` re-run on the production server: the line reporter printed
-  **1 failed** then **4 passed (34.0s)**, with
-  `Error: ar: the first merchant link needs 9.2px of scroll (box 764.2→809.2), budget 0` and
-  the other four still at `scrollNeeded=0` (`marginBelow` **153.2** `ko`, **117.8** `zh`,
-  **52.2** `ja`, **7.5** `en`). So **10** px of added height above the link is enough to
-  fail `ar` and nothing else, which is exactly the resolution a hard zero on a **0.8** px
-  margin buys. The break was reverted from a copy taken before it and `cmp` reports no
-  difference; `sha256sum app/report/page.tsx` reads
-  `19263733f86d7a5f1f4a741edde35f1f2c003e1cfe2b01d21962631330bab3b8` before the break and
-  after the revert, and `git status --porcelain` lists no product file.
-
-  **No product finding, and the scope of "every spec".** No locale on either surface needs
-  scroll on production, so there was nothing to fix with a layout-only move and
-  `app/`, `lib/`, `public/` and `ml/` are untouched this cycle. The brief asked for any other
-  spec quoting dev-measured px as current: `grep -rl "px" tests/e2e/*.ts` matches **18**
-  files, and of those only the two named ones define a `SCROLL_BUDGET`, print `marginBelow`
-  or print `firstLinkBox` (`grep -rl` on each of the three terms returns exactly those two).
-  The other **16** assert against the repo's `--tap-min: 44px` contract, against CSS
-  declaration strings (`"18px"`, `"12px"`, `"106px"`, `"0px"`), against WCAG contrast ratios,
-  or against gutters and indents in px that the 360 px viewport and the stylesheet fix — plus
-  two named floors with their own written rationale, `MIN_FIELD_WIDTH` **200** in
-  `reengage-optin-field-width.regression-23` and `GLYPH_GAP_MIN` **12** in
-  `landing-header-clearance.regression-28`. None of the 16 pins a fold position or a
-  margin-below figure, so none of them needed re-baselining. Their historical "before the
-  fix" px are records of defects already fixed, not budgets the gate pins.
-
-  **Research and ML: skipped this cycle**, as the brief directed. `python3 ml/selftest.py`
-  was still run and is green (below).
-
-  **What this did NOT establish.** The `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` half of both
-  specs' comments is still a dev measurement. Both specs were re-run on the production
-  server with the flag set — **10 passed (37.5s)**, exit **0**, and every one of the ten
-  `[path]` / `[care-fold]` lines byte-identical to the flag-off run above — but that run does
-  not prove the flag reached the browser: `lib/commerce.ts:130` returns
-  `process.env.NEXT_PUBLIC_COMMERCE_AFFILIATE === "on"`, and after that build
-  `grep -rho '"on"===' .next/static/chunks/ | sort | uniq -c` reports **2** occurrences, both
-  of the form `"on"===<var>.default.env.NEXT_…` — a runtime `process.env` lookup that
-  survived into the client bundle rather than an inlined literal — while
-  `grep -rho 'NEXT_PUBLIC_COMMERCE_AFFILIATE":"[^"]*"' .next` finds nothing, so where the
-  value comes from in the browser was not traced. Identical geometry under both states is
-  therefore still the cycle 52 / cycle 53 dev finding, restated as such in both headers, and
-  a cycle that wants it on production has to establish the flag is live first. Beyond that:
-  each production run here was run once, so no number carries a variance estimate — they are
-  reproducible only in the sense that the flag-off, flag-on and post-edit runs each printed
-  the same ten lines. Nothing was measured on a real device, at any viewport other
-  than **360x800**, in any browser other than the container's Chromium, or with a
-  `result.note` present (the cycle 54 finding above, that a note puts the link back below the
-  fold in 28 of 35 cases, was NOT re-measured on production and its numbers stay attributed
-  to the dev server). And nothing here touched the question of whether a production build
-  changes what the specs *detect* rather than what they measure — cycle 56 left that open and
-  it stays open.
-
-  **Docs and rotation.** Recent cycles holds 57/56/55; cycle 54's entry (**224** lines) moved
-  verbatim to the end of `docs/autopilot-changelog.md` after cycle 53. The `/report` fold
-  backlog item under "Now" gained a `2026-09-30 (cycle 57)` note carrying the production
-  numbers and the tripwire proof; the open part of it — `ar`'s **0.8** px — is unchanged and
-  still `[~]`. No backlog item was ticked `[x]`, and nothing was appended to "Supervisor
-  findings not yet actioned": every item there was already `[x]` before this cycle and cycle
-  56's review had recorded no new one at the time this ran.
-
-  **Nothing was lost in the rotation.** `wc -l` on both files at `b5a99c2`: **2406** +
-  **12239** = **14645**. The final pair is **2375** + **12465** = **14840**. `sed -n` of the
-  extracted cycle 54 entry compared with `cmp` against lines **12242**–**12465** of the
-  changelog reports no difference. `sort -u` over both files at `b5a99c2` gives **12743**
-  unique lines and over the final pair **12918**; `comm -23` of the first against the second
-  drops **0** — every line at `b5a99c2` is still present, so there is no missing line to
-  account for.
-
-  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
-  **Test Files  120 passed (120)** / **Tests  1089 passed (1089)** for the vitest phase,
-  **300 passed (11.1m)** for the e2e phase against a production build, **Ran 146 tests in
-  1.737s** / **OK** for `ml/selftest.py`, all **12** HTTP route checks `ok` with `/pilot`,
-  `/ops` and `/eval` each `-> 404`, and the literal line **Smoke test passed.** at log line
-  **1036**, exit **0**. Re-run afterwards on the committed tree, each on its own:
-  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged; `npx eslint .`
-  **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing `_reads` / `_result` in
-  `lib/care.ts:70`, not run beside vitest); `python3 ml/selftest.py` **Ran 146 tests in
-  1.644s** / **OK**. `git diff b5a99c2 --stat` lists **4** files and the same command over
-  `app/ lib/ public/ ml/ tests/*.test.ts playwright.mobile.config.ts vitest.config.ts
-  package.json package-lock.json` is empty — this cycle changed two e2e spec comments and
-  two docs, nothing else. What the smoke run does not cover: the comment-only spec edits and
-  the doc paragraphs written after it started. With those in, the two edited specs re-run
-  together on a production server read **10 passed (34.4s)** with all ten `[path]` /
-  `[care-fold]` lines byte-identical to the measurement run above, `npx tsc --noEmit | grep
-  -c "error TS"` is still **13** and `npx eslint .` still **0 errors**.
-
-  *Supervisor review:* sound. The change is to comments and docs only. It says which
-  server measured each number, and the hard-0 budget was shown to trip.
-
-  *Closed here: the one thing this entry left unestablished.*
-  - The worker could not show that `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` reaches the
-    browser under a production build. The cycle 56 review had claimed it did, from
-    regression-36/38 passing. Those specs accept either disclosure sentence, so they
-    could not show it. That claim was unsupported when made.
-  - Established now with a throwaway probe, deleted after the run. It reads `/care`'s
-    rendered text under `en`:
-    - with the flag on: `[aff] affiliate=true noCommission=false`
-    - with it off: `[aff] affiliate=false noCommission=true`
-  - `webServer.command` builds in Playwright's own environment, so the flag is inlined
-    into the build the page is served from. Turning it on for the owner's affiliate
-    signup therefore changes what visitors read.
-
-  *Validation on this tree, supervisor:* rotation: `comm -23` over `sort -u` of both files
-  at `b5a99c2` against this pair drops **0** lines; `git diff b5a99c2..HEAD -- app lib`
-  is empty. `npm run smoke` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, **300 passed (9.9m)**, **Smoke test passed.**

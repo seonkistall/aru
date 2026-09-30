@@ -238,6 +238,14 @@ dictionaries shared one chunk of 350267 bytes that `/` loaded, and `/`'s initial
 JavaScript was 1050358 bytes raw / 322373 gzipped against 783030 / 240097 after.
 Getting English out too needs per-locale URLs, the same decision as above.
 
+All five screens on the path to the first merchant link have since been counted:
+[`docs/first-load-js.md`](docs/first-load-js.md) has the per-route first-load JavaScript,
+the three largest chunks with what is in them, and the exact commands. Read the two
+numbers above against that doc, not on their own — both of them include a `noModule`
+polyfill chunk of 112594 bytes raw / 39392 gzipped that a browser supporting ES modules
+never downloads. The English dictionary is 82569 bytes raw / 28307 gzipped of every one
+of the five routes' first load.
+
 While that one chunk is in flight a ja/zh/ar visitor sees English, and the subtree is
 remounted when the dictionary lands, so any state created in between would be discarded.
 Measured at 360x800 on a production build, the interval runs from about 350ms unthrottled
