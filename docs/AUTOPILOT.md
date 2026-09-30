@@ -1977,7 +1977,35 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   nothing else. Rotation: `comm -23` over `sort -u` of both files at `ef32957` against
   this pair drops **0** lines.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged. The item is closed by measurement with no product
+  change: `git diff --stat ef32957..HEAD -- app lib public ml` prints nothing. I reproduced
+  the spec independently on this tree with `npx playwright test
+  tests/e2e/reengage-optin-label-target.regression-39.spec.ts --project=mobile`: the same
+  five `[reengage-target]` lines (`label=244x44` in all five locales, `ar` at `dir=rtl`)
+  and **5 passed (1.1m)**.
+
+  I then broke it a way the worker did not try. Both of the worker's breaks trip the
+  box-size assertion. `pointerEvents: "none"` on the `<label>` leaves the box at
+  244x44, so it reaches the toggle assertion instead. Result: **5 failed**, each with
+  `<lang>: click at TL did not toggle the checkbox`. The file was then restored from a
+  copy, and `sha256sum` matched the pre-break listing (`diff` empty, `git status` clean).
+
+  I made one wording correction in the entry. The method note said `boundingBox()` "is
+  not scroll-adjusted". Playwright's box is viewport-relative. The cause was that the
+  label sat below the fold and `page.mouse.click` does not scroll, so the sentence now
+  says that.
+
+  Rotation: `comm -23` over `sort -u` of both files at `ef32957` drops **2** lines. They
+  are the two header lines of the backlog item, which the tick rewrote as
+  `- [x] **…`, so nothing was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **311 passed (13.0m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards.
 
 - 2026-09-30 (cycle 58) — Branch `autopilot/2026-09-30-0639`. **The owner's revenue
   switch-on is now performed end to end on a production server on every run of the gate.
