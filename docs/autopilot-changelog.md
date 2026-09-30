@@ -12660,3 +12660,159 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `979a8ad`
   against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, **300 passed (13.4m)**, **Smoke test passed.**
+
+- 2026-09-29 (cycle 56) — Branch `autopilot/2026-09-29-1839`. **The e2e gate stopped
+  measuring `next dev`. One run each on the same tree, this container: dev
+  **300 passed (19.6m)**; `next build` + `next start` **4 failed | 296 passed (16.9m)**
+  INCLUDING its own build. So production is the cheaper of the two as well as the one a
+  visitor actually meets, and every one of the 4 failures was a single spec asking for
+  something only a dev server serves — with that spec fixed the suite reads
+  **300 passed (14.8m)** on production.** Shell-measured wall clock either side of the two
+  measurement runs: **1180s** dev, **1013s** production; the whole `npm run smoke` on the
+  final tree took **945s**.
+
+  **What differed, and it was one spec.** `tests/e2e/discovery-metadata.regression-26.spec.ts`
+  put `/ops`, `/pilot` and `/eval` in its over-HTTP `NOINDEX` list and asserted
+  `status === 200` plus a noindex meta tag on each. `proxy.ts` → `internalAccessDecision()`
+  returns `"allow"` only when `NODE_ENV !== "production"`, and with no `INTERNAL_TOOLS_USER`
+  / `INTERNAL_TOOLS_PASSWORD` in the environment — no `.env.local` exists in this tree —
+  production answers **404**. Measured with `curl` against the gate's own running server:
+  `ops_status=404` and `x-robots-tag: noindex, nofollow`. The three route tests did not fail
+  on the status: `head()` collects the head tags before the status is asserted, so each one
+  spent the full **Test timeout of 30000ms exceeded** waiting for
+  `locator('head meta[name="description"]')` on a body that has none — **90s** of the
+  production run's 1013s was those three waits. The fourth failure, the title-uniqueness
+  test, read `Expected length: 14` / `Received length: 11`, the 3 missing titles being the
+  same three routes.
+
+  **Nothing else behaved differently, including the two candidates worth naming.**
+  `funnel-page-view-once.regression-20` asserts each screen records its event exactly once in
+  4 languages and is the spec StrictMode's double-invoked effects would break — it passed on
+  both servers. And no e2e spec flips `NEXT_PUBLIC_COMMERCE_AFFILIATE`, so the
+  build-time-inlining problem an affiliate-on spec would have raised does not exist here:
+  `grep -rn "COMMERCE_AFFILIATE" tests/e2e/*.ts` returns **4** lines in **2** files
+  (`care-first-merchant-link.regression-38.spec.ts:33,54`,
+  `first-merchant-link-path.regression-36.spec.ts:32,99`), all of them comments recording
+  that those specs are written to pass under either state.
+
+  **The switch, and why it costs no gate time at all.** `playwright.mobile.config.ts` runs
+  `npm run build && npm run start` as one command, so `next start` can never answer from a
+  build of an older tree — the `.next/dev` failure of cycle 47 in a new coat.
+  `ARU_E2E_SERVER=dev` opts back into `next dev` for an interactive loop and is the only var
+  that changes the gate's shape; `ARU_REUSE_DEV_SERVER=1` is now honoured only alongside it,
+  because reusing a listener under a production command would hand the run to some other
+  build. `webServer.timeout` is **600_000** ms on the production path against a measured
+  **25** s from run start to `.next/BUILD_ID` (`✓ Compiled successfully in 7.7s`,
+  `Finished TypeScript in 14.0s`, `✓ Generating static pages using 3 workers (27/27) in
+  501ms`), and the build's output is piped so a build error names itself instead of arriving
+  as a bare `Process from config.webServer was not able to start`. The build is not new work:
+  `scripts/smoke-test.mjs` already ran `npm run build` right after the e2e phase to feed its
+  HTTP phase, and that second build is now gone — it runs only on the dev opt-in. So the gate
+  makes exactly one production build either way, and the e2e phase's own cost fell.
+
+  **The spec was changed to assert what each server serves, not to accept either answer.**
+  `/ops`, `/pilot` and `/eval` moved out of `NOINDEX` into their own `INTERNAL` list with
+  their own test, which branches on the declared server (`process.env.ARU_E2E_SERVER`) rather
+  than on what it observes: on production the route must be **404** and carry
+  `X-Robots-Tag: noindex, nofollow`, which is a strictly stronger statement than the meta tag
+  — it also pins that an internal route is not publicly reachable — and a 401 is deliberately
+  not accepted, because a 401 would mean credentials reached the gate's environment. Under
+  the dev opt-in the page renders and its own
+  `<meta name="robots" content="noindex, nofollow"/>` (the exact serialization, read off the
+  running server) has to carry it. The robots.txt and sitemap.xml tests still cover all three
+  paths. Title/description uniqueness over HTTP now covers **11** paths on production and the
+  same **14** as before under the dev opt-in; for the internal three in production it is
+  `tests/seo-metadata.test.ts` that holds them apart, at its own `new Set(titles)` /
+  `new Set(descriptions)` checks on lines **97** and **98**, with the routes listed on line
+  **20**. No spec was skipped, weakened or deleted, and no product code changed.
+
+  **What this did NOT establish.** Each server was measured **once**, not repeatedly, so the
+  16.9m / 19.6m gap carries no variance estimate — and this container is the slow one: the
+  supervisor's dev-path `npm run smoke` on the merge base read **300 passed (13.4m)** where
+  this worker's dev run of the same suite read 19.6m, so the two are not comparable across
+  machines and the ~20% budget was judged on the same-container pair only. Nothing was
+  measured about whether production changes what the specs *detect* rather than how long they
+  take: a defect that only a dev build surfaces would now be missed, and the reverse (cycle
+  55's overlay button) is the case that motivated the move. `next build` was not measured
+  from a cold `.next`; the 25 s figure is with the previous run's artefacts on disk. And
+  nothing about CI was changed, because there is none in this repository to change: `ls .github/workflows/`
+  fails and there is no `.github` directory, so the gate is whatever a worker or the owner
+  runs by hand.
+
+  **Research.** Two primary sources, both fetched here:
+  `https://raw.githubusercontent.com/vercel/next.js/canary/docs/01-app/03-api-reference/06-cli/next.mdx`
+  (`http=200`, **25860** bytes, sha256
+  `7f497919fc1e303a6d691c414f569692abcb3de5ee338c2f27a3339a77c5b471`), which states at line
+  114: "`next start` starts the application in production mode. The application should be
+  compiled with [`next build`](#next-build-options) first." — the `&&` in one command is that
+  sentence, enforced. And
+  `https://raw.githubusercontent.com/microsoft/playwright/main/docs/src/test-webserver-js.md`
+  (`http=200`, **6424** bytes, sha256
+  `ef4ebf44402ce355f618bdf885fa067da801f6efe28d2ec6a4635a6d6a8efbe5`), whose line 8 frames the
+  feature as "the ability to launch a local dev server before running your tests... ideal for
+  when writing your tests during development and when you don't have a staging or production
+  url to test against", and whose `reuseExistingServer` row says it "should be commonly set to
+  `!process.env.CI`". Playwright documents no objection to a production command; the dev
+  server is its convenience default, not its requirement.
+
+  **ML: skipped this cycle**, as the brief directed. `python3 ml/selftest.py` was still run
+  and is green (below).
+
+  **Docs and rotation.** Recent cycles holds 56/55/54; cycle 53's entry (**227** lines)
+  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 52. Every item
+  under "Supervisor findings not yet actioned" was already ticked `[x]` before this cycle
+  and cycle 55's review recorded no new one, so nothing was appended there. No backlog item
+  was ticked `[x]`.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files at `8548ad5`: **2478** +
+  **12010** = **14488**. The final pair is **2349** + **12239** = **14588**. `cmp` of the
+  extracted cycle 53 entry against lines **12012**–**12238** of the changelog reports no
+  difference. `sort -u` over both files at `8548ad5` gives **12607** unique lines and over
+  the final pair **12696**; `comm -23` of the first against the second drops **0** — every
+  line at `8548ad5` is still present, so there is no missing line to account for.
+
+  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
+  **Test Files 120 passed (120) / Tests 1089 passed (1089)** for the vitest phase,
+  **300 passed (14.8m)** for the e2e phase — the first time that phase ran against a
+  production build — **Ran 146 tests in 2.518s** / **OK** for `ml/selftest.py`, all **12**
+  HTTP route checks `ok` with `/pilot`, `/ops` and `/eval` each `-> 404`, and the literal
+  line **Smoke test passed.** at log line **1035**. The whole gate took **945s** of wall
+  clock, against **1180s** for the dev e2e phase alone earlier in this cycle. Re-run
+  afterwards on the committed tree, each on its own: `npx vitest run` **Test Files 120
+  passed (120) / Tests 1089 passed (1089)**; `npx tsc --noEmit | grep -c "error TS"` **13**
+  — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing
+  `_reads` / `_result`, not run beside vitest); `python3 ml/selftest.py` **Ran 146 tests in
+  2.527s** / **OK**. `git diff 8548ad5 --stat` lists **6** files (**444** insertions,
+  **252** deletions) and the same command over `app/ lib/ public/ ml/ vitest.config.ts
+  package.json package-lock.json` is empty. What the smoke run does not cover: this paragraph
+  and the rotation numbers above it, and two comment-only edits made after it finished — a
+  rewrapped comment line in `playwright.mobile.config.ts` and a stray ` *` removed from the
+  spec's doc comment. With those in, `npx tsc --noEmit | grep -c "error TS"` is still **13**,
+  `npx eslint .` still **0 errors**, and the edited spec re-run on its own against a
+  production server reads **18 passed (36.8s)**.
+
+  *Supervisor review:* sound, and the most useful gate change in several cycles. The
+  gate now measures what visitors get, runs faster, and its one semantic change makes a
+  spec stricter, not looser.
+
+  *Reproduced here.* `npm run smoke` on this tree: **Test Files 120 passed (120) / Tests
+  1089 passed (1089)**, **300 passed (12.2m)**, **Smoke test passed.** That compares with
+  **13.4m** for the dev-server gate on cycle 55's tree in this container.
+
+  *Checked, both switches the plan depends on.*
+  - `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` is now inlined at build time. The config's
+    `webServer.command` builds in the same environment Playwright runs in, so setting it
+    on the command still reaches the page. Regression-36 plus regression-38 with it on,
+    against the production build: **10 passed (36.6s)**.
+  - `ARU_E2E_SERVER=dev` still works: regression-26 under the dev opt-in gives **18
+    passed (25.0s)**, which exercises the per-server branch the worker added.
+
+  *The regression-26 change is a tightening.* On production it asserts `/ops`, `/pilot`
+  and `/eval` answer **404** with `X-Robots-Tag: noindex, nofollow`. Before this, nothing
+  in the gate checked that the research-only surfaces are unreachable in production. That
+  is the behaviour `proxy.ts` intends, and now a test pins it.
+
+  *Validation on this tree, supervisor:* smoke as above; `tsc` **13**, `eslint` **0
+  errors, 2 warnings**. Rotation: `comm -23` over `sort -u` of both files at `8548ad5`
+  against this pair drops **0** lines.
