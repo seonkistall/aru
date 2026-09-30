@@ -1,4 +1,11 @@
 import { defineConfig } from "@playwright/test";
+import {
+  SWITCH_ON_BASE_URL,
+  SWITCH_ON_ENV,
+  SWITCH_ON_HOST,
+  SWITCH_ON_PORT,
+  SWITCH_ON_SERVER_LOG,
+} from "./tests/e2e/support/commerce-switch-on";
 
 const host = "127.0.0.1";
 const port = Number(process.env.MOBILE_UI_PORT ?? 3102);
@@ -60,11 +67,39 @@ const reuseDevServer = process.env.ARU_REUSE_DEV_SERVER === "1";
 // sets it.
 const devServer = process.env.ARU_E2E_SERVER === "dev";
 
+// The switch-on spec needs a server whose environment carries the owner's two revenue
+// variables, and the gate's own server must NOT carry them: `NEXT_PUBLIC_COMMERCE_AFFILIATE`
+// changes the disclosure sentence every other spec reads, and an override changes where
+// `/api/out` sends a click. So it gets a second server of its own, on its own port and out
+// of its own build directory, started by this same config — which is what keeps it inside
+// `npm run smoke` on every run. Skipping the spec when the variables are absent would be a
+// quarantine: the one configuration nobody ever exercises is the one the owner will deploy.
+const switchOnServer = {
+  // `next build` reads NEXT_PUBLIC_* and inlines them, so the build has to happen inside
+  // this environment — `next start` alone would serve a bundle built without the flag.
+  // `tee` mirrors the server's stdout to a file the spec can read: a rejected override is
+  // a `console.warn` from `/api/out` and the product exposes it nowhere else.
+  command: `npm run build && npm run start -- -H ${SWITCH_ON_HOST} -p ${SWITCH_ON_PORT} 2>&1 | tee ${SWITCH_ON_SERVER_LOG}`,
+  url: SWITCH_ON_BASE_URL,
+  reuseExistingServer: false,
+  timeout: 600_000,
+  stdout: "pipe" as const,
+  env: SWITCH_ON_ENV,
+};
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
   workers: 1,
   reporter: "line",
+  projects: [
+    { name: "mobile", testIgnore: "commerce-switch-on.spec.ts" },
+    {
+      name: "commerce-switch-on",
+      testMatch: "commerce-switch-on.spec.ts",
+      use: { baseURL: SWITCH_ON_BASE_URL },
+    },
+  ],
   use: {
     baseURL,
     headless: true,
@@ -72,7 +107,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     ...(chromiumExecutable ? { launchOptions: { executablePath: chromiumExecutable } } : {}),
   },
-  webServer: {
+  webServer: [{
     // Production: build, then serve what was built, in one command — so `next start` can
     // never answer from a build of an older tree, which is the same failure mode the
     // `.next/dev` cache produced in cycle 47. Dev: the clear is the first link of the
@@ -94,5 +129,5 @@ export default defineConfig({
     // Show the build. A red gate whose cause is a build error is otherwise a bare
     // "Process from config.webServer was not able to start".
     ...(devServer ? {} : { stdout: "pipe" as const }),
-  },
+  }, switchOnServer],
 });

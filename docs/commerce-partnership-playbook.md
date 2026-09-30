@@ -87,6 +87,28 @@ the sku, the merchant and the URL — once per distinct value of the env var, fr
 rather than in the deploy log itself. Check there once after setting the env, or
 load `/report` and confirm the disclosure reads 제휴 링크.
 
+## Switch-on dry run
+
+The two-variable deploy above is no longer something only the owner will ever run.
+`tests/e2e/commerce-switch-on.spec.ts` performs it on a production server on every run of
+the gate: `playwright.mobile.config.ts` starts a second `next build` + `next start` whose
+environment carries both variables, with an override for `tn1`/`oliveyoung` on
+`www.oliveyoung.co.kr` and a second one for `tn1`/`coupang` on `link.coupang.com`, which is
+not on the allowlist. The spec then asserts what a click does. The `/report` pick's link answers **302** to
+`https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_product_tn1_oliveyoung`;
+the 쿠팡 pair still lands on `www.coupang.com/np/search`; the server's own log carries
+`[commerce] override for tn1/coupang ignored: ... (https://link.coupang.com/a/dryrun). The
+link is still a search URL.`; and the disclosure reads the 제휴 sentence in `ko` and `en`
+with the no-commission sentence gone from both surfaces. Both override URLs are invented —
+`DRYRUN000000` is not a goods number and `/a/dryrun` is not a partner link — and no
+assertion ever follows a redirect, so no request leaves the container.
+
+It is a live check, not a formality. Dropping `NEXT_PUBLIC_COMMERCE_AFFILIATE` from that
+server's environment failed **3** of the spec's **6** tests, making `/api/out` discard the
+overrides it resolves failed **1**, and putting `link.coupang.com` on `ALLOWED_HOSTS`
+failed **2**; each break was reverted and the allowlist is unchanged. Run it on its own
+with `npx playwright test --config playwright.mobile.config.ts --project commerce-switch-on`.
+
 ## Deal Priorities
 
 - Olive Young: strongest Korean offline/online credibility and a natural fit
