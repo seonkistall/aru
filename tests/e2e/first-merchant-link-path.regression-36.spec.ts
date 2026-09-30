@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
  * How far a visitor has to go from `/` to the first link that can earn money. Nobody had
  * measured it before cycle 50, so nobody could tell whether it was getting longer.
  *
- * Measured at 360x800 on a production build, `ko` and `en`, survey-only path:
+ * Measured at 360x800, survey-only path:
  *   4 screens   — `/`, `/survey`, `/report` analysis step, `/report` picks step
  *   6 taps      — the landing survey link; one chip per required field (3); submit;
  *                 the "2. 살펴볼 제품 후보" step tab
@@ -13,31 +13,56 @@ import { expect, test } from "@playwright/test";
  *   scroll on the picks step until the first merchant link is fully in the viewport:
  *                 0 px in every one of the five locales, after cycle 52's reorder.
  *
- * Cycle 50 measured only `ko` (0 px, box 738.3→783.3) and `en` (153 px, 908→953). Cycle 52
- * measured all five and four of them were below the fold: `zh` 18.7 px (773.7→818.7),
- * `ja` 84.3 (839.3→884.3), `ar` 145.7 (900.7→945.7), `en` 153 (908→953). The block that
- * moved is the "추천 기준" section, from above the product grid to below it — a DOM-order
- * change with no edit to its copy, its styles or its conditions, and nothing done to which
- * picks are shown or to where `CommerceDisclosure` sits. Above the grid that section plus
- * its margins occupied 150.5 px in ko/zh/ja/ar and 174.5 px in en. After the move the
- * first link's box ends at 636.8 (ko), 672.2 (zh), 737.8 (ja), 782.5 (en) and 799.2 (ar)
- * of the 800 px viewport, so all five need 0 px.
+ * Which server produced which number, because it was not the same one throughout. Cycle 50
+ * measured `ko` and `en` by hand on a production build (`npm run build` + `next start`, per
+ * the cycle 50 entry in docs/autopilot-changelog.md): `ko` 0 px (box 738.3→783.3), `en`
+ * 153 px (908→953). Cycle 52 measured all five through THIS config, whose `webServer.command`
+ * at that commit was `npm run dev`, and four of them were below the fold: `zh` 18.7 px
+ * (773.7→818.7), `ja` 84.3 (839.3→884.3), `ar` 145.7 (900.7→945.7), `en` 153 (908→953). The
+ * block that moved is the "추천 기준" section, from above the product grid to below it — a
+ * DOM-order change with no edit to its copy, its styles or its conditions, and nothing done
+ * to which picks are shown or to where `CommerceDisclosure` sits. Above the grid that
+ * section plus its margins occupied 150.5 px in ko/zh/ja/ar and 174.5 px in en. After the
+ * move the first link's box ends at 636.8 (ko), 672.2 (zh), 737.8 (ja), 782.5 (en) and
+ * 799.2 (ar) of the 800 px viewport, so all five need 0 px.
  *
- * `ar` has 0.8 px of margin and that is the honest limit of this fix: the next copy edit
- * anywhere above the first card's buy button in `ar` will push it back below the fold, and
- * this spec is what says so. The answer then is another layout move, not a shorter
- * disclosure — the disclosure assertion below is inside the first link's own card
+ * Cycle 56 moved this config off `next dev` onto `next build` + `next start`, so cycle 57
+ * re-measured all five on the production server the gate now uses. Every figure came back
+ * identical to cycle 52's dev figures, digit for digit: box bottoms 636.8 / 672.2 / 737.8 /
+ * 782.5 / 799.2 and `marginBelow` 163.2 (ko), 127.8 (zh), 62.2 (ja), 17.5 (en), 0.8 (ar).
+ * So the fold geometry this spec pins does not move with the server, and the numbers above
+ * are production numbers as well as dev ones.
+ *
+ * `ar` still has 0.8 px of margin on production, and that is the honest limit of this fix:
+ * the next copy edit anywhere above the first card's buy button in `ar` will push it back
+ * below the fold, and this spec is what says so. The answer then is another layout move, not
+ * a shorter disclosure — the disclosure assertion below is inside the first link's own card
  * precisely so it cannot be the thing that gives way.
+ *
+ * The budget stays a hard 0 rather than 0 plus slack. `neededScroll <= 0` IS the property
+ * "the buy button is on the first screen"; a budget with room in it would pass a link that
+ * is partly below the fold, which is the only defect this spec exists to catch, so the
+ * brittleness is the product's 0.8 px and not the assertion's. Proved live on the production
+ * server by adding 10 px to the `marginBottom` of the section-header row above the grid:
+ * the line reporter printed `1 failed` then `4 passed (34.0s)`, with `ar` reporting
+ * `Error: ar: the first merchant link needs 9.2px of scroll (box
+ * 764.2→809.2), budget 0` while ko/zh/ja/en stayed at 0 (`marginBelow` 153.2 / 117.8 / 52.2
+ * / 7.5). The break was reverted and `app/report/page.tsx` compared byte-for-byte after.
  *
  * Measured under both `CommerceDisclosure` states. With `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`
  * every number above is byte-identical: the longer affiliate sentence still wraps to two
- * lines at 11.5px/1.45 in all five locales, so the disclosure block stays 33.3 px tall.
+ * lines at 11.5px/1.45 in all five locales, so the disclosure block stays 33.3 px tall. That
+ * pair was measured under `next dev` in cycle 52. Cycle 57 re-ran this spec with the flag set
+ * on the production server and it printed the same geometry, but did NOT establish that the
+ * flag reached the browser through a production build, so the affiliate claim rests on the
+ * cycle 52 dev measurement.
  *
  * The scan path is the same tail with three more screens and three more taps in front of
  * it (`/scan` intro → ready → result, then its "설문으로 이어가기" hand-off to `/survey`),
  * and it saves NO required field: the scan pre-selects three CONCERN chips, and 고민 is
  * optional, so all three required fields are still empty on arrival. That half is
- * measured in the cycle 50 entry of docs/AUTOPILOT.md; it is not asserted here because
+ * measured in the cycle 50 entry, which rotation has since moved to
+ * docs/autopilot-changelog.md; it is not asserted here because
  * the capture button needs a real face and the canvas `captureStream()` shim this repo
  * uses cannot produce one (`tests/e2e/mobile-layout.spec.ts` says the same).
  *
@@ -79,7 +104,9 @@ const FIRST_LINK_GEOMETRY = `(() => {
 // The budget is zero in every locale, not a measured distance plus room: after the
 // reorder the first buy button is inside the first viewport everywhere, and the thing
 // worth ratcheting is that it stays there. A new block between the step tabs and the
-// first buy button fails this spec in whichever locales it pushes past 800.
+// first buy button fails this spec in whichever locales it pushes past 800 — measured on
+// the production server in cycle 57 at 10 px of added margin, which failed `ar` at 9.2 px
+// of scroll and left the other four green.
 const SCROLL_BUDGET: Record<Lang, number> = { ko: 0, en: 0, ja: 0, zh: 0, ar: 0 };
 
 const LANGS = ["ko", "en", "ja", "zh", "ar"] as const;
