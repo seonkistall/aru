@@ -2037,7 +2037,8 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
 
   *Validation on this tree, supervisor:* rotation: `comm -23` over `sort -u` of both files
   at `b5a99c2` against this pair drops **0** lines; `git diff b5a99c2..HEAD -- app lib`
-  is empty. SMOKE_RESULT
+  is empty. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **300 passed (9.9m)**, **Smoke test passed.**
 
 - 2026-09-29 (cycle 56) — Branch `autopilot/2026-09-29-1839`. **The e2e gate stopped
   measuring `next dev`. One run each on the same tree, this container: dev
