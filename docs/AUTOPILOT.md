@@ -1935,8 +1935,13 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   (`app/api/out/route.ts`) and
   `cd1e522e81d2cd0caa95238df8a5ca72fd3e0ae4e9d0619482e9407c06d5c2a5`
   (`lib/commerce.ts`) both before the first break and after the last revert, and `diff`
-  over the two `sha256sum` listings reports no difference. `ALLOWED_HOSTS` is not in this
-  diff.
+  over the two `sha256sum` listings reports no difference. The allowlist itself is not in
+  this cycle's diff: `git diff --stat -- lib app public ml` over the commit prints nothing,
+  so `ALLOWED_HOSTS`, `shareUrl`, `metadataBase` / SITE_URL, `lib/consent.ts` and the
+  manifest's `status` / `promotionGate` are all untouched, and the only places
+  `ALLOWED_HOSTS` appears in the diff at all are prose and two doc comments in the new test
+  files. `NEXT_PUBLIC_FUNNEL_FLUSH` is set by nothing here, the switch-on build included.
+  No provider was called, no email was sent, and no request left the container.
 
   **Build-config changes this needed, and one that is not cosmetic.** `next.config.ts`
   takes `ARU_DIST_DIR` (unset everywhere else) because `next build` empties its `distDir`
