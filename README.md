@@ -570,12 +570,18 @@ to every screen a visitor reaches: 360x800 on a production build, `en` and `ko`,
 - **Target size.** `--tap-min: 44px` is the repo's contract and it is **WCAG 2.5.5, level
   AAA** — stricter than the AA floor, which is 2.5.8's 24x24 with Spacing, Equivalent,
   Inline, User Agent Control and Essential exceptions. A control under 44px is therefore
-  not automatically a WCAG failure, and two of the three found under it were correctly
-  left alone: the `/guide/` links on `/` are inline in a sentence, and the `/scan` consent
-  checkboxes are 18x18 inputs inside 290x57.2 labels, which is the real target. One control
-  found in cycle 50 is still open and filed in `docs/AUTOPILOT.md`: `/report`'s routine step
-  puts the reengage checkbox at 15x15 (`ko`) / 13x15 (`en`), which needs the same
-  is-the-label-the-target judgement made and measured before anything is resized.
+  not automatically a WCAG failure, and all three found under it were correctly left
+  alone: the `/guide/` links on `/` are inline in a sentence, the `/scan` consent
+  checkboxes are 18x18 inputs inside 290x57.2 labels, which is the real target, and
+  `/report`'s reengage checkbox is the same shape. Cycle 59 measured that last one
+  rather than resizing it on sight, at 360x800 on a production build: the input is
+  15x15 (`ko`, `zh`), 13.046875x15 (`en`) and 13x15 (`ja`, `ar`), but its `<label>` is
+  244x44 in all five locales, and a click at each of its four inner corners, at its far
+  end from the input and at its midpoint toggles `checked` in both directions — 6 clicks
+  per locale, all 6 toggling. So the label clears both the 24x24 AA floor and the 44px
+  contract, and no product change was made.
+  `tests/e2e/reengage-optin-label-target.regression-39.spec.ts` pins that reading in all
+  five locales.
   Provenance for every threshold above, with the normative quotes and fetch hashes:
   [docs/contrast-provenance.md](docs/contrast-provenance.md) and
   [docs/tap-target-provenance.md](docs/tap-target-provenance.md).
