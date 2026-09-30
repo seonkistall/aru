@@ -2097,7 +2097,36 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   last doc edit. Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` against
   this pair drops **2** lines, both named above.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged. This is a measurement cycle with no product change:
+  `git diff --stat ba67ed0..HEAD` touches only `README.md`, `docs/AUTOPILOT.md`,
+  `docs/autopilot-changelog.md` and the new `docs/first-load-js.md`.
+
+  I reproduced the headline table independently. On a fresh `npm run build` of this tree,
+  command (2) from `docs/first-load-js.md` printed:
+  - `index scripts=12 raw=672119 gzip=201102`
+  - `survey scripts=12 raw=667597 gzip=200355`
+  - `scan scripts=13 raw=720028 gzip=218841`
+  - `report scripts=13 raw=714373 gzip=215103`
+  - `care scripts=12 raw=678806 gzip=203251`
+
+  That is byte-identical to the doc on all five routes. The English dictionary check
+  also matched: `grep -l 'Turn camera back on'` finds one chunk,
+  `39680g4crf4zr.js`, at **82569** raw / **28307** gzipped. `index.html` carries
+  **1** `noModule` tag.
+
+  Nothing was broken on purpose this cycle, because no test was added to prove live.
+
+  Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` drops **2** lines. Both
+  are from the English-dictionary backlog item's old "Also unmeasured and cheap to do"
+  sentence, which the worker rewrote to point at the new doc. Nothing was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **311 passed (16.9m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards; `git status` clean.
 
 - 2026-09-30 (cycle 59) — Branch `autopilot/2026-09-30-1239`. **The last open tap-target
   item from cycle 50 is closed by measurement, and it closes with no product change. The
