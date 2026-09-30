@@ -1949,8 +1949,9 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   clicked the label's `boundingBox()` coordinates directly and recorded **NOCHANGE** on all
   **25** of its clicks (**5** probes x **5** locales; the midpoint probe came later) with
   `elementFromPoint` = `none` at every one. That was not the label failing to toggle:
-  Playwright's `boundingBox()` is not scroll-adjusted and the opt-in sits at `y` ≈ **1660**
-  (`ko`) on an **800** px viewport, so every click landed outside the window.
+  Playwright's `boundingBox()` is relative to the viewport and does not scroll the element
+  into it, and the opt-in sits at `y` ≈ **1660** (`ko`) on an **800** px viewport, so every
+  click landed outside the window.
   `scrollIntoViewIfNeeded()` first moved the label to `y` ≈ **540** and all **30** clicks
   of the six-probe pass toggled. A cycle that had stopped at the first pass would have "measured" a dead target
   and resized a control that was never broken.
