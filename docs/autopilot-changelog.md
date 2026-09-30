@@ -12237,3 +12237,229 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   Tests 1089 passed (1089)**, **300 passed (15.1m)** (10.9m on cycle 52's tree), **Smoke
   test passed.**
 
+
+
+- 2026-09-29 (cycle 54) — Branch `autopilot/2026-09-29-0639`. **The gate's two newest specs
+  cost 5.8m of a 15.1m smoke, and the cost was in the WAITS rather than in the work: timed
+  phase by phase, `networkidle` and a flat 300 ms sleep took 110,395 ms and 53,060 ms of the
+  Hangul sweep's 306,244 ms state loop, against 60,229 ms of actually loading the 172 pages.
+  Replacing both with a wait on the render itself takes the two specs to **9 passed (3.6m)** from **9 passed (5.8m)**, with all
+  172 renders reporting byte-identical node, character and Hangul-hit counts — 0 of 172
+  differ. The obvious bigger lever, sweeping the four locales concurrently, was built,
+  measured and REJECTED: it drops `/scan ready` from 41 rendered text nodes to 23. Alongside
+  it, `/report`'s picks step was measured for the first time with `result.note` on screen,
+  and the note puts the first merchant link below the fold in 28 of the 35 cases it can
+  appear in — with no layout-only fix available, which is shown by arithmetic rather than
+  asserted.**
+
+  **Baselines, re-measured here on `fd09407`.** `node_modules` was absent, so `npm ci` first
+  (exit **0**). `npx vitest run` **Test Files 120 passed (120) / Tests 1089 passed (1089)**,
+  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **✖ 2 problems (0 errors, 2
+  warnings)**, `python3 ml/selftest.py` **Ran 146 tests in 2.303s ... OK**. All four match the
+  supervisor's.
+
+  **Bug fix / gate cost: where the 5.8m actually went, measured before anything was changed.**
+  A timer was put around every phase of the sweep's state loop and the two specs were run as
+  the supervisor ran them: **9 passed (5.8m)**, with
+  `Slow test file: tests/e2e/hangul-leak-sweep.regression-37.spec.ts (5.4m)`. Summed over the
+  **172** renders: `page.goto` **60,229** ms, `waitForLoadState("networkidle")` **110,395**,
+  the `document.fonts` wait **5,245**, the flat `waitForTimeout(300)` **53,060**, the drive
+  steps **71,006**, the collect **6,309**, **306,244** ms in total. So **53%** of the loop was
+  two waits that answer the wrong question: `networkidle` is a 500 ms quiet period by
+  construction and is about sockets, and a flat sleep is about nothing. **Both are replaced by
+  `settle()`**, which holds until the page's non-empty text-node count has not changed for
+  **250** ms, `html[lang]` is the locale under test and `document.fonts.status` is `loaded`.
+  That is the stricter wait, not the looser one: a render still adding nodes never satisfies
+  it, where 300 ms of sleep collected whatever had arrived. `tab()`'s own flat **600** ms after
+  a step-tab click is replaced by the same test. Nothing else changed — not `minNodes`, not a
+  state, not a locale, not the allowlist, not the collector.
+  **The change had a defect of its own and it was caught by measuring rather than by
+  reasoning.** Passing `state.minNodes` to `settle` before the drive made `/scan ready` sit out
+  the full **20,000** ms timeout — that state loads `/scan`, which renders **28** nodes against
+  its floor of **30** until the camera starts — so it took **24,387** ms against **7,646**
+  before the change while every other state got faster. Driven states now settle on stability,
+  locale and fonts alone and `/scan ready` costs **4,655** / **4,686** / **4,643** /
+  **4,844** ms in en / ja / zh / ar on the final tree, with the same **41** nodes it always
+  rendered.
+  **Detection is unchanged, and that is checked render by render rather than claimed.** Over
+  all **172** `(locale, state)` pairs the `nodes`, `chars`, `detailsOpened` and `hangulHits`
+  printed before and after are identical: **0** pairs differ, **0** appear on only one side.
+  `[care-fold]` is identical too — `ko` **517.7→576.1** / **223.9**, `en` **603.3→661.8** /
+  **138.3**, `ja` **581.5→639.9** / **160.1**, `zh` **494.5→552.9** / **247.1**, `ar`
+  **577.1→635.6** / **164.4**.
+  **The bigger lever was built and rejected on its own numbers.** `playwright.mobile.config.ts`
+  pins `workers: 1` so the geometry and timing specs are never run beside each other, so the
+  only way to parallelise the locales is four contexts inside one test. That was written and
+  run. It is faster per state, and it sweeps LESS: `/scan ready` collected **23** non-empty
+  text nodes instead of **41**, and took **30,263** ms instead of **5,761**, because four
+  MediaPipe runtimes do not fit on four cores. The run was killed, the code reverted, and the
+  finding is in the backlog. A gate that looks at fewer strings when the box is busy is worse
+  than a slow one.
+  **Proven to still fail, four ways, three of them cycle 53's and one the supervisor's.**
+  (1) Deleting `"노출 여유 확인"` from `lib/i18n/ja.ts`: **1 failed**, naming
+  `ja /report reads1 step0: [text] <span> body>main>div>section>div>span :: 노출 여유 확인` and
+  the same on `reads4 step0`. (2) Deleting the burst line
+  `"촬영 프레임 사이에 신호가 조금 흔들렸어요"` from `lib/i18n/en.ts`: **1 failed | 3 passed
+  (3.5m)**, naming `en /report reads1 step0` and `en /report reads4 step0` with that string.
+  (3) Renaming the allowlist entry's `text` from `한국어` to `Korean`: **4 failed**, each on
+  `allowlist entry "Korean" has no Hangul in it` (four, not one, because `-g "en"` matches
+  every title through the word `screen`). (4) The supervisor's attribute leak,
+  `aria-label="판매처로 이동"` on `ProductCard`'s buy link: **1 failed** with **11** leak lines over **5** distinct
+  states — `ja /report plain step1`, `note+avoid step1`, `many step1`, `dry step1` and
+  `survey-only step1` — each reading
+  `[aria-label] <a> body>main>div>div>div>a :: 판매처로 이동`, one per product card. Every file was restored
+  after its break and `git diff --stat` on each is empty.
+
+  **UI/UX: `result.note` puts `/report`'s first merchant link below the fold in 28 of 35
+  cases, and no layout-only fix exists. Measured, recorded, and nothing changed.** Cycle 52
+  got that link above the fold in all five locales, but only for the survey path its spec
+  drives, which produces no note. `recommend()` composes `note` from three independent
+  sentences — scan-not-applied, budget-relaxed, avoid-relaxed — so there are **7** note-bearing
+  states per locale, **35** in all, and `/report` renders the note ABOVE the section header and
+  the grid. The triggering surveys were derived from `lib/recommend.ts` and `lib/skus.ts`, not
+  guessed: budget-relaxed needs a category with no SKU inside the lowest budget band
+  (세럼 at **19,000**원, cheapest **22,000**), avoid-relaxed a category no SKU's `freeOf`
+  satisfies (토너 with all seven avoid terms), both together 세럼 with all seven, and the scan
+  sentence a stored scan with `retakeRecommended: true`. Scroll needed, at 360x800, over
+  `none / scan / budget / avoid / both / scan+budget / scan+avoid / scan+both`:
+  `ko` **0 / 0 / 0 / 0 / 53.9 / 0 / 34.4 / 73.4**;
+  `zh` **0 / 0 / 0 / 50.3 / 56 / 0 / 69.8 / 75.5**;
+  `ja` **0 / 46.9 / 61 / 126.2 / 159.8 / 100 / 145.7 / 198.8**;
+  `ar` **0 / 31.3 / 51.9 / 91.1 / 150.7 / 90.9 / 130.1 / 189.7**;
+  `en` **0 / 99.6 / 87 / 176.8 / 222.7 / 145.5 / 235.3 / 281.2**.
+  **Why no layout-only fix.** The note has to stay above the first product it qualifies, so its
+  height is added height and the only way to pay for it is to move some OTHER block from above
+  the grid to below it. Block by block in `en`, depth-1 children of `main > div` on the picks
+  step: the page header **182.3** px (**36→218.3**), the step tabs **64.8**
+  (**230.3→295.1**), the note itself **178** at three sentences (**299.1→477.1**), the
+  section-header row **18.5** (**501.1→519.6**), then the grid from **533.6**. Cycle 52 already
+  moved the one movable block (추천 기준) below the grid, and with no note at all this survey
+  leaves `en` **4.9** px of margin — so there is no **99.6**-to-**281.2** px to recover without
+  touching the header, the tabs, the card or the copy, all of which are out of scope here. The
+  brief's own escape clause applies: measurements recorded, nothing shipped. No ratchet was
+  added either, because a new e2e spec is exactly the cost this cycle spent itself removing.
+
+  **Research: none needed, and that is said rather than filled.** Both investigations answered
+  themselves against the running app; no external fact was required, so no source was consulted
+  and none is recorded.
+
+  **ML: skipped, as the brief allowed.** The `roughness_ratio` guard decision needs faces and
+  the golden set is the standing blocker. `python3 ml/selftest.py` was run as a gate only.
+  `git diff fd09407 -- ml/ public/` is empty.
+
+  **Guardrails.** `git diff fd09407 --stat` touches **4** files and no others:
+  `tests/e2e/hangul-leak-sweep.regression-37.spec.ts`, `README.md`, `docs/AUTOPILOT.md` and
+  `docs/autopilot-changelog.md`. **No product code changed** — `git diff fd09407 --
+  app/ lib/ public/ ml/ scripts/ vitest.config.ts playwright.mobile.config.ts package.json
+  package-lock.json` is empty. No translation string's content changed and no key was added or
+  removed: the two dictionary deletions above were breaks, each restored and compared.
+  `lib/consent.ts`, the three `/scan` consent checkboxes, the re-engage email, `efficacyClean()`,
+  `shareUrl`, `ALLOWED_HOSTS`, `metadataBase`, `blemishCount`, `toneSpread` and the manifest's
+  `status` / `promotionGate` / `minQwkGainOverHeuristic` were not touched.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere and `NEXT_PUBLIC_COMMERCE_AFFILIATE` was
+  not set in any run this cycle. No provider was called and no email was sent. No dependency was
+  added, no guide page was added, and no colour, font size or spacing value changed anywhere.
+  `git diff fd09407` on the spec is **84 insertions, 6 deletions**, and the **6** deleted
+  lines are the whole change: the three waits, `tab()`'s **600** ms sleep, the `lang`
+  assertion (re-expressed as `expectedLang`, the same value) and the `[hangul]` log line
+  (which gains `ms=` and now prints BEFORE the assertions, so a failing state's line is
+  visible too). Its **43** states, its **4** locales, its `minNodes` floors, its collector
+  and its one-entry allowlist are untouched.
+
+  **Docs and rotation.** Recent cycles holds 54/53/52; cycle 51's entry (**269** lines) moved
+  verbatim to the end of `docs/autopilot-changelog.md` after cycle 50. `cmp` of the extracted
+  entry against the moved text reports no difference. No backlog item was ticked `[x]`: the
+  first-merchant-link item gained the `result.note` matrix and the arithmetic against a fix,
+  and a new item records the gate cost taken back and the concurrency rejection.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files: **2490** + **11493** =
+  **13983** at `fd09407`. Immediately after the move the two halves are **2221** + **11763** =
+  **13984** — **+1**, for the blank line the changelog puts between entries, which AUTOPILOT's
+  own list does not use and which is the only line the rotation itself added. The final pair is **2447** + **11763** =
+  **14210**. `sort -u` over both files at `fd09407` gives **12163** unique lines and over the
+  final pair **12368**; `comm -23` of the first against the second drops **0** — every line
+  at `fd09407` is still present. Both counts re-taken on the tree as committed, after the
+  paragraph below.
+
+  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
+  **Test Files 120 passed (120) / Tests 1089 passed (1089)** for the vitest phase,
+  **300 passed (15.8m)** for the e2e phase, no `Slow test file` line at all, and the literal
+  line **Smoke test passed.** **The same command was then run on `fd09407` itself, in this
+  container, in this session, because a single number off one box proves nothing:** stashing
+  the four files and running it on the merge base gave **Test Files 120 passed (120) / Tests
+  1089 passed (1089)**, `Slow test file:
+  tests/e2e/hangul-leak-sweep.regression-37.spec.ts (5.1m)`, **300 passed (17.7m)**, **Smoke
+  test passed.** So the same-box pair is **17.7m → 15.8m**, and the sweep stops being reported
+  as a slow file at all. **This box is slower than the supervisor's and the cross-box numbers
+  must not be subtracted:** the supervisor read **15.1m** on `fd09407` where this container
+  reads **17.7m**, which is why the isolated two-spec pair (**5.8m → 3.6m**, same session,
+  same box, byte-identical per-render output) is the controlled measurement and the smoke pair
+  is the confirmation. After the smoke, on the same tree: `npx tsc --noEmit | grep -c "error
+  TS"` **13** — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same
+  pre-existing `_reads` / `_result`, run on its own and not beside vitest); `python3
+  ml/selftest.py` **Ran 146 tests in 1.876s ... OK**. `git diff fd09407 --stat` lists **4**
+  files (**593** insertions, **276** deletions) and `git diff fd09407 --stat -- app/ lib/
+  public/ ml/ scripts/ vitest.config.ts playwright.mobile.config.ts package.json
+  package-lock.json` is empty. The only thing the smoke run does not cover is this paragraph
+  and the rotation numbers above it, which were written after it finished.
+
+  *Supervisor review:* sound. One race in the new wait was closed here. The note
+  measurement is recorded rather than fixed, and "no layout-only fix" is the right call
+  because moving the note would separate it from the picks it qualifies.
+
+  *Fixed here: `settle` could read the panel a tab click was leaving.*
+  - `settle` keeps its last count and "held still since" time on `window`, and a step-tab
+    swap keeps the same window.
+  - The first poll after the click can still see the OLD panel's count, since React
+    commits after the click resolves. Its old timestamp is already more than
+    `SETTLE_QUIET_MS` in the past, so `settle` returns at once and `COLLECT` reads the
+    panel being left.
+  - The worker's "0 of 172 pairs differ" shows the race did not fire on this container.
+    It does not show that it cannot.
+  - `tab()` now deletes `window.__aruSettle` before clicking, so the count must hold for a
+    full 250 ms after the click.
+  - Re-run: `[hangul] en: 43 renders, 0 leaks`, the same for `ja`/`zh`/`ar`, **4 passed
+    (3.9m)**.
+  - The supervisor's attribute break (`aria-label="판매처로 이동"` on `ProductCard`'s buy
+    link) still fails and names every `/report` picks state: `plain`, `many`,
+    `note+avoid`, `dry` and `survey-only`, e.g. `ja /report many step1: [aria-label] <a>
+    ... :: 판매처로 이동`.
+
+  *Checked.* The "4.9 px" in this entry is `en` with the note absent ON THE
+  NOTE-TRIGGERING SURVEY. It does not contradict cycle 52's **17.5** on regression-36's
+  own survey path. The rejected parallel sweep's reason (`/scan ready` at 23 nodes
+  instead of 41) is the right one: a gate that sees less when the box is busy is worse
+  than a slow gate.
+
+  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
+  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `fd09407`
+  against this pair drops **0** lines.
+
+  *Gate, told in full.* The first `npm run smoke` on this tree printed **Test Files 120
+  passed (120) / Tests 1089 passed (1089)**, then **1 failed / 299 passed (14.3m)** and
+  `Smoke test failed: npm run test:mobile-ui exited with 1`.
+  - The failure was `tests/e2e/care-merchant-disclosure.regression-12.spec.ts:36` (test
+    6 of 300): `no merchant disclosure rendered; the fixture reached the wrong page`,
+    `Expected: > 0 / Received: 0`.
+  - That spec's helper had just passed `page.locator("button[aria-controls]").first()
+    .waitFor()`. The `querySelectorAll("button[aria-controls]")` that followed found
+    none.
+  - The failure's page snapshot showed **three** "다른 판매처 보기" toggles on the page.
+    So the DOM changed between the wait and the read: something replaced the subtree for
+    an instant.
+  - For `ko` it is not `LanguageProvider`'s `key={active}` remount, as far as the code
+    shows. The mechanism is **not identified**, and the trace was lost to a later local
+    run that cleared `test-results/`.
+  - This cycle's diff does not touch that spec, `/care`, or anything that runs before
+    it. The only changed spec runs after it in the file order.
+  - It did not reproduce: that spec plus regression-38 ran together **3** times here,
+    **8 passed** each.
+  - Smoke was re-run ONCE, per the one-re-run rule, and that is the gate this merge rests
+    on: **Test Files 120 passed (120) / Tests 1089 passed (1089)**, **300 passed
+    (13.9m)**, **Smoke test passed.**
+  - Filed as a supervisor finding for the next cycle, and not called a flake. Read the
+    toggles inside a `waitForFunction` that also checks every `aria-controls` target
+    exists, so the assertion reads a DOM that is not mid-replacement. Before that, find
+    what replaced it: a Next dev full reload is the leading guess, and it is not shown.

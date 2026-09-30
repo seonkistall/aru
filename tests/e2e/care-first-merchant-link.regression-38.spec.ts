@@ -8,15 +8,22 @@ import { expect, test } from "@playwright/test";
  * all, so nobody could tell whether its buy button was on the first screen or whether a
  * copy edit had pushed it off.
  *
- * Measured 2026-09-29 (cycle 53) at 360x800 under `playwright.mobile.config.ts`, with a
- * valid survey in session storage, the same method as regression-36 (box in document
- * coordinates, smallest scroll that brings the whole box into view, margin below):
+ * Measured 2026-09-29 (cycle 53) at 360x800 under `playwright.mobile.config.ts`, whose
+ * `webServer.command` at that commit was `npm run dev`, with a valid survey in session
+ * storage, the same method as regression-36 (box in document coordinates, smallest scroll
+ * that brings the whole box into view, margin below):
  *
  *   ko  517.7→576.1   0 px of scroll   223.9 px of margin below
  *   zh  494.5→552.9   0 px            247.1 px
  *   ar  577.1→635.6   0 px            164.4 px
  *   ja  581.5→639.9   0 px            160.1 px
  *   en  603.3→661.8   0 px            138.3 px
+ *
+ * Cycle 56 moved that config off `next dev` onto `next build` + `next start`, so cycle 57
+ * re-measured all five on the production server the gate now uses. Every box and every
+ * margin above came back identical, digit for digit, and `scrollNeeded` stayed 0 in all
+ * five — so these are production numbers as well as dev ones, and nothing about `/care`'s
+ * fold depends on which server serves it.
  *
  * So NOTHING was changed: no locale needed scroll and no layout-only move was called
  * for. `/care` is shorter above its first link than `/report` was because the link sits
@@ -29,9 +36,12 @@ import { expect, test } from "@playwright/test";
  * hard zero without being a tripwire for a font-metric change. What it does catch is a
  * new block above that button, or copy that grows by more than ~138 px in `en`.
  *
- * Both `CommerceDisclosure` states were measured and every number above is identical
- * with `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: the disclosure block is 33.3 px in all five
- * locales either way, because the longer affiliate sentence still wraps to two lines.
+ * Both `CommerceDisclosure` states were measured under `next dev` in cycle 53 and every
+ * number above is identical with `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`: the disclosure block
+ * is 33.3 px in all five locales either way, because the longer affiliate sentence still
+ * wraps to two lines. Cycle 57 re-ran this spec with the flag set on the production server
+ * and it printed the same geometry, but did NOT establish that the flag reached the browser
+ * through a production build, so the affiliate claim rests on the cycle 53 dev measurement.
  * The disclosure assertion below matches BOTH sentences per locale, so the day the owner
  * flips that flag this spec does not turn red.
  *
@@ -47,7 +57,8 @@ const SURVEY = { type: "복합성", concerns: ["모공", "유분"], budget: 2500
 const LANGS = ["ko", "en", "ja", "zh", "ar"] as const;
 type Lang = (typeof LANGS)[number];
 
-// Zero in every locale. The tightest, `en`, clears the fold by 138.3 px.
+// Zero in every locale. The tightest, `en`, clears the fold by 138.3 px — the same 138.3
+// on the production server as under the dev server it was first measured on.
 const SCROLL_BUDGET: Record<Lang, number> = { ko: 0, en: 0, ja: 0, zh: 0, ar: 0 };
 
 // Each pattern matches BOTH disclosure sentences in its locale — today's and the
