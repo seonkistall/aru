@@ -1968,7 +1968,36 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **13**. `git status --porcelain` after the run lists **0** lines. Rotation: `comm -23`
   over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged. This is the first test in the gate that exercises
+  the owner's actual revenue switch-on through the real production server. It does so
+  with no product change: `git diff --stat 8be1254..HEAD -- lib app public ml` prints
+  nothing. The one config line (`ARU_DIST_DIR` in `next.config.ts`) is inert unless that
+  variable is set.
+
+  *Reproduced here.*
+  - `npm run smoke`: **Test Files 120 passed (120) / Tests 1089 passed (1089)**, **306
+    passed (14.9m)**, **Smoke test passed.**
+  - Five seconds after it exited, `ss -ltnp` showed nothing listening on 3100–3109. So
+    the `| tee` in the second server's command does not leave a server behind for the
+    next run's port preflight. `git status --short` was empty: the log is covered by
+    `*.log` in `.gitignore` and the dist dir by the new `/.next-switch-on/` line.
+  - Broken a way the worker did not try: `NEXT_PUBLIC_COMMERCE_AFFILIATE: "off"` instead
+    of dropping the key. `--project=commerce-switch-on` gave **3 failed | 3 passed
+    (1.1m)**, all three failures on the affiliate-sentence visibility check. The flag's
+    VALUE is checked, not just its presence. Reverted; ports free afterwards.
+
+  *Cost, stated because the brief asked for it and the entry should carry it.* The gate
+  went from **9.9m** (cycle 57's tree) to **14.9m** here, because the second production
+  build runs alongside the first. That is the price of testing the real deploy shape. A
+  cheaper variant is left open: building once with the flag and serving both from it
+  would not work, because every other spec reads the flag-off disclosure.
+
+  *Protocol note.* The worker pushed twice (`a8ab796`, then `f177cca` correcting a
+  sentence in its own entry) against a brief that said once. The correction was right,
+  and nothing broke.
+
+  *Validation on this tree, supervisor:* smoke as above; `tsc` **13**. Rotation: `comm
+  -23` over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
 
 - 2026-09-30 (cycle 57) — Branch `autopilot/2026-09-30-0039`. **Every pixel the e2e gate
   pins for the fold was re-measured on the production server cycle 56 switched it to, and
