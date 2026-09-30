@@ -1862,6 +1862,143 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-09-30 (cycle 58) — Branch `autopilot/2026-09-30-0639`. **The owner's revenue
+  switch-on is now performed end to end on a production server on every run of the gate.
+  `tests/e2e/commerce-switch-on.spec.ts` starts from the two environment variables
+  `docs/commerce-partnership-playbook.md` tells the owner to set and asserts what a
+  visitor's click actually does: the overridden pair answers **302** with the affiliate URL
+  plus `/api/out`'s four UTM parameters, a non-allowlisted override still lands on the
+  default search URL and is named in the server's log, and the disclosure reads the 제휴
+  sentence in `ko` and `en` with the no-commission sentence gone from both surfaces. No
+  product behaviour changed and `ALLOWED_HOSTS` is untouched.**
+
+  **What the gap was.** `tests/commerce.test.ts` covers the parsing of
+  `COMMERCE_LINK_OVERRIDES_JSON` in isolation, and nothing exercised it through a running
+  server. `NEXT_PUBLIC_COMMERCE_AFFILIATE` was worse off: it is inlined at build time, so
+  the only way to check it is to build with it set, and
+  `tests/e2e/care-first-merchant-link.regression-38.spec.ts` says in its own comment that
+  cycle 57's run with the flag set "did NOT establish that the flag reached the browser
+  through a production build". The two halves fail in opposite directions — an override the
+  allowlist drops earns nothing while the disclosure claims a commission, and a disclosure
+  that never flips leaves a live affiliate link described as one ARU takes nothing from.
+
+  **How it gets its environment, and why it is not a quarantine.** The gate's single
+  `webServer` cannot carry these values: the affiliate flag changes the disclosure sentence
+  every other spec reads and an override changes where `/api/out` sends a click. So
+  `playwright.mobile.config.ts` now declares TWO web servers and two projects. The second
+  runs `npm run build && npm run start` on port **3104** with
+  `COMMERCE_LINK_OVERRIDES_JSON`, `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` and `ARU_DIST_DIR`
+  set, and the `commerce-switch-on` project runs this one spec against it. Nothing is
+  conditional and nothing is skipped: `npm run smoke` ran **306** tests on this tree where
+  cycle 57's ran **300**. A spec that skipped itself when the variables were absent would
+  have left the owner's real configuration the one arrangement nobody ever exercises.
+
+  **Added gate time, stated honestly.** `npx playwright test --config
+  playwright.mobile.config.ts --project commerce-switch-on` on this tree printed
+  **6 passed (44.6s)**, and that figure INCLUDES starting both web servers, so both
+  production builds are inside it. The whole suite printed **306 passed (13.2m)** and
+  **306 passed (13.7m)** on the two full runs here, against the supervisor's
+  **300 passed (9.9m)** on `8be1254`. Those are different runs on a container that has
+  recorded the same 300-test suite at **13.4m** (cycle 55) and **14.8m** (cycle 56), so the
+  3-4 minute gap is not attributable to this spec and is not claimed to be: the 300-test
+  suite was NOT re-run alone on this tree to separate them. The 44.6s figure is the one
+  measured upper bound on what was added.
+
+  **What it asserts, in the run's own words.** From the final gate's line reporter:
+
+  ```
+  [switch-on] /api/out?sku=tn1&merchant=oliveyoung&placement=report_product -> 302 https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_product_tn1_oliveyoung
+  [switch-on] /api/out?sku=tn1&merchant=coupang&placement=care_en -> 302 https://www.coupang.com/np/search?q=%EC%95%84%EB%88%84%EC%95%84+%EC%96%B4%EC%84%B1%EC%B4%88+77+%ED%86%A0%EB%84%88&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=care_en_tn1_coupang
+  [switch-on] server log: [commerce] override for tn1/coupang ignored: the URL is not an https URL on the allowlist (www.oliveyoung.co.kr, search.shopping.naver.com, www.coupang.com, www.google.com) (https://link.coupang.com/a/dryrun). The link is still a search URL.
+  [switch-on] /report ko: affiliate=4 noCommission=0
+  [switch-on] /care en: affiliate=1 noCommission=0
+  ```
+
+  The `/report` href is the one the product renders (`a[href^="/api/out"]` on the picks
+  card); the `/care` one is captured by replacing `window.open`, which is also what keeps
+  the merchant off the network. Every request uses `maxRedirects: 0` and reads `Location`,
+  so no redirect is ever followed and nothing leaves the container. Both override URLs are
+  invented — `DRYRUN000000` is not a goods number, `/a/dryrun` is not a partner link, and
+  no affiliate id exists anywhere in this repository.
+
+  **Proved a live tripwire, three ways, each reverted.** Dropping
+  `NEXT_PUBLIC_COMMERCE_AFFILIATE` from that server's environment: **3 failed**,
+  **3 passed** — the two disclosure tests and the one that asserts the no-commission
+  sentence is gone from both surfaces. Making `/api/out` discard the override it resolves
+  while still auditing it (`const override = null;`): **1 failed**, **5 passed**. Putting
+  `link.coupang.com` on `ALLOWED_HOSTS`: **2 failed**, **4 passed** — the default-search
+  redirect and the ignored-override log line. Each break was reverted from a copy taken
+  before it: `sha256sum` on the three files reads
+  `13544120c36460e27ece48e64ae7e4f5d58758cbb6bf88aaaaa590724da075de`
+  (`tests/e2e/support/commerce-switch-on.ts`),
+  `d2fec4ffdaeb07edcd8810f59b558aa0b18db70ad822546e26bc3bf8ee453871`
+  (`app/api/out/route.ts`) and
+  `cd1e522e81d2cd0caa95238df8a5ca72fd3e0ae4e9d0619482e9407c06d5c2a5`
+  (`lib/commerce.ts`) both before the first break and after the last revert, and `diff`
+  over the two `sha256sum` listings reports no difference. The allowlist itself is not in
+  this cycle's diff: `git diff --stat -- lib app public ml` over the commit prints nothing,
+  so `ALLOWED_HOSTS`, `shareUrl`, `metadataBase` / SITE_URL, `lib/consent.ts` and the
+  manifest's `status` / `promotionGate` are all untouched, and the only places
+  `ALLOWED_HOSTS` appears in the diff at all are prose and two doc comments in the new test
+  files. `NEXT_PUBLIC_FUNNEL_FLUSH` is set by nothing here, the switch-on build included.
+  No provider was called, no email was sent, and no request left the container.
+
+  **Build-config changes this needed, and one that is not cosmetic.** `next.config.ts`
+  takes `ARU_DIST_DIR` (unset everywhere else) because `next build` empties its `distDir`
+  and the two builds run concurrently from one tree; `.gitignore` and `eslint.config.mjs`
+  ignore `.next-switch-on/**`, the second of which is not optional — unignored it made
+  `npx eslint .` read **408 errors, 6498 warnings** instead of **0 errors, 2 warnings**,
+  and `npm run smoke` runs `lint` first, so the gate would have gone red at step 1 over a
+  build output nobody wrote. `scripts/smoke-test.mjs` asserts port **3104** is free
+  alongside **3102**, for the reason already written above `assertPortFree`.
+  `tsconfig.json` is committed as `next build` rewrote it: the switch-on build appends
+  `.next-switch-on/types/**/*.ts` and `.next-switch-on/dev/types/**/*.ts` to `include` and
+  reformats the file, so committing that output is what stops every gate run leaving a
+  dirty tree. `sha256sum tsconfig.json` read
+  `a5bb2155685ee7aa26eec8aa1cd9ef554c284d905af99040055737fd7089d5d6` before a full gate run
+  and the same after it, so it is idempotent.
+
+  **Research / ML:** skipped this cycle, as the item said to.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+  **306 passed (13.7m)**, `✖ 2 problems (0 errors, 2 warnings)`, `python ml/selftest.py`
+  **OK**, **Smoke test passed.**, exit **0**. `npx tsc --noEmit | grep -c "error TS"`
+  **13**. `git status --porcelain` after the run lists **0** lines. Rotation: `comm -23`
+  over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
+
+  *Supervisor review:* sound, merged. This is the first test in the gate that exercises
+  the owner's actual revenue switch-on through the real production server. It does so
+  with no product change: `git diff --stat 8be1254..HEAD -- lib app public ml` prints
+  nothing. The one config line (`ARU_DIST_DIR` in `next.config.ts`) is inert unless that
+  variable is set.
+
+  *Reproduced here.*
+  - `npm run smoke`: **Test Files 120 passed (120) / Tests 1089 passed (1089)**, **306
+    passed (14.9m)**, **Smoke test passed.**
+  - Five seconds after it exited, `ss -ltnp` showed nothing listening on 3100–3109. So
+    the `| tee` in the second server's command does not leave a server behind for the
+    next run's port preflight. `git status --short` was empty: the log is covered by
+    `*.log` in `.gitignore` and the dist dir by the new `/.next-switch-on/` line.
+  - Broken a way the worker did not try: `NEXT_PUBLIC_COMMERCE_AFFILIATE: "off"` instead
+    of dropping the key. `--project=commerce-switch-on` gave **3 failed | 3 passed
+    (1.1m)**, all three failures on the affiliate-sentence visibility check. The flag's
+    VALUE is checked, not just its presence. Reverted; ports free afterwards.
+
+  *Cost, stated because the brief asked for it and the entry should carry it.* The gate
+  went from **9.9m** (cycle 57's tree) to **14.9m** here, because the second production
+  build runs alongside the first. That is the price of testing the real deploy shape. A
+  cheaper variant is left open: building once with the flag and serving both from it
+  would not work, because every other spec reads the flag-off disclosure.
+
+  *Protocol note.* The worker pushed twice (`a8ab796`, then `f177cca` correcting a
+  sentence in its own entry) against a brief that said once. The correction was right,
+  and nothing broke.
+
+  *Validation on this tree, supervisor:* smoke as above; `tsc` **13**. Rotation: `comm
+  -23` over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
+
 - 2026-09-30 (cycle 57) — Branch `autopilot/2026-09-30-0039`. **Every pixel the e2e gate
   pins for the fold was re-measured on the production server cycle 56 switched it to, and
   not one digit moved. All ten boxes and all ten margins across the two specs came back
@@ -2195,200 +2332,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   *Validation on this tree, supervisor:* smoke as above; `tsc` **13**, `eslint` **0
   errors, 2 warnings**. Rotation: `comm -23` over `sort -u` of both files at `8548ad5`
   against this pair drops **0** lines.
-
-- 2026-09-29 (cycle 55) — Branch `autopilot/2026-09-29-1239`. **What replaced `/care`'s DOM
-  between cycle 54's `waitFor` and the next read: nothing did. `page.locator(css)` pierces
-  open shadow roots and `document.querySelectorAll(css)` does not, and `next dev` mounts a
-  `<nextjs-portal>` whose shadow root holds exactly one button — and that button carries
-  `aria-controls`. For ~100 ms of every `/care` load it is the ONLY `button[aria-controls]`
-  on the page, so the helper's wait could pass over a light DOM holding none. Shown
-  deterministically rather than argued: on the `/care` fallback page, which renders 0 app
-  toggles, the old wait resolves in 203 ms against `root=NEXTJS-PORTAL #next-logo` and the
-  new one times out. The race reproduced 3 times in 120 instrumented loads before the fix
-  and 0 times in 10 runs after it. The three candidates the brief named — a Fast Refresh
-  full reload, `/care` re-keying its own cards, `LanguageProvider`'s `key={active}` remount
-  — are each ruled out on recorded evidence, not on reasoning.**
-
-  **Baselines, re-measured here on `979a8ad`.** `node_modules` was absent, so `npm ci` first
-  (exit **0**). `npx vitest run` **Test Files 120 passed (120) / Tests 1089 passed (1089)**,
-  `npx tsc --noEmit | grep -c "error TS"` **13**, `npx eslint .` **✖ 2 problems (0 errors, 2
-  warnings)**, `python3 ml/selftest.py` **Ran 146 tests in 2.645s ... OK**. All four match
-  the supervisor's.
-
-  **The mechanism, named.** Playwright's CSS engine pierces open shadow roots (Research,
-  below); `document.querySelectorAll` does not cross a shadow boundary. `next dev` mounts
-  two shadow hosts on every route — `SHADOW HOSTS: NEXTJS-PORTAL,NEXT-ROUTE-ANNOUNCER` — and
-  `NEXTJS-PORTAL`'s shadow root holds **1** button in total, which is
-  `#next-logo[aria-controls="nextjs-dev-tools-menu"]`. So at the instant the helper's wait
-  resolved on a healthy load, Playwright counted **4** `button[aria-controls]` where the
-  light DOM held **3**: `AT-WAIT pwCount=4 lightCount=3`, the fourth being
-  `MATCH 3: root=NEXTJS-PORTAL aria-controls=nextjs-dev-tools-menu text= id=next-logo`
-  against three `root=DOCUMENT` matches on `care-merchants-tn1/tn2/tn3`. The overlay button
-  sits last in document order, so `.first()` is the product's toggle whenever one exists —
-  and the overlay's whenever none does.
-
-  **The window it opens, measured on every load rather than on the failing ones.** A 2 ms
-  sampler recorded, per load, the first time the light DOM held a `button[aria-controls]`
-  and the first time `nextjs-portal`'s shadow root did. Over 15 loads (the captured output
-  holds 14 of them, ITER 1–14) the overlay button was first in **14 of 14** and the gap
-  before the page's own toggles arrived was **105 / 95 / 108 / 104 / 113 / 95 / 132 / 123 /
-  114 / 123 / 99 / 448 / 125 / 111** ms. `page.goto` resolves on `load`, which usually falls
-  after the cards render — `lightAtWait=3` in all 14 — so the wait normally never polls
-  inside that window. It is the loads where `load` fires first that lose.
-
-  **Reproduced before the fix, and counted.** Five instrumented runs of the helper's exact
-  sequence, fresh browser context each iteration: `PROBE RESULT: 2 zero of 20 runs`, then
-  `0 zero of 25 runs`, `0 zero of 25 runs` (that one under four busy-loops on a 4-core box),
-  `1 zero of 25 runs`, `0 zero of 25 runs` — **3** of **120** loads where the wait passed and
-  the very next `document.querySelectorAll("button[aria-controls]")` returned **0**. That is
-  the cycle 54 signature reproduced, at a rate that explains one failure in one smoke.
-
-  **And reproduced deterministically, which is what makes it a mechanism rather than a
-  correlation.** `/care` with no survey renders the "아직 이어서 볼 리포트가 없어요" fallback,
-  which has **0** `button[aria-controls]` in the light DOM, permanently. The old wait still
-  passes: `PROBE4 waitFor resolved in 203ms; pwCount=1 lightCount=0; first match
-  root=NEXTJS-PORTAL #next-logo aria-controls=nextjs-dev-tools-menu`. Same page, both waits,
-  one run: `PROBE6 lightCount=0 | OLD wait PASSED in 205ms | NEW wait timed out after
-  5009ms`.
-
-  **The three candidates, each ruled out on what was recorded.** (a) A Next dev full reload
-  or Fast Refresh: on the reproduced zero loads
-  `performance.getEntriesByType("navigation")[0].type` was **`navigate`**, not `reload`; the
-  `addInitScript` wrote exactly **1** `init` line into a `sessionStorage` log that survives a
-  same-tab document swap, so only one document existed; and no
-  `Fast Refresh had to perform a full reload` line appeared in any iteration whose console
-  was printed. `[Fast Refresh] rebuilding` / `done in 119ms` / `done in 458ms` did appear on
-  healthy loads and replaced nothing. The second `framenavigated` to the same URL that shows
-  on every load is same-document, by the same two facts. (b) `/care` re-keying its cards: a
-  MutationObserver on `document.documentElement` recorded one `mut +3 -0 now=3 lang=ko` per
-  healthy load and **0** removals of a `button[aria-controls]`, ever; on a zero load it
-  recorded no add at all, because the cards had not rendered yet. (c) `LanguageProvider`'s
-  `key={active}` remount for `ko`: the single mutation that adds the toggles already reads
-  `lang=ko`, so the remount has already happened by the time any toggle exists. (The first
-  pass at (b) reported `cbs=0` and no mutations on a page that plainly had three toggles —
-  that was an instrumentation defect, `MutationObserver.observe` called while
-  `document.documentElement` was still `null` at init-script time; the observer was attached
-  on `readystatechange` after that and the numbers above are from the corrected probe.)
-
-  **The fix is in the spec, because the artifact is the dev server's.** `openCare` no longer
-  calls `page.locator("button[aria-controls]").first().waitFor()`. It waits with one
-  `page.waitForFunction` that reads the same DOM the assertions read — `document
-  .querySelectorAll` — and returns only when there is at least one toggle, EVERY toggle's
-  `aria-controls` names an element that exists, and the count has held still for **250** ms.
-  Nothing else in the file changed: `git diff 979a8ad -- tests/e2e/care-merchant-disclosure.regression-12.spec.ts --stat`
-  is **31 insertions, 1 deletion**, the **1** deleted line being the old wait. No product
-  code was touched, because there is no product defect here: the `<nextjs-portal>` element
-  exists only under `next dev`, which is what `playwright.mobile.config.ts` runs against.
-
-  **Proven clean after the fix, and proven still able to fail.** The spec alone, fresh dev
-  server and cleared Turbopack cache each time: **3 passed** five times (**15.6s / 14.5s /
-  15.0s / 15.0s / 14.9s**). Run after `care-first-merchant-link.regression-38` in file order,
-  under four busy-loops on a 4-core box: **8 passed** five times (**26.8s / 26.9s / 27.2s /
-  28.4s / 27.8s**). **10** runs, **0** failures. Then the guarded defect was put back —
-  `id={merchantPanelId}` moved from the inner grid to the outer one, so the panel contains
-  its own toggle again — and the spec failed: **2 failed** / **1 passed (18.5s)**, naming
-  `care-merchant-disclosure.regression-12.spec.ts:66` (`the merchant disclosure does not name
-  a panel that contains it`) and `:97` (`expanding the disclosure changes the panel it names,
-  and nothing else`) at line **114**, `the expanded panel swallowed its own toggle`.
-  `app/care/page.tsx` was restored and `git status --porcelain` lists only the spec.
-
-  **Every other wait in the suite was checked against the same mechanism, by measurement.**
-  `grep -rn "\.waitFor(" tests/e2e/*.spec.ts` gives **4** sites and
-  `grep -rn "waitForSelector" tests/e2e/*.spec.ts` gives **1**. Counting matches INSIDE each
-  shadow root on `/`, `/care`, `/scan` and `/report`: `NEXTJS-PORTAL` has
-  `button[aria-controls]=1` and `main [data-quality-checklist]=0`, `[role="listbox"]=0`,
-  `input[type="email"]=0`; `main h1=0` and `[id^="care-merchants-"] button=0` on `/` and
-  `/care`; `NEXT-ROUTE-ANNOUNCER` is **0** for all of them. So
-  `hangul-leak-sweep.regression-37` (two sites), `reengage-optin-field-width.regression-23`
-  and `report-header-fit.regression-25` cannot be satisfied by the overlay, and none of them
-  reads the same selector back through `document.querySelectorAll` anyway. **One spec shares
-  the SHAPE and is listed rather than changed**: `care-first-merchant-link.regression-38`
-  waits with `expect(page.locator('[id^="care-merchants-"] button').first()).toBeVisible()`
-  and then reads `document.querySelectorAll('[id^="care-merchants-"]')` — a shadow-piercing
-  wait feeding a light-DOM read — but its selector matches **0** elements in either shadow
-  root, so it cannot be satisfied by anything the light DOM lacks.
-
-  **Research: Playwright's own docs, because the fix rests on one sentence of them.**
-  `https://raw.githubusercontent.com/microsoft/playwright/main/docs/src/other-locators.md`,
-  `status=200`, **27950** bytes, sha256
-  `274c91bd56bfb7f74460398392670d3b7dd2213b6a0e22774c831d54bd4acc8d`. Line **40**, under
-  "Playwright augments standard CSS selectors in two ways": "CSS selectors pierce open shadow
-  DOM." Line **538**: "XPath does not pierce shadow roots." That asymmetry is the whole bug:
-  the wait used the engine that pierces and the assertions used the API that does not.
-
-  **ML: skipped, as the brief said to.** `python3 ml/selftest.py` was run as a gate only.
-  `git diff 979a8ad -- ml/ public/` is empty.
-
-  **Guardrails.** `git diff 979a8ad --stat` lists **4** files and no others —
-  `tests/e2e/care-merchant-disclosure.regression-12.spec.ts`, `README.md`,
-  `docs/AUTOPILOT.md` and `docs/autopilot-changelog.md` — at **489** insertions and **248**
-  deletions. **No product code changed** — `git diff 979a8ad -- app/ lib/ public/ ml/ scripts/ vitest.config.ts
-  playwright.mobile.config.ts package.json package-lock.json` is empty. No translation
-  string's content changed and no key was added or removed. `lib/consent.ts`, the three
-  `/scan` consent checkboxes, the re-engage email, `efficacyClean()`, `shareUrl`,
-  `ALLOWED_HOSTS`, `metadataBase`, `blemishCount`, `toneSpread` and the manifest's `status` /
-  `promotionGate` / `minQwkGainOverHeuristic` were not touched.
-  `NEXT_PUBLIC_FUNNEL_FLUSH` is still unset everywhere. No provider was called and no email
-  was sent. No dependency was added, no guide page was added, and no colour, font size or
-  spacing value changed anywhere. The five probe specs written for this investigation were
-  deleted before the gate ran; `git status --porcelain` names none of them.
-
-  **What this did NOT establish.** The cycle 54 failure itself was not reproduced in situ —
-  test 6 of a cold 300-spec smoke — only its signature, 3 times in 120 loads and once
-  deterministically. The **3 in 120** rate is this container's, under a reused dev server,
-  and says nothing about the supervisor's box. And the fix removes the spec's exposure to the
-  overlay; it does not stop `next dev` from putting an `aria-controls` button on every page,
-  so a future spec that waits on a bare `button[aria-controls]` will meet the same thing.
-
-  **Docs and rotation.** Recent cycles holds 55/54/53; cycle 52's entry (**246** lines) moved
-  verbatim to the end of `docs/autopilot-changelog.md` after cycle 51. The supervisor finding
-  from cycle 54's review was appended to "Supervisor findings not yet actioned" and ticked in
-  the same edit, since it was actioned here. No backlog item was ticked `[x]`.
-
-  **Nothing was lost in the rotation.** `wc -l` on both files at `979a8ad`: **2505** +
-  **11763** = **14268**. The final pair is **2454** + **12010** = **14464**. `cmp` of the
-  extracted cycle 52 entry against the last **246** lines of the changelog reports no
-  difference. `sort -u` over both files at `979a8ad` gives **12420** unique lines and over
-  the final pair **12590**; `comm -23` of the first against the second drops **0** — every
-  line at `979a8ad` is still present, so there is no missing line to account for.
-
-  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
-  **Test Files 120 passed (120) / Tests 1089 passed (1089)** for the vitest phase,
-  **300 passed (15.1m)** for the e2e phase, and the literal line **Smoke test passed.**
-  Test **6** of **300**, `care-merchant-disclosure.regression-12`, is the one cycle 54 lost
-  and it passed. Re-run afterwards on the committed tree, each on its own: `npx vitest run`
-  **Test Files 120 passed (120) / Tests 1089 passed (1089)**; `npx tsc --noEmit | grep -c
-  "error TS"` **13** — unchanged; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the
-  same pre-existing `_reads` / `_result`, not run beside vitest); `python3 ml/selftest.py`
-  **Ran 146 tests in 2.186s ... OK**. `git diff 979a8ad --stat` lists **4** files (**489**
-  insertions, **248** deletions) and the same command over `app/ lib/ public/ ml/ scripts/
-  vitest.config.ts playwright.mobile.config.ts package.json package-lock.json` is empty. The
-  only thing the smoke run does not cover is this paragraph and the rotation numbers above
-  it, which were written after it finished.
-
-  *Supervisor review:* sound. The root cause is named and reproduced, and it corrects this
-  supervisor's cycle 54 reading: nothing replaced `/care`'s DOM. The wait had matched a
-  different element.
-
-  *Reproduced independently.* A throwaway probe (deleted after the run) loaded `/care`
-  with no survey, so the route has no app toggles. Result: `[probe] playwright=1
-  lightDom=0 shadowHosts=NEXTJS-PORTAL:1,NEXT-ROUTE-ANNOUNCER:0`. Playwright's locator
-  counts the dev overlay's shadow-root button, and `document.querySelectorAll` does not.
-  This is exactly the gap the old `waitFor` fell through.
-
-  *Correction to cycle 54's review.* It said "the DOM changed between the wait and the
-  read: something replaced the subtree for an instant" and named a Next dev full reload
-  as the leading guess. Both were wrong. The subtree was never replaced. The wait
-  resolved on `#next-logo` inside `<nextjs-portal>` before the route painted. The
-  failure snapshot's three toggles were there because the snapshot was taken later. The
-  lesson for this reviewer is that "the snapshot shows it" says when the snapshot was
-  taken, not when the read happened.
-
-  *Re-run here.* Regression-38 plus regression-12, **3** times: **8 passed** each.
-
-  *Validation on this tree, supervisor:* `npx vitest run` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, `tsc` **13**, `eslint` **0 errors, 2 warnings**, `python3
-  ml/selftest.py` **OK**. Rotation: `comm -23` over `sort -u` of both files at `979a8ad`
-  against this pair drops **0** lines. `npm run smoke` **Test Files 120 passed (120) /
-  Tests 1089 passed (1089)**, **300 passed (13.4m)**, **Smoke test passed.**

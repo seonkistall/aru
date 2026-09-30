@@ -258,6 +258,10 @@ async function main() {
   await run(npmCmd, ["test"]);
   // Must match `playwright.mobile.config.ts`'s own default, which reads the same var.
   await assertPortFree(Number(process.env.MOBILE_UI_PORT ?? 3102), "test:mobile-ui");
+  // The same check for the second web server that config now starts, for the commerce
+  // switch-on spec. Its default must match `tests/e2e/support/commerce-switch-on.ts`,
+  // which cannot be imported here because this file is plain ESM and that one is TS.
+  await assertPortFree(Number(process.env.COMMERCE_SWITCH_ON_PORT ?? 3104), "commerce switch-on server");
   await run(npmCmd, ["run", "test:mobile-ui"]);
   // The e2e phase runs against `next build` + `next start` (playwright.mobile.config.ts),
   // so the production build is already made and a red build fails that phase rather than

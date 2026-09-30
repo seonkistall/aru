@@ -71,3 +71,6 @@ next-env.d.ts
 
 # blemish constant sensitivity scratch builds
 /tests/.blemish-const-tmp/
+
+# second build dir for the e2e commerce switch-on server (tests/e2e/support/commerce-switch-on.ts)
+/.next-switch-on/

@@ -9,6 +9,11 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // The e2e commerce switch-on server builds into its own dist dir alongside `.next`
+    // (tests/e2e/support/commerce-switch-on.ts), and `.next/**` above does not cover it.
+    // Unignored it is the same defect the `test-results/**` note below describes: `npm run
+    // smoke` runs `lint` FIRST, so a build output nobody wrote turns the gate red at step 1.
+    ".next-switch-on/**",
     "out/**",
     "build/**",
     "public/vendor/**",
