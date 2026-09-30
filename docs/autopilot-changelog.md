@@ -12816,3 +12816,181 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   *Validation on this tree, supervisor:* smoke as above; `tsc` **13**, `eslint` **0
   errors, 2 warnings**. Rotation: `comm -23` over `sort -u` of both files at `8548ad5`
   against this pair drops **0** lines.
+
+- 2026-09-30 (cycle 57) — Branch `autopilot/2026-09-30-0039`. **Every pixel the e2e gate
+  pins for the fold was re-measured on the production server cycle 56 switched it to, and
+  not one digit moved. All ten boxes and all ten margins across the two specs came back
+  identical to the `next dev` figures their own comments quote, `scrollNeeded` is **0** in
+  all ten, and `ar`'s **0.8** px of margin on `/report` is therefore a production fact and
+  not a dev artefact. No budget was changed; the comments now say which server produced
+  which number.**
+
+  **What was run, and what it printed.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npx playwright test --config
+  playwright.mobile.config.ts tests/e2e/first-merchant-link-path.regression-36.spec.ts
+  tests/e2e/care-first-merchant-link.regression-38.spec.ts` on the production default,
+  **10 passed (37.3s)**, exit **0**. The printed lines, verbatim apart from the trailing
+  `taps=[…]` list:
+
+  ```
+  [care-fold] ko: panels=3 linksInFirstPanel=1 firstLinkBox=517.7->576.1 viewport=800 scrollNeeded=0 marginBelow=223.9
+  [care-fold] en: panels=3 linksInFirstPanel=1 firstLinkBox=603.3->661.8 viewport=800 scrollNeeded=0 marginBelow=138.3
+  [care-fold] ja: panels=3 linksInFirstPanel=1 firstLinkBox=581.5->639.9 viewport=800 scrollNeeded=0 marginBelow=160.1
+  [care-fold] zh: panels=3 linksInFirstPanel=1 firstLinkBox=494.5->552.9 viewport=800 scrollNeeded=0 marginBelow=247.1
+  [care-fold] ar: panels=3 linksInFirstPanel=1 firstLinkBox=577.1->635.6 viewport=800 scrollNeeded=0 marginBelow=164.4
+  [path] ko: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=591.8->636.8 viewport=800 scrollNeeded=0 marginBelow=163.2
+  [path] en: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=737.5->782.5 viewport=800 scrollNeeded=0 marginBelow=17.5
+  [path] ja: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=692.8->737.8 viewport=800 scrollNeeded=0 marginBelow=62.2
+  [path] zh: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=627.2->672.2 viewport=800 scrollNeeded=0 marginBelow=127.8
+  [path] ar: screens=4 taps=6 requiredFields=3 merchantLinks=4 firstLinkBox=754.2->799.2 viewport=800 scrollNeeded=0 marginBelow=0.8
+  ```
+
+  **The dev/production comparison, box by box.** `regression-36`'s comment quotes first-link
+  box bottoms of **636.8** (`ko`), **672.2** (`zh`), **737.8** (`ja`), **782.5** (`en`),
+  **799.2** (`ar`) and cycle 52's changelog entry quotes `marginBelow` **163.2** / **127.8**
+  / **62.2** / **17.5** / **0.8**; production printed the same ten numbers.
+  `regression-38`'s comment quotes **517.7→576.1** / **223.9** (`ko`), **494.5→552.9** /
+  **247.1** (`zh`), **577.1→635.6** / **164.4** (`ar`), **581.5→639.9** / **160.1** (`ja`),
+  **603.3→661.8** / **138.3** (`en`); production printed the same ten numbers. So the delta
+  between the two servers is **0** px on every figure either spec pins or prints, in both
+  locales' directions and on both surfaces. That is the answer to the question the item
+  asked: the cycle 50–54 fold measurements were not distorted by `next dev`, and nothing
+  had to be re-baselined numerically — only re-attributed.
+
+  **Which server produced which historical number, which is what the comments got wrong.**
+  `regression-36`'s header opened "Measured at 360x800 on a production build" — a phrase
+  written in cycle 50, when `ko` and `en` were hand-measured with `npm run build` +
+  `next start` (`git show 97363a3:tests/e2e/first-merchant-link-path.regression-36.spec.ts`
+  shows that line above a two-locale block). Cycle 52 replaced the block underneath it with
+  all five locales measured through `playwright.mobile.config.ts`, whose `webServer.command`
+  at that commit was `npm run dev` — `git show 1165b91:playwright.mobile.config.ts` prints
+  `command:` with `npm run dev -- --hostname ${host} --port ${port}`, and
+  `git show 40da7d6:playwright.mobile.config.ts` (cycle 53, which produced `regression-38`'s
+  numbers) prints the same. So "on a production build" had come to sit above five
+  dev-measured numbers. Both headers now name the server per measurement, carry the cycle 57
+  production re-measurement, and `regression-38`'s `SCROLL_BUDGET` comment says its **138.3**
+  px of `en` headroom holds on production too. One stale cross-file claim was fixed while in
+  there: `regression-36` pointed at "the cycle 50 entry of docs/AUTOPILOT.md", and rotation
+  moved that entry to `docs/autopilot-changelog.md` (it is at line **11227** there,
+  `grep -n "^- 2026-.*cycle 50)" docs/autopilot-changelog.md`).
+
+  **`ar` is at 0.8 px on production, so the decision the item demanded.** The budget stays a
+  hard **0** in all five locales, on both specs. The reason is that `neededScroll <= 0` is not
+  a budget at all — it is the property "the first buy button is inside the first screen",
+  stated as an inequality. Every looser form asserts something weaker: a budget of 8 px passes
+  a link whose box ends 8 px past the bottom of the **800** px viewport the run reports,
+  which is a link the visitor cannot see without scrolling, which is the only defect this
+  spec was written to catch. `ar`'s **0.8** px is brittleness in the product, not in the assertion, and the
+  spec's own comment already names the fix (another layout move) and fences the disclosure
+  off from being the thing that gives way. Slackening the assertion would convert a true
+  statement about the product into a false one.
+
+  **Proved a live tripwire and not a formality.** `app/report/page.tsx:380` is the flex row
+  holding the picks-step section header; its `marginBottom` was changed **14** → **24**, one
+  line, and `regression-36` re-run on the production server: the line reporter printed
+  **1 failed** then **4 passed (34.0s)**, with
+  `Error: ar: the first merchant link needs 9.2px of scroll (box 764.2→809.2), budget 0` and
+  the other four still at `scrollNeeded=0` (`marginBelow` **153.2** `ko`, **117.8** `zh`,
+  **52.2** `ja`, **7.5** `en`). So **10** px of added height above the link is enough to
+  fail `ar` and nothing else, which is exactly the resolution a hard zero on a **0.8** px
+  margin buys. The break was reverted from a copy taken before it and `cmp` reports no
+  difference; `sha256sum app/report/page.tsx` reads
+  `19263733f86d7a5f1f4a741edde35f1f2c003e1cfe2b01d21962631330bab3b8` before the break and
+  after the revert, and `git status --porcelain` lists no product file.
+
+  **No product finding, and the scope of "every spec".** No locale on either surface needs
+  scroll on production, so there was nothing to fix with a layout-only move and
+  `app/`, `lib/`, `public/` and `ml/` are untouched this cycle. The brief asked for any other
+  spec quoting dev-measured px as current: `grep -rl "px" tests/e2e/*.ts` matches **18**
+  files, and of those only the two named ones define a `SCROLL_BUDGET`, print `marginBelow`
+  or print `firstLinkBox` (`grep -rl` on each of the three terms returns exactly those two).
+  The other **16** assert against the repo's `--tap-min: 44px` contract, against CSS
+  declaration strings (`"18px"`, `"12px"`, `"106px"`, `"0px"`), against WCAG contrast ratios,
+  or against gutters and indents in px that the 360 px viewport and the stylesheet fix — plus
+  two named floors with their own written rationale, `MIN_FIELD_WIDTH` **200** in
+  `reengage-optin-field-width.regression-23` and `GLYPH_GAP_MIN` **12** in
+  `landing-header-clearance.regression-28`. None of the 16 pins a fold position or a
+  margin-below figure, so none of them needed re-baselining. Their historical "before the
+  fix" px are records of defects already fixed, not budgets the gate pins.
+
+  **Research and ML: skipped this cycle**, as the brief directed. `python3 ml/selftest.py`
+  was still run and is green (below).
+
+  **What this did NOT establish.** The `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` half of both
+  specs' comments is still a dev measurement. Both specs were re-run on the production
+  server with the flag set — **10 passed (37.5s)**, exit **0**, and every one of the ten
+  `[path]` / `[care-fold]` lines byte-identical to the flag-off run above — but that run does
+  not prove the flag reached the browser: `lib/commerce.ts:130` returns
+  `process.env.NEXT_PUBLIC_COMMERCE_AFFILIATE === "on"`, and after that build
+  `grep -rho '"on"===' .next/static/chunks/ | sort | uniq -c` reports **2** occurrences, both
+  of the form `"on"===<var>.default.env.NEXT_…` — a runtime `process.env` lookup that
+  survived into the client bundle rather than an inlined literal — while
+  `grep -rho 'NEXT_PUBLIC_COMMERCE_AFFILIATE":"[^"]*"' .next` finds nothing, so where the
+  value comes from in the browser was not traced. Identical geometry under both states is
+  therefore still the cycle 52 / cycle 53 dev finding, restated as such in both headers, and
+  a cycle that wants it on production has to establish the flag is live first. Beyond that:
+  each production run here was run once, so no number carries a variance estimate — they are
+  reproducible only in the sense that the flag-off, flag-on and post-edit runs each printed
+  the same ten lines. Nothing was measured on a real device, at any viewport other
+  than **360x800**, in any browser other than the container's Chromium, or with a
+  `result.note` present (the cycle 54 finding above, that a note puts the link back below the
+  fold in 28 of 35 cases, was NOT re-measured on production and its numbers stay attributed
+  to the dev server). And nothing here touched the question of whether a production build
+  changes what the specs *detect* rather than what they measure — cycle 56 left that open and
+  it stays open.
+
+  **Docs and rotation.** Recent cycles holds 57/56/55; cycle 54's entry (**224** lines) moved
+  verbatim to the end of `docs/autopilot-changelog.md` after cycle 53. The `/report` fold
+  backlog item under "Now" gained a `2026-09-30 (cycle 57)` note carrying the production
+  numbers and the tripwire proof; the open part of it — `ar`'s **0.8** px — is unchanged and
+  still `[~]`. No backlog item was ticked `[x]`, and nothing was appended to "Supervisor
+  findings not yet actioned": every item there was already `[x]` before this cycle and cycle
+  56's review had recorded no new one at the time this ran.
+
+  **Nothing was lost in the rotation.** `wc -l` on both files at `b5a99c2`: **2406** +
+  **12239** = **14645**. The final pair is **2375** + **12465** = **14840**. `sed -n` of the
+  extracted cycle 54 entry compared with `cmp` against lines **12242**–**12465** of the
+  changelog reports no difference. `sort -u` over both files at `b5a99c2` gives **12743**
+  unique lines and over the final pair **12918**; `comm -23` of the first against the second
+  drops **0** — every line at `b5a99c2` is still present, so there is no missing line to
+  account for.
+
+  **Validation on this tree, worker.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` printed
+  **Test Files  120 passed (120)** / **Tests  1089 passed (1089)** for the vitest phase,
+  **300 passed (11.1m)** for the e2e phase against a production build, **Ran 146 tests in
+  1.737s** / **OK** for `ml/selftest.py`, all **12** HTTP route checks `ok` with `/pilot`,
+  `/ops` and `/eval` each `-> 404`, and the literal line **Smoke test passed.** at log line
+  **1036**, exit **0**. Re-run afterwards on the committed tree, each on its own:
+  `npx tsc --noEmit | grep -c "error TS"` **13** — unchanged; `npx eslint .`
+  **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing `_reads` / `_result` in
+  `lib/care.ts:70`, not run beside vitest); `python3 ml/selftest.py` **Ran 146 tests in
+  1.644s** / **OK**. `git diff b5a99c2 --stat` lists **4** files and the same command over
+  `app/ lib/ public/ ml/ tests/*.test.ts playwright.mobile.config.ts vitest.config.ts
+  package.json package-lock.json` is empty — this cycle changed two e2e spec comments and
+  two docs, nothing else. What the smoke run does not cover: the comment-only spec edits and
+  the doc paragraphs written after it started. With those in, the two edited specs re-run
+  together on a production server read **10 passed (34.4s)** with all ten `[path]` /
+  `[care-fold]` lines byte-identical to the measurement run above, `npx tsc --noEmit | grep
+  -c "error TS"` is still **13** and `npx eslint .` still **0 errors**.
+
+  *Supervisor review:* sound. The change is to comments and docs only. It says which
+  server measured each number, and the hard-0 budget was shown to trip.
+
+  *Closed here: the one thing this entry left unestablished.*
+  - The worker could not show that `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` reaches the
+    browser under a production build. The cycle 56 review had claimed it did, from
+    regression-36/38 passing. Those specs accept either disclosure sentence, so they
+    could not show it. That claim was unsupported when made.
+  - Established now with a throwaway probe, deleted after the run. It reads `/care`'s
+    rendered text under `en`:
+    - with the flag on: `[aff] affiliate=true noCommission=false`
+    - with it off: `[aff] affiliate=false noCommission=true`
+  - `webServer.command` builds in Playwright's own environment, so the flag is inlined
+    into the build the page is served from. Turning it on for the owner's affiliate
+    signup therefore changes what visitors read.
+
+  *Validation on this tree, supervisor:* rotation: `comm -23` over `sort -u` of both files
+  at `b5a99c2` against this pair drops **0** lines; `git diff b5a99c2..HEAD -- app lib`
+  is empty. `npm run smoke` **Test Files 120 passed (120) /
+  Tests 1089 passed (1089)**, **300 passed (9.9m)**, **Smoke test passed.**
