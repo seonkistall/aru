@@ -2095,7 +2095,46 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   3100–3109: none listening afterwards; `git status --porcelain` immediately before the
   commit listed the **6** paths this cycle touched and nothing else.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged with one test added.
+
+  The product change is `app/survey/page.tsx` plus one registered key in
+  `lib/device-data.ts`. That key is session-scoped and is in the delete-my-data list. The
+  `key={active}` remount, `localStorage`, `lib/consent.ts` and the /scan consent toggles
+  are all untouched.
+
+  I reproduced the spec on this tree with `npx playwright test
+  tests/e2e/survey-draft-lang-switch.regression-40.spec.ts --project=mobile`:
+  **3 passed (1.2m)**.
+
+  The gap I found: the draft is applied AFTER the submitted survey, because the draft is
+  the newer of the two, but none of the three cases ever had a submitted survey on the
+  page. I swapped the two restore blocks in `app/survey/page.tsx`, so the submitted answers
+  win again, and the worker's three cases still went **3 passed**. That order is exactly
+  the visitor who comes back from /report, changes an answer, and switches language
+  before resubmitting.
+
+  So I added a fourth case to the same spec, "an edit to an already-submitted survey
+  survives a language switch". It seeds `gyeol_survey`, taps one unpressed chip, switches
+  to `en`, and compares the pressed-chip indices, which do not depend on the language.
+  - Clean: **4 passed (38.8s)**.
+  - With the swap: **1 failed**, **3 passed (36.9s)**, on `en must show the edited answers,
+    not the submitted ones`.
+  - The file was restored from a copy and `sha256sum -c` printed `app/survey/page.tsx: OK`.
+
+  One edge was left as is and not fixed. The scan hint pre-selects concerns only when the
+  restored list is empty (`prev.length ? prev : hint.concerns`). So a visitor who
+  deliberately clears every concern chip and then switches language gets the scan's
+  concerns back. 고민 is optional and the chips stay editable.
+
+  Rotation: `comm -23` over `sort -u` of both files at `3a13cba` drops **0** lines.
+
+  Gate on this tree, including the added case:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **315 passed (10.2m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards.
 - 2026-09-30 (cycle 60) — Branch `autopilot/2026-09-30-1839`. **All five screens on the
   path to the first merchant link now have a first-load JS number, and the measurement
   found a flaw in cycle 40's method rather than a module to move. What the browser
