@@ -102,10 +102,12 @@ export default function Survey() {
     /* eslint-disable react-hooks/set-state-in-effect */
     // Rehydrate a previously submitted survey so returning from /report (its
     // scan nudge routes scan→survey) doesn't wipe every answer.
+    let hasSubmitted = false;
     try {
     const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SurveyT>;
+        hasSubmitted = true;
         if (saved.type) setType(saved.type);
         if (Array.isArray(saved.concerns)) setConcerns(saved.concerns);
         if (saved.category) setCategory(saved.category);
@@ -130,7 +132,16 @@ export default function Survey() {
     const hint = loadScanHint();
     if (!hint) return;
     setScanHint(hint);
-    if (hint.concerns.length) setConcerns((prev) => (prev.length ? prev : hint.concerns));
+    // The hint PRE-SELECTS only on a first visit — no stored draft and no submitted
+    // survey. It used to pre-select whenever the restored list was empty
+    // (`prev.length ? prev : hint.concerns`), which meant a visitor who deliberately
+    // cleared every concern chip and then changed the language got the scan's concerns
+    // back: the remount restores the draft's empty `concerns`, and the old condition
+    // read that as "nothing stored" rather than as the choice it was. A stored draft is
+    // authoritative, an empty `concerns` included. The hint TEXT above is unaffected —
+    // `setScanHint` is unconditional, so the sentence and the retake link show either
+    // way.
+    if (hint.concerns.length && !draft && !hasSubmitted) setConcerns(hint.concerns);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 

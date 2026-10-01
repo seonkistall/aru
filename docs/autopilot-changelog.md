@@ -13467,3 +13467,170 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards; `git status` clean.
+
+- 2026-10-01 (cycle 61) — Branch `autopilot/2026-10-01-0039`. **Mid-session language
+  switching is now measured on all nine screens instead of two, and the one loss that hits
+  a visitor on the funnel is fixed. `/survey` lost all **5** unsubmitted answers to a
+  language tap; they now survive. `/scan` loses the camera and its **3** consent toggles,
+  which is recorded as CORRECT and pinned as such. `/care`'s unexplained `400 → 400 → 0`
+  from cycle 42 is a scroll clamp caused by its own `!viewLoaded` early return, and which
+  switch it lands on is a race that was caught both ways on the same locale. `/` has no
+  state to lose at all, the resets on `/scan` and `/privacy` are correct, `/checkin` loses
+  **2** chips and is filed, and `/pilot` / `/ops` are research mode — filed, not fixed.**
+
+  **What was run.** The real picker, `ko → en → ja → ar`, at 360x800 against
+  `next start` on port **3108** on a production build, one browser context per screen, with
+  a canvas `captureStream()` for `/scan`'s camera and no real camera anywhere.
+  `/pilot` and `/ops` answer **404** on a production build until
+  `INTERNAL_TOOLS_USER` and `INTERNAL_TOOLS_PASSWORD` are set (`lib/server/internal-access.ts`),
+  so the server for those two was restarted with throwaway local credentials and the
+  context carried matching `httpCredentials`. No credential of the owner's was used and
+  none is in the tree.
+
+  **The per-screen result, before → after the FIRST switch.** Full numbers are in the RTL
+  backlog item above. `scrollWidth === clientWidth === 360` on every screen in every
+  locale, so **0** direction or overflow defects, which is what cycle 42 found on its two.
+  `window.scrollY` survives on **5** of the **7** new screens (**310** `/`, **307**
+  `/survey`, **1201** `/privacy`, **559** `/pilot`, **400** `/ops`, unchanged across all
+  four locales) and is lost on `/scan` (**382** → **0**). `/checkin`'s page is **800** px
+  tall at a **800** px viewport, so it had no offset to keep (**0** throughout). React state
+  survives
+  on none of them: `/` has no state to lose (**0** `[aria-pressed]`, **0** inputs, **0**
+  checkboxes), `/survey` goes **5** chips → **0**, `/scan` **3**/**3** consent toggles →
+  **0**/**0** with `scan-capture` **1** → **0** and `scan-start` **0** → **1**, `/checkin`
+  **2** chips → **0**, `/privacy` goes **8** → **7** `main button`s, which is the
+  two-button confirm row replaced by the single idle button, `/pilot` **3**/**7**
+  checkboxes → **0**/**7** with **4** → **2** filled text fields (the two that survive are the two whose initial value is
+  a non-empty default, `P001` and `pilot-1`) and its status `<select>` `consented` →
+  `planned`, and `/ops` loses the
+  `SUPABASE_SYNC_TOKEN` field (**1** → **0** filled) and its dry-run choice
+  (**0**/**1** → **1**/**1** checked, **5** → **6** disabled `main button`s).
+
+  **The fix, and the three things it did not do.** `app/survey/page.tsx` mirrors the five
+  answers into `sessionStorage` under the new `DEVICE_DATA_KEY.surveyDraft`
+  (`aru_survey_draft_v1`), restores them in the same after-mount effect that already
+  rehydrates a submitted survey, and removes the key on submit next to the
+  `reportStep` removal that is already there. It is cycle 42's `/report` pattern in the
+  storage this screen already used. The write is gated on a `draftLoaded` flag so the first
+  render cannot overwrite a stored draft with the empty initial state. The key is
+  registered in `lib/device-data.ts` as `session` / `survey`, so "delete my device data"
+  clears it — `tests/device-data.test.ts`'s own expected-key list is updated with it, which
+  is what makes that registration checkable. `key={active}` in `lib/i18n.tsx` is untouched,
+  nothing new is written to `localStorage` (the spec asserts
+  `localStorage.getItem("aru_survey_draft_v1")` is null), and the three /scan consent
+  checkboxes are neither persisted nor restored.
+
+  **Why only `/survey`.** `/checkin`'s two chips are a post-purchase screen, not the
+  conversion funnel, and a half-finished check-in is an activity record rather than a form
+  draft — filed. `/privacy`'s confirmation resetting is correct for the same reason the
+  /scan consents are: a destructive confirm should be re-read in the language it is
+  confirmed in. `/pilot` and `/ops` are research mode, which the brief put out of scope for
+  a fix. `/` has nothing to lose. `/scan`'s camera is the one case where restoring would
+  mean restarting a device the visitor did not ask to restart.
+
+  **`/care`, explained.** `app/care/page.tsx` returns `<main className="min-h-screen">`
+  while `viewLoaded` is false, and `viewLoaded` is React state, so it resets with
+  everything else at the remount. A recorder sampling `window.scrollY` and `scrollHeight`
+  every frame, re-scrolling to **400** before each switch, caught the empty page being laid
+  out — `[ms, scrollY, scrollHeight]` `[11,400,1731] [161,0,800] [177,0,2029]` on the `en`
+  switch. At `scrollHeight` **800** against a **800** px viewport the maximum scroll is
+  **0**, so the browser clamps, and the content coming back at **2029** does not restore
+  the position. Whether the clamp happens is a race against React's passive effect: on
+  `ja`, same tree and same locale, one run read `[292,400,2029] [397,0,800] [503,0,1903]
+  [565,0,1862]` and the other `[261,400,2029] [378,400,1903] [504,400,1862]` — clamped in
+  the first, **400** kept in the second, no **800** frame at all. That is why cycle 42 saw
+  `400 → 400 → 0` rather than a reset on every switch, and it is not a per-locale property.
+  Left unfixed on purpose: a scroll restore across a remount is a different mechanism from
+  putting state in storage, and it is filed in the backlog item rather than guessed at
+  here.
+
+  **Proved live, and broken once.** `tests/e2e/survey-draft-lang-switch.regression-40.spec.ts`
+  is **3 passed (5.4s)** on the fixed tree against the production server. Deleting the
+  draft-restore block from the mount effect and rebuilding: **1 failed** / **2 passed
+  (11.2s)**, the failure being `en must keep all five answers` with
+  `locator('main button[aria-pressed="true"]')` `14 × locator resolved to 0 elements` and
+  `unexpected value "0"` against `Expected: 5`. Reverted from a copy taken before the
+  break; `sha256sum` reads
+  `0e7c9c4953d9512a8fcfbcbef72dbbf82cf3a7f2288ce05bf516fe926acc133d`
+  (`app/survey/page.tsx`),
+  `bdf181d8c3062c07024db4a3897d27efb708217223a85891476826640e446168`
+  (`lib/device-data.ts`) and
+  `ba2aa8617a5b1c304a9399d245299f45aed31c062097b00a999f22ab2bec978d`
+  (`tests/e2e/survey-draft-lang-switch.regression-40.spec.ts`) both before the break and
+  after the revert, and `diff` over the two listings reports no difference.
+
+  **ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and is green
+  (below).
+
+  **What this does NOT establish.** One container, one browser build
+  (`/opt/pw-browsers/chromium-1194`), one run per screen per locale except `/care`, which
+  was run twice — so nothing here carries a variance estimate, and the `/care` race is
+  established as a race by two runs disagreeing, not by a distribution. No real phone: the
+  "real phone on all nine screens" half of the backlog item is untouched. The probe reads
+  `[aria-pressed]`, checked checkboxes, filled text inputs, `<select>` values, `role="tab"`
+  selection, `main button` counts and `scrollY` / `scrollHeight` — a piece of visitor state
+  that none of those expose would not have been seen. `/pilot` and `/ops` were measured
+  behind basic auth that no deploy of theirs is known to use. And the fix is measured
+  against a language switch only; it was not tested against a tab reload, a back
+  navigation, or a second tab.
+
+  **Rotation.** Cycle 58's entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 57: **136** lines out of `docs/AUTOPILOT.md`
+  (**2393** → **2256** before this entry was written, the **137th** being the blank
+  separator) and **12996** → **13133** into the changelog. `comm -23` over `sort -u` of
+  both files at `3a13cba` against this pair drops **0** lines.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files 120 passed (120)` / `Tests 1089 passed (1089)`,
+  **314 passed (14.5m)**, `Ran 146 tests in 2.571s` **OK**, **Smoke test passed.**,
+  exit **0**. `npx tsc --noEmit | grep -c "error TS"` **13**. `npx eslint .`
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` on its own, before the
+  gate, `Ran 146 tests in 2.632s` **OK**. `git diff --stat 3a13cba -- app lib tests` is
+  `app/survey/page.tsx | 49 +++`, `lib/device-data.ts | 6 +++`,
+  `tests/device-data.test.ts | 1 +`, `3 files changed, 56 insertions(+)`, plus the one new
+  untracked spec file. The suite went from the supervisor's **311** on `3a13cba` to
+  **314** here, which is the **3** tests this cycle added and nothing else. Ports
+  3100–3109: none listening afterwards; `git status --porcelain` immediately before the
+  commit listed the **6** paths this cycle touched and nothing else.
+
+  *Supervisor review:* sound, merged with one test added.
+
+  The product change is `app/survey/page.tsx` plus one registered key in
+  `lib/device-data.ts`. That key is session-scoped and is in the delete-my-data list. The
+  `key={active}` remount, `localStorage`, `lib/consent.ts` and the /scan consent toggles
+  are all untouched.
+
+  I reproduced the spec on this tree with `npx playwright test
+  tests/e2e/survey-draft-lang-switch.regression-40.spec.ts --project=mobile`:
+  **3 passed (1.2m)**.
+
+  The gap I found: the draft is applied AFTER the submitted survey, because the draft is
+  the newer of the two, but none of the three cases ever had a submitted survey on the
+  page. I swapped the two restore blocks in `app/survey/page.tsx`, so the submitted answers
+  win again, and the worker's three cases still went **3 passed**. That order is exactly
+  the visitor who comes back from /report, changes an answer, and switches language
+  before resubmitting.
+
+  So I added a fourth case to the same spec, "an edit to an already-submitted survey
+  survives a language switch". It seeds `gyeol_survey`, taps one unpressed chip, switches
+  to `en`, and compares the pressed-chip indices, which do not depend on the language.
+  - Clean: **4 passed (38.8s)**.
+  - With the swap: **1 failed**, **3 passed (36.9s)**, on `en must show the edited answers,
+    not the submitted ones`.
+  - The file was restored from a copy and `sha256sum -c` printed `app/survey/page.tsx: OK`.
+
+  One edge was left as is and not fixed. The scan hint pre-selects concerns only when the
+  restored list is empty (`prev.length ? prev : hint.concerns`). So a visitor who
+  deliberately clears every concern chip and then switches language gets the scan's
+  concerns back. 고민 is optional and the chips stay editable.
+
+  Rotation: `comm -23` over `sort -u` of both files at `3a13cba` drops **0** lines.
+
+  Gate on this tree, including the added case:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **315 passed (10.2m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards.
