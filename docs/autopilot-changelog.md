@@ -13258,3 +13258,212 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards.
+- 2026-09-30 (cycle 60) — Branch `autopilot/2026-09-30-1839`. **All five screens on the
+  path to the first merchant link now have a first-load JS number, and the measurement
+  found a flaw in cycle 40's method rather than a module to move. What the browser
+  downloads before the page is interactive: `/` **672119** bytes raw / **201102** gzipped,
+  `/survey` **667597** / **200355**, `/scan` **720028** / **218841**, `/report` **714373** /
+  **215103**, `/care` **678806** / **203251**. Cycle 40 counted a `noModule` polyfill chunk
+  of **112594** raw / **39392** gzipped that a modern browser skips, so its **783030** /
+  **240097** for `/` is that much larger than what a visitor fetched. Nothing on the path
+  clears the 20 KB-gzipped bar for a dynamic `import()`, so `app/`, `lib/`, `public/` and
+  `ml/` are untouched and no test was added.**
+
+  **The method, and the one place it had to differ from cycle 40's.** Turbopack prints no
+  first-load column, so the numbers come from the `<script src>` set in the prerendered
+  `.next/server/app/<route>.html`, raw bytes summed and each file gzipped at level 9 and
+  summed — cycle 40's method exactly, which is what makes `/` comparable across twenty
+  cycles. The difference is that cycle 40 took every `<script src>`; this cycle also read
+  the tag's attributes, and one of the thirteen on `/` carries `noModule`. Both figures are
+  in `docs/first-load-js.md` with the exact commands so the next cycle can re-run either.
+  On cycle 40's own method, unchanged, this tree reads:
+
+  ```
+  index scripts=13 raw=784713 gzip=240494
+  survey scripts=13 raw=780191 gzip=239747
+  scan scripts=14 raw=832622 gzip=258233
+  report scripts=14 raw=826967 gzip=254495
+  care scripts=13 raw=791400 gzip=242643
+  ```
+
+  `/`'s **784713** raw against cycle 40's **783030** is **1683** bytes of drift over twenty
+  cycles. The split cycle 40 made still holds: the ja, zh and ar dictionary chunks
+  (`2ju8yzfndwcag.js` **91733** raw / **29230** gzip, `1v0h5r-biq8qi.js` **77159** /
+  **27187**, `3v8lhb0_stdmj.js` **100349** / **29691**) are referenced from no prerendered
+  HTML at all.
+
+  **The `noModule` finding, which is a correction to the measurement and not to the
+  product.** `0cz1d0mv5g_q7.js` is **112594** raw / **39392** gzipped and is tagged
+  `noModule` in all five documents — it is the legacy-browser polyfill bundle, and a
+  browser with ES-module support never requests it. So cycle 40's **1050358** → **783030**
+  raw and **322373** → **240097** gzipped for `/` are each **112594** raw and **39392** gzip
+  above what the browser actually fetched. The saving cycle 40 measured is unaffected,
+  because the chunk sits on both sides of it. Nothing needs fixing: dropping the chunk would
+  save a modern browser nothing, since it never asks for it, and would remove the only
+  reason it exists. The backlog item and `README.md` now both carry the correction beside
+  the old numbers rather than replacing them.
+
+  **Checked in a real browser, not only in the HTML.** A throwaway Playwright run at
+  360x800 against `npx next start` on port **3108** loaded each route, recorded every
+  script response, and split them into the ones the document references and the ones that
+  arrive after. Two storage states, `empty` (a first-time visitor) and `aru.lang=ko`:
+
+  ```
+  [first-load] empty / url=/ lang=en docScripts=13 downloadedFromDoc=12 raw=672119 gzip=201102 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  [first-load] empty /survey url=/survey lang=en docScripts=13 downloadedFromDoc=12 raw=667597 gzip=200355 | extraAfter=3 extraRaw=142549 extraGzip=47733
+  [first-load] empty /scan url=/scan lang=en docScripts=14 downloadedFromDoc=13 raw=720028 gzip=218841 | extraAfter=1 extraRaw=47320 extraGzip=14997
+  [first-load] empty /report url=/survey lang=en docScripts=14 downloadedFromDoc=13 raw=714373 gzip=215103 | extraAfter=4 extraRaw=185347 extraGzip=61983
+  [first-load] empty /care url=/care lang=en docScripts=13 downloadedFromDoc=12 raw=678806 gzip=203251 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  [first-load] ko / url=/ lang=ko docScripts=13 downloadedFromDoc=12 raw=672119 gzip=201102 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  [first-load] ko /survey url=/survey lang=ko docScripts=13 downloadedFromDoc=12 raw=667597 gzip=200355 | extraAfter=3 extraRaw=142549 extraGzip=47733
+  [first-load] ko /scan url=/scan lang=ko docScripts=14 downloadedFromDoc=13 raw=720028 gzip=218841 | extraAfter=1 extraRaw=47320 extraGzip=14997
+  [first-load] ko /report url=/survey lang=ko docScripts=14 downloadedFromDoc=13 raw=714373 gzip=215103 | extraAfter=4 extraRaw=185347 extraGzip=61983
+  [first-load] ko /care url=/care lang=ko docScripts=13 downloadedFromDoc=12 raw=678806 gzip=203251 | extraAfter=3 extraRaw=138027 extraGzip=46986
+  ```
+
+  `downloadedFromDoc` is `docScripts` minus **1** on all ten rows and the `raw` / `gzip`
+  pairs are byte-identical to the noModule-dropped table, which is what establishes that
+  the skipped file is the `noModule` chunk and that the HTML-derived number is right. `ko`
+  and `empty` download the same bytes on every route — Korean needs no dictionary and
+  English is a static import, so the product's own market pays the English dictionary and
+  gains nothing for its own language. `lang=en` under `empty` and `lang=ko` under `ko`
+  confirm the two states really differed rather than both falling back. The brief asked for
+  `ko` AND an empty storage state; those are two different states in this product
+  (`lib/i18n.tsx` makes English the first-visit default), so both were run rather than one
+  guessed at.
+
+  **`/report` on an empty storage state reports `url=/survey`.** With no stored result it
+  redirects. The bytes above are `/report`'s own document, fetched before the redirect,
+  which is what a visitor who lands on `/report` pays. `extraAfter` is the app router
+  prefetching linked routes after hydration and is reported separately because it is not
+  first-load weight.
+
+  **The three largest chunks are the same three files on every route.**
+  `0i7h8_tk58lvw.js` **232787** raw / **72373** gzip is React and react-dom
+  (`grep -o -F react-dom` **1** hit, `createRoot` **2**, `useMemo` **13**, `Fragment` **8**); `11oof8oxnxiv9.js` **141598** /
+  **38480** is the app-router client (`Router` **33**, `prefetch` **49**);
+  `39680g4crf4zr.js` **82569** / **28307** is the English dictionary
+  (`Turn camera back on` **1** hit, the ja/zh/ar equivalents **0** each). The `noModule`
+  chunk would be third by size and is excluded because it is not downloaded. The largest
+  route-specific files are `/scan`'s `0nbqz_u5xt-55.js` **62927** / **20105**, `/report`'s
+  `05nl_w77jzrvo.js` **55225** / **19345**, `/care`'s `1lid53sf9e4no.js` **54007** /
+  **17146**, `/` `0o58hq7nka77u.js` **47320** / **14997** and `/survey`'s
+  `10ajzjvbtk999.js` **42798** / **14250**.
+
+  **Why no product code changed.** The bar was a module a route ships on first load but
+  does not render or run before the first user action, at **≥ 20 KB gzipped** = **20480**
+  bytes. Exactly four first-load files anywhere on the path are over it and every one is
+  accounted for: react-dom (**72373**) and the app-router client (**38480**) both run at
+  hydration; the `noModule` polyfill (**39392**) is not downloaded; the English dictionary
+  (**28307**) is the language the server rendered, so it is not unrendered — and it is the
+  owner's URL decision, which the brief put out of scope. The two obvious libraries are
+  already lazy: `app/components/share-card.tsx:62` awaits `import("html-to-image")` inside
+  the share handler and `app/scan/create-landmarker.ts:6` awaits
+  `import("@mediapipe/tasks-vision")`. The largest route-specific file, `/scan`'s
+  **20105** gzip, is **375** bytes under the bar as a WHOLE chunk and holds several modules
+  (`getUserMedia` **2** hits, `landmark` **8**, `consent` **4**), so nothing inside it is
+  near.
+
+  **The one real candidate, and why it does not qualify.** `lib/skin.ts` is the analysis
+  runtime, **67485** bytes of source per `wc -c`, reaching `/scan` through
+  `app/scan/use-capture-analysis.ts:13`-`18` and `/report` through `app/report/page.tsx:14`, and
+  nothing in it runs until the visitor captures a frame — a genuine ships-but-does-not-run
+  module. Grepping its `CHEEKS` landmark array
+  (`50,101,118,117,116,205,36,280,330,347,346,345,425,266`) across `.next/static/chunks`
+  puts it in `2rkq86eu5t2oh.js` on `/scan` and `05nl_w77jzrvo.js` on `/report`, chunks whose
+  WHOLE gzipped size is **12631** and **19345** bytes. So it is under the **20480**-byte bar
+  on both routes even if its entire chunk were counted as `lib/skin.ts`, and moving it would
+  also sit inside `/scan`'s capture path, which the brief fenced off. Measured, not assumed:
+  the same grep over `/`'s twelve downloaded chunks returns nothing, so `lib/skin.ts` is not
+  on the landing page's first load at all.
+
+  **No change, therefore no regression test and no break to prove.** The brief made the
+  test conditional on making a change ("If you do make a change, add a regression test"),
+  and there is no change, so there is nothing whose saving a test could pin. A ceiling on
+  numbers this cycle did not move would be a new contract rather than a guard on this
+  cycle's work, and it is filed as open backlog instead, with the command it would be built
+  from. `git diff ba67ed0 --stat -- app lib public ml tests scripts package.json
+  package-lock.json playwright.mobile.config.ts next.config.ts` prints nothing: this cycle
+  is three docs and nothing else.
+
+  **What this does NOT establish.** Every `gzip` figure is `gzip -9` over the file on disk,
+  summed per route, which is cycle 40's method and comparable with it — it is not what
+  `next start` puts on the socket and it is not Brotli, which a real CDN would serve.
+  Nothing here measures parse, compile or time-to-interactive, on this container or on the
+  mid-range phone the item is about; weight is a proxy for the cost, not the cost. The
+  `noModule` skip was observed in the container's Chromium only. Per-module attribution
+  inside a chunk is bounded by the chunk total rather than measured, because Turbopack emits
+  no module ids into the output (`grep -o '\[project\]/[^ "]*'` over the four largest chunks
+  returns nothing). One build, one Playwright run per route per state, so no figure carries
+  a variance estimate. And only the five funnel routes were measured: `/checkin`,
+  `/privacy`, `/reco`, `/studio`, the two `/guide/*` pages and the research-mode `/eval`,
+  `/ops` and `/pilot` were not.
+
+  **ML:** skipped this cycle, as the item said to. `python3 ml/selftest.py` was still run
+  and is green (below).
+
+  **Rotation.** Cycle 57's entry (**177** lines) moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 56; `cmp` of the extracted block against
+  changelog lines **12820**–**12996** reports no difference. `sort -u` over both files at
+  `ba67ed0` gives **13176** unique lines and over this pair **13367**; `comm -23` of the
+  first against the second drops **2** lines. Both are from the English-dictionary backlog
+  item, whose closing sentence this cycle rewrote because the measurement made it false —
+  the dropped lines are `  on its own. Also unmeasured and cheap to do: ...` and
+  `  counted, before or after.`, and what replaced them is the paragraph of numbers now in
+  that item. Nothing else was lost.
+
+  **Reproduced on a second, independent build.** The gate's own `npm run build` replaced
+  the `.next` the numbers came from, and both commands re-run against it print the same
+  lines byte-for-byte — command (1) `index scripts=13 raw=784713 gzip=240494` through
+  `care scripts=13 raw=791400 gzip=242643`, command (2) `index scripts=12 raw=672119
+  gzip=201102` through `care scripts=12 raw=678806 gzip=203251`. The chunk names are
+  content hashes, so an unchanged tree rebuilds to the same ones; that is the only
+  reproduction claim here, and it is not a variance estimate.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files  120 passed (120)` / `Tests  1089 passed (1089)`,
+  **311 passed (13.9m)**, `✖ 2 problems (0 errors, 2 warnings)`, `ml/selftest.py`
+  `Ran 146 tests in 2.323s` / **OK**, **Smoke test passed.** at log line **1164**, exit
+  **0**. Re-run afterwards, each on its own: `npx tsc --noEmit | grep -c "error TS"`
+  **13**; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing
+  `_reads` / `_result` at `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in
+  2.252s` / **OK**. The suite is **311** here and **311** on the supervisor's `ba67ed0`,
+  which is what a cycle that added no test should read. `git status --porcelain` after the
+  run lists the three modified docs and the one new one and no product file, and
+  `ss -ltnp` afterwards shows nothing listening on 3100-3109. What the smoke run does not
+  cover: the three doc files themselves, including this validation paragraph, which were
+  written around it — `tsc`, `eslint` and `ml/selftest.py` above were all re-run after the
+  last doc edit. Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` against
+  this pair drops **2** lines, both named above.
+
+  *Supervisor review:* sound, merged. This is a measurement cycle with no product change:
+  `git diff --stat ba67ed0..HEAD` touches only `README.md`, `docs/AUTOPILOT.md`,
+  `docs/autopilot-changelog.md` and the new `docs/first-load-js.md`.
+
+  I reproduced the headline table independently. On a fresh `npm run build` of this tree,
+  command (2) from `docs/first-load-js.md` printed:
+  - `index scripts=12 raw=672119 gzip=201102`
+  - `survey scripts=12 raw=667597 gzip=200355`
+  - `scan scripts=13 raw=720028 gzip=218841`
+  - `report scripts=13 raw=714373 gzip=215103`
+  - `care scripts=12 raw=678806 gzip=203251`
+
+  That is byte-identical to the doc on all five routes. The English dictionary check
+  also matched: `grep -l 'Turn camera back on'` finds one chunk,
+  `39680g4crf4zr.js`, at **82569** raw / **28307** gzipped. `index.html` carries
+  **1** `noModule` tag.
+
+  Nothing was broken on purpose this cycle, because no test was added to prove live.
+
+  Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` drops **2** lines. Both
+  are from the English-dictionary backlog item's old "Also unmeasured and cheap to do"
+  sentence, which the worker rewrote to point at the new doc. Nothing was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **311 passed (16.9m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards; `git status` clean.

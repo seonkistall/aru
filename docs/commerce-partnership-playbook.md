@@ -87,6 +87,71 @@ the sku, the merchant and the URL — once per distinct value of the env var, fr
 rather than in the deploy log itself. Check there once after setting the env, or
 load `/report` and confirm the disclosure reads 제휴 링크.
 
+## Switch-on checklist, verified hosts
+
+Researched 2026-10-01 (cycle 63). The question this answers: when the owner pastes a real
+tracking link into `COMMERCE_LINK_OVERRIDES_JSON`, does `isAllowedCommerceUrl()` accept it,
+or does `/api/out` discard it and keep serving the search URL? Cycle 58 proved on a
+production server that an override on a non-allowlisted host is dropped, so getting the host
+wrong costs the first links' earnings until someone reads the request log.
+
+**No primary source was reachable.** Every programme's own documentation refuses this
+container's fetch channel as well as its curl channel — `partners.coupang.com`,
+`m.oliveyoung.co.kr`, `www.ftc.go.kr`, `www.korea.kr`, `www.kfcf.or.kr`, `www.shinkim.com`,
+`www.kimchang.com`, `csafety.kakao.com` and `aisum.com` each returned
+`Access to <host> is blocked by the network egress proxy.` So nothing below is **VERIFIED**
+in the sense of quoted from the programme's own page; the rows say **REPORTED** where a
+third-party source states it and **UNKNOWN** where none did. Nothing here is a guess.
+
+| Programme | Link host the issued link uses | Status | Source |
+|---|---|---|---|
+| 쿠팡 파트너스 | `link.coupang.com` (path `/a/<code>`) | **REPORTED** | Search result for `쿠팡 파트너스 추천 링크 link.coupang.com 단축 URL 형식`: "쿠팡 파트너스에서 생성하는 단축 링크의 형식은 `link.coupang.com/a/...` 입니다" — and a live link in the wild, [`https://link.coupang.com/a/edxLBC`](https://www.threads.com/@moneysaessak/post/DWc3YvPCYLM/) |
+| 쿠팡 파트너스 (after redirect) | `www.coupang.com` with `?lptag=<id>` | **REPORTED** | [tali.kr, 쿠팡 파트너스 제휴 링크와 앱 바로가기의 작동 원리](https://tali.kr/coupang-app-links): the server sets a cookie "`trac_lptag`" then "실제 상품페이지로 리다이렉트합니다", and the final URL carries "`?lptag=EXAMPLEID88`" |
+| 올리브영 쇼핑 큐레이터 | **UNKNOWN** — the programme's own surfaces are on `m.oliveyoung.co.kr` (`/m/mtn/affiliate/guide`, `/dashboard`, `/withdraw`), but no source states the host of the issued 상품 링크 | **UNKNOWN** | [올리브영 쇼핑 큐레이터 활동 가이드](https://m.oliveyoung.co.kr/m/mtn/affiliate/guide) (URL returned by search; page itself unreachable). Sources describe only "[상품 링크 생성] 버튼을 통해 발급" and "개인별 고유 URL이 발급" — never the host |
+| 네이버 쇼핑 커넥트 | **UNKNOWN** | **UNKNOWN** | [wplaybook.com](https://wplaybook.com/naver-shopping-connect-guide/) and others describe "링크 발급 버튼으로 나만의 고유 링크", "상품 하나당 링크는 1개만 발급", and that "상품 페이지의 URL을 그대로 복사해서 홍보하면 수익이 인정되지 않습니다" — no source names the host |
+
+So the playbook's earlier guess table was right about Coupang and should not be trusted for
+the other two: `smartstore.naver.com` for 네이버 is still nobody's observation, and
+`www.oliveyoung.co.kr` is **not** established as the curator link's host either — the
+curator pages themselves are on `m.oliveyoung.co.kr`, which is not on the allowlist.
+
+### The one-line `ALLOWED_HOSTS` diff per host — a proposal, not a change
+
+`lib/commerce.ts` is untouched by this cycle and an allowlist change is the owner's. For
+each host, this is the exact edit to approve, inside `const ALLOWED_HOSTS = new Set([...])`
+at `lib/commerce.ts:24`:
+
+| Host | Approve when | Exact line to add |
+|---|---|---|
+| `link.coupang.com` | the owner has a real 파트너스 link and it starts with `https://link.coupang.com/` | `  "link.coupang.com",` |
+| `m.oliveyoung.co.kr` | the owner generates one curator link and it is on `m.` rather than `www.` | `  "m.oliveyoung.co.kr",` |
+| 네이버 커넥트 host | the owner generates one 커넥트 link and reads its host off the clipboard | `  "<the host the real link uses>",` |
+
+`www.oliveyoung.co.kr` is already in the Set, so an Olive Young link on `www.` needs no
+change at all. Each added line also needs the bullet list in **Partner Override** above
+extended to match, because `tests/commerce.test.ts` pins that list against `ALLOWED_HOSTS`.
+
+**Do not add a host nobody has seen a real link on.** The allowlist is what keeps
+`/api/out` from being an open redirect, and two of the three rows above are UNKNOWN.
+
+### A second failure mode, which the allowlist does not cover
+
+`addCommerceTracking()` (`lib/commerce.ts:111`) appends four `utm_*` parameters to whatever
+URL the override supplies. Two programmes are reported to refuse credit for a modified
+link: 올리브영's guide, as quoted by third parties, says "발급된 상품 링크를 임의로 수정하면
+정상 추적이 불가능하므로 수정하지 말아야 합니다", and 네이버's that a copied product URL
+"수익이 인정되지 않습니다". Whether adding a query parameter counts as 수정 is **UNKNOWN** and
+cannot be settled from here. If it does, the owner's links will be accepted by the gate,
+redirect correctly, and still earn $0 — the same silent-zero failure as a wrong host, one
+layer further in. It is in BLOCKERS in `docs/AUTOPILOT.md`; the fix would be a change to
+`lib/commerce.ts`, which needs the owner.
+
+Also reported and worth knowing before negotiating: 올리브영 credits a purchase made
+"링크 클릭 후 24시간 내" ([afterwork30.com](https://afterwork30.com/affiliate/oliveyoung-shopping-curator-review)),
+and 쿠팡's `trac_lptag` cookie is reported to last 24 hours too (tali.kr, above). A scan →
+`/report` → merchant hop happens in one session, so neither window is a constraint on ARU's
+funnel.
+
 ## Switch-on dry run
 
 The two-variable deploy above is no longer something only the owner will ever run.
