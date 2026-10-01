@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink } from "@/lib/care";
 import { isSurvey, recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
@@ -15,6 +15,19 @@ import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { ProductVisual } from "@/app/components/product-visual";
 import { t, useLanguage } from "@/lib/i18n";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+
+// The sessionStorage read below has to happen after mount (reading it during
+// render is an SSR hydration mismatch), but it must not happen after a PAINT: the
+// `!viewLoaded` branch is one viewport tall, and a visitor who scrolled down and
+// then changed the language gets the whole subtree remounted under
+// LanguageProvider's `key={active}`, which resets `viewLoaded`. If the browser
+// lays out that 800px document the maximum scroll is 0, so `scrollY` is clamped,
+// and the content coming back does not restore it. A layout effect runs inside the
+// same commit, so the state update that brings the content back is flushed before
+// the browser ever lays the short document out. The server has no layout pass;
+// fall back to useEffect there to avoid the SSR warning (same shape as
+// lib/i18n.tsx).
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
@@ -82,13 +95,16 @@ export default function CarePage() {
   const [viewLoaded, setViewLoaded] = useState(false);
   const [expandedMerchants, setExpandedMerchants] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     // sessionStorage is client-only; reading it during the first render caused
-    // an SSR hydration mismatch (React #418), so load after mount instead.
-    /* eslint-disable react-hooks/set-state-in-effect */
+    // an SSR hydration mismatch (React #418), so load after mount instead. A
+    // LAYOUT effect, not a passive one, so the empty `!viewLoaded` branch is never
+    // laid out — see the note above the helper. The
+    // `react-hooks/set-state-in-effect` disable the passive version needed is gone
+    // with it: the rule does not fire on a layout effect, and leaving the directive
+    // in made eslint report an unused one.
     setView(loadCareView());
     setViewLoaded(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const summary = careSummary(view?.survey ?? null, view?.reads ?? null, view?.result ?? null);

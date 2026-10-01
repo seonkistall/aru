@@ -13131,3 +13131,130 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
 
   *Validation on this tree, supervisor:* smoke as above; `tsc` **13**. Rotation: `comm
   -23` over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
+
+- 2026-09-30 (cycle 59) — Branch `autopilot/2026-09-30-1239`. **The last open tap-target
+  item from cycle 50 is closed by measurement, and it closes with no product change. The
+  `ReengageOptIn` checkbox really is 15x15 / 13.046875x15 / 13x15, but the `<label>` around
+  it is **244x44** in all five locales and every point probed inside it toggles `checked`,
+  so the label is the target — the same reading cycle 49 made for the three /scan consent
+  checkboxes. `tests/e2e/reengage-optin-label-target.regression-39.spec.ts` ratchets it in
+  `ko en ja zh ar`, and `app/`, `lib/`, `public/` and `ml/` are untouched.**
+
+  **What the item demanded, and why it could not be answered by reading the file.** The
+  backlog required the is-the-label-the-target judgement to be made BY MEASUREMENT, not on
+  sight, because the file alone is ambiguous: the label carries
+  `minHeight: "var(--tap-min)"` but also `display: "flex"` with a `<span>` beside the
+  input, and whether a click in the space the span does not occupy reaches the label is a
+  layout fact, not a source fact. So it was probed at six points per locale.
+
+  **The numbers, from the spec's own line reporter on the production server.**
+
+  ```
+  [reengage-target] ko: dir=ltr tapMin=44 label=244x44 input=15x15 probes=TL,TR,BL,BR,far,mid
+  [reengage-target] en: dir=ltr tapMin=44 label=244x44 input=13.046875x15 probes=TL,TR,BL,BR,far,mid
+  [reengage-target] ja: dir=ltr tapMin=44 label=244x44 input=13x15 probes=TL,TR,BL,BR,far,mid
+  [reengage-target] zh: dir=ltr tapMin=44 label=244x44 input=15x15 probes=TL,TR,BL,BR,far,mid
+  [reengage-target] ar: dir=rtl tapMin=44 label=244x44 input=13x15 probes=TL,TR,BL,BR,far,mid
+  ```
+
+  `ar` reports `dir=rtl`, so the RTL case is the real one and not an LTR page with Arabic
+  text in it. The six probes are the four inner corners **3** px in, the far end from the
+  input (the right edge in the four LTR locales, the left edge in `ar`), and the midpoint.
+  Each of the **6** clicks per locale flipped `checked`, alternating `false`→`true`→`false`,
+  and the sixth left it back at `false` in all five — **30** clicks, **30** toggles. The
+  exploratory pass also read `document.elementFromPoint` at each point before clicking: it
+  returned `label` or the label's own `span` at every one of the **30**, never an element
+  outside the label. So `244` ≥ **24** and `44` ≥ `--tap-min` **44**, and the whole box is
+  live. The input's own **13.046875** px in `en` is the flex item shrinking under a longer
+  translation; it is recorded rather than fixed, because widening a 13px input inside a
+  244x44 target changes what the eye sees and not what a finger hits.
+
+  **So: no product change.** `git diff --stat -- app lib public ml` over this commit prints
+  nothing. The constraints the item named are met by having changed nothing at all: the
+  opt-in's default `checked` state, its `name`, its submit handler, what it sends and when,
+  every string of copy, `lib/consent.ts` and the three /scan consent checkboxes are all
+  byte-identical to `ef32957`. The two consent streams are untouched and not merged.
+
+  **The spec cannot submit the form, by two independent facts.** The label sits outside the
+  `<form>` — the spec asserts `label.closest("form")` is null before it clicks anything —
+  and no address is ever typed, so `submit()` returns at its own `!email.trim()` guard. On
+  top of that the spec records every request the page makes and fails if one URL contains
+  `/api/reengage/`. Nothing was sent, no provider was called, and no email exists.
+
+  **Proved a live tripwire twice, each reverted.** Setting the label's `minHeight` to **0**:
+  **5 failed**, with `consent label height` `Received` **18.75** (`ko`), **37.5** (`en`),
+  **37.5** (`ja`), **18.75** (`zh`), **37.5** (`ar`) against `Expected: >= 44`. Setting the
+  label to `display: "inline"`: **5 failed**, `Received` **15** / **39** / **39** / **15** /
+  **39** on the same assertion. Both breaks were reverted from a copy taken before the
+  first; `sha256sum` reads
+  `9c237445439a6b967b4ecf8d7e010b3cc7e0e0f4d12d8a944d2e3f09088bd979`
+  (`app/components/reengage-optin.tsx`) and
+  `9bc43119c597cae18e69dbb819cc2c55a6d2a4fb08d58a1a46adc6a7f5f12e41`
+  (`tests/e2e/reengage-optin-label-target.regression-39.spec.ts`) both before the first
+  break and after the last revert, and `diff` over the two listings reports no difference.
+  Note what the break numbers say about the height floor: at `minHeight: 0` the label still
+  measures **37.5** in `en`, `ja` and `ar`, which is over the **24** AA floor — so a spec
+  that pinned only 2.5.8 would have passed a control the repo's own contract rejects. The
+  floor read at runtime from `--tap-min` is what catches it.
+
+  **One method note, because it nearly produced a false finding.** The first probe pass
+  clicked the label's `boundingBox()` coordinates directly and recorded **NOCHANGE** on all
+  **25** of its clicks (**5** probes x **5** locales; the midpoint probe came later) with
+  `elementFromPoint` = `none` at every one. That was not the label failing to toggle:
+  Playwright's `boundingBox()` is relative to the viewport and does not scroll the element
+  into it, and the opt-in sits at `y` ≈ **1660** (`ko`) on an **800** px viewport, so every
+  click landed outside the window.
+  `scrollIntoViewIfNeeded()` first moved the label to `y` ≈ **540** and all **30** clicks
+  of the six-probe pass toggled. A cycle that had stopped at the first pass would have "measured" a dead target
+  and resized a control that was never broken.
+
+  **Research / ML:** skipped this cycle, as the item said to. `python3 ml/selftest.py` was
+  still run and is green (below).
+
+  **Rotation.** Cycle 56's entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 55. Both files at `ef32957` concatenated and
+  `sort -u`'d come to **13053** lines; `comm -23` of that against the same over this pair
+  drops **0** lines, and `wc -l` over the pair read **14996** immediately before and
+  immediately after the move.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+  **311 passed (12.8m)**, `✖ 2 problems (0 errors, 2 warnings)`, `ml/selftest.py`
+  `Ran 146 tests in 1.945s` **OK**, **Smoke test passed.**, exit **0**.
+  `npx tsc --noEmit | grep -c "error TS"` **13**. `npx eslint .` **0 errors, 2
+  warnings**. `git status --porcelain` after the run lists **0** lines, and `ss -ltnp`
+  afterwards shows nothing listening on 3100-3109. The suite went from the supervisor's
+  **306** on `ef32957` to **311** here, which is the **5** tests this cycle added and
+  nothing else. Rotation: `comm -23` over `sort -u` of both files at `ef32957` against
+  this pair drops **0** lines.
+
+  *Supervisor review:* sound, merged. The item is closed by measurement with no product
+  change: `git diff --stat ef32957..HEAD -- app lib public ml` prints nothing. I reproduced
+  the spec independently on this tree with `npx playwright test
+  tests/e2e/reengage-optin-label-target.regression-39.spec.ts --project=mobile`: the same
+  five `[reengage-target]` lines (`label=244x44` in all five locales, `ar` at `dir=rtl`)
+  and **5 passed (1.1m)**.
+
+  I then broke it a way the worker did not try. Both of the worker's breaks trip the
+  box-size assertion. `pointerEvents: "none"` on the `<label>` leaves the box at
+  244x44, so it reaches the toggle assertion instead. Result: **5 failed**, each with
+  `<lang>: click at TL did not toggle the checkbox`. The file was then restored from a
+  copy, and `sha256sum` matched the pre-break listing (`diff` empty, `git status` clean).
+
+  I made one wording correction in the entry. The method note said `boundingBox()` "is
+  not scroll-adjusted". Playwright's box is viewport-relative. The cause was that the
+  label sat below the fold and `page.mouse.click` does not scroll, so the sentence now
+  says that.
+
+  Rotation: `comm -23` over `sort -u` of both files at `ef32957` drops **2** lines. They
+  are the two header lines of the backlog item, which the tick rewrote as
+  `- [x] **…`, so nothing was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **311 passed (13.0m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards.
