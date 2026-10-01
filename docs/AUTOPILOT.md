@@ -1035,6 +1035,57 @@ partly done and stays here.
   `tests/e2e/hangul-leak-sweep.regression-37.spec.ts`. **Still open, unchanged:**
   `app/care/page.tsx`'s `linkBtn` / `otherMerchantsBtn` `textAlign: "left"`, mid-session
   switching on seven of the nine screens, and a real phone on all nine.
+  **2026-10-01, cycle 61: mid-session switching is now measured on all nine screens, one
+  loss is fixed and `/care`'s scroll reset is explained.** The seven cycle 42 never
+  measured were driven through the real picker at 360x800 on a production build,
+  `ko → en → ja → ar`, with every piece of visitor-created state probed before and after
+  each switch. Scroll position survives everywhere except `/care` and `/scan`:
+  `window.scrollY` read **310** on `/`, **307** on `/survey`, **1201** on `/privacy`,
+  **559** on `/pilot` and **400** on `/ops` in all four locales (`/checkin` is **800** px
+  tall at a **800** px viewport, so it had no offset to keep and read **0** throughout),
+  and `scrollWidth === clientWidth === 360` on every screen in every locale, so there is
+  still **0** direction or overflow defect. No piece of React state survives on any of
+  them; the values that look preserved are re-derived after mount (`/privacy`'s four
+  totals) or are non-empty initial defaults (`/pilot`'s participant and round).
+  Per screen, before → after the FIRST switch: `/` nothing to lose (**0**
+  `[aria-pressed]`, **0** inputs, **0** checkboxes); `/survey` **5** selected chips →
+  **0**, fixed this cycle; `/scan` **3**/**3** consent toggles → **0**/**0**,
+  `[data-testid="scan-capture"]` **1** → **0**, `[data-testid="scan-start"]` **0** →
+  **1**, `[data-quality-checklist]` **1** → **0** and `scrollY` **382** → **0**;
+  `/checkin` **2** selected chips → **0**; `/privacy` **8** → **7** `main button`s, the
+  two-button confirm row replaced by the single idle button, with the four stored totals
+  unaffected because they are re-read from storage; `/pilot` **3**/**7** checkboxes →
+  **0**/**7**, **4** → **2** filled text fields (the two that survive are the two whose
+  initial value is a non-empty default, `P001` and `pilot-1`) and the status `<select>`
+  `consented` → `planned`; `/ops` the `SUPABASE_SYNC_TOKEN` field **1** → **0** filled,
+  dry-run back to its default checked
+  (**0**/**1** → **1**/**1**) and **5** → **6** disabled `main button`s with it.
+  **Fixed: `/survey` only.** The five answers now mirror into `sessionStorage` under
+  `DEVICE_DATA_KEY.surveyDraft`, restored in the same after-mount effect that rehydrates a
+  submitted survey and removed on submit — cycle 42's `/report` pattern, in the storage the
+  screen already used, with the `key={active}` remount untouched and nothing new in
+  `localStorage`. Pinned by `tests/e2e/survey-draft-lang-switch.regression-40.spec.ts`
+  (**3 passed**), whose third case pins the `/scan` reset as CORRECT: a consent must be
+  given in the language it is read in, and restarting a camera the visitor did not ask for
+  is not ARU's call. **Filed, not fixed:** `/checkin`'s two chips (post-purchase, not the
+  conversion funnel, and a half-finished check-in is an activity record rather than a
+  form draft), `/privacy`'s confirmation (a destructive confirm should be re-read in the
+  new language), and `/pilot` / `/ops`, which the brief put out of scope as research mode.
+  **`/care`'s `400 → 400 → 0` from cycle 42 is a scroll CLAMP, and which switch it lands on
+  is a race.** `app/care/page.tsx` returns `<main className="min-h-screen">` while
+  `viewLoaded` is false, and `viewLoaded` resets with the rest of the state at the remount.
+  A frame-by-frame recorder over `window.scrollY` and `scrollHeight`, re-scrolling to
+  **400** before each switch, caught the empty page being laid out: `[ms, scrollY,
+  scrollHeight]` `[11,400,1731] [161,0,800] [177,0,2029]` on the `en` switch —
+  `scrollHeight` **800** against a **800** px viewport makes the maximum scroll **0**, so the browser
+  clamps, and the content returning at **2029** does not bring the position back. It is a
+  race because React's passive effect sometimes restores the view before the browser lays
+  out: on `ja`, same tree and same locale, run 1 read `[292,400,2029] [397,0,800]
+  [503,0,1903] [565,0,1862]` (clamped) and run 2 read `[261,400,2029] [378,400,1903]
+  [504,400,1862]` (no **800** frame, **400** kept). Not fixed: a scroll restore across a
+  remount is a different mechanism from storing state, and it was left for a cycle that can
+  scope it. **Still open, unchanged:** `app/care/page.tsx`'s `linkBtn` /
+  `otherMerchantsBtn` `textAlign: "left"`, and a real phone on all nine screens.
 - [AI] **The path from `/` to the first merchant link is 4 screens and 6 taps, and no step
   can be cut cheaply.** Measured 2026-09-28 (cycle 50) at 360x800 on a production build,
   `ko` and `en`, survey-only path: **4** screens (`/`, `/survey`, `/report` analysis,
@@ -1918,6 +1969,133 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-01 (cycle 61) — Branch `autopilot/2026-10-01-0039`. **Mid-session language
+  switching is now measured on all nine screens instead of two, and the one loss that hits
+  a visitor on the funnel is fixed. `/survey` lost all **5** unsubmitted answers to a
+  language tap; they now survive. `/scan` loses the camera and its **3** consent toggles,
+  which is recorded as CORRECT and pinned as such. `/care`'s unexplained `400 → 400 → 0`
+  from cycle 42 is a scroll clamp caused by its own `!viewLoaded` early return, and which
+  switch it lands on is a race that was caught both ways on the same locale. `/` has no
+  state to lose at all, the resets on `/scan` and `/privacy` are correct, `/checkin` loses
+  **2** chips and is filed, and `/pilot` / `/ops` are research mode — filed, not fixed.**
+
+  **What was run.** The real picker, `ko → en → ja → ar`, at 360x800 against
+  `next start` on port **3108** on a production build, one browser context per screen, with
+  a canvas `captureStream()` for `/scan`'s camera and no real camera anywhere.
+  `/pilot` and `/ops` answer **404** on a production build until
+  `INTERNAL_TOOLS_USER` and `INTERNAL_TOOLS_PASSWORD` are set (`lib/server/internal-access.ts`),
+  so the server for those two was restarted with throwaway local credentials and the
+  context carried matching `httpCredentials`. No credential of the owner's was used and
+  none is in the tree.
+
+  **The per-screen result, before → after the FIRST switch.** Full numbers are in the RTL
+  backlog item above. `scrollWidth === clientWidth === 360` on every screen in every
+  locale, so **0** direction or overflow defects, which is what cycle 42 found on its two.
+  `window.scrollY` survives on **5** of the **7** new screens (**310** `/`, **307**
+  `/survey`, **1201** `/privacy`, **559** `/pilot`, **400** `/ops`, unchanged across all
+  four locales) and is lost on `/scan` (**382** → **0**). `/checkin`'s page is **800** px
+  tall at a **800** px viewport, so it had no offset to keep (**0** throughout). React state
+  survives
+  on none of them: `/` has no state to lose (**0** `[aria-pressed]`, **0** inputs, **0**
+  checkboxes), `/survey` goes **5** chips → **0**, `/scan` **3**/**3** consent toggles →
+  **0**/**0** with `scan-capture` **1** → **0** and `scan-start` **0** → **1**, `/checkin`
+  **2** chips → **0**, `/privacy` goes **8** → **7** `main button`s, which is the
+  two-button confirm row replaced by the single idle button, `/pilot` **3**/**7**
+  checkboxes → **0**/**7** with **4** → **2** filled text fields (the two that survive are the two whose initial value is
+  a non-empty default, `P001` and `pilot-1`) and its status `<select>` `consented` →
+  `planned`, and `/ops` loses the
+  `SUPABASE_SYNC_TOKEN` field (**1** → **0** filled) and its dry-run choice
+  (**0**/**1** → **1**/**1** checked, **5** → **6** disabled `main button`s).
+
+  **The fix, and the three things it did not do.** `app/survey/page.tsx` mirrors the five
+  answers into `sessionStorage` under the new `DEVICE_DATA_KEY.surveyDraft`
+  (`aru_survey_draft_v1`), restores them in the same after-mount effect that already
+  rehydrates a submitted survey, and removes the key on submit next to the
+  `reportStep` removal that is already there. It is cycle 42's `/report` pattern in the
+  storage this screen already used. The write is gated on a `draftLoaded` flag so the first
+  render cannot overwrite a stored draft with the empty initial state. The key is
+  registered in `lib/device-data.ts` as `session` / `survey`, so "delete my device data"
+  clears it — `tests/device-data.test.ts`'s own expected-key list is updated with it, which
+  is what makes that registration checkable. `key={active}` in `lib/i18n.tsx` is untouched,
+  nothing new is written to `localStorage` (the spec asserts
+  `localStorage.getItem("aru_survey_draft_v1")` is null), and the three /scan consent
+  checkboxes are neither persisted nor restored.
+
+  **Why only `/survey`.** `/checkin`'s two chips are a post-purchase screen, not the
+  conversion funnel, and a half-finished check-in is an activity record rather than a form
+  draft — filed. `/privacy`'s confirmation resetting is correct for the same reason the
+  /scan consents are: a destructive confirm should be re-read in the language it is
+  confirmed in. `/pilot` and `/ops` are research mode, which the brief put out of scope for
+  a fix. `/` has nothing to lose. `/scan`'s camera is the one case where restoring would
+  mean restarting a device the visitor did not ask to restart.
+
+  **`/care`, explained.** `app/care/page.tsx` returns `<main className="min-h-screen">`
+  while `viewLoaded` is false, and `viewLoaded` is React state, so it resets with
+  everything else at the remount. A recorder sampling `window.scrollY` and `scrollHeight`
+  every frame, re-scrolling to **400** before each switch, caught the empty page being laid
+  out — `[ms, scrollY, scrollHeight]` `[11,400,1731] [161,0,800] [177,0,2029]` on the `en`
+  switch. At `scrollHeight` **800** against a **800** px viewport the maximum scroll is
+  **0**, so the browser clamps, and the content coming back at **2029** does not restore
+  the position. Whether the clamp happens is a race against React's passive effect: on
+  `ja`, same tree and same locale, one run read `[292,400,2029] [397,0,800] [503,0,1903]
+  [565,0,1862]` and the other `[261,400,2029] [378,400,1903] [504,400,1862]` — clamped in
+  the first, **400** kept in the second, no **800** frame at all. That is why cycle 42 saw
+  `400 → 400 → 0` rather than a reset on every switch, and it is not a per-locale property.
+  Left unfixed on purpose: a scroll restore across a remount is a different mechanism from
+  putting state in storage, and it is filed in the backlog item rather than guessed at
+  here.
+
+  **Proved live, and broken once.** `tests/e2e/survey-draft-lang-switch.regression-40.spec.ts`
+  is **3 passed (5.4s)** on the fixed tree against the production server. Deleting the
+  draft-restore block from the mount effect and rebuilding: **1 failed** / **2 passed
+  (11.2s)**, the failure being `en must keep all five answers` with
+  `locator('main button[aria-pressed="true"]')` `14 × locator resolved to 0 elements` and
+  `unexpected value "0"` against `Expected: 5`. Reverted from a copy taken before the
+  break; `sha256sum` reads
+  `0e7c9c4953d9512a8fcfbcbef72dbbf82cf3a7f2288ce05bf516fe926acc133d`
+  (`app/survey/page.tsx`),
+  `bdf181d8c3062c07024db4a3897d27efb708217223a85891476826640e446168`
+  (`lib/device-data.ts`) and
+  `ba2aa8617a5b1c304a9399d245299f45aed31c062097b00a999f22ab2bec978d`
+  (`tests/e2e/survey-draft-lang-switch.regression-40.spec.ts`) both before the break and
+  after the revert, and `diff` over the two listings reports no difference.
+
+  **ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and is green
+  (below).
+
+  **What this does NOT establish.** One container, one browser build
+  (`/opt/pw-browsers/chromium-1194`), one run per screen per locale except `/care`, which
+  was run twice — so nothing here carries a variance estimate, and the `/care` race is
+  established as a race by two runs disagreeing, not by a distribution. No real phone: the
+  "real phone on all nine screens" half of the backlog item is untouched. The probe reads
+  `[aria-pressed]`, checked checkboxes, filled text inputs, `<select>` values, `role="tab"`
+  selection, `main button` counts and `scrollY` / `scrollHeight` — a piece of visitor state
+  that none of those expose would not have been seen. `/pilot` and `/ops` were measured
+  behind basic auth that no deploy of theirs is known to use. And the fix is measured
+  against a language switch only; it was not tested against a tab reload, a back
+  navigation, or a second tab.
+
+  **Rotation.** Cycle 58's entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 57: **136** lines out of `docs/AUTOPILOT.md`
+  (**2393** → **2256** before this entry was written, the **137th** being the blank
+  separator) and **12996** → **13133** into the changelog. `comm -23` over `sort -u` of
+  both files at `3a13cba` against this pair drops **0** lines.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files 120 passed (120)` / `Tests 1089 passed (1089)`,
+  **314 passed (14.5m)**, `Ran 146 tests in 2.571s` **OK**, **Smoke test passed.**,
+  exit **0**. `npx tsc --noEmit | grep -c "error TS"` **13**. `npx eslint .`
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` on its own, before the
+  gate, `Ran 146 tests in 2.632s` **OK**. `git diff --stat 3a13cba -- app lib tests` is
+  `app/survey/page.tsx | 49 +++`, `lib/device-data.ts | 6 +++`,
+  `tests/device-data.test.ts | 1 +`, `3 files changed, 56 insertions(+)`, plus the one new
+  untracked spec file. The suite went from the supervisor's **311** on `3a13cba` to
+  **314** here, which is the **3** tests this cycle added and nothing else. Ports
+  3100–3109: none listening afterwards; `git status --porcelain` immediately before the
+  commit listed the **6** paths this cycle touched and nothing else.
+
+  *Supervisor review:* pending.
 - 2026-09-30 (cycle 60) — Branch `autopilot/2026-09-30-1839`. **All five screens on the
   path to the first merchant link now have a first-load JS number, and the measurement
   found a flaw in cycle 40's method rather than a module to move. What the browser
@@ -2254,140 +2432,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards.
-
-- 2026-09-30 (cycle 58) — Branch `autopilot/2026-09-30-0639`. **The owner's revenue
-  switch-on is now performed end to end on a production server on every run of the gate.
-  `tests/e2e/commerce-switch-on.spec.ts` starts from the two environment variables
-  `docs/commerce-partnership-playbook.md` tells the owner to set and asserts what a
-  visitor's click actually does: the overridden pair answers **302** with the affiliate URL
-  plus `/api/out`'s four UTM parameters, a non-allowlisted override still lands on the
-  default search URL and is named in the server's log, and the disclosure reads the 제휴
-  sentence in `ko` and `en` with the no-commission sentence gone from both surfaces. No
-  product behaviour changed and `ALLOWED_HOSTS` is untouched.**
-
-  **What the gap was.** `tests/commerce.test.ts` covers the parsing of
-  `COMMERCE_LINK_OVERRIDES_JSON` in isolation, and nothing exercised it through a running
-  server. `NEXT_PUBLIC_COMMERCE_AFFILIATE` was worse off: it is inlined at build time, so
-  the only way to check it is to build with it set, and
-  `tests/e2e/care-first-merchant-link.regression-38.spec.ts` says in its own comment that
-  cycle 57's run with the flag set "did NOT establish that the flag reached the browser
-  through a production build". The two halves fail in opposite directions — an override the
-  allowlist drops earns nothing while the disclosure claims a commission, and a disclosure
-  that never flips leaves a live affiliate link described as one ARU takes nothing from.
-
-  **How it gets its environment, and why it is not a quarantine.** The gate's single
-  `webServer` cannot carry these values: the affiliate flag changes the disclosure sentence
-  every other spec reads and an override changes where `/api/out` sends a click. So
-  `playwright.mobile.config.ts` now declares TWO web servers and two projects. The second
-  runs `npm run build && npm run start` on port **3104** with
-  `COMMERCE_LINK_OVERRIDES_JSON`, `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` and `ARU_DIST_DIR`
-  set, and the `commerce-switch-on` project runs this one spec against it. Nothing is
-  conditional and nothing is skipped: `npm run smoke` ran **306** tests on this tree where
-  cycle 57's ran **300**. A spec that skipped itself when the variables were absent would
-  have left the owner's real configuration the one arrangement nobody ever exercises.
-
-  **Added gate time, stated honestly.** `npx playwright test --config
-  playwright.mobile.config.ts --project commerce-switch-on` on this tree printed
-  **6 passed (44.6s)**, and that figure INCLUDES starting both web servers, so both
-  production builds are inside it. The whole suite printed **306 passed (13.2m)** and
-  **306 passed (13.7m)** on the two full runs here, against the supervisor's
-  **300 passed (9.9m)** on `8be1254`. Those are different runs on a container that has
-  recorded the same 300-test suite at **13.4m** (cycle 55) and **14.8m** (cycle 56), so the
-  3-4 minute gap is not attributable to this spec and is not claimed to be: the 300-test
-  suite was NOT re-run alone on this tree to separate them. The 44.6s figure is the one
-  measured upper bound on what was added.
-
-  **What it asserts, in the run's own words.** From the final gate's line reporter:
-
-  ```
-  [switch-on] /api/out?sku=tn1&merchant=oliveyoung&placement=report_product -> 302 https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_product_tn1_oliveyoung
-  [switch-on] /api/out?sku=tn1&merchant=coupang&placement=care_en -> 302 https://www.coupang.com/np/search?q=%EC%95%84%EB%88%84%EC%95%84+%EC%96%B4%EC%84%B1%EC%B4%88+77+%ED%86%A0%EB%84%88&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=care_en_tn1_coupang
-  [switch-on] server log: [commerce] override for tn1/coupang ignored: the URL is not an https URL on the allowlist (www.oliveyoung.co.kr, search.shopping.naver.com, www.coupang.com, www.google.com) (https://link.coupang.com/a/dryrun). The link is still a search URL.
-  [switch-on] /report ko: affiliate=4 noCommission=0
-  [switch-on] /care en: affiliate=1 noCommission=0
-  ```
-
-  The `/report` href is the one the product renders (`a[href^="/api/out"]` on the picks
-  card); the `/care` one is captured by replacing `window.open`, which is also what keeps
-  the merchant off the network. Every request uses `maxRedirects: 0` and reads `Location`,
-  so no redirect is ever followed and nothing leaves the container. Both override URLs are
-  invented — `DRYRUN000000` is not a goods number, `/a/dryrun` is not a partner link, and
-  no affiliate id exists anywhere in this repository.
-
-  **Proved a live tripwire, three ways, each reverted.** Dropping
-  `NEXT_PUBLIC_COMMERCE_AFFILIATE` from that server's environment: **3 failed**,
-  **3 passed** — the two disclosure tests and the one that asserts the no-commission
-  sentence is gone from both surfaces. Making `/api/out` discard the override it resolves
-  while still auditing it (`const override = null;`): **1 failed**, **5 passed**. Putting
-  `link.coupang.com` on `ALLOWED_HOSTS`: **2 failed**, **4 passed** — the default-search
-  redirect and the ignored-override log line. Each break was reverted from a copy taken
-  before it: `sha256sum` on the three files reads
-  `13544120c36460e27ece48e64ae7e4f5d58758cbb6bf88aaaaa590724da075de`
-  (`tests/e2e/support/commerce-switch-on.ts`),
-  `d2fec4ffdaeb07edcd8810f59b558aa0b18db70ad822546e26bc3bf8ee453871`
-  (`app/api/out/route.ts`) and
-  `cd1e522e81d2cd0caa95238df8a5ca72fd3e0ae4e9d0619482e9407c06d5c2a5`
-  (`lib/commerce.ts`) both before the first break and after the last revert, and `diff`
-  over the two `sha256sum` listings reports no difference. The allowlist itself is not in
-  this cycle's diff: `git diff --stat -- lib app public ml` over the commit prints nothing,
-  so `ALLOWED_HOSTS`, `shareUrl`, `metadataBase` / SITE_URL, `lib/consent.ts` and the
-  manifest's `status` / `promotionGate` are all untouched, and the only places
-  `ALLOWED_HOSTS` appears in the diff at all are prose and two doc comments in the new test
-  files. `NEXT_PUBLIC_FUNNEL_FLUSH` is set by nothing here, the switch-on build included.
-  No provider was called, no email was sent, and no request left the container.
-
-  **Build-config changes this needed, and one that is not cosmetic.** `next.config.ts`
-  takes `ARU_DIST_DIR` (unset everywhere else) because `next build` empties its `distDir`
-  and the two builds run concurrently from one tree; `.gitignore` and `eslint.config.mjs`
-  ignore `.next-switch-on/**`, the second of which is not optional — unignored it made
-  `npx eslint .` read **408 errors, 6498 warnings** instead of **0 errors, 2 warnings**,
-  and `npm run smoke` runs `lint` first, so the gate would have gone red at step 1 over a
-  build output nobody wrote. `scripts/smoke-test.mjs` asserts port **3104** is free
-  alongside **3102**, for the reason already written above `assertPortFree`.
-  `tsconfig.json` is committed as `next build` rewrote it: the switch-on build appends
-  `.next-switch-on/types/**/*.ts` and `.next-switch-on/dev/types/**/*.ts` to `include` and
-  reformats the file, so committing that output is what stops every gate run leaving a
-  dirty tree. `sha256sum tsconfig.json` read
-  `a5bb2155685ee7aa26eec8aa1cd9ef554c284d905af99040055737fd7089d5d6` before a full gate run
-  and the same after it, so it is idempotent.
-
-  **Research / ML:** skipped this cycle, as the item said to.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
-  committed tree — `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-  **306 passed (13.7m)**, `✖ 2 problems (0 errors, 2 warnings)`, `python ml/selftest.py`
-  **OK**, **Smoke test passed.**, exit **0**. `npx tsc --noEmit | grep -c "error TS"`
-  **13**. `git status --porcelain` after the run lists **0** lines. Rotation: `comm -23`
-  over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
-
-  *Supervisor review:* sound, merged. This is the first test in the gate that exercises
-  the owner's actual revenue switch-on through the real production server. It does so
-  with no product change: `git diff --stat 8be1254..HEAD -- lib app public ml` prints
-  nothing. The one config line (`ARU_DIST_DIR` in `next.config.ts`) is inert unless that
-  variable is set.
-
-  *Reproduced here.*
-  - `npm run smoke`: **Test Files 120 passed (120) / Tests 1089 passed (1089)**, **306
-    passed (14.9m)**, **Smoke test passed.**
-  - Five seconds after it exited, `ss -ltnp` showed nothing listening on 3100–3109. So
-    the `| tee` in the second server's command does not leave a server behind for the
-    next run's port preflight. `git status --short` was empty: the log is covered by
-    `*.log` in `.gitignore` and the dist dir by the new `/.next-switch-on/` line.
-  - Broken a way the worker did not try: `NEXT_PUBLIC_COMMERCE_AFFILIATE: "off"` instead
-    of dropping the key. `--project=commerce-switch-on` gave **3 failed | 3 passed
-    (1.1m)**, all three failures on the affiliate-sentence visibility check. The flag's
-    VALUE is checked, not just its presence. Reverted; ports free afterwards.
-
-  *Cost, stated because the brief asked for it and the entry should carry it.* The gate
-  went from **9.9m** (cycle 57's tree) to **14.9m** here, because the second production
-  build runs alongside the first. That is the price of testing the real deploy shape. A
-  cheaper variant is left open: building once with the flag and serving both from it
-  would not work, because every other spec reads the flag-off disclosure.
-
-  *Protocol note.* The worker pushed twice (`a8ab796`, then `f177cca` correcting a
-  sentence in its own entry) against a brief that said once. The correction was right,
-  and nothing broke.
-
-  *Validation on this tree, supervisor:* smoke as above; `tsc` **13**. Rotation: `comm
-  -23` over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
