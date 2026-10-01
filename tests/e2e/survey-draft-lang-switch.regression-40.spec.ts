@@ -207,3 +207,93 @@ test("an edit to an already-submitted survey survives a language switch", async 
   await switchLanguage(page, "English", "en");
   expect(await pressedIndices(), "en must show the edited answers, not the submitted ones").toEqual(edited);
 });
+
+/**
+ * The scan-hint edge the cycle 61 supervisor review left as is, fixed in cycle 64.
+ *
+ * On a survey that carries a scan hint the pre-selection used to be
+ * `setConcerns((prev) => (prev.length ? prev : hint.concerns))`. A visitor who
+ * deliberately cleared every concern chip stored a draft whose `concerns` is `[]`,
+ * and the remount restored exactly that — at which point the old condition read the
+ * empty list as "nothing stored" and put the scan's concerns back, overriding the
+ * choice. Measured on a production build at 360x800 with
+ * `{ oil: 3, redness: 2, pores: 2, confidence: 0.9 }` in `gyeol_scan`: 3 chips
+ * pre-selected, 3 taps to clear them, 0 pressed, then 3 pressed again after the
+ * switch to `en` — and the stored draft rewritten from `[]` to the hint's three
+ * concerns. After the fix: 0 before and 0 after, draft still `[]`.
+ *
+ * The hint pre-selects into an empty list once per hint: the draft records the hint
+ * it absorbed (`hintFor`), and a remount that finds the same hint absorbed leaves the
+ * restored list alone. The hint TEXT is unconditional either way, which the retake
+ * link below pins.
+ */
+test("a cleared concern list is not re-filled by the scan hint on a language switch", async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("aru.lang", "ko");
+      // A reading that passes `isScanReads` and `shouldApplyScan`, with all three
+      // signals over their thresholds, so the hint offers 유분 · 붉은기 · 모공.
+      sessionStorage.setItem("gyeol_scan", JSON.stringify({ oil: 3, redness: 2, pores: 2, confidence: 0.9 }));
+    } catch {
+      /* private mode */
+    }
+  });
+  await page.goto("/survey");
+  await expect.poll(async () => page.evaluate(() => document.documentElement.lang), { timeout: 20_000 }).toBe("ko");
+
+  // The hint pre-selected three concerns on this first visit, which is the behaviour
+  // being kept — the fix narrows WHEN it applies, not that it applies.
+  await expect(selected(page)).toHaveCount(3);
+  await expect(page.getByRole("link", { name: "카메라로 다시 살펴보기" })).toBeVisible();
+
+  // The visitor clears every one of them, one tap each. 고민 is optional, so an empty
+  // list is a complete answer and not a half-filled field.
+  const on = page.locator('main button[aria-pressed="true"]');
+  for (let taps = 0; taps < 3; taps += 1) await on.first().click();
+  await expect(selected(page)).toHaveCount(0);
+  const cleared = await page.evaluate((key) => sessionStorage.getItem(key), DRAFT_KEY);
+  expect(JSON.parse(cleared!).concerns, "the draft records the cleared list").toEqual([]);
+
+  await switchLanguage(page, "English", "en");
+  // The explicit choice survives: the hint does not override a stored draft.
+  await expect(selected(page), "en must keep the cleared concern list").toHaveCount(0);
+  // And the hint itself is still on screen, text and retake link, because clearing the
+  // chips is not a reason to hide what the photo showed.
+  await expect(page.getByRole("link", { name: "Check my skin with the camera again" })).toBeVisible();
+  await expect(page.getByText("based on your photo", { exact: false })).toBeVisible();
+  const after = await page.evaluate((key) => sessionStorage.getItem(key), DRAFT_KEY);
+  expect(JSON.parse(after!).concerns, "and the draft was not rewritten with the hint").toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem("aru_survey_draft_v1"))).toBeNull();
+});
+
+/**
+ * Added by the cycle 64 supervisor review. `/survey` writes a draft on every mount,
+ * an empty one included, so "a stored draft exists" is true for anyone who opened
+ * the survey earlier in the session. The first form of the cycle 64 fix skipped
+ * the scan pre-selection whenever a draft existed, which left the hint sentence
+ * "사진에서 확인한 … 항목을 먼저 선택했어요" on screen with nothing selected. This is
+ * the visitor who opens /survey, goes to scan, and comes back: the hint's concerns
+ * must be pre-selected, as they were before cycle 64.
+ */
+test("a scan taken after an earlier, empty survey visit still pre-selects its concerns", async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("aru.lang", "ko");
+    } catch {
+      /* private mode */
+    }
+  });
+  await page.goto("/survey");
+  await expect.poll(async () => page.evaluate(() => document.documentElement.lang), { timeout: 20_000 }).toBe("ko");
+  await expect(selected(page)).toHaveCount(0);
+  // The earlier visit left a draft behind, with nothing chosen.
+  await expect.poll(async () => page.evaluate((key) => sessionStorage.getItem(key), DRAFT_KEY)).not.toBeNull();
+
+  // The scan finishes and routes back to /survey with a reading in the session.
+  await page.evaluate(() =>
+    sessionStorage.setItem("gyeol_scan", JSON.stringify({ oil: 3, redness: 2, pores: 2, confidence: 0.9 })),
+  );
+  await page.goto("/survey");
+  await expect(page.getByRole("link", { name: "카메라로 다시 살펴보기" })).toBeVisible();
+  await expect(selected(page), "the hint says it pre-selected three concerns, so three must be pressed").toHaveCount(3);
+});

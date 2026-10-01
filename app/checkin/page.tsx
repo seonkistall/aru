@@ -8,6 +8,7 @@ import { ProductVisual } from "@/app/components/product-visual";
 import { Xiaohei } from "@/app/components/sketch";
 import { t } from "@/lib/i18n/core";
 import { useFunnelPageView } from "@/app/use-funnel-page-view";
+import { DEVICE_DATA_KEY } from "@/lib/device-data";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // The check-in round from REAL elapsed time. 0 = not yet due after the user
@@ -16,6 +17,36 @@ const roundFor = (ts: number) => {
   const weeks = (Date.now() - ts) / WEEK_MS;
   return weeks >= 4 ? 4 : weeks >= 2 ? 2 : 0;
 };
+
+// The three answers on one card before 기록하기 has been pressed. Every field is
+// optional because a half-answered card is the normal state, and `null` is the
+// card's own "not answered yet".
+type CheckinDraft = { sat: number | null; trouble: boolean | null; repurchase: boolean | null };
+
+function loadCheckinDrafts(): Record<string, Partial<CheckinDraft>> {
+  try {
+    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.checkinDraft);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    // Same reasoning as /survey's draft read: a sessionStorage value is not private
+    // to the code that wrote it, so the shape is checked before anything reaches
+    // state, and each field is checked again at the restore below.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, Partial<CheckinDraft>>;
+  } catch {
+    return {};
+  }
+}
+
+function writeCheckinDrafts(drafts: Record<string, Partial<CheckinDraft>>): void {
+  try {
+    if (Object.keys(drafts).length === 0) sessionStorage.removeItem(DEVICE_DATA_KEY.checkinDraft);
+    else sessionStorage.setItem(DEVICE_DATA_KEY.checkinDraft, JSON.stringify(drafts));
+  } catch {
+    // Storage unavailable (private mode, quota). A draft is a convenience; `save()`
+    // has its own error surface for the answer that matters.
+  }
+}
 
 export default function Checkin() {
   // The landing page for every re-engagement email, and until now the only step
@@ -123,11 +154,44 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
   const [trouble, setTrouble] = useState<boolean | null>(null);
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const ready = sat !== null && trouble !== null && repurchase !== null;
 
   const sku = SKUS.find((s) => s.id === productUse.sku_id);
   const round = roundFor(productUse.ts);
   const due = round > 0;
+
+  // A language tap remounts the whole subtree under `key={active}` (`lib/i18n.tsx`),
+  // so the three answers held in `useState` alone went with the discarded tree — two
+  // chips measured lost in cycle 61, on the post-purchase screen ARU's repeat
+  // purchases run through. Mirrored into the storage the screen's own records already
+  // use, `sessionStorage` under `DEVICE_DATA_KEY.checkinDraft`, keyed by the recorded
+  // product use so two cards cannot overwrite each other. Nothing goes in
+  // `localStorage`, and what `save()` sends is unchanged.
+  useEffect(() => {
+    // sessionStorage is client-only, so the read is a post-mount effect for the same
+    // reason /survey's is: reading it in the initial render is an SSR mismatch.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const draft = loadCheckinDrafts()[productUse.id];
+    if (draft) {
+      if (typeof draft.sat === "number") setSat(draft.sat);
+      if (typeof draft.trouble === "boolean") setTrouble(draft.trouble);
+      if (typeof draft.repurchase === "boolean") setRepurchase(draft.repurchase);
+    }
+    setDraftLoaded(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [productUse.id]);
+
+  // Gated on `draftLoaded` so the first render cannot overwrite a stored draft with
+  // the empty initial state, and on `!done` so the removal in `save()` below is not
+  // undone by the re-render that `onDone()` causes.
+  useEffect(() => {
+    if (!draftLoaded || done) return;
+    const drafts = loadCheckinDrafts();
+    if (sat === null && trouble === null && repurchase === null) delete drafts[productUse.id];
+    else drafts[productUse.id] = { sat, trouble, repurchase };
+    writeCheckinDrafts(drafts);
+  }, [draftLoaded, done, productUse.id, sat, trouble, repurchase]);
 
   async function save() {
     if (!ready || !due) return;
@@ -137,6 +201,11 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
       return;
     }
     setSaveFailed(false);
+    // The answers live in the checkin record from here on, so the draft has nothing
+    // left to hold — the same place /survey removes its draft, next to the success.
+    const drafts = loadCheckinDrafts();
+    delete drafts[productUse.id];
+    writeCheckinDrafts(drafts);
     onDone();
   }
 

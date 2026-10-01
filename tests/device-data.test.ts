@@ -24,6 +24,7 @@ const expected = [
   "gyeol_survey",
   "aru_report_step_v1",
   "aru_survey_draft_v1",
+  "aru_checkin_draft_v1",
 ];
 const root = resolve(import.meta.dirname, "..");
 
@@ -75,6 +76,7 @@ describe("device data registry", () => {
   it("keeps registered key literals out of storage consumers", () => {
     const consumers = [
       "app/care/page.tsx",
+      "app/checkin/page.tsx",
       "app/report/page.tsx",
       "app/scan/page.tsx",
       "app/studio/page.tsx",
