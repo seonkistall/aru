@@ -1703,6 +1703,17 @@ Owner-only, dated when first recorded.
      loop cannot read. **Proposal if a per-programme sentence is required:**
      `광고 · 쿠팡 파트너스 제휴 링크. 이 링크로 구매하면 ARU가 수수료를 받습니다.` — which would
      mean `CommerceDisclosure` taking the merchant as a prop, a bigger change than wording.
+  4. **Prominence (added by the cycle 63 supervisor review).** The same revision, as
+     summarised in the search results for the 행정예고 ([신&김 뉴스레터
+     2613](https://shinkim.com/kor/media/newsletter/2613), [뉴스서울](https://www.newsseoul.co.kr/news/view/1065579623819806)),
+     says a disclosure placed at the 첫 부분 should be shown with "글자 크기를 본문보다 크게
+     하거나 글자색을 본문과 달리하는 등 소비자가 쉽게 인식할 수 있도록". ARU's disclosure is
+     the opposite: `fontSize: 11.5` and `color: "var(--text-muted)"`
+     (`app/components/commerce-disclosure.tsx:31-32`), smaller and fainter than the text
+     around it. This is the same search-result-summary caveat as items 1-2, and the same open
+     question of whether an app screen is a 게시물. **Proposal, style-only and no copy change:**
+     the disclosure at body size in `var(--ink)` with a visible 광고 label, decided together
+     with item 2.
 
   Nothing in this item was applied. `app/components/commerce-disclosure.tsx`, every locale
   dictionary and the position of every `<CommerceDisclosure>` are byte-identical to
