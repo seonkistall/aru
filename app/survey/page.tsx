@@ -61,6 +61,24 @@ function loadScanHint(): ScanHint {
   }
 }
 
+// The answers as they stand before the visitor has submitted anything. Every
+// field is optional because a draft is by definition half-filled.
+type SurveyDraft = Partial<Pick<SurveyT, "type" | "concerns" | "category" | "budget" | "avoid">>;
+
+function loadSurveyDraft(): SurveyDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.surveyDraft);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    // Same reasoning as loadScanHint above: a sessionStorage value is not private
+    // to the code that wrote it, so each field is checked before it reaches state.
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as SurveyDraft;
+  } catch {
+    return null;
+  }
+}
+
 export default function Survey() {
   const router = useRouter();
   const surveyViewRecorded = useRef(false);
@@ -71,6 +89,7 @@ export default function Survey() {
   const [budget, setBudget] = useState<number | null>(null);
   const [avoid, setAvoid] = useState<Avoid[]>([]);
   const [saveErr, setSaveErr] = useState("");
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const ready = type && category && budget;
 
   useEffect(() => {
@@ -94,12 +113,39 @@ export default function Survey() {
         if (Array.isArray(saved.avoid)) setAvoid(saved.avoid);
       }
     } catch {}
+    // The unsubmitted answers, applied AFTER the submitted survey because a draft
+    // is the newer of the two: it is what was on screen when the tree was thrown
+    // away. A language switch remounts the whole subtree under `key={active}`
+    // (`lib/i18n.tsx`), so without this the five chips a visitor had tapped are
+    // discarded by the tap that changes the language.
+    const draft = loadSurveyDraft();
+    if (draft) {
+      if (draft.type) setType(draft.type);
+      if (Array.isArray(draft.concerns)) setConcerns(draft.concerns);
+      if (draft.category) setCategory(draft.category);
+      if (typeof draft.budget === "number") setBudget(draft.budget);
+      if (Array.isArray(draft.avoid)) setAvoid(draft.avoid);
+    }
+    setDraftLoaded(true);
     const hint = loadScanHint();
     if (!hint) return;
     setScanHint(hint);
     if (hint.concerns.length) setConcerns((prev) => (prev.length ? prev : hint.concerns));
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
+
+  // Keep the draft in step with what is on screen. Gated on `draftLoaded` so the
+  // first render — which runs before the effect above has read anything — cannot
+  // overwrite a stored draft with the empty initial state.
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      sessionStorage.setItem(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ type, concerns, category, budget, avoid }));
+    } catch {
+      // Storage unavailable (private mode, quota). A draft is a convenience; the
+      // submit path has its own error surface for the answer that matters.
+    }
+  }, [draftLoaded, type, concerns, category, budget, avoid]);
 
   function toggle<T>(list: T[], value: T, set: (next: T[]) => void) {
     set(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -114,6 +160,9 @@ export default function Survey() {
       // A new survey is a new report: open it on its first step, not on the step
       // the previous report was left on.
       sessionStorage.removeItem(DEVICE_DATA_KEY.reportStep);
+      // Submitted answers live under DEVICE_DATA_KEY.survey from here on, so the
+      // draft has nothing left to hold.
+      sessionStorage.removeItem(DEVICE_DATA_KEY.surveyDraft);
     } catch {
       setSaveErr(t("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요."));
       return;

@@ -12994,3 +12994,140 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   at `b5a99c2` against this pair drops **0** lines; `git diff b5a99c2..HEAD -- app lib`
   is empty. `npm run smoke` **Test Files 120 passed (120) /
   Tests 1089 passed (1089)**, **300 passed (9.9m)**, **Smoke test passed.**
+
+- 2026-09-30 (cycle 58) — Branch `autopilot/2026-09-30-0639`. **The owner's revenue
+  switch-on is now performed end to end on a production server on every run of the gate.
+  `tests/e2e/commerce-switch-on.spec.ts` starts from the two environment variables
+  `docs/commerce-partnership-playbook.md` tells the owner to set and asserts what a
+  visitor's click actually does: the overridden pair answers **302** with the affiliate URL
+  plus `/api/out`'s four UTM parameters, a non-allowlisted override still lands on the
+  default search URL and is named in the server's log, and the disclosure reads the 제휴
+  sentence in `ko` and `en` with the no-commission sentence gone from both surfaces. No
+  product behaviour changed and `ALLOWED_HOSTS` is untouched.**
+
+  **What the gap was.** `tests/commerce.test.ts` covers the parsing of
+  `COMMERCE_LINK_OVERRIDES_JSON` in isolation, and nothing exercised it through a running
+  server. `NEXT_PUBLIC_COMMERCE_AFFILIATE` was worse off: it is inlined at build time, so
+  the only way to check it is to build with it set, and
+  `tests/e2e/care-first-merchant-link.regression-38.spec.ts` says in its own comment that
+  cycle 57's run with the flag set "did NOT establish that the flag reached the browser
+  through a production build". The two halves fail in opposite directions — an override the
+  allowlist drops earns nothing while the disclosure claims a commission, and a disclosure
+  that never flips leaves a live affiliate link described as one ARU takes nothing from.
+
+  **How it gets its environment, and why it is not a quarantine.** The gate's single
+  `webServer` cannot carry these values: the affiliate flag changes the disclosure sentence
+  every other spec reads and an override changes where `/api/out` sends a click. So
+  `playwright.mobile.config.ts` now declares TWO web servers and two projects. The second
+  runs `npm run build && npm run start` on port **3104** with
+  `COMMERCE_LINK_OVERRIDES_JSON`, `NEXT_PUBLIC_COMMERCE_AFFILIATE=on` and `ARU_DIST_DIR`
+  set, and the `commerce-switch-on` project runs this one spec against it. Nothing is
+  conditional and nothing is skipped: `npm run smoke` ran **306** tests on this tree where
+  cycle 57's ran **300**. A spec that skipped itself when the variables were absent would
+  have left the owner's real configuration the one arrangement nobody ever exercises.
+
+  **Added gate time, stated honestly.** `npx playwright test --config
+  playwright.mobile.config.ts --project commerce-switch-on` on this tree printed
+  **6 passed (44.6s)**, and that figure INCLUDES starting both web servers, so both
+  production builds are inside it. The whole suite printed **306 passed (13.2m)** and
+  **306 passed (13.7m)** on the two full runs here, against the supervisor's
+  **300 passed (9.9m)** on `8be1254`. Those are different runs on a container that has
+  recorded the same 300-test suite at **13.4m** (cycle 55) and **14.8m** (cycle 56), so the
+  3-4 minute gap is not attributable to this spec and is not claimed to be: the 300-test
+  suite was NOT re-run alone on this tree to separate them. The 44.6s figure is the one
+  measured upper bound on what was added.
+
+  **What it asserts, in the run's own words.** From the final gate's line reporter:
+
+  ```
+  [switch-on] /api/out?sku=tn1&merchant=oliveyoung&placement=report_product -> 302 https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_product_tn1_oliveyoung
+  [switch-on] /api/out?sku=tn1&merchant=coupang&placement=care_en -> 302 https://www.coupang.com/np/search?q=%EC%95%84%EB%88%84%EC%95%84+%EC%96%B4%EC%84%B1%EC%B4%88+77+%ED%86%A0%EB%84%88&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=care_en_tn1_coupang
+  [switch-on] server log: [commerce] override for tn1/coupang ignored: the URL is not an https URL on the allowlist (www.oliveyoung.co.kr, search.shopping.naver.com, www.coupang.com, www.google.com) (https://link.coupang.com/a/dryrun). The link is still a search URL.
+  [switch-on] /report ko: affiliate=4 noCommission=0
+  [switch-on] /care en: affiliate=1 noCommission=0
+  ```
+
+  The `/report` href is the one the product renders (`a[href^="/api/out"]` on the picks
+  card); the `/care` one is captured by replacing `window.open`, which is also what keeps
+  the merchant off the network. Every request uses `maxRedirects: 0` and reads `Location`,
+  so no redirect is ever followed and nothing leaves the container. Both override URLs are
+  invented — `DRYRUN000000` is not a goods number, `/a/dryrun` is not a partner link, and
+  no affiliate id exists anywhere in this repository.
+
+  **Proved a live tripwire, three ways, each reverted.** Dropping
+  `NEXT_PUBLIC_COMMERCE_AFFILIATE` from that server's environment: **3 failed**,
+  **3 passed** — the two disclosure tests and the one that asserts the no-commission
+  sentence is gone from both surfaces. Making `/api/out` discard the override it resolves
+  while still auditing it (`const override = null;`): **1 failed**, **5 passed**. Putting
+  `link.coupang.com` on `ALLOWED_HOSTS`: **2 failed**, **4 passed** — the default-search
+  redirect and the ignored-override log line. Each break was reverted from a copy taken
+  before it: `sha256sum` on the three files reads
+  `13544120c36460e27ece48e64ae7e4f5d58758cbb6bf88aaaaa590724da075de`
+  (`tests/e2e/support/commerce-switch-on.ts`),
+  `d2fec4ffdaeb07edcd8810f59b558aa0b18db70ad822546e26bc3bf8ee453871`
+  (`app/api/out/route.ts`) and
+  `cd1e522e81d2cd0caa95238df8a5ca72fd3e0ae4e9d0619482e9407c06d5c2a5`
+  (`lib/commerce.ts`) both before the first break and after the last revert, and `diff`
+  over the two `sha256sum` listings reports no difference. The allowlist itself is not in
+  this cycle's diff: `git diff --stat -- lib app public ml` over the commit prints nothing,
+  so `ALLOWED_HOSTS`, `shareUrl`, `metadataBase` / SITE_URL, `lib/consent.ts` and the
+  manifest's `status` / `promotionGate` are all untouched, and the only places
+  `ALLOWED_HOSTS` appears in the diff at all are prose and two doc comments in the new test
+  files. `NEXT_PUBLIC_FUNNEL_FLUSH` is set by nothing here, the switch-on build included.
+  No provider was called, no email was sent, and no request left the container.
+
+  **Build-config changes this needed, and one that is not cosmetic.** `next.config.ts`
+  takes `ARU_DIST_DIR` (unset everywhere else) because `next build` empties its `distDir`
+  and the two builds run concurrently from one tree; `.gitignore` and `eslint.config.mjs`
+  ignore `.next-switch-on/**`, the second of which is not optional — unignored it made
+  `npx eslint .` read **408 errors, 6498 warnings** instead of **0 errors, 2 warnings**,
+  and `npm run smoke` runs `lint` first, so the gate would have gone red at step 1 over a
+  build output nobody wrote. `scripts/smoke-test.mjs` asserts port **3104** is free
+  alongside **3102**, for the reason already written above `assertPortFree`.
+  `tsconfig.json` is committed as `next build` rewrote it: the switch-on build appends
+  `.next-switch-on/types/**/*.ts` and `.next-switch-on/dev/types/**/*.ts` to `include` and
+  reformats the file, so committing that output is what stops every gate run leaving a
+  dirty tree. `sha256sum tsconfig.json` read
+  `a5bb2155685ee7aa26eec8aa1cd9ef554c284d905af99040055737fd7089d5d6` before a full gate run
+  and the same after it, so it is idempotent.
+
+  **Research / ML:** skipped this cycle, as the item said to.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+  **306 passed (13.7m)**, `✖ 2 problems (0 errors, 2 warnings)`, `python ml/selftest.py`
+  **OK**, **Smoke test passed.**, exit **0**. `npx tsc --noEmit | grep -c "error TS"`
+  **13**. `git status --porcelain` after the run lists **0** lines. Rotation: `comm -23`
+  over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
+
+  *Supervisor review:* sound, merged. This is the first test in the gate that exercises
+  the owner's actual revenue switch-on through the real production server. It does so
+  with no product change: `git diff --stat 8be1254..HEAD -- lib app public ml` prints
+  nothing. The one config line (`ARU_DIST_DIR` in `next.config.ts`) is inert unless that
+  variable is set.
+
+  *Reproduced here.*
+  - `npm run smoke`: **Test Files 120 passed (120) / Tests 1089 passed (1089)**, **306
+    passed (14.9m)**, **Smoke test passed.**
+  - Five seconds after it exited, `ss -ltnp` showed nothing listening on 3100–3109. So
+    the `| tee` in the second server's command does not leave a server behind for the
+    next run's port preflight. `git status --short` was empty: the log is covered by
+    `*.log` in `.gitignore` and the dist dir by the new `/.next-switch-on/` line.
+  - Broken a way the worker did not try: `NEXT_PUBLIC_COMMERCE_AFFILIATE: "off"` instead
+    of dropping the key. `--project=commerce-switch-on` gave **3 failed | 3 passed
+    (1.1m)**, all three failures on the affiliate-sentence visibility check. The flag's
+    VALUE is checked, not just its presence. Reverted; ports free afterwards.
+
+  *Cost, stated because the brief asked for it and the entry should carry it.* The gate
+  went from **9.9m** (cycle 57's tree) to **14.9m** here, because the second production
+  build runs alongside the first. That is the price of testing the real deploy shape. A
+  cheaper variant is left open: building once with the flag and serving both from it
+  would not work, because every other spec reads the flag-off disclosure.
+
+  *Protocol note.* The worker pushed twice (`a8ab796`, then `f177cca` correcting a
+  sentence in its own entry) against a brief that said once. The correction was right,
+  and nothing broke.
+
+  *Validation on this tree, supervisor:* smoke as above; `tsc` **13**. Rotation: `comm
+  -23` over `sort -u` of both files at `8be1254` against this pair drops **0** lines.
