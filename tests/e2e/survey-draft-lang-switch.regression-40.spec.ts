@@ -171,3 +171,39 @@ test("a language switch on /scan resets the camera and the consent toggles, by d
   await expect(page.locator('[data-testid="scan-capture"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="scan-start"]')).toBeVisible();
 });
+
+test("an edit to an already-submitted survey survives a language switch", async ({ page }) => {
+  // Added by the cycle 61 supervisor review. The draft is applied AFTER the
+  // submitted survey because it is the newer of the two; the tests above never
+  // have a submitted survey on the page, so they would pass with that order
+  // reversed. This is the visitor who comes back from /report, changes an
+  // answer, and then changes the language before resubmitting.
+  const submitted = { type: "복합성", concerns: ["붉은기"], budget: 39000, avoid: [], category: "크림" };
+  await page.addInitScript((value) => {
+    try {
+      localStorage.setItem("aru.lang", "ko");
+      sessionStorage.setItem("gyeol_survey", JSON.stringify(value));
+    } catch {
+      /* private mode */
+    }
+  }, submitted);
+  await page.goto("/survey");
+  await expect.poll(async () => page.evaluate(() => document.documentElement.lang), { timeout: 20_000 }).toBe("ko");
+
+  const chips = page.locator("main button[aria-pressed]");
+  const pressedIndices = () =>
+    chips.evaluateAll((els) => els.flatMap((el, i) => (el.getAttribute("aria-pressed") === "true" ? [i] : [])));
+  await expect.poll(async () => (await pressedIndices()).length).toBeGreaterThan(0);
+  const fromSubmitted = await pressedIndices();
+
+  // Any chip not already pressed is an edit, whichever group it belongs to.
+  const total = await chips.count();
+  const target = Array.from({ length: total }, (_, i) => i).find((i) => !fromSubmitted.includes(i));
+  expect(target, "no unpressed chip to edit").not.toBeUndefined();
+  await chips.nth(target!).click();
+  const edited = await pressedIndices();
+  expect(edited, "the tap must change the answers on screen").not.toEqual(fromSubmitted);
+
+  await switchLanguage(page, "English", "en");
+  expect(await pressedIndices(), "en must show the edited answers, not the submitted ones").toEqual(edited);
+});
