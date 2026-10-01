@@ -2118,9 +2118,11 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   so the override was not even confined to the screen. The cause is the condition
   `setConcerns((prev) => (prev.length ? prev : hint.concerns))`: the remount restores the
   draft's empty `concerns`, and `prev.length` reads that as "nothing stored" rather than as
-  the answer it is. **The fix** is the condition only: the hint pre-selects when there is
+  the answer it is. **The fix** as pushed made the hint pre-select only when there was
   neither a stored draft nor a submitted survey (`hint.concerns.length && !draft &&
-  !hasSubmitted`), so a stored draft is authoritative, an empty `concerns` included. The
+  !hasSubmitted`). The supervisor review below replaced that condition with a per-hint
+  marker (`hintFor`), because `/survey` writes a draft on every mount and the pushed form
+  stopped pre-selecting for anyone who had opened the survey before scanning. The
   hint TEXT is untouched — `setScanHint(hint)` is still unconditional, which the new case
   pins by asserting the `en` sentence and the retake link after the switch. Re-measured on
   the fixed build: **3** pre-selected, **3** taps, **0** pressed, **0** after the switch,

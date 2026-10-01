@@ -222,9 +222,10 @@ test("an edit to an already-submitted survey survives a language switch", async 
  * switch to `en` — and the stored draft rewritten from `[]` to the hint's three
  * concerns. After the fix: 0 before and 0 after, draft still `[]`.
  *
- * The hint pre-selects only when there is neither a stored draft nor a submitted
- * survey. The hint TEXT is unconditional either way, which the retake link below
- * pins.
+ * The hint pre-selects into an empty list once per hint: the draft records the hint
+ * it absorbed (`hintFor`), and a remount that finds the same hint absorbed leaves the
+ * restored list alone. The hint TEXT is unconditional either way, which the retake
+ * link below pins.
  */
 test("a cleared concern list is not re-filled by the scan hint on a language switch", async ({ page }) => {
   await page.addInitScript(() => {
