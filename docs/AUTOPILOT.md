@@ -1082,9 +1082,17 @@ partly done and stays here.
   race because React's passive effect sometimes restores the view before the browser lays
   out: on `ja`, same tree and same locale, run 1 read `[292,400,2029] [397,0,800]
   [503,0,1903] [565,0,1862]` (clamped) and run 2 read `[261,400,2029] [378,400,1903]
-  [504,400,1862]` (no **800** frame, **400** kept). Not fixed: a scroll restore across a
-  remount is a different mechanism from storing state, and it was left for a cycle that can
-  scope it. **Still open, unchanged:** `app/care/page.tsx`'s `linkBtn` /
+  [504,400,1862]` (no **800** frame, **400** kept). **Fixed in cycle 62**, and not with a
+  scroll restore: the after-mount `sessionStorage` read in `app/care/page.tsx` is now a
+  LAYOUT effect, so React flushes `viewLoaded` back to true inside the same commit and the
+  browser never lays the **800** px document out. Re-measured at 360x800 on a production
+  build through the real picker, scrolling to **400** and switching, **20** switches across
+  `en` / `ja` / `ar`: **20** of **20** ended at `scrollY` **0** before the change and
+  **0** of **20** after, all **20** reading **400**. The race cycle 61 recorded was not
+  intermittent on this container — a second **20**-switch run with the frame recorder
+  removed also read **20** of **20** at **0**. Pinned by
+  `tests/e2e/care-lang-switch-scroll.regression-41.spec.ts`. **Still open, unchanged:**
+  `app/care/page.tsx`'s `linkBtn` /
   `otherMerchantsBtn` `textAlign: "left"`, and a real phone on all nine screens.
 - [AI] **The path from `/` to the first merchant link is 4 screens and 6 taps, and no step
   can be cut cheaply.** Measured 2026-09-28 (cycle 50) at 360x800 on a production build,
@@ -1969,6 +1977,189 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-01 (cycle 62) — Branch `autopilot/2026-10-01-0639`. **The language switch that
+  threw `/care`'s visitor back to the top of the page is fixed, and the "race" cycle 61
+  recorded turned out not to be one on this container: **20** of **20** switches lost the
+  position before the change and **0** of **20** after. The fix is one word — the
+  after-mount `sessionStorage` read in `app/care/page.tsx` is a LAYOUT effect instead of a
+  passive one, so React flushes `viewLoaded` back to true inside the same commit and the
+  browser never lays the 800px loading branch out. The whole product diff is that effect,
+  the comment above it and the `react-hooks/set-state-in-effect` disable the passive version
+  needed, which the rule no longer asks for. `key={active}`, the `inert` hold, the
+  `dir`/`lang` handling and `localStorage` are all untouched, and because the change is
+  `/care`-local nothing on any other screen moved.**
+
+  **Reproduced with a number, before touching anything.** At 360x800 against `npm run start`
+  on port **3108** on a production build, one browser context per switch, a valid survey in
+  `sessionStorage`, `aru.lang=ko`, and `window.open` replaced by a recorder so no merchant
+  link could be followed (**0** calls across every run). Each run scrolled `/care` to
+  **400**, switched through the REAL picker, and read `window.scrollY` once the dictionary
+  hold had lifted and the merchant panel was visible again. **20** runs, cycling
+  `en` / `ja` / `ar` (**7** / **7** / **6**):
+
+  ```
+  [before] TOTAL ended-at-0: 20/20  (en=7/7 ja=7/7 ar=6/6)
+  [before] final scrollY values: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  ```
+
+  **Cycle 61 called it a race; on this container it is not intermittent.** Cycle 61's
+  frame recorder reads `document.documentElement.scrollHeight` once a frame, which forces a
+  layout the browser might otherwise have skipped — so the instrument could have been what
+  made the clamp happen. It is not. The same **20** runs with the recorder removed
+  entirely:
+
+  ```
+  [before-norec] TOTAL ended-at-0: 20/20  (en=7/7 ja=7/7 ar=6/6)
+  [before-norec] final scrollY values: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  ```
+
+  So **40** switches in two conditions, **40** clamps. Cycle 61's `ja` run that kept **400**
+  is not reproduced here and nothing in this cycle explains it away; what is established is
+  that at **400** on a seeded `/care` the loss is reliable, not that cycle 61's second
+  reading was wrong.
+
+  **Shape (a), `/care`-local, and why.** The brief offered a `/care`-local fix or a
+  provider-level capture-and-restore at `setLang`. The empty frame exists because the
+  `sessionStorage` read that sets `viewLoaded` runs in a PASSIVE effect, which React flushes
+  after the browser may already have laid the short document out. Moving that read into a
+  LAYOUT effect makes the whole sequence synchronous inside one commit: the `!viewLoaded`
+  branch is committed, the layout effect reads storage and sets state, React re-renders
+  before yielding, and the browser's first layout of the remounted tree is of the full page.
+  That removes the race rather than winning it, needs no scroll bookkeeping, no storage
+  write and no new state, and cannot regress a screen it does not touch — so `/report` and
+  `/survey` needed no before/after measurement, which a provider-level fix would have
+  required. It is the same `typeof window === "undefined" ? useEffect : useLayoutEffect`
+  guard `lib/i18n.tsx:28` already uses, for the same reason: a client component still
+  renders on the server, and a bare `useLayoutEffect` would warn there.
+
+  **After the fix, the same 20 runs.**
+
+  ```
+  [after] TOTAL ended-at-0: 0/20  (en=0/7 ja=0/7 ar=0/6)
+  [after] final scrollY values: 400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400
+  [after-norec] TOTAL ended-at-0: 0/20  (en=0/7 ja=0/7 ar=0/6)
+  [after-norec] final scrollY values: 400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400
+  ```
+
+  Both conditions again, **40** switches, **40** kept. `window.open` was called **0** times
+  in every one of the four **20**-run passes.
+
+  The frame traces say why. Before, `scrollHeight` collapsed to **800** at the remount —
+  which against an **800** px viewport makes the maximum scroll **0**. After, it goes
+  **1731** straight to the remounted height (**2029** on `en`, **1903** then **1862** on
+  `ja`, **1894** on `ar`) with `scrollY` **400** on every sampled frame and no **800**
+  anywhere.
+
+  **Pinned, and proved live.** `tests/e2e/care-lang-switch-scroll.regression-41.spec.ts` is
+  **2** tests. The first does **5** switches (`en`, `ja`, `zh`, `ar`, `ko`), re-scrolling to
+  **400** before each one so every switch is its own case rather than one that only has to
+  survive the first, and asserts `|scrollY - 400| <= 2`. The second scrolls to **900** —
+  past the **800** px viewport, so a loading branch merely padded to one screen height would
+  still clamp there — and switches twice. Both print the minimum `scrollHeight` sampled
+  across the switch, because that number is the mechanism. On the committed tree, **2 passed
+  (34.3s)**:
+
+  ```
+  [care-scroll] offset=400 -> en: scrollY=400 frames=9 minScrollHeight=1731
+  [care-scroll] offset=400 -> ja: scrollY=400 frames=15 minScrollHeight=1862
+  [care-scroll] offset=400 -> zh: scrollY=400 frames=10 minScrollHeight=1708
+  [care-scroll] offset=400 -> ar: scrollY=400 frames=10 minScrollHeight=1708
+  [care-scroll] offset=400 -> ko: scrollY=400 frames=9 minScrollHeight=1731
+  [care-scroll] offset=900 -> en: scrollY=900 frames=10 minScrollHeight=1731
+  [care-scroll] offset=900 -> ja: scrollY=900 frames=12 minScrollHeight=1862
+  ```
+
+  The **1708**–**1862** range is the minimum height each switch ever presented; **800** is
+  what a clamp needs and it appears nowhere.
+
+  Reverting `app/care/page.tsx` to `a12f637` and re-running the same spec against a rebuild:
+  **2 failed**, both on the FIRST switch of their first case, with
+  `[care-scroll] offset=400 -> en: scrollY=0 frames=11 minScrollHeight=800` and
+  `[care-scroll] offset=900 -> en: scrollY=0 frames=11 minScrollHeight=800` and the messages
+  `en: /care lost the scroll position across the switch (scrollY 0, expected 400±2, minimum
+  scrollHeight seen 800)` / `... expected 900±2 ...`, `Expected: <= 2` against `Received:
+  400` and `Received: 900`. The assertion was not loosened and the spec needed no forced
+  delay: the defect is deterministic here on its own. The fix was restored from a copy taken
+  before the revert, and `sha256sum` reads
+  `526b98f0699de38a190ec72968c200c47e51f5c1b4c687ed0da1ba1c45d99c6f`
+  (`app/care/page.tsx`) and
+  `a32f635b1192957b32c7b757dbfca0eb2b473263e9824c0395d9149f7939fd7a`
+  (`tests/e2e/care-lang-switch-scroll.regression-41.spec.ts`) both before the break and
+  after the restore, with `diff` over the two listings reporting no difference.
+
+  **Research / ML:** both skipped, as the item said. `python3 ml/selftest.py` was still run
+  and is green (below).
+
+  **What this does NOT establish.** One container, one browser build
+  (`/opt/pw-browsers/chromium-1194`), **20** switches per condition — enough to call the
+  before-state reliable and the after-state clean on this machine, not a variance estimate
+  and not a phone. Only `/care` was measured, at two offsets (**400** and **900**) in a
+  single survey state; a `/care` with no stored result renders a different, shorter branch
+  that was not measured. Nothing here says the layout effect is faster or slower, only that
+  the short document is never laid out — React's own flush order is taken from behaviour,
+  not from a counter. The fix is measured against a language switch only, not against a tab
+  reload, a back navigation or a second tab, and the other eight screens' scroll behaviour
+  is unchanged and unre-measured because nothing outside `app/care/page.tsx` was touched.
+  And cycle 61's one surviving `ja` run remains unexplained.
+
+  **Rotation.** Cycle 59's entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 58: **127** lines out of `docs/AUTOPILOT.md`
+  (**2473** → **2346** before this entry was written, the **127th** being the blank
+  separator) and **13133** → **13260** into the changelog. `cmp` of the extracted **126**-line
+  block against the changelog's last **126** lines reports no difference.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
+  committed tree — `Test Files  120 passed (120)` / `Tests  1089 passed (1089)`,
+  **317 passed (9.3m)**, `Ran 146 tests in 1.759s` **OK**, **Smoke test passed.**, exit
+  **0**. Re-run afterwards, each on its own and after the last doc edit:
+  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .`
+  `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing `_reads` / `_result` at
+  `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in 1.753s` **OK**. The suite
+  went from the supervisor's **315** on `a12f637` to **317** here, which is the **2** tests
+  this cycle added and nothing else. `git diff --stat a12f637 -- app lib tests` is
+  `app/care/page.tsx | 26 +++++++++++++++++++++-----`, `1 file changed, 21 insertions(+), 5
+  deletions(-)`, plus the one new untracked spec file — `lib/` and `tests/` outside that
+  spec are byte-identical to `a12f637`. Ports 3100–3109: none listening afterwards;
+  `git status --porcelain` immediately before the commit listed the **4** paths this cycle
+  touched and nothing else. Rotation: `comm -23` over `sort -u` of both files at `a12f637`
+  against this pair drops **3** lines, all three the sentence in the RTL backlog item this
+  cycle was told to rewrite (`[504,400,1862]` ... `Not fixed: a scroll restore across a` /
+  `remount is a different mechanism from storing state, and it was left for a cycle that
+  can` / `scope it. **Still open, unchanged:** ...`). Nothing else was lost. What the smoke
+  run does not cover: the doc edits themselves, including this paragraph, which is why the
+  three commands above were re-run after them.
+
+  *Supervisor review:* sound, merged. The product diff is the one effect in
+  `app/care/page.tsx`, switched from a passive effect to the same isomorphic layout-effect
+  guard `lib/i18n.tsx` uses. `key={active}`, the `inert` hold and `localStorage` are
+  untouched. No other screen changed: `git diff --stat a12f637..HEAD -- app lib` lists
+  only `app/care/page.tsx`.
+
+  I reproduced the spec independently on this tree with `npx playwright test
+  tests/e2e/care-lang-switch-scroll.regression-41.spec.ts --project=mobile`:
+  **2 passed (1.1m)**. I then ran it under two breaks, restoring the file from a copy
+  after each; `sha256sum -c` printed `app/care/page.tsx: OK`.
+  - Break A, the worker's own revert (`useEffect`): **2 failed**.
+  - Break B, which the worker did not try: keep the layout effect but defer its two state
+    updates into `setTimeout(…, 0)`. This is a refactor that looks harmless and
+    reintroduces the empty frame. Result: **2 failed**, each reading
+    `en: /care lost the scroll position across the switch (scrollY 0, expected 400±2,
+    minimum scrollHeight seen 800)` (and `expected 900±2` for the second case). The spec
+    catches the mechanism, not only the one-word revert.
+
+  Rotation: `comm -23` over `sort -u` of both files at `a12f637` drops **3** lines. All
+  three are the RTL item's old "Not fixed: a scroll restore across a remount…" sentence,
+  which the brief asked the worker to update. Nothing else was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **317 passed (10.2m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards; `git status` clean.
+
 - 2026-10-01 (cycle 61) — Branch `autopilot/2026-10-01-0039`. **Mid-session language
   switching is now measured on all nine screens instead of two, and the one loss that hits
   a visitor on the funnel is fixed. `/survey` lost all **5** unsubmitted answers to a
@@ -2344,130 +2535,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards; `git status` clean.
-
-- 2026-09-30 (cycle 59) — Branch `autopilot/2026-09-30-1239`. **The last open tap-target
-  item from cycle 50 is closed by measurement, and it closes with no product change. The
-  `ReengageOptIn` checkbox really is 15x15 / 13.046875x15 / 13x15, but the `<label>` around
-  it is **244x44** in all five locales and every point probed inside it toggles `checked`,
-  so the label is the target — the same reading cycle 49 made for the three /scan consent
-  checkboxes. `tests/e2e/reengage-optin-label-target.regression-39.spec.ts` ratchets it in
-  `ko en ja zh ar`, and `app/`, `lib/`, `public/` and `ml/` are untouched.**
-
-  **What the item demanded, and why it could not be answered by reading the file.** The
-  backlog required the is-the-label-the-target judgement to be made BY MEASUREMENT, not on
-  sight, because the file alone is ambiguous: the label carries
-  `minHeight: "var(--tap-min)"` but also `display: "flex"` with a `<span>` beside the
-  input, and whether a click in the space the span does not occupy reaches the label is a
-  layout fact, not a source fact. So it was probed at six points per locale.
-
-  **The numbers, from the spec's own line reporter on the production server.**
-
-  ```
-  [reengage-target] ko: dir=ltr tapMin=44 label=244x44 input=15x15 probes=TL,TR,BL,BR,far,mid
-  [reengage-target] en: dir=ltr tapMin=44 label=244x44 input=13.046875x15 probes=TL,TR,BL,BR,far,mid
-  [reengage-target] ja: dir=ltr tapMin=44 label=244x44 input=13x15 probes=TL,TR,BL,BR,far,mid
-  [reengage-target] zh: dir=ltr tapMin=44 label=244x44 input=15x15 probes=TL,TR,BL,BR,far,mid
-  [reengage-target] ar: dir=rtl tapMin=44 label=244x44 input=13x15 probes=TL,TR,BL,BR,far,mid
-  ```
-
-  `ar` reports `dir=rtl`, so the RTL case is the real one and not an LTR page with Arabic
-  text in it. The six probes are the four inner corners **3** px in, the far end from the
-  input (the right edge in the four LTR locales, the left edge in `ar`), and the midpoint.
-  Each of the **6** clicks per locale flipped `checked`, alternating `false`→`true`→`false`,
-  and the sixth left it back at `false` in all five — **30** clicks, **30** toggles. The
-  exploratory pass also read `document.elementFromPoint` at each point before clicking: it
-  returned `label` or the label's own `span` at every one of the **30**, never an element
-  outside the label. So `244` ≥ **24** and `44` ≥ `--tap-min` **44**, and the whole box is
-  live. The input's own **13.046875** px in `en` is the flex item shrinking under a longer
-  translation; it is recorded rather than fixed, because widening a 13px input inside a
-  244x44 target changes what the eye sees and not what a finger hits.
-
-  **So: no product change.** `git diff --stat -- app lib public ml` over this commit prints
-  nothing. The constraints the item named are met by having changed nothing at all: the
-  opt-in's default `checked` state, its `name`, its submit handler, what it sends and when,
-  every string of copy, `lib/consent.ts` and the three /scan consent checkboxes are all
-  byte-identical to `ef32957`. The two consent streams are untouched and not merged.
-
-  **The spec cannot submit the form, by two independent facts.** The label sits outside the
-  `<form>` — the spec asserts `label.closest("form")` is null before it clicks anything —
-  and no address is ever typed, so `submit()` returns at its own `!email.trim()` guard. On
-  top of that the spec records every request the page makes and fails if one URL contains
-  `/api/reengage/`. Nothing was sent, no provider was called, and no email exists.
-
-  **Proved a live tripwire twice, each reverted.** Setting the label's `minHeight` to **0**:
-  **5 failed**, with `consent label height` `Received` **18.75** (`ko`), **37.5** (`en`),
-  **37.5** (`ja`), **18.75** (`zh`), **37.5** (`ar`) against `Expected: >= 44`. Setting the
-  label to `display: "inline"`: **5 failed**, `Received` **15** / **39** / **39** / **15** /
-  **39** on the same assertion. Both breaks were reverted from a copy taken before the
-  first; `sha256sum` reads
-  `9c237445439a6b967b4ecf8d7e010b3cc7e0e0f4d12d8a944d2e3f09088bd979`
-  (`app/components/reengage-optin.tsx`) and
-  `9bc43119c597cae18e69dbb819cc2c55a6d2a4fb08d58a1a46adc6a7f5f12e41`
-  (`tests/e2e/reengage-optin-label-target.regression-39.spec.ts`) both before the first
-  break and after the last revert, and `diff` over the two listings reports no difference.
-  Note what the break numbers say about the height floor: at `minHeight: 0` the label still
-  measures **37.5** in `en`, `ja` and `ar`, which is over the **24** AA floor — so a spec
-  that pinned only 2.5.8 would have passed a control the repo's own contract rejects. The
-  floor read at runtime from `--tap-min` is what catches it.
-
-  **One method note, because it nearly produced a false finding.** The first probe pass
-  clicked the label's `boundingBox()` coordinates directly and recorded **NOCHANGE** on all
-  **25** of its clicks (**5** probes x **5** locales; the midpoint probe came later) with
-  `elementFromPoint` = `none` at every one. That was not the label failing to toggle:
-  Playwright's `boundingBox()` is relative to the viewport and does not scroll the element
-  into it, and the opt-in sits at `y` ≈ **1660** (`ko`) on an **800** px viewport, so every
-  click landed outside the window.
-  `scrollIntoViewIfNeeded()` first moved the label to `y` ≈ **540** and all **30** clicks
-  of the six-probe pass toggled. A cycle that had stopped at the first pass would have "measured" a dead target
-  and resized a control that was never broken.
-
-  **Research / ML:** skipped this cycle, as the item said to. `python3 ml/selftest.py` was
-  still run and is green (below).
-
-  **Rotation.** Cycle 56's entry moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycle 55. Both files at `ef32957` concatenated and
-  `sort -u`'d come to **13053** lines; `comm -23` of that against the same over this pair
-  drops **0** lines, and `wc -l` over the pair read **14996** immediately before and
-  immediately after the move.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
-  committed tree — `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-  **311 passed (12.8m)**, `✖ 2 problems (0 errors, 2 warnings)`, `ml/selftest.py`
-  `Ran 146 tests in 1.945s` **OK**, **Smoke test passed.**, exit **0**.
-  `npx tsc --noEmit | grep -c "error TS"` **13**. `npx eslint .` **0 errors, 2
-  warnings**. `git status --porcelain` after the run lists **0** lines, and `ss -ltnp`
-  afterwards shows nothing listening on 3100-3109. The suite went from the supervisor's
-  **306** on `ef32957` to **311** here, which is the **5** tests this cycle added and
-  nothing else. Rotation: `comm -23` over `sort -u` of both files at `ef32957` against
-  this pair drops **0** lines.
-
-  *Supervisor review:* sound, merged. The item is closed by measurement with no product
-  change: `git diff --stat ef32957..HEAD -- app lib public ml` prints nothing. I reproduced
-  the spec independently on this tree with `npx playwright test
-  tests/e2e/reengage-optin-label-target.regression-39.spec.ts --project=mobile`: the same
-  five `[reengage-target]` lines (`label=244x44` in all five locales, `ar` at `dir=rtl`)
-  and **5 passed (1.1m)**.
-
-  I then broke it a way the worker did not try. Both of the worker's breaks trip the
-  box-size assertion. `pointerEvents: "none"` on the `<label>` leaves the box at
-  244x44, so it reaches the toggle assertion instead. Result: **5 failed**, each with
-  `<lang>: click at TL did not toggle the checkbox`. The file was then restored from a
-  copy, and `sha256sum` matched the pre-break listing (`diff` empty, `git status` clean).
-
-  I made one wording correction in the entry. The method note said `boundingBox()` "is
-  not scroll-adjusted". Playwright's box is viewport-relative. The cause was that the
-  label sat below the fold and `page.mouse.click` does not scroll, so the sentence now
-  says that.
-
-  Rotation: `comm -23` over `sort -u` of both files at `ef32957` drops **2** lines. They
-  are the two header lines of the backlog item, which the tick rewrote as
-  `- [x] **…`, so nothing was lost.
-
-  Gate on this tree:
-  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-    **311 passed (13.0m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening afterwards.
