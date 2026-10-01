@@ -47,6 +47,13 @@ repository opened):
 Note the programme name: it is **네이버 쇼핑 커넥트**, not "쇼핑파트너" (쇼핑파트너센터 is
 the seller-side console). An earlier version of this file had it wrong.
 
+**Cycle 63 (2026-10-01) re-tried the Verified? column and changed nothing in it.** No
+primary source was reachable on either channel this container has — see the 2026-10-01 note
+in the egress blocker — so no rate in the table above is quotable from a programme's own
+page, and inventing a citation is worse than leaving the column as it is. A cycle that wants
+to close this column should not spend the budget again: it needs the owner, after signup, to
+paste one line out of each programme's own terms.
+
 Two things follow, and every cycle should act on them rather than re-deriving them:
 
 1. **The links earn $0 today.** `addCommerceTracking()` adds UTM parameters only —
@@ -1652,6 +1659,72 @@ partly done and stays here.
 
 Owner-only, dated when first recorded.
 
+- 2026-10-01 — **Legal review of the affiliate disclosure sentence and where it sits.**
+  Cycle 63 compared ARU's `ko` affiliate wording against the 2024-12-01 revision of 공정위
+  「추천·보증 등에 관한 표시·광고 심사지침」. No primary source was reachable: `www.ftc.go.kr`,
+  `www.korea.kr`, `www.kfcf.or.kr`, `www.shinkim.com`, `www.kimchang.com`,
+  `easylaw.go.kr` and `csafety.kakao.com` all answered
+  `Access to <host> is blocked by the network egress proxy.` on the fetch channel, so every
+  quote below is a **search-result summary of** 공정위's own 보도자료, not the statute text,
+  and no copy was changed. Three items for the owner or counsel, each with the exact wording
+  proposed so the decision is a yes/no rather than a drafting exercise:
+
+  1. **Position on `/report`.** The revision's headline change is that for 문자 중심 매체 the
+     disclosure must be "게시물의 제목 또는 첫 부분" — previously 첫 부분 **or** 끝 부분, and the
+     reason given is that "게시물의 끝 부분에 공개할 경우 본문이 길면 소비자가 이를 쉽게 인식하기
+     어려운 문제가 있었습니다". ARU renders `CommerceDisclosure` **after** the buy link on
+     `/report` (`app/report/page.tsx:469`, inside `reportCommerceAction`, after the `<a>` at
+     line 457 and the `/care` link), and **before** it on `/care`
+     (`app/care/page.tsx:189`) and in every product card
+     (`app/components/product-card.tsx:81`, above the `<a>` at line 83). So one of the three
+     surfaces puts the disclosure where a visitor can tap past it. Whether a scan-result
+     screen is a 게시물 of a 문자 중심 매체 at all is itself unsettled — the guideline's examples
+     are 블로그 and 인터넷 카페, not an app screen — which is exactly why this is a legal call
+     and not a loop decision. **Proposal, code-only and no copy change:** move the
+     `<CommerceDisclosure>` in `app/report/page.tsx` above the `<a>` in that section, which
+     makes all three surfaces match `/care`.
+  2. **Wording.** The revision added conditional phrasing to the examples of 불명확한
+     표시문구: "'소정의 수수료를 지급받을 수 있음'과 같은 조건부·불확정적인 표현은 명확하지 않은
+     표시문구의 예시로 추가되어, 조건부·불확정적 문구는 사용하지 못하도록 하였습니다." ARU's
+     active sentence is `판매처로 이동하는 제휴 링크예요. 구매가 이뤄지면 ARU가 수수료를 받아요.
+     가격은 달라지지 않아요.` (`app/components/commerce-disclosure.tsx:24`). It is definite
+     about the fact of payment — `받아요`, not `받을 수 있어요` — so on the loop's reading it is
+     **not** the prohibited shape, but it also never uses the word 광고, which is what the
+     revision is for ("소비자들이 보다 쉽게 '광고'임을 알 수 있게"). **Proposed replacement for
+     counsel to accept or reject, not applied:**
+     `광고 · 제휴 링크. 이 링크로 구매하면 ARU가 판매처에서 수수료를 받습니다. 가격은 달라지지
+     않습니다.` If it is accepted, the `en` string at `lib/i18n/en.ts:504` and the `ja`/`zh`/`ar`
+     entries change with it, and `tests/commerce-disclosure.test.ts` pins the pair.
+  3. **Programme-mandated wording on top of the statute.** 쿠팡 파트너스 posts in the wild
+     carry a fixed sentence — "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의
+     수수료를 제공받습니다" ([Threads](https://www.threads.com/@moneysaessak/post/DWc3YvPCYLM/)) —
+     which ARU's single sentence does not. Whether each programme requires its own naming,
+     and whether one sentence may cover three programmes on the same screen, is in terms the
+     loop cannot read. **Proposal if a per-programme sentence is required:**
+     `광고 · 쿠팡 파트너스 제휴 링크. 이 링크로 구매하면 ARU가 수수료를 받습니다.` — which would
+     mean `CommerceDisclosure` taking the merchant as a prop, a bigger change than wording.
+
+  Nothing in this item was applied. `app/components/commerce-disclosure.tsx`, every locale
+  dictionary and the position of every `<CommerceDisclosure>` are byte-identical to
+  `495e530`.
+
+- 2026-10-01 — **Whether ARU's own `utm_*` parameters break affiliate attribution.**
+  A failure one layer past the allowlist, and the allowlist fix does not cover it.
+  `addCommerceTracking()` (`lib/commerce.ts:111`) appends `utm_source`, `utm_medium`,
+  `utm_campaign` and `utm_content` to whatever URL an override supplies — including a real
+  tracking link. Two programmes are reported to refuse credit for an altered link: 올리브영's
+  curator guide, as quoted by third parties, "발급된 상품 링크를 임의로 수정하면 정상 추적이
+  불가능하므로 수정하지 말아야 합니다", and 네이버 쇼핑 커넥트 that "상품 페이지의 URL을 그대로
+  복사해서 홍보하면 수익이 인정되지 않습니다". Whether appending a query parameter counts as
+  수정 is **UNKNOWN** — `m.oliveyoung.co.kr` and `partners.coupang.com` both refuse this
+  container, so it cannot be settled here, and the owner can settle it in one minute by
+  reading either programme's own link policy after signing up. If it does count, the owner's
+  links pass `isAllowedCommerceUrl()`, redirect to the right product, and earn $0 anyway —
+  the same silent zero as a wrong host. The fix would be to skip `addCommerceTracking()` for
+  override URLs (keep it for the search fallbacks), which is a change to `lib/commerce.ts`
+  and so the owner's. Detail and sources: "A second failure mode" in
+  [`docs/commerce-partnership-playbook.md`](commerce-partnership-playbook.md).
+
 - 2026-09-25 — **A cap on what the two LLM routes can be billed.** Cycle 38 closed the
   cross-site hole and tightened the payload check on `/api/analyze` and `/api/reason`,
   but nothing in this repository bounds the bill: `createRateLimiter` is an in-memory
@@ -1717,6 +1790,17 @@ Owner-only, dated when first recorded.
   `.git`, which is how cycle 46 searched `GoogleChrome/web.dev`'s **3987** paths without
   downloading it. So a cycle can read a named file out of a known public repository and
   cannot search GitHub for one.
+  **2026-10-01, cycle 63: the agent's own fetch tool is blocked on the same hosts, so it
+  is not a way around this.** The research track has a second channel besides container
+  curl — a hosted fetch and a hosted web search. The search returns results for Korean
+  queries and is how cycle 63 got anything at all. The fetch does not: `partners.coupang.com`,
+  `m.oliveyoung.co.kr`, `www.ftc.go.kr`, `www.korea.kr`, `www.kfcf.or.kr`, `www.shinkim.com`,
+  `www.kimchang.com`, `easylaw.go.kr`, `csafety.kakao.com`, `llily.co.kr` and `aisum.com`
+  each returned `Access to <host> is blocked by the network egress proxy.` — **11** hosts,
+  which is every host this cycle tried. The practical consequence:
+  **no affiliate term and no 공정위 wording can be quoted from a primary source by any
+  channel this container has**, and a research cycle on either subject should plan for
+  REPORTED at best rather than budgeting time to reach the source.
 - 2026-09-16 (re-stated 2026-09-17, and now the ONLY thing standing in the way) —
   **The legal basis for switching the funnel flush on.** Cycle 7 built the ingest
   endpoint, so every technical item on the §6 checklist in
@@ -1770,6 +1854,20 @@ Owner-only, dated when first recorded.
   change once the owner has a real link in hand — but it must not be guessed, because
   the allowlist is what stops `/api/out` becoming an open redirect. A wrong host now
   logs loudly instead of failing silently.
+  **2026-10-01, cycle 63: one of the three is now named, two are still unknown, and the
+  shortlist above was wrong in one place.** 쿠팡 파트너스 issues `link.coupang.com/a/<code>`
+  (REPORTED, multiple third-party sources plus a live link in the wild), and that link
+  sets a `trac_lptag` cookie and redirects to `www.coupang.com` with `?lptag=<id>` — so the
+  override host the owner needs is `link.coupang.com` — which is the very host the cycle-58
+  dry run uses as its rejected example, so the dry run was already pointed at the right
+  one. For 올리브영 the issued link's host is **UNKNOWN**: no source states it, and the
+  programme's own pages are on `m.oliveyoung.co.kr` (`/m/mtn/affiliate/guide`,
+  `/dashboard`, `/withdraw`), which is **not** on the allowlist — so "already on the
+  allowlist" cannot be assumed for a curator link. For 네이버 쇼핑 커넥트 the host is
+  **UNKNOWN** and `smartstore.naver.com` remains nobody's observation. The exact line to
+  add per host, as a proposal only, is the table in
+  [`docs/commerce-partnership-playbook.md`](commerce-partnership-playbook.md)
+  ("Switch-on checklist, verified hosts"). `ALLOWED_HOSTS` is unchanged.
 
 ## How the schedule actually runs
 
@@ -1977,6 +2075,119 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-01 (cycle 63) — Branch `autopilot/2026-10-01-1239`. **The owner's affiliate
+  switch-on is now a one-step change for one of the three programmes and an explicitly
+  unknown one for the other two, which is the opposite of what this file said yesterday.
+  쿠팡 파트너스 issues `link.coupang.com/a/<code>`, so the host the override needs is named
+  and the exact `ALLOWED_HOSTS` line to approve is written down. 올리브영's and 네이버's
+  issued-link hosts are **UNKNOWN** — not "probably `smartstore.naver.com`", not "already on
+  the allowlist" — and the one claim in the old shortlist that mattered most is wrong:
+  올리브영's curator programme runs on `m.oliveyoung.co.kr`, which is NOT on the allowlist,
+  so a curator link cannot be assumed to pass the gate. No code changed. `lib/commerce.ts`,
+  `ALLOWED_HOSTS` and every disclosure string are byte-identical to `495e530`.**
+
+  **The research channel, stated before the findings, because it bounds all of them.** This
+  container has two ways out: container curl (long known to refuse every Korean commerce and
+  government host) and the agent's hosted fetch + hosted search. The hosted **search**
+  works and is the only reason this cycle produced anything. The hosted **fetch** does not:
+  `partners.coupang.com`, `m.oliveyoung.co.kr`, `www.ftc.go.kr`, `www.korea.kr`,
+  `www.kfcf.or.kr`, `www.shinkim.com`, `www.kimchang.com`, `easylaw.go.kr`,
+  `csafety.kakao.com`, `llily.co.kr` and `aisum.com` — **11** hosts, every one probed this
+  cycle — each returned `Access to <host> is blocked by the network egress proxy.` So **nothing below is VERIFIED in the sense the brief asked for**: not one claim is
+  quoted from a programme's own page or from 공정위's own document. Every row is **REPORTED**
+  (a third-party source states it) or **UNKNOWN** (no source states it). That is recorded in
+  the egress blocker so cycle 64 does not spend its budget rediscovering it.
+
+  **Hosts.** The table with every source is "Switch-on checklist, verified hosts" in
+  [`docs/commerce-partnership-playbook.md`](commerce-partnership-playbook.md). In short:
+
+  | Programme | Issued-link host | Status |
+  |---|---|---|
+  | 쿠팡 파트너스 | `link.coupang.com`, path `/a/<code>` | REPORTED |
+  | 쿠팡 파트너스, after the redirect | `www.coupang.com?lptag=<id>` | REPORTED |
+  | 올리브영 쇼핑 큐레이터 | UNKNOWN (programme surfaces are on `m.oliveyoung.co.kr`) | UNKNOWN |
+  | 네이버 쇼핑 커넥트 | UNKNOWN | UNKNOWN |
+
+  The Coupang link does redirect: the source describes a `trac_lptag` cookie set on the
+  `link.coupang.com` hop and "`?lptag=EXAMPLEID88`" on the product URL it lands on. That
+  matters for the override because the gate checks the URL the owner pastes, not the URL the
+  browser ends on — `www.coupang.com` being allowlisted does nothing for a
+  `link.coupang.com` override, which is exactly the silent discard cycle 58 demonstrated on
+  a production server. For 올리브영 the search results never state the host; what they do
+  show is that the programme's guide, dashboard and withdraw pages are all
+  `m.oliveyoung.co.kr/m/mtn/affiliate/*`, so `www.oliveyoung.co.kr` is an assumption and not
+  a finding. For 네이버 the sources are consistent that a *copied* product URL earns nothing
+  and only an issued link counts, and silent about what that link looks like.
+
+  **A failure mode the host question hides.** `addCommerceTracking()` appends four `utm_*`
+  parameters to whatever an override supplies, including a real tracking link, and both
+  올리브영 and 네이버 are reported to refuse credit for a modified link. Whether a query
+  parameter counts as modification is UNKNOWN and unreachable from here. If it does, the
+  owner's links pass the gate, redirect correctly and still earn $0. Filed as an owner item
+  because the fix is in `lib/commerce.ts`.
+
+  **Disclosure.** The 2024-12-01 revision of 공정위 「추천·보증 등에 관한 표시·광고 심사지침」
+  moved the required position for 문자 중심 매체 from "첫 부분 또는 끝 부분" to "게시물의 제목
+  또는 첫 부분", and added conditional phrasing ("소정의 수수료를 지급받을 수 있음") to the
+  examples of 불명확한 표시문구. Measured against the tree, not recalled:
+
+  - **Position is inconsistent across ARU's three commerce surfaces.** `/care`
+    (`app/care/page.tsx:189`) and every product card (`app/components/product-card.tsx:81`)
+    render `CommerceDisclosure` **before** the link. `/report`
+    (`app/report/page.tsx:469`) renders it **after** the buy link and after the `/care`
+    link, so on that one surface a visitor can tap through without passing it. **1** of
+    **3** surfaces, and it is the first one a visitor reaches.
+  - **The wording is probably not the prohibited shape, and that is a lawyer's call.**
+    `구매가 이뤄지면 ARU가 수수료를 받아요` is definite about the payment (`받아요`, not
+    `받을 수 있어요`), so it is not "소정의 수수료를 지급받을 수 있음". It also never uses
+    the word 광고, which is what the revision exists to surface.
+  - **No programme-specific sentence exists.** 쿠팡 파트너스 posts in the wild carry a fixed
+    sentence ARU's single string does not, and whether one sentence may stand for three
+    programmes on one screen is in terms the loop cannot read.
+
+  All three are in BLOCKERS as one owner/legal item, each with the exact replacement wording
+  proposed so the owner's decision is a yes/no. **No copy was changed and none should be
+  until that item is answered** — `app/components/commerce-disclosure.tsx` and all **4**
+  translation dictionaries (`ar`, `en`, `ja`, `zh`) are untouched.
+
+  **Revenue table.** The Verified? column is unchanged, deliberately. The brief said to
+  update it only where a primary source was found and none was reachable on either channel;
+  a note to that effect now sits under the table so the next cycle does not re-run these
+  searches.
+
+  **ML / UI:** both skipped, as the item said. `python3 ml/selftest.py` was still run and is
+  green (below).
+
+  **What this does NOT establish.** Not one host is VERIFIED. `link.coupang.com` rests on
+  third-party descriptions and one link seen in a public post; it was never fetched, never
+  followed, and no request left this container toward any merchant. 올리브영's and 네이버's
+  hosts are unknown and this cycle did not narrow them — it only removed a guess that was
+  being treated as settled. The 공정위 requirements are search-result summaries of 공정위's
+  own press release, not the guideline text, so the position rule, the effective date and the
+  불명확한 표시문구 example are all REPORTED; whether a scan-result screen is a 게시물 of a
+  문자 중심 매체 at all is unanswered and is the question that decides whether the `/report`
+  ordering is a defect or a preference. Whether `utm_*` breaks attribution is unknown. No
+  programme site was signed up for, logged into or submitted to, and nothing was fetched from
+  one. `NEXT_PUBLIC_FUNNEL_FLUSH` stays unset and no affiliate id exists anywhere in the tree.
+
+  **Diff and rotation.** Docs only: `docs/AUTOPILOT.md`,
+  `docs/autopilot-changelog.md`, `docs/commerce-partnership-playbook.md`. `git diff --stat
+  495e530 -- app lib tests ml public` is empty. Rotation: cycle 60's entry moved verbatim to
+  the end of `docs/autopilot-changelog.md` after cycle 59 — **209** lines cut from
+  `docs/AUTOPILOT.md` (2537 → 2328 before the new writing) and **209** appended
+  (13260 → 13469). `comm -23` over `sort -u` of both files at `495e530` against this pair
+  drops **0** lines, so nothing was lost: the
+  revenue table's Verified? column was not edited, and both additions to existing sections
+  (the host blocker, the note under the rates table) append rather than rewrite. Ports 3100–3109: none listening afterwards.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **317 passed (10.3m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+
+  *Supervisor review:* pending.
 - 2026-10-01 (cycle 62) — Branch `autopilot/2026-10-01-0639`. **The language switch that
   threw `/care`'s visitor back to the top of the page is fixed, and the "race" cycle 61
   recorded turned out not to be one on this container: **20** of **20** switches lost the
@@ -2326,212 +2537,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards.
-- 2026-09-30 (cycle 60) — Branch `autopilot/2026-09-30-1839`. **All five screens on the
-  path to the first merchant link now have a first-load JS number, and the measurement
-  found a flaw in cycle 40's method rather than a module to move. What the browser
-  downloads before the page is interactive: `/` **672119** bytes raw / **201102** gzipped,
-  `/survey` **667597** / **200355**, `/scan` **720028** / **218841**, `/report` **714373** /
-  **215103**, `/care` **678806** / **203251**. Cycle 40 counted a `noModule` polyfill chunk
-  of **112594** raw / **39392** gzipped that a modern browser skips, so its **783030** /
-  **240097** for `/` is that much larger than what a visitor fetched. Nothing on the path
-  clears the 20 KB-gzipped bar for a dynamic `import()`, so `app/`, `lib/`, `public/` and
-  `ml/` are untouched and no test was added.**
-
-  **The method, and the one place it had to differ from cycle 40's.** Turbopack prints no
-  first-load column, so the numbers come from the `<script src>` set in the prerendered
-  `.next/server/app/<route>.html`, raw bytes summed and each file gzipped at level 9 and
-  summed — cycle 40's method exactly, which is what makes `/` comparable across twenty
-  cycles. The difference is that cycle 40 took every `<script src>`; this cycle also read
-  the tag's attributes, and one of the thirteen on `/` carries `noModule`. Both figures are
-  in `docs/first-load-js.md` with the exact commands so the next cycle can re-run either.
-  On cycle 40's own method, unchanged, this tree reads:
-
-  ```
-  index scripts=13 raw=784713 gzip=240494
-  survey scripts=13 raw=780191 gzip=239747
-  scan scripts=14 raw=832622 gzip=258233
-  report scripts=14 raw=826967 gzip=254495
-  care scripts=13 raw=791400 gzip=242643
-  ```
-
-  `/`'s **784713** raw against cycle 40's **783030** is **1683** bytes of drift over twenty
-  cycles. The split cycle 40 made still holds: the ja, zh and ar dictionary chunks
-  (`2ju8yzfndwcag.js` **91733** raw / **29230** gzip, `1v0h5r-biq8qi.js` **77159** /
-  **27187**, `3v8lhb0_stdmj.js` **100349** / **29691**) are referenced from no prerendered
-  HTML at all.
-
-  **The `noModule` finding, which is a correction to the measurement and not to the
-  product.** `0cz1d0mv5g_q7.js` is **112594** raw / **39392** gzipped and is tagged
-  `noModule` in all five documents — it is the legacy-browser polyfill bundle, and a
-  browser with ES-module support never requests it. So cycle 40's **1050358** → **783030**
-  raw and **322373** → **240097** gzipped for `/` are each **112594** raw and **39392** gzip
-  above what the browser actually fetched. The saving cycle 40 measured is unaffected,
-  because the chunk sits on both sides of it. Nothing needs fixing: dropping the chunk would
-  save a modern browser nothing, since it never asks for it, and would remove the only
-  reason it exists. The backlog item and `README.md` now both carry the correction beside
-  the old numbers rather than replacing them.
-
-  **Checked in a real browser, not only in the HTML.** A throwaway Playwright run at
-  360x800 against `npx next start` on port **3108** loaded each route, recorded every
-  script response, and split them into the ones the document references and the ones that
-  arrive after. Two storage states, `empty` (a first-time visitor) and `aru.lang=ko`:
-
-  ```
-  [first-load] empty / url=/ lang=en docScripts=13 downloadedFromDoc=12 raw=672119 gzip=201102 | extraAfter=3 extraRaw=138027 extraGzip=46986
-  [first-load] empty /survey url=/survey lang=en docScripts=13 downloadedFromDoc=12 raw=667597 gzip=200355 | extraAfter=3 extraRaw=142549 extraGzip=47733
-  [first-load] empty /scan url=/scan lang=en docScripts=14 downloadedFromDoc=13 raw=720028 gzip=218841 | extraAfter=1 extraRaw=47320 extraGzip=14997
-  [first-load] empty /report url=/survey lang=en docScripts=14 downloadedFromDoc=13 raw=714373 gzip=215103 | extraAfter=4 extraRaw=185347 extraGzip=61983
-  [first-load] empty /care url=/care lang=en docScripts=13 downloadedFromDoc=12 raw=678806 gzip=203251 | extraAfter=3 extraRaw=138027 extraGzip=46986
-  [first-load] ko / url=/ lang=ko docScripts=13 downloadedFromDoc=12 raw=672119 gzip=201102 | extraAfter=3 extraRaw=138027 extraGzip=46986
-  [first-load] ko /survey url=/survey lang=ko docScripts=13 downloadedFromDoc=12 raw=667597 gzip=200355 | extraAfter=3 extraRaw=142549 extraGzip=47733
-  [first-load] ko /scan url=/scan lang=ko docScripts=14 downloadedFromDoc=13 raw=720028 gzip=218841 | extraAfter=1 extraRaw=47320 extraGzip=14997
-  [first-load] ko /report url=/survey lang=ko docScripts=14 downloadedFromDoc=13 raw=714373 gzip=215103 | extraAfter=4 extraRaw=185347 extraGzip=61983
-  [first-load] ko /care url=/care lang=ko docScripts=13 downloadedFromDoc=12 raw=678806 gzip=203251 | extraAfter=3 extraRaw=138027 extraGzip=46986
-  ```
-
-  `downloadedFromDoc` is `docScripts` minus **1** on all ten rows and the `raw` / `gzip`
-  pairs are byte-identical to the noModule-dropped table, which is what establishes that
-  the skipped file is the `noModule` chunk and that the HTML-derived number is right. `ko`
-  and `empty` download the same bytes on every route — Korean needs no dictionary and
-  English is a static import, so the product's own market pays the English dictionary and
-  gains nothing for its own language. `lang=en` under `empty` and `lang=ko` under `ko`
-  confirm the two states really differed rather than both falling back. The brief asked for
-  `ko` AND an empty storage state; those are two different states in this product
-  (`lib/i18n.tsx` makes English the first-visit default), so both were run rather than one
-  guessed at.
-
-  **`/report` on an empty storage state reports `url=/survey`.** With no stored result it
-  redirects. The bytes above are `/report`'s own document, fetched before the redirect,
-  which is what a visitor who lands on `/report` pays. `extraAfter` is the app router
-  prefetching linked routes after hydration and is reported separately because it is not
-  first-load weight.
-
-  **The three largest chunks are the same three files on every route.**
-  `0i7h8_tk58lvw.js` **232787** raw / **72373** gzip is React and react-dom
-  (`grep -o -F react-dom` **1** hit, `createRoot` **2**, `useMemo` **13**, `Fragment` **8**); `11oof8oxnxiv9.js` **141598** /
-  **38480** is the app-router client (`Router` **33**, `prefetch` **49**);
-  `39680g4crf4zr.js` **82569** / **28307** is the English dictionary
-  (`Turn camera back on` **1** hit, the ja/zh/ar equivalents **0** each). The `noModule`
-  chunk would be third by size and is excluded because it is not downloaded. The largest
-  route-specific files are `/scan`'s `0nbqz_u5xt-55.js` **62927** / **20105**, `/report`'s
-  `05nl_w77jzrvo.js` **55225** / **19345**, `/care`'s `1lid53sf9e4no.js` **54007** /
-  **17146**, `/` `0o58hq7nka77u.js` **47320** / **14997** and `/survey`'s
-  `10ajzjvbtk999.js` **42798** / **14250**.
-
-  **Why no product code changed.** The bar was a module a route ships on first load but
-  does not render or run before the first user action, at **≥ 20 KB gzipped** = **20480**
-  bytes. Exactly four first-load files anywhere on the path are over it and every one is
-  accounted for: react-dom (**72373**) and the app-router client (**38480**) both run at
-  hydration; the `noModule` polyfill (**39392**) is not downloaded; the English dictionary
-  (**28307**) is the language the server rendered, so it is not unrendered — and it is the
-  owner's URL decision, which the brief put out of scope. The two obvious libraries are
-  already lazy: `app/components/share-card.tsx:62` awaits `import("html-to-image")` inside
-  the share handler and `app/scan/create-landmarker.ts:6` awaits
-  `import("@mediapipe/tasks-vision")`. The largest route-specific file, `/scan`'s
-  **20105** gzip, is **375** bytes under the bar as a WHOLE chunk and holds several modules
-  (`getUserMedia` **2** hits, `landmark` **8**, `consent` **4**), so nothing inside it is
-  near.
-
-  **The one real candidate, and why it does not qualify.** `lib/skin.ts` is the analysis
-  runtime, **67485** bytes of source per `wc -c`, reaching `/scan` through
-  `app/scan/use-capture-analysis.ts:13`-`18` and `/report` through `app/report/page.tsx:14`, and
-  nothing in it runs until the visitor captures a frame — a genuine ships-but-does-not-run
-  module. Grepping its `CHEEKS` landmark array
-  (`50,101,118,117,116,205,36,280,330,347,346,345,425,266`) across `.next/static/chunks`
-  puts it in `2rkq86eu5t2oh.js` on `/scan` and `05nl_w77jzrvo.js` on `/report`, chunks whose
-  WHOLE gzipped size is **12631** and **19345** bytes. So it is under the **20480**-byte bar
-  on both routes even if its entire chunk were counted as `lib/skin.ts`, and moving it would
-  also sit inside `/scan`'s capture path, which the brief fenced off. Measured, not assumed:
-  the same grep over `/`'s twelve downloaded chunks returns nothing, so `lib/skin.ts` is not
-  on the landing page's first load at all.
-
-  **No change, therefore no regression test and no break to prove.** The brief made the
-  test conditional on making a change ("If you do make a change, add a regression test"),
-  and there is no change, so there is nothing whose saving a test could pin. A ceiling on
-  numbers this cycle did not move would be a new contract rather than a guard on this
-  cycle's work, and it is filed as open backlog instead, with the command it would be built
-  from. `git diff ba67ed0 --stat -- app lib public ml tests scripts package.json
-  package-lock.json playwright.mobile.config.ts next.config.ts` prints nothing: this cycle
-  is three docs and nothing else.
-
-  **What this does NOT establish.** Every `gzip` figure is `gzip -9` over the file on disk,
-  summed per route, which is cycle 40's method and comparable with it — it is not what
-  `next start` puts on the socket and it is not Brotli, which a real CDN would serve.
-  Nothing here measures parse, compile or time-to-interactive, on this container or on the
-  mid-range phone the item is about; weight is a proxy for the cost, not the cost. The
-  `noModule` skip was observed in the container's Chromium only. Per-module attribution
-  inside a chunk is bounded by the chunk total rather than measured, because Turbopack emits
-  no module ids into the output (`grep -o '\[project\]/[^ "]*'` over the four largest chunks
-  returns nothing). One build, one Playwright run per route per state, so no figure carries
-  a variance estimate. And only the five funnel routes were measured: `/checkin`,
-  `/privacy`, `/reco`, `/studio`, the two `/guide/*` pages and the research-mode `/eval`,
-  `/ops` and `/pilot` were not.
-
-  **ML:** skipped this cycle, as the item said to. `python3 ml/selftest.py` was still run
-  and is green (below).
-
-  **Rotation.** Cycle 57's entry (**177** lines) moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycle 56; `cmp` of the extracted block against
-  changelog lines **12820**–**12996** reports no difference. `sort -u` over both files at
-  `ba67ed0` gives **13176** unique lines and over this pair **13367**; `comm -23` of the
-  first against the second drops **2** lines. Both are from the English-dictionary backlog
-  item, whose closing sentence this cycle rewrote because the measurement made it false —
-  the dropped lines are `  on its own. Also unmeasured and cheap to do: ...` and
-  `  counted, before or after.`, and what replaced them is the paragraph of numbers now in
-  that item. Nothing else was lost.
-
-  **Reproduced on a second, independent build.** The gate's own `npm run build` replaced
-  the `.next` the numbers came from, and both commands re-run against it print the same
-  lines byte-for-byte — command (1) `index scripts=13 raw=784713 gzip=240494` through
-  `care scripts=13 raw=791400 gzip=242643`, command (2) `index scripts=12 raw=672119
-  gzip=201102` through `care scripts=12 raw=678806 gzip=203251`. The chunk names are
-  content hashes, so an unchanged tree rebuilds to the same ones; that is the only
-  reproduction claim here, and it is not a variance estimate.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
-  committed tree — `Test Files  120 passed (120)` / `Tests  1089 passed (1089)`,
-  **311 passed (13.9m)**, `✖ 2 problems (0 errors, 2 warnings)`, `ml/selftest.py`
-  `Ran 146 tests in 2.323s` / **OK**, **Smoke test passed.** at log line **1164**, exit
-  **0**. Re-run afterwards, each on its own: `npx tsc --noEmit | grep -c "error TS"`
-  **13**; `npx eslint .` **✖ 2 problems (0 errors, 2 warnings)** (the same pre-existing
-  `_reads` / `_result` at `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in
-  2.252s` / **OK**. The suite is **311** here and **311** on the supervisor's `ba67ed0`,
-  which is what a cycle that added no test should read. `git status --porcelain` after the
-  run lists the three modified docs and the one new one and no product file, and
-  `ss -ltnp` afterwards shows nothing listening on 3100-3109. What the smoke run does not
-  cover: the three doc files themselves, including this validation paragraph, which were
-  written around it — `tsc`, `eslint` and `ml/selftest.py` above were all re-run after the
-  last doc edit. Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` against
-  this pair drops **2** lines, both named above.
-
-  *Supervisor review:* sound, merged. This is a measurement cycle with no product change:
-  `git diff --stat ba67ed0..HEAD` touches only `README.md`, `docs/AUTOPILOT.md`,
-  `docs/autopilot-changelog.md` and the new `docs/first-load-js.md`.
-
-  I reproduced the headline table independently. On a fresh `npm run build` of this tree,
-  command (2) from `docs/first-load-js.md` printed:
-  - `index scripts=12 raw=672119 gzip=201102`
-  - `survey scripts=12 raw=667597 gzip=200355`
-  - `scan scripts=13 raw=720028 gzip=218841`
-  - `report scripts=13 raw=714373 gzip=215103`
-  - `care scripts=12 raw=678806 gzip=203251`
-
-  That is byte-identical to the doc on all five routes. The English dictionary check
-  also matched: `grep -l 'Turn camera back on'` finds one chunk,
-  `39680g4crf4zr.js`, at **82569** raw / **28307** gzipped. `index.html` carries
-  **1** `noModule` tag.
-
-  Nothing was broken on purpose this cycle, because no test was added to prove live.
-
-  Rotation: `comm -23` over `sort -u` of both files at `ba67ed0` drops **2** lines. Both
-  are from the English-dictionary backlog item's old "Also unmeasured and cheap to do"
-  sentence, which the worker rewrote to point at the new doc. Nothing was lost.
-
-  Gate on this tree:
-  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-    **311 passed (16.9m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening afterwards; `git status` clean.
