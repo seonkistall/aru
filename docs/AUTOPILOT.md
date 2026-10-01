@@ -2198,7 +2198,39 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged, with one item added. This was a docs-only cycle:
+  `git diff --stat 495e530 -- lib app public ml tests` prints nothing, and
+  `grep -c "link.coupang.com" lib/commerce.ts` prints **0**. So `ALLOWED_HOSTS` and every
+  disclosure string are unchanged.
+
+  The code-location claims check out against the tree:
+  - `/report` renders `<CommerceDisclosure>` at `app/report/page.tsx:469`, after the `<a>`
+    at `:457`.
+  - `/care` renders it at `app/care/page.tsx:189`, and the product card at
+    `app/components/product-card.tsx:81`.
+  - `addCommerceTracking()` is at `lib/commerce.ts:111` and `ALLOWED_HOSTS` at `:24`.
+  - The `en` string is at `lib/i18n/en.ts:504`.
+
+  I re-checked the 공정위 revision with my own search. It returned the 행정예고 summaries
+  ([신&김 2613](https://shinkim.com/kor/media/newsletter/2613),
+  [뉴스서울](https://www.newsseoul.co.kr/news/view/1065579623819806)), which confirm
+  "게시물의 제목 또는 첫 부분" and the 2024-12-01 시행. The same results carry a requirement
+  the worker did not report: the disclosure is to be made recognisable by "글자 크기를 본문보다
+  크게 하거나 글자색을 본문과 달리하는 등". ARU's is `fontSize: 11.5` in `--text-muted`. That is
+  added as item 4 of the BLOCKERS legal item, with the same search-summary caveat.
+
+  The `utm_*`-breaks-attribution finding is the most revenue-relevant result of the cycle.
+  It is correctly filed as UNKNOWN rather than fixed.
+
+  Rotation: `comm -23` over `sort -u` of both files at `495e530` drops **0** lines.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **317 passed (12.7m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards.
 - 2026-10-01 (cycle 62) — Branch `autopilot/2026-10-01-0639`. **The language switch that
   threw `/care`'s visitor back to the top of the page is fixed, and the "race" cycle 61
   recorded turned out not to be one on this container: **20** of **20** switches lost the
