@@ -2130,7 +2130,35 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   run does not cover: the doc edits themselves, including this paragraph, which is why the
   three commands above were re-run after them.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged. The product diff is the one effect in
+  `app/care/page.tsx`, switched from a passive effect to the same isomorphic layout-effect
+  guard `lib/i18n.tsx` uses. `key={active}`, the `inert` hold and `localStorage` are
+  untouched. No other screen changed: `git diff --stat a12f637..HEAD -- app lib` lists
+  only `app/care/page.tsx`.
+
+  I reproduced the spec independently on this tree with `npx playwright test
+  tests/e2e/care-lang-switch-scroll.regression-41.spec.ts --project=mobile`:
+  **2 passed (1.1m)**. I then ran it under two breaks, restoring the file from a copy
+  after each; `sha256sum -c` printed `app/care/page.tsx: OK`.
+  - Break A, the worker's own revert (`useEffect`): **2 failed**.
+  - Break B, which the worker did not try: keep the layout effect but defer its two state
+    updates into `setTimeout(…, 0)`. This is a refactor that looks harmless and
+    reintroduces the empty frame. Result: **2 failed**, each reading
+    `en: /care lost the scroll position across the switch (scrollY 0, expected 400±2,
+    minimum scrollHeight seen 800)` (and `expected 900±2` for the second case). The spec
+    catches the mechanism, not only the one-word revert.
+
+  Rotation: `comm -23` over `sort -u` of both files at `a12f637` drops **3** lines. All
+  three are the RTL item's old "Not fixed: a scroll restore across a remount…" sentence,
+  which the brief asked the worker to update. Nothing else was lost.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **317 passed (10.2m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards; `git status` clean.
 
 - 2026-10-01 (cycle 61) — Branch `autopilot/2026-10-01-0039`. **Mid-session language
   switching is now measured on all nine screens instead of two, and the one loss that hits
