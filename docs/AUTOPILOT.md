@@ -2226,7 +2226,48 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `tests/doc-links.test.ts`, which checks relative markdown links, and this paragraph
   adds none — `grep -c "](\(\./\|docs/\|[a-z]\)" ` over the cycle 64 entry is **0**.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* merged after one fix, a regression in (A).
+
+  **The regression.** The pushed condition skipped the scan pre-selection whenever a draft
+  existed (`hint.concerns.length && !draft && !hasSubmitted`). But `/survey` writes a draft
+  on every mount, an empty one included. So a visitor who opened the survey, went to
+  `/scan` and came back saw "사진에서 확인한 … 항목을 먼저 선택했어요" with **0** chips
+  pressed. A submitted survey with no concerns, followed by the `/report` scan nudge,
+  behaved the same.
+
+  I reproduced it with a new case in `regression-40`, "a scan taken after an earlier, empty
+  survey visit still pre-selects its concerns". On the worker's code it gave **1 failed**,
+  **5 passed (1.5m)**: `Expected: 3 / Received: 0`.
+
+  **The fix** (`app/survey/page.tsx`). The draft records the hint it has absorbed
+  (`hintFor`, the joined concern list). The hint fills an empty list unless this draft has
+  already absorbed the same hint. That restores the pre-cycle-64 behaviour for a new or
+  first hint, and keeps the worker's fix for a deliberately cleared list. I corrected the
+  entry above and the spec comment to describe this rule rather than the pushed one.
+
+  **Checks on the fixed tree.**
+  - Both specs: **8 passed (53.1s)**.
+  - Break 1, the `hintFor` guard removed: **1 failed**, on `en must keep the cleared concern
+    list`.
+  - Break 2, which the worker did not try: drop `done` from `/checkin`'s draft-writer guard,
+    so the draft is rewritten after save. Result: **1 failed**, the "saving clears the
+    /checkin draft" case at `toBeNull()`.
+  - After both breaks, `sha256sum -c` printed `OK` for `app/survey/page.tsx` and
+    `app/checkin/page.tsx`.
+  - `/checkin` stores its draft under a new session key registered in
+    `lib/device-data.ts` (`tests/device-data.test.ts` **5 passed**). What `save()` sends
+    is unchanged.
+
+  **Rotation.** `comm -23` drops **4** lines. All are the RTL item's "Filed, not fixed:
+  `/checkin`" sentence, which the brief asked to update.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **321 passed (11.9m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening.
 
 - 2026-10-01 (cycle 63) — Branch `autopilot/2026-10-01-1239`. **The owner's affiliate
   switch-on is now a one-step change for one of the three programmes and an explicitly
