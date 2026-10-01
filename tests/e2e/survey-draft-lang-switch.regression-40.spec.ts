@@ -264,3 +264,35 @@ test("a cleared concern list is not re-filled by the scan hint on a language swi
   expect(JSON.parse(after!).concerns, "and the draft was not rewritten with the hint").toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("aru_survey_draft_v1"))).toBeNull();
 });
+
+/**
+ * Added by the cycle 64 supervisor review. `/survey` writes a draft on every mount,
+ * an empty one included, so "a stored draft exists" is true for anyone who opened
+ * the survey earlier in the session. The first form of the cycle 64 fix skipped
+ * the scan pre-selection whenever a draft existed, which left the hint sentence
+ * "사진에서 확인한 … 항목을 먼저 선택했어요" on screen with nothing selected. This is
+ * the visitor who opens /survey, goes to scan, and comes back: the hint's concerns
+ * must be pre-selected, as they were before cycle 64.
+ */
+test("a scan taken after an earlier, empty survey visit still pre-selects its concerns", async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("aru.lang", "ko");
+    } catch {
+      /* private mode */
+    }
+  });
+  await page.goto("/survey");
+  await expect.poll(async () => page.evaluate(() => document.documentElement.lang), { timeout: 20_000 }).toBe("ko");
+  await expect(selected(page)).toHaveCount(0);
+  // The earlier visit left a draft behind, with nothing chosen.
+  await expect.poll(async () => page.evaluate((key) => sessionStorage.getItem(key), DRAFT_KEY)).not.toBeNull();
+
+  // The scan finishes and routes back to /survey with a reading in the session.
+  await page.evaluate(() =>
+    sessionStorage.setItem("gyeol_scan", JSON.stringify({ oil: 3, redness: 2, pores: 2, confidence: 0.9 })),
+  );
+  await page.goto("/survey");
+  await expect(page.getByRole("link", { name: "카메라로 다시 살펴보기" })).toBeVisible();
+  await expect(selected(page), "the hint says it pre-selected three concerns, so three must be pressed").toHaveCount(3);
+});

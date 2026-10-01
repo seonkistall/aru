@@ -63,7 +63,11 @@ function loadScanHint(): ScanHint {
 
 // The answers as they stand before the visitor has submitted anything. Every
 // field is optional because a draft is by definition half-filled.
-type SurveyDraft = Partial<Pick<SurveyT, "type" | "concerns" | "category" | "budget" | "avoid">>;
+type SurveyDraft = Partial<Pick<SurveyT, "type" | "concerns" | "category" | "budget" | "avoid">> & {
+  // The scan hint whose concerns this draft has already absorbed, as the joined
+  // concern list, so a remount does not apply the same hint a second time.
+  hintFor?: string | null;
+};
 
 function loadSurveyDraft(): SurveyDraft | null {
   try {
@@ -90,6 +94,7 @@ export default function Survey() {
   const [avoid, setAvoid] = useState<Avoid[]>([]);
   const [saveErr, setSaveErr] = useState("");
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [hintFor, setHintFor] = useState<string | null>(null);
   const ready = type && category && budget;
 
   useEffect(() => {
@@ -102,12 +107,10 @@ export default function Survey() {
     /* eslint-disable react-hooks/set-state-in-effect */
     // Rehydrate a previously submitted survey so returning from /report (its
     // scan nudge routes scan→survey) doesn't wipe every answer.
-    let hasSubmitted = false;
     try {
     const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SurveyT>;
-        hasSubmitted = true;
         if (saved.type) setType(saved.type);
         if (Array.isArray(saved.concerns)) setConcerns(saved.concerns);
         if (saved.category) setCategory(saved.category);
@@ -132,16 +135,17 @@ export default function Survey() {
     const hint = loadScanHint();
     if (!hint) return;
     setScanHint(hint);
-    // The hint PRE-SELECTS only on a first visit — no stored draft and no submitted
-    // survey. It used to pre-select whenever the restored list was empty
-    // (`prev.length ? prev : hint.concerns`), which meant a visitor who deliberately
-    // cleared every concern chip and then changed the language got the scan's concerns
-    // back: the remount restores the draft's empty `concerns`, and the old condition
-    // read that as "nothing stored" rather than as the choice it was. A stored draft is
-    // authoritative, an empty `concerns` included. The hint TEXT above is unaffected —
-    // `setScanHint` is unconditional, so the sentence and the retake link show either
-    // way.
-    if (hint.concerns.length && !draft && !hasSubmitted) setConcerns(hint.concerns);
+    // The hint pre-selects into an empty concern list, once per hint. `/survey` writes
+    // a draft on every mount, so "a draft exists" cannot be the test: a visitor who
+    // opened the survey earlier in the session and then scanned would see "사진에서
+    // 확인한 … 항목을 먼저 선택했어요" with nothing selected. Instead the draft records
+    // which hint it has already absorbed (`hintFor`). A remount after a language
+    // switch finds the same hint absorbed and leaves the restored list alone, so a
+    // visitor who deliberately cleared every concern chip keeps that choice. The hint
+    // TEXT is unconditional either way.
+    const signature = hint.concerns.join(",");
+    if (hint.concerns.length && draft?.hintFor !== signature) setConcerns((prev) => (prev.length ? prev : hint.concerns));
+    setHintFor(signature);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -151,12 +155,12 @@ export default function Survey() {
   useEffect(() => {
     if (!draftLoaded) return;
     try {
-      sessionStorage.setItem(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ type, concerns, category, budget, avoid }));
+      sessionStorage.setItem(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ type, concerns, category, budget, avoid, hintFor }));
     } catch {
       // Storage unavailable (private mode, quota). A draft is a convenience; the
       // submit path has its own error surface for the answer that matters.
     }
-  }, [draftLoaded, type, concerns, category, budget, avoid]);
+  }, [draftLoaded, type, concerns, category, budget, avoid, hintFor]);
 
   function toggle<T>(list: T[], value: T, set: (next: T[]) => void) {
     set(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
