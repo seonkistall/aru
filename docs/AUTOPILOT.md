@@ -2094,6 +2094,174 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-02 (cycle 65) — Branch `autopilot/2026-10-02-0039`. **The owner can now answer
+  "what will `/api/out` actually send a visitor to for each of my overrides?" on their own
+  machine, before any deploy, instead of reading it out of a deployed server's request log
+  afterwards. `npm run affiliate:check` prints, per sku/merchant pair, accepted or ignored
+  with the server's own sentence, the exact final URL including the four `utm_*`, and a
+  warning when that URL is not the one the owner supplied. It exits non-zero unless every
+  override resolves. Nothing about `/api/out`, `ALLOWED_HOSTS` or `addCommerceTracking` was
+  changed: `git diff --stat 6e4e0ae -- lib app public ml` prints nothing.**
+
+  **Why this item and not the allowlist.** Cycle 58 proved on a production server that an
+  override on a non-allowlisted host is silently dropped and the search URL served instead;
+  cycle 63 found that ARU appends four `utm_*` parameters to whatever the override supplies,
+  which two programmes are reported to treat as a modified link. Both failures leave the
+  product looking correct — the link works, the disclosure still reads 제휴 링크 — so the
+  owner's first real affiliate links can earn $0 with nothing visibly wrong. Neither cause
+  is fixable from the loop (`ALLOWED_HOSTS` and `lib/commerce.ts` are the owner's), but both
+  are **visible** before a deploy, which is what this adds.
+
+  **How it reuses the real functions, which is the whole point.** A copy of the allowlist or
+  of the tracking would pass its own check and still be wrong, so
+  `scripts/check-affiliate-overrides.mjs` imports `auditCommerceOverrides`,
+  `commerceOverrideUrl`, `addCommerceTracking` and `describeCommerceOverrideIssue` from
+  `lib/commerce.ts`, and the sku ids from `lib/skus.ts`. The npm script runs Node's own type
+  stripping (`node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
+  --experimental-strip-types`), so no dependency was added — `package-lock.json` is
+  unchanged and the only edit to `package.json` is the one `affiliate:check` line. One
+  mechanism was needed beyond the flag: the repo's TS imports are extensionless
+  (`lib/skus.ts` imports `"./commerce"`), which Node's ESM resolver refuses with
+  `ERR_MODULE_NOT_FOUND`, so the script installs a `node:module` `registerHooks` resolve
+  hook that appends `.ts` only when the default resolution has already thrown and the
+  `.ts` file exists. `lib/commerce.ts` imports nothing and loads without the hook; the hook
+  is what makes `lib/skus.ts` — **22** sku ids — loadable, and so what lets the script
+  report a misspelled sku id the same way `/api/out` does. Measured on Node **v22.22.0**.
+
+  **What it reports.** The run in the new playbook section, on a file carrying the two pairs
+  the dry run uses, prints the server's log line verbatim
+  (`[commerce] override for tn1/coupang ignored: the URL is not an https URL on the
+  allowlist (…) (https://link.coupang.com/a/dryrun). The link is still a search URL.`), then
+  `tn1/oliveyoung  ACCEPTED` with
+  `redirect: …goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_summary_tn1_oliveyoung`
+  and the `utm_*` warning pointing at the BLOCKERS item, then `tn1/coupang  IGNORED` with
+  `redirect: none`, then `1 accepted, 1 ignored, 1 with appended tracking parameters.` and
+  exit **1**. Three exit conditions, so a pre-deploy step cannot pass by accident: any
+  ignored override, unparseable JSON (every override is lost, which must not read as "none
+  set"), or nothing configured at all. The last one is an addition to the brief, stated as
+  such: an empty env is a correct state to ship but never a successful switch-on check.
+
+  **One defect found in the script's own first output and fixed before the tests were
+  written.** For an `unknown-sku` or `unknown-merchant` row it printed a resolved redirect
+  URL, because `commerceOverrideUrl` looks up `parsed[skuId]?.[merchant]` literally and
+  neither key is checked there. `/api/out` never reaches that lookup for either: an unknown
+  sku id 404s at `app/api/out/route.ts:12-17`, and an unknown merchant key is never what
+  `route.ts:10` reads off the query string. Those two rows now say so instead
+  (`none — /api/out answers 404 for a sku id that is not in the catalogue`,
+  `none — /api/out only ever looks up a real merchant id`), and only the blocked-host row —
+  a lookup that does happen and returns null — is probed for real.
+
+  **Pinned, and proved live by breaking the script twice.**
+  `tests/affiliate-check-script.test.ts` runs the script in a child process and asserts both
+  the printed URLs and the exit codes: **11 passed (1.15s)** on its own. The final URL is
+  parsed back out of the report and asserted parameter by parameter, not substring-matched.
+  - **Break A**, `process.exit(ignored || !accepted ? 1 : 0)` replaced with
+    `process.exit(0)`: **3 failed** / **8 passed (11)** — the `link.coupang.com` case, the
+    accepted-plus-ignored case and the misspelled-keys case. The malformed-JSON and
+    empty-env cases still passed, because those exit earlier at their own `process.exit(1)`.
+  - **Break B**, `addCommerceTracking(resolved, …)` replaced with `resolved`: **4 failed** /
+    **7 passed (11)** — the four `utm_*`, the warning line, `--placement`, and the
+    accepted-plus-ignored summary count.
+  - Both reverted from a copy taken before the breaks. `sha256sum -c` printed `OK` for all
+    three files afterwards:
+    `a4747de13e13e4eeb7989fbe07b2173a5b5ecc9a9bc4b2656aaf8122dd715e22`
+    (`scripts/check-affiliate-overrides.mjs`),
+    `7a619f4e3be22608db122a03d6c85c230df050e11c882e3c602e5e7dc20fc7eb`
+    (`tests/affiliate-check-script.test.ts`) and
+    `2999f7f8ecec1258abbcd2a74578bd257fa5dbd92f47917bb858ed4878e74359` (`package.json`).
+
+  **No request left the container, and no real id exists anywhere.** The script has no
+  `fetch(`, no `node:http`/`https`/`net`/`dns` import and no `XMLHttpRequest`, and one of the
+  11 cases asserts that over the script's own source — a pre-deploy check that fetched the
+  URLs would register clicks with a programme from the owner's laptop. Every id used is
+  invented, the same convention `tests/e2e/commerce-switch-on.spec.ts` uses:
+  `DRYRUN000000` is not an Olive Young goods number and `/a/dryrun` is not a 파트너스 link.
+  `NEXT_PUBLIC_FUNNEL_FLUSH` stays unset.
+
+  **ML / UI:** both skipped, as the item said. `python3 ml/selftest.py` was still run and is
+  green (below).
+
+  **What this does NOT establish.** It does not settle the open `utm_*` question — it makes
+  the appended parameters visible and points at the blocker, and whether 올리브영 or 네이버
+  treats them as 수정 is still UNKNOWN and still the owner's one-minute read of a programme's
+  own link policy. It cannot tell the owner whether a link *earns*: it checks the gate and
+  the final URL, never the programme. It was never run on a real override JSON, because none
+  exists — every pair above is invented. `--placement` defaults to `report_summary`, the
+  literal `/report` passes at `app/report/page.tsx:458`; the other placements in the tree
+  (`report_product`, and whatever `/care` passes) were not enumerated, and placement only
+  ever changes `utm_content`. The resolve hook and the type stripping were exercised on one
+  Node (**v22.22.0**) on one container and on Linux only; `--experimental-strip-types` is
+  flagged experimental by Node itself, so a future Node could change the flag name and the
+  npm script with it. The script reads the env var or a file path and deliberately does not
+  read `.env.local`, unlike `supabase:check`. Nothing about the allowlist was decided: two of
+  cycle 63's three programme hosts are still UNKNOWN, `link.coupang.com` is still not
+  accepted, and this cycle did not probe a single network host.
+
+  **Diff and rotation.** `git diff --stat 6e4e0ae -- lib app public ml` prints nothing, and
+  `git diff 6e4e0ae -- package-lock.json` prints nothing. Rotation: cycle 62's entry moved
+  verbatim to the end of `docs/autopilot-changelog.md` after cycle 61 — **182** lines out of
+  `docs/AUTOPILOT.md` (**2598** → **2416** before the new writing) and **182** plus a blank
+  separator appended to the changelog (**13636** → **13819**), which is the one line in the
+  pair that is new rather than moved. `diff` of the appended block against the extracted
+  block reports no difference, and `comm -23` over `sort -u` of both files at `6e4e0ae`
+  against this pair drops **0** lines.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` —
+  `Test Files  121 passed (121)` / `Tests  1100 passed (1100)`, **321 passed (9.1m)**,
+  `Ran 146 tests in 1.619s` **OK**, **Smoke test passed.** The vitest suite went from the
+  supervisor's **120** files / **1089** tests on `6e4e0ae` to **121** / **1100**, which is
+  the one file and the **11** tests this cycle added and nothing else; the Playwright count
+  is **321** on both, because nothing under `tests/e2e` was touched. The three below were
+  each run on their own after every doc edit but the one that wrote these numbers in:
+  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .`
+  `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing `_reads` / `_result` at
+  `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in 1.700s` **OK**.
+  `tests/affiliate-check-script.test.ts` alone is **11 passed (1.15s)**, and
+  `tests/commerce.test.ts` is unchanged and passing in the same run as the two docs tests:
+  **3 files**, **30 passed**. The tracked diff outside the three docs is one line:
+  `git diff --stat 6e4e0ae -- package.json` is `package.json | 3 ++-`,
+  `1 file changed, 2 insertions(+), 1 deletion(-)`, and
+  `git diff --stat 6e4e0ae -- lib app public ml tests scripts` prints nothing, the two new
+  files being untracked until the commit. Ports 3100–3109 and 3017: none listening afterwards. What the
+  smoke run does not cover: this paragraph, written after it — `npx tsc --noEmit`,
+  `npx eslint .` and `python3 ml/selftest.py` were each re-run after it and still give
+  **13**, `0 errors` and **OK**.
+
+  *Supervisor review:* sound, merged. The tool is read-only and `git diff --stat
+  6e4e0ae -- lib app` prints nothing, so `/api/out`, `ALLOWED_HOSTS` and
+  `addCommerceTracking` are unchanged. It imports `lib/commerce.ts` and `lib/skus.ts`
+  rather than copying them. Neither of those, nor `lib/ingredients.ts`, contains a
+  `fetch`, so it makes no request.
+
+  **Independent run.** I ran it on `v22.22.2` against a fake fixture with an
+  allowlisted Olive Young override, a `link.coupang.com/a/dryrun` override, an empty
+  string and an unknown sku. It printed `1 accepted, 3 ignored, 1 with appended tracking
+  parameters.` and exited **1**. It quoted the server's own two log lines, and it named
+  the empty-string row the server logs nothing for.
+  - An env with only the Olive Young override exited **0**, with the `utm_*` warning.
+  - A top-level array exited **1** with `No override resolves`.
+
+  **Breaks.** Two breaks the worker did not try, each reverted, then
+  `sha256sum -c` printed `OK`:
+  - Exiting 0 when rows are ignored: **1 failed | 10 passed (11)**.
+  - Suppressing the appended-parameters warning: **2 failed | 9 passed (11)**.
+
+  **One addition.** The script depends on Node's `--experimental-strip-types` and
+  `module.registerHooks`, and the playbook did not say so. On an older Node it fails at
+  start-up, and the owner could read that as a verdict on their overrides. I added a
+  short note with the version it was run on.
+
+  **Rotation:** `comm -23` drops **0** lines.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 121 passed (121) / Tests 1100 passed (1100)`,
+    **321 passed (11.8m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening.
+
 - 2026-10-01 (cycle 64) — Branch `autopilot/2026-10-01-1839`. **The two language-switch
   state losses cycle 61 left behind are fixed. `/survey`'s scan hint no longer overrides a
   visitor who deliberately cleared every concern chip: **3** chips came back on the switch
@@ -2414,185 +2582,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards.
-- 2026-10-01 (cycle 62) — Branch `autopilot/2026-10-01-0639`. **The language switch that
-  threw `/care`'s visitor back to the top of the page is fixed, and the "race" cycle 61
-  recorded turned out not to be one on this container: **20** of **20** switches lost the
-  position before the change and **0** of **20** after. The fix is one word — the
-  after-mount `sessionStorage` read in `app/care/page.tsx` is a LAYOUT effect instead of a
-  passive one, so React flushes `viewLoaded` back to true inside the same commit and the
-  browser never lays the 800px loading branch out. The whole product diff is that effect,
-  the comment above it and the `react-hooks/set-state-in-effect` disable the passive version
-  needed, which the rule no longer asks for. `key={active}`, the `inert` hold, the
-  `dir`/`lang` handling and `localStorage` are all untouched, and because the change is
-  `/care`-local nothing on any other screen moved.**
-
-  **Reproduced with a number, before touching anything.** At 360x800 against `npm run start`
-  on port **3108** on a production build, one browser context per switch, a valid survey in
-  `sessionStorage`, `aru.lang=ko`, and `window.open` replaced by a recorder so no merchant
-  link could be followed (**0** calls across every run). Each run scrolled `/care` to
-  **400**, switched through the REAL picker, and read `window.scrollY` once the dictionary
-  hold had lifted and the merchant panel was visible again. **20** runs, cycling
-  `en` / `ja` / `ar` (**7** / **7** / **6**):
-
-  ```
-  [before] TOTAL ended-at-0: 20/20  (en=7/7 ja=7/7 ar=6/6)
-  [before] final scrollY values: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  ```
-
-  **Cycle 61 called it a race; on this container it is not intermittent.** Cycle 61's
-  frame recorder reads `document.documentElement.scrollHeight` once a frame, which forces a
-  layout the browser might otherwise have skipped — so the instrument could have been what
-  made the clamp happen. It is not. The same **20** runs with the recorder removed
-  entirely:
-
-  ```
-  [before-norec] TOTAL ended-at-0: 20/20  (en=7/7 ja=7/7 ar=6/6)
-  [before-norec] final scrollY values: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  ```
-
-  So **40** switches in two conditions, **40** clamps. Cycle 61's `ja` run that kept **400**
-  is not reproduced here and nothing in this cycle explains it away; what is established is
-  that at **400** on a seeded `/care` the loss is reliable, not that cycle 61's second
-  reading was wrong.
-
-  **Shape (a), `/care`-local, and why.** The brief offered a `/care`-local fix or a
-  provider-level capture-and-restore at `setLang`. The empty frame exists because the
-  `sessionStorage` read that sets `viewLoaded` runs in a PASSIVE effect, which React flushes
-  after the browser may already have laid the short document out. Moving that read into a
-  LAYOUT effect makes the whole sequence synchronous inside one commit: the `!viewLoaded`
-  branch is committed, the layout effect reads storage and sets state, React re-renders
-  before yielding, and the browser's first layout of the remounted tree is of the full page.
-  That removes the race rather than winning it, needs no scroll bookkeeping, no storage
-  write and no new state, and cannot regress a screen it does not touch — so `/report` and
-  `/survey` needed no before/after measurement, which a provider-level fix would have
-  required. It is the same `typeof window === "undefined" ? useEffect : useLayoutEffect`
-  guard `lib/i18n.tsx:28` already uses, for the same reason: a client component still
-  renders on the server, and a bare `useLayoutEffect` would warn there.
-
-  **After the fix, the same 20 runs.**
-
-  ```
-  [after] TOTAL ended-at-0: 0/20  (en=0/7 ja=0/7 ar=0/6)
-  [after] final scrollY values: 400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400
-  [after-norec] TOTAL ended-at-0: 0/20  (en=0/7 ja=0/7 ar=0/6)
-  [after-norec] final scrollY values: 400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400,400
-  ```
-
-  Both conditions again, **40** switches, **40** kept. `window.open` was called **0** times
-  in every one of the four **20**-run passes.
-
-  The frame traces say why. Before, `scrollHeight` collapsed to **800** at the remount —
-  which against an **800** px viewport makes the maximum scroll **0**. After, it goes
-  **1731** straight to the remounted height (**2029** on `en`, **1903** then **1862** on
-  `ja`, **1894** on `ar`) with `scrollY` **400** on every sampled frame and no **800**
-  anywhere.
-
-  **Pinned, and proved live.** `tests/e2e/care-lang-switch-scroll.regression-41.spec.ts` is
-  **2** tests. The first does **5** switches (`en`, `ja`, `zh`, `ar`, `ko`), re-scrolling to
-  **400** before each one so every switch is its own case rather than one that only has to
-  survive the first, and asserts `|scrollY - 400| <= 2`. The second scrolls to **900** —
-  past the **800** px viewport, so a loading branch merely padded to one screen height would
-  still clamp there — and switches twice. Both print the minimum `scrollHeight` sampled
-  across the switch, because that number is the mechanism. On the committed tree, **2 passed
-  (34.3s)**:
-
-  ```
-  [care-scroll] offset=400 -> en: scrollY=400 frames=9 minScrollHeight=1731
-  [care-scroll] offset=400 -> ja: scrollY=400 frames=15 minScrollHeight=1862
-  [care-scroll] offset=400 -> zh: scrollY=400 frames=10 minScrollHeight=1708
-  [care-scroll] offset=400 -> ar: scrollY=400 frames=10 minScrollHeight=1708
-  [care-scroll] offset=400 -> ko: scrollY=400 frames=9 minScrollHeight=1731
-  [care-scroll] offset=900 -> en: scrollY=900 frames=10 minScrollHeight=1731
-  [care-scroll] offset=900 -> ja: scrollY=900 frames=12 minScrollHeight=1862
-  ```
-
-  The **1708**–**1862** range is the minimum height each switch ever presented; **800** is
-  what a clamp needs and it appears nowhere.
-
-  Reverting `app/care/page.tsx` to `a12f637` and re-running the same spec against a rebuild:
-  **2 failed**, both on the FIRST switch of their first case, with
-  `[care-scroll] offset=400 -> en: scrollY=0 frames=11 minScrollHeight=800` and
-  `[care-scroll] offset=900 -> en: scrollY=0 frames=11 minScrollHeight=800` and the messages
-  `en: /care lost the scroll position across the switch (scrollY 0, expected 400±2, minimum
-  scrollHeight seen 800)` / `... expected 900±2 ...`, `Expected: <= 2` against `Received:
-  400` and `Received: 900`. The assertion was not loosened and the spec needed no forced
-  delay: the defect is deterministic here on its own. The fix was restored from a copy taken
-  before the revert, and `sha256sum` reads
-  `526b98f0699de38a190ec72968c200c47e51f5c1b4c687ed0da1ba1c45d99c6f`
-  (`app/care/page.tsx`) and
-  `a32f635b1192957b32c7b757dbfca0eb2b473263e9824c0395d9149f7939fd7a`
-  (`tests/e2e/care-lang-switch-scroll.regression-41.spec.ts`) both before the break and
-  after the restore, with `diff` over the two listings reporting no difference.
-
-  **Research / ML:** both skipped, as the item said. `python3 ml/selftest.py` was still run
-  and is green (below).
-
-  **What this does NOT establish.** One container, one browser build
-  (`/opt/pw-browsers/chromium-1194`), **20** switches per condition — enough to call the
-  before-state reliable and the after-state clean on this machine, not a variance estimate
-  and not a phone. Only `/care` was measured, at two offsets (**400** and **900**) in a
-  single survey state; a `/care` with no stored result renders a different, shorter branch
-  that was not measured. Nothing here says the layout effect is faster or slower, only that
-  the short document is never laid out — React's own flush order is taken from behaviour,
-  not from a counter. The fix is measured against a language switch only, not against a tab
-  reload, a back navigation or a second tab, and the other eight screens' scroll behaviour
-  is unchanged and unre-measured because nothing outside `app/care/page.tsx` was touched.
-  And cycle 61's one surviving `ja` run remains unexplained.
-
-  **Rotation.** Cycle 59's entry moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycle 58: **127** lines out of `docs/AUTOPILOT.md`
-  (**2473** → **2346** before this entry was written, the **127th** being the blank
-  separator) and **13133** → **13260** into the changelog. `cmp` of the extracted **126**-line
-  block against the changelog's last **126** lines reports no difference.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` on the
-  committed tree — `Test Files  120 passed (120)` / `Tests  1089 passed (1089)`,
-  **317 passed (9.3m)**, `Ran 146 tests in 1.759s` **OK**, **Smoke test passed.**, exit
-  **0**. Re-run afterwards, each on its own and after the last doc edit:
-  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .`
-  `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing `_reads` / `_result` at
-  `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in 1.753s` **OK**. The suite
-  went from the supervisor's **315** on `a12f637` to **317** here, which is the **2** tests
-  this cycle added and nothing else. `git diff --stat a12f637 -- app lib tests` is
-  `app/care/page.tsx | 26 +++++++++++++++++++++-----`, `1 file changed, 21 insertions(+), 5
-  deletions(-)`, plus the one new untracked spec file — `lib/` and `tests/` outside that
-  spec are byte-identical to `a12f637`. Ports 3100–3109: none listening afterwards;
-  `git status --porcelain` immediately before the commit listed the **4** paths this cycle
-  touched and nothing else. Rotation: `comm -23` over `sort -u` of both files at `a12f637`
-  against this pair drops **3** lines, all three the sentence in the RTL backlog item this
-  cycle was told to rewrite (`[504,400,1862]` ... `Not fixed: a scroll restore across a` /
-  `remount is a different mechanism from storing state, and it was left for a cycle that
-  can` / `scope it. **Still open, unchanged:** ...`). Nothing else was lost. What the smoke
-  run does not cover: the doc edits themselves, including this paragraph, which is why the
-  three commands above were re-run after them.
-
-  *Supervisor review:* sound, merged. The product diff is the one effect in
-  `app/care/page.tsx`, switched from a passive effect to the same isomorphic layout-effect
-  guard `lib/i18n.tsx` uses. `key={active}`, the `inert` hold and `localStorage` are
-  untouched. No other screen changed: `git diff --stat a12f637..HEAD -- app lib` lists
-  only `app/care/page.tsx`.
-
-  I reproduced the spec independently on this tree with `npx playwright test
-  tests/e2e/care-lang-switch-scroll.regression-41.spec.ts --project=mobile`:
-  **2 passed (1.1m)**. I then ran it under two breaks, restoring the file from a copy
-  after each; `sha256sum -c` printed `app/care/page.tsx: OK`.
-  - Break A, the worker's own revert (`useEffect`): **2 failed**.
-  - Break B, which the worker did not try: keep the layout effect but defer its two state
-    updates into `setTimeout(…, 0)`. This is a refactor that looks harmless and
-    reintroduces the empty frame. Result: **2 failed**, each reading
-    `en: /care lost the scroll position across the switch (scrollY 0, expected 400±2,
-    minimum scrollHeight seen 800)` (and `expected 900±2` for the second case). The spec
-    catches the mechanism, not only the one-word revert.
-
-  Rotation: `comm -23` over `sort -u` of both files at `a12f637` drops **3** lines. All
-  three are the RTL item's old "Not fixed: a scroll restore across a remount…" sentence,
-  which the brief asked the worker to update. Nothing else was lost.
-
-  Gate on this tree:
-  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-    **317 passed (10.2m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening afterwards; `git status` clean.
