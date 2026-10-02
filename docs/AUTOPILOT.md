@@ -2248,7 +2248,41 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   (`8744f34d4b86c51f9e6d456696803c466961c3be6e50c30444feab2215905a45`), and the only edits
   since are to these two docs.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged.
+
+  **Scope.** The product diff is one line of `setConcerns` logic in `app/survey/page.tsx`
+  plus its comment. `regression-40` is unedited.
+
+  **The comment's claim about `/report` checks out.** `effectiveConcerns`
+  (`lib/recommend.ts:162`) builds a `Set` from `survey.concerns` and adds 유분 / 붉은기 /
+  모공 under `shouldApplyScan`. `/report` was therefore already scoring on the union, and
+  `/survey` now shows the same set it is scored on.
+
+  **One consequence, recorded rather than fixed.** Take a visitor who deselects a
+  hint-added concern and submits. The submit clears the draft, so on a later visit
+  `hintFor` is unset and the hint adds that concern back on screen. This matches what
+  `/report` already does with the scan, so it makes the screen consistent with the
+  scoring rather than overriding a choice the scoring ever honoured.
+
+  **Independent reproduction.** On this tree, `scan-hint-union.regression-44`,
+  `survey-draft-lang-switch.regression-40` and `stored-answers-membership.regression-43`
+  gave **17 passed (1.8m)**.
+
+  **A break the worker did not try.** I replaced the union with the hint alone
+  (`setConcerns(() => [...hint.concerns])`), a plausible "make the sentence true" shortcut.
+  - Result: **3 failed**, **14 passed**, on `the submitted concern must still be pressed`
+    (twice) and `and so is the visitor's own concern`.
+  - The file was then restored from a copy, and `sha256sum -c` printed `OK`.
+
+  **Rotation.** `comm -23` drops **0** lines.
+
+  **Gate on this tree.**
+  - `npm run smoke`: `Test Files 122 passed (122) / Tests 1107 passed (1107)`,
+    **332 passed (12.7m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening.
 
 - 2026-10-02 (cycle 66) — Branch `autopilot/2026-10-02-0639`. **A stored answer that is
   not one of the values the screen offers no longer becomes state. On `/survey` an
