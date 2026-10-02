@@ -152,6 +152,69 @@ and 쿠팡's `trac_lptag` cookie is reported to last 24 hours too (tali.kr, abov
 `/report` → merchant hop happens in one session, so neither window is a constraint on ARU's
 funnel.
 
+## Before you deploy: `npm run affiliate:check`
+
+The dry run below proves the switch-on works on *invented* overrides. This answers the
+other question, on the owner's real ones, before anything is deployed: **what will
+`/api/out` actually send a visitor to, for each override in
+`COMMERCE_LINK_OVERRIDES_JSON`?** Three ways that answer is "not what you pasted", and
+every one of them is silent in production — the link still works, the disclosure still
+says 제휴 링크, and the only trace is a line in a request log nobody reads:
+
+- the host is not on the allowlist, so the override is dropped and the search url is served
+  (cycle 58 proved this on a production server);
+- the sku id or merchant key is misspelled, so the lookup never matches;
+- `addCommerceTracking()` appends four `utm_*` parameters, so the visitor does not land on
+  the issued tracking link — see the `utm_*` item in BLOCKERS in `docs/AUTOPILOT.md`.
+
+`scripts/check-affiliate-overrides.mjs` imports `auditCommerceOverrides`,
+`commerceOverrideUrl`, `addCommerceTracking` and `describeCommerceOverrideIssue` from
+`lib/commerce.ts`, and the sku ids from `lib/skus.ts`, rather than copying the allowlist or
+the tracking — a copy would pass this check and still be wrong. It reads
+`COMMERCE_LINK_OVERRIDES_JSON` from the environment, or from a file path given as the first
+argument. It is read-only, it exits non-zero unless every override resolves, and **it never
+fetches a url**, so running it cannot register a click with any programme.
+
+```
+$ npm run affiliate:check -- overrides.json
+affiliate:check — the same functions /api/out uses, no network request.
+source:    overrides.json
+placement: report_summary
+catalogue: 22 sku ids from lib/skus.ts
+
+What the deployed server writes to its log, verbatim:
+  [commerce] override for tn1/coupang ignored: the URL is not an https URL on the allowlist (www.oliveyoung.co.kr, search.shopping.naver.com, www.coupang.com, www.google.com) (https://link.coupang.com/a/dryrun). The link is still a search URL.
+
+tn1/oliveyoung  ACCEPTED
+  supplied: https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=DRYRUN000000
+  redirect: https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_summary_tn1_oliveyoung
+  WARNING:  ARU appended tracking parameters, so a visitor does NOT land on the url
+            you supplied. 올리브영 and 네이버 are reported to refuse credit for a
+            modified link, which would earn $0 with nothing visibly wrong. See
+            the BLOCKERS item "Whether ARU's own `utm_*` parameters break affiliate attribution" in docs/AUTOPILOT.md.
+
+tn1/coupang  IGNORED — the URL is not an https URL on the allowlist (www.oliveyoung.co.kr, search.shopping.naver.com, www.coupang.com, www.google.com)
+  supplied: https://link.coupang.com/a/dryrun
+  redirect: none — /api/out keeps the marketplace search url for this merchant.
+
+1 accepted, 1 ignored, 1 with appended tracking parameters.
+An ignored override is not an error at runtime: /api/out falls back to the search url
+and only the server log says so. Fix every ignored row before deploying.
+```
+
+That run exits **1**. The `overrides.json` it read carried the two pairs the dry run uses,
+with the same invented ids (`DRYRUN000000`, `/a/dryrun`) — so the output above is what the
+owner would see after pasting a real 파트너스 link today, one sku accepted and the 쿠팡 one
+dropped until `link.coupang.com` is approved onto `ALLOWED_HOSTS`.
+
+Three exit conditions, so a pre-deploy step cannot pass by accident: non-zero if any
+override is ignored, non-zero if the JSON does not parse (every override is lost, which
+must not read the same as "none set"), and non-zero when nothing is configured at all —
+a correct state to ship, but never a successful switch-on check. `--placement=<name>`
+changes only `utm_content`; the default `report_summary` is what `/report` passes for the
+top pick. `tests/affiliate-check-script.test.ts` runs the script in a child process and
+asserts both the printed urls and the exit codes.
+
 ## Switch-on dry run
 
 The two-variable deploy above is no longer something only the owner will ever run.
