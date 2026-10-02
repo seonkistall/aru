@@ -38,7 +38,11 @@ import { expect, test } from "@playwright/test";
  */
 
 const JA_MARKER = "カメラをもう一度オンにする";
-const VALID_SURVEY = '{"type":"지성","concerns":["모공"],"budget":30000,"avoid":[],"category":"토너"}';
+// 29000, the 2만원 chip's band ceiling, not the 30000 this fixture used to carry: no chip
+// on /survey has ever produced 30000, and since cycle 66 a stored budget that is not one
+// of the five ceilings is not restored, so the submit below would be disabled on it. The
+// assertions here are about the step, not the band.
+const VALID_SURVEY = '{"type":"지성","concerns":["모공"],"budget":29000,"avoid":[],"category":"토너"}';
 const REAL_READS = JSON.stringify({
   oil: { value: "유분 많음", level: 2, calm: false },
   pores: { value: "결 약간 보임", level: 1, calm: false },

@@ -13817,3 +13817,149 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening afterwards; `git status` clean.
+
+- 2026-10-01 (cycle 63) — Branch `autopilot/2026-10-01-1239`. **The owner's affiliate
+  switch-on is now a one-step change for one of the three programmes and an explicitly
+  unknown one for the other two, which is the opposite of what this file said yesterday.
+  쿠팡 파트너스 issues `link.coupang.com/a/<code>`, so the host the override needs is named
+  and the exact `ALLOWED_HOSTS` line to approve is written down. 올리브영's and 네이버's
+  issued-link hosts are **UNKNOWN** — not "probably `smartstore.naver.com`", not "already on
+  the allowlist" — and the one claim in the old shortlist that mattered most is wrong:
+  올리브영's curator programme runs on `m.oliveyoung.co.kr`, which is NOT on the allowlist,
+  so a curator link cannot be assumed to pass the gate. No code changed. `lib/commerce.ts`,
+  `ALLOWED_HOSTS` and every disclosure string are byte-identical to `495e530`.**
+
+  **The research channel, stated before the findings, because it bounds all of them.** This
+  container has two ways out: container curl (long known to refuse every Korean commerce and
+  government host) and the agent's hosted fetch + hosted search. The hosted **search**
+  works and is the only reason this cycle produced anything. The hosted **fetch** does not:
+  `partners.coupang.com`, `m.oliveyoung.co.kr`, `www.ftc.go.kr`, `www.korea.kr`,
+  `www.kfcf.or.kr`, `www.shinkim.com`, `www.kimchang.com`, `easylaw.go.kr`,
+  `csafety.kakao.com`, `llily.co.kr` and `aisum.com` — **11** hosts, every one probed this
+  cycle — each returned `Access to <host> is blocked by the network egress proxy.` So **nothing below is VERIFIED in the sense the brief asked for**: not one claim is
+  quoted from a programme's own page or from 공정위's own document. Every row is **REPORTED**
+  (a third-party source states it) or **UNKNOWN** (no source states it). That is recorded in
+  the egress blocker so cycle 64 does not spend its budget rediscovering it.
+
+  **Hosts.** The table with every source is "Switch-on checklist, verified hosts" in
+  [`docs/commerce-partnership-playbook.md`](commerce-partnership-playbook.md). In short:
+
+  | Programme | Issued-link host | Status |
+  |---|---|---|
+  | 쿠팡 파트너스 | `link.coupang.com`, path `/a/<code>` | REPORTED |
+  | 쿠팡 파트너스, after the redirect | `www.coupang.com?lptag=<id>` | REPORTED |
+  | 올리브영 쇼핑 큐레이터 | UNKNOWN (programme surfaces are on `m.oliveyoung.co.kr`) | UNKNOWN |
+  | 네이버 쇼핑 커넥트 | UNKNOWN | UNKNOWN |
+
+  The Coupang link does redirect: the source describes a `trac_lptag` cookie set on the
+  `link.coupang.com` hop and "`?lptag=EXAMPLEID88`" on the product URL it lands on. That
+  matters for the override because the gate checks the URL the owner pastes, not the URL the
+  browser ends on — `www.coupang.com` being allowlisted does nothing for a
+  `link.coupang.com` override, which is exactly the silent discard cycle 58 demonstrated on
+  a production server. For 올리브영 the search results never state the host; what they do
+  show is that the programme's guide, dashboard and withdraw pages are all
+  `m.oliveyoung.co.kr/m/mtn/affiliate/*`, so `www.oliveyoung.co.kr` is an assumption and not
+  a finding. For 네이버 the sources are consistent that a *copied* product URL earns nothing
+  and only an issued link counts, and silent about what that link looks like.
+
+  **A failure mode the host question hides.** `addCommerceTracking()` appends four `utm_*`
+  parameters to whatever an override supplies, including a real tracking link, and both
+  올리브영 and 네이버 are reported to refuse credit for a modified link. Whether a query
+  parameter counts as modification is UNKNOWN and unreachable from here. If it does, the
+  owner's links pass the gate, redirect correctly and still earn $0. Filed as an owner item
+  because the fix is in `lib/commerce.ts`.
+
+  **Disclosure.** The 2024-12-01 revision of 공정위 「추천·보증 등에 관한 표시·광고 심사지침」
+  moved the required position for 문자 중심 매체 from "첫 부분 또는 끝 부분" to "게시물의 제목
+  또는 첫 부분", and added conditional phrasing ("소정의 수수료를 지급받을 수 있음") to the
+  examples of 불명확한 표시문구. Measured against the tree, not recalled:
+
+  - **Position is inconsistent across ARU's three commerce surfaces.** `/care`
+    (`app/care/page.tsx:189`) and every product card (`app/components/product-card.tsx:81`)
+    render `CommerceDisclosure` **before** the link. `/report`
+    (`app/report/page.tsx:469`) renders it **after** the buy link and after the `/care`
+    link, so on that one surface a visitor can tap through without passing it. **1** of
+    **3** surfaces, and it is the first one a visitor reaches.
+  - **The wording is probably not the prohibited shape, and that is a lawyer's call.**
+    `구매가 이뤄지면 ARU가 수수료를 받아요` is definite about the payment (`받아요`, not
+    `받을 수 있어요`), so it is not "소정의 수수료를 지급받을 수 있음". It also never uses
+    the word 광고, which is what the revision exists to surface.
+  - **No programme-specific sentence exists.** 쿠팡 파트너스 posts in the wild carry a fixed
+    sentence ARU's single string does not, and whether one sentence may stand for three
+    programmes on one screen is in terms the loop cannot read.
+
+  All three are in BLOCKERS as one owner/legal item, each with the exact replacement wording
+  proposed so the owner's decision is a yes/no. **No copy was changed and none should be
+  until that item is answered** — `app/components/commerce-disclosure.tsx` and all **4**
+  translation dictionaries (`ar`, `en`, `ja`, `zh`) are untouched.
+
+  **Revenue table.** The Verified? column is unchanged, deliberately. The brief said to
+  update it only where a primary source was found and none was reachable on either channel;
+  a note to that effect now sits under the table so the next cycle does not re-run these
+  searches.
+
+  **ML / UI:** both skipped, as the item said. `python3 ml/selftest.py` was still run and is
+  green (below).
+
+  **What this does NOT establish.** Not one host is VERIFIED. `link.coupang.com` rests on
+  third-party descriptions and one link seen in a public post; it was never fetched, never
+  followed, and no request left this container toward any merchant. 올리브영's and 네이버's
+  hosts are unknown and this cycle did not narrow them — it only removed a guess that was
+  being treated as settled. The 공정위 requirements are search-result summaries of 공정위's
+  own press release, not the guideline text, so the position rule, the effective date and the
+  불명확한 표시문구 example are all REPORTED; whether a scan-result screen is a 게시물 of a
+  문자 중심 매체 at all is unanswered and is the question that decides whether the `/report`
+  ordering is a defect or a preference. Whether `utm_*` breaks attribution is unknown. No
+  programme site was signed up for, logged into or submitted to, and nothing was fetched from
+  one. `NEXT_PUBLIC_FUNNEL_FLUSH` stays unset and no affiliate id exists anywhere in the tree.
+
+  **Diff and rotation.** Docs only: `docs/AUTOPILOT.md`,
+  `docs/autopilot-changelog.md`, `docs/commerce-partnership-playbook.md`. `git diff --stat
+  495e530 -- app lib tests ml public` is empty. Rotation: cycle 60's entry moved verbatim to
+  the end of `docs/autopilot-changelog.md` after cycle 59 — **209** lines cut from
+  `docs/AUTOPILOT.md` (2537 → 2328 before the new writing) and **209** appended
+  (13260 → 13469). `comm -23` over `sort -u` of both files at `495e530` against this pair
+  drops **0** lines, so nothing was lost: the
+  revenue table's Verified? column was not edited, and both additions to existing sections
+  (the host blocker, the note under the rates table) append rather than rewrite. Ports 3100–3109: none listening afterwards.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **317 passed (10.3m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+
+  *Supervisor review:* sound, merged, with one item added. This was a docs-only cycle:
+  `git diff --stat 495e530 -- lib app public ml tests` prints nothing, and
+  `grep -c "link.coupang.com" lib/commerce.ts` prints **0**. So `ALLOWED_HOSTS` and every
+  disclosure string are unchanged.
+
+  The code-location claims check out against the tree:
+  - `/report` renders `<CommerceDisclosure>` at `app/report/page.tsx:469`, after the `<a>`
+    at `:457`.
+  - `/care` renders it at `app/care/page.tsx:189`, and the product card at
+    `app/components/product-card.tsx:81`.
+  - `addCommerceTracking()` is at `lib/commerce.ts:111` and `ALLOWED_HOSTS` at `:24`.
+  - The `en` string is at `lib/i18n/en.ts:504`.
+
+  I re-checked the 공정위 revision with my own search. It returned the 행정예고 summaries
+  ([신&김 2613](https://shinkim.com/kor/media/newsletter/2613),
+  [뉴스서울](https://www.newsseoul.co.kr/news/view/1065579623819806)), which confirm
+  "게시물의 제목 또는 첫 부분" and the 2024-12-01 시행. The same results carry a requirement
+  the worker did not report: the disclosure is to be made recognisable by "글자 크기를 본문보다
+  크게 하거나 글자색을 본문과 달리하는 등". ARU's is `fontSize: 11.5` in `--text-muted`. That is
+  added as item 4 of the BLOCKERS legal item, with the same search-summary caveat.
+
+  The `utm_*`-breaks-attribution finding is the most revenue-relevant result of the cycle.
+  It is correctly filed as UNKNOWN rather than fixed.
+
+  Rotation: `comm -23` over `sort -u` of both files at `495e530` drops **0** lines.
+
+  Gate on this tree:
+  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
+    **317 passed (12.7m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening afterwards.

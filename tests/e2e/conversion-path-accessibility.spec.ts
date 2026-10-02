@@ -102,7 +102,11 @@ test.describe("conversion-path accessibility", () => {
           sessionStorage.setItem("gyeol_survey", survey as string);
         } catch {}
       },
-      ['{"type":"지성","concerns":["모공"],"budget":30000,"avoid":[],"category":"토너"}'] as const,
+      // 29000 is the 2만원 chip's band ceiling. The 30000 this seed used to carry is not a
+      // value any chip produces, and since cycle 66 /survey does not restore a budget that
+      // is not one of the five — which would leave the button disabled and measure the
+      // wrong state, the exact thing the comment above says to avoid.
+      ['{"type":"지성","concerns":["모공"],"budget":29000,"avoid":[],"category":"토너"}'] as const,
     );
 
     await page.goto("/scan");
