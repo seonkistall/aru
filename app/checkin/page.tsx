@@ -9,6 +9,7 @@ import { Xiaohei } from "@/app/components/sketch";
 import { t } from "@/lib/i18n/core";
 import { useFunnelPageView } from "@/app/use-funnel-page-view";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { storedOption } from "@/lib/stored-option";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // The check-in round from REAL elapsed time. 0 = not yet due after the user
@@ -22,6 +23,14 @@ const roundFor = (ts: number) => {
 // optional because a half-answered card is the normal state, and `null` is the
 // card's own "not answered yet".
 type CheckinDraft = { sat: number | null; trouble: boolean | null; repurchase: boolean | null };
+
+// The 만족도 scale, hoisted out of the `Seg` below so the card and the draft restore
+// read the same list. `Seg` reports the 1-based index of the option tapped, so these are
+// also the only values `sat` can be: a draft carrying anything else — a stale 0–5 scale,
+// a 2.5, a 7 — renders no pressed pill while `ready` counts the answer, which is the
+// same invisible state /survey had.
+const SAT_OPTIONS = ["별로", "보통", "좋음"];
+const SAT_VALUES = SAT_OPTIONS.map((_, index) => index + 1);
 
 function loadCheckinDrafts(): Record<string, Partial<CheckinDraft>> {
   try {
@@ -174,7 +183,10 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
     /* eslint-disable react-hooks/set-state-in-effect */
     const draft = loadCheckinDrafts()[productUse.id];
     if (draft) {
-      if (typeof draft.sat === "number") setSat(draft.sat);
+      // Membership, not `typeof`: see SAT_VALUES above. The two toggles are already as
+      // narrow as they get — `boolean` IS their option list, both members rendered.
+      const sat = storedOption(SAT_VALUES, draft.sat);
+      if (sat !== null) setSat(sat);
       if (typeof draft.trouble === "boolean") setTrouble(draft.trouble);
       if (typeof draft.repurchase === "boolean") setRepurchase(draft.repurchase);
     }
@@ -228,7 +240,7 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
         <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("남겨주신 피드백을 저장했어요.")}</p>
       ) : (
         <>
-          <Row label="만족도"><Seg options={["별로", "보통", "좋음"]} value={sat} onPick={setSat} /></Row>
+          <Row label="만족도"><Seg options={SAT_OPTIONS} value={sat} onPick={setSat} /></Row>
           <Row label="트러블"><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
           <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
           <button onClick={save} disabled={!ready} style={saveBtn(ready)}>{t("기록하기")}</button>

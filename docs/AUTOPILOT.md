@@ -1596,6 +1596,15 @@ partly done and stays here.
   `tests/e2e/commerce-survey-shape.regression-16.spec.ts`, isolated at its source lines
   in `tests/survey-shape.test.ts`. `lib/consent.ts` is still the whole of what is left of
   this item.
+  **2026-10-02, cycle 66: the same class one layer up, in the two screens that WRITE
+  these stores.** `isSurvey` keeps a wrong-SHAPED survey out of `recommend()`, and that is
+  all it is meant to do. `/survey` and `/checkin` were restoring a correctly shaped value
+  whose contents are not members of the enums the screens offer, which no shape guard can
+  catch: an out-of-enum `category` showed no pressed chip, counted as answered, and was
+  submitted through to `/report`. Guarded by membership against each screen's own option
+  list (`lib/stored-option.ts`), pinned in
+  `tests/e2e/stored-answers-membership.regression-43.spec.ts`. `lib/consent.ts` is still
+  the only store-level read left open, and still deliberately.
 - [AI] Illuminant correction for tone, done properly. Removing the gray-world gain
   stopped the background deciding the tone band, but an uncorrected warm lamp still
   moves the reading, which is the documented limit of ITA-from-a-photo. Doing better
@@ -2094,6 +2103,196 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-02 (cycle 66) — Branch `autopilot/2026-10-02-0639`. **A stored answer that is
+  not one of the values the screen offers no longer becomes state. On `/survey` an
+  out-of-enum `type` and `category` used to restore invisibly — no chip pressed, because
+  nothing in the rendered list equals the value — while `ready` counted both fields, so
+  submit was ENABLED and the submit wrote the pair through to `/report`, whose picks step
+  then read `앰플 · 0개` with **0** `/api/out` links. Both are now dropped and submit is
+  DISABLED. The same rule covers `/survey`'s draft restore and `/checkin`'s draft, where
+  an off-scale 만족도 left 기록하기 enabled over a question showing no pressed pill.
+  `isSurvey` in `lib/recommend.ts` is untouched: `git diff a0438a3 -- lib/recommend.ts`
+  prints nothing.**
+
+  **Reproduced first, with numbers, on a production build.** `next build` + `next start`
+  on port **3107**, 360x800, one browser context per case, `window.open` replaced by a
+  collector in every one so no merchant link could be followed (**0** calls in all four
+  cases, before and after). `gyeol_survey` seeded, then the picks step reached by the
+  stored step key. Before:
+  - `{"type":"초지성", …,"category":"앰플"}` — pressed chips **2** (유분, 2만원), submit
+    **ENABLED**, draft rewritten to carry both non-members. After the submit,
+    `/report`'s picks step: `앰플 · 0개`, **0** `a[href^="/api/out"]`, **6** `main a`, and
+    the `report-picks-empty` section rendered (**1**).
+  - `{…,"budget":1234}` — pressed **3**, no 예산 chip pressed, submit **ENABLED**, and
+    `/report` scored `세럼 · 3개` with **4** `/api/out` links against a band no chip
+    offers.
+  - `{…,"concerns":["우주고민","유분"]}` — pressed **4**, and the non-member rode through
+    the submit into `gyeol_survey` and on to `/report`.
+  - Valid control `{"type":"지성","concerns":["유분"],"budget":29000,"avoid":[],"category":"세럼"}`
+    — pressed **4**, enabled, `세럼 · 3개`, **4** `/api/out` links, **9** `main a`.
+
+  After, same four seeds on the same kind of build: the first two leave submit
+  **DISABLED** (`필수 항목 1/3` and `2/3`) with the bad fields `null` in the draft; the
+  third keeps `["유분"]` and stays submittable, because 고민 is optional so the valid part
+  of the answer is a complete answer; the control is unchanged in every number above.
+
+  **The fix, and where it lives.** Two pure helpers in a new `lib/stored-option.ts` —
+  `storedOption` returns the value if it is in the list it is given, else `null`;
+  `storedOptions` filters an array to its members and returns `null` only for a non-array,
+  so a cleared optional group still restores as `[]`, which cycle 64's `hintFor` rule
+  depends on. Neither holds a list of its own: the caller passes the array its own chips
+  are rendered from, so there is no second copy to drift. `/survey`'s two restore paths
+  now go through one `applyStoredAnswers`, so the submitted survey and the draft cannot be
+  guarded differently, and `BUDGET_WONS` is `BUDGETS.map((b) => b.won)` rather than the
+  five numbers written out again. `/checkin` hoists its 만족도 options to `SAT_OPTIONS`,
+  which both `Seg` and the guard read, and its `trouble`/`repurchase` keep the
+  `typeof === "boolean"` they already had — `boolean` IS their option list, both members
+  rendered. Nothing about what is saved, when it is saved, or any copy changed; `hintFor`
+  and the `key={active}` remount are untouched.
+
+  **One consequence worth stating rather than hiding.** The budget rule drops a value that
+  an older build could legitimately have written: the comment above `BUDGETS` records that
+  the chips used to store band MIDPOINTS and now store ceilings, so a visitor who
+  submitted before that change has a `30000` in `sessionStorage`. Before this cycle their
+  budget chip already showed nothing; now submit is disabled until they tap a band, and
+  `필수 항목 n/3` says so. That is one extra tap for a returning visitor, against a report
+  silently scored on a band they cannot see or change. Two existing specs carried exactly
+  that fixture and went red on it —
+  `tests/e2e/conversion-path-accessibility.spec.ts:93` and
+  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts:318`, **2 failed** in the first
+  gate run — and their seeded budget is now `29000`, the 2만원 chip's own ceiling, with a
+  comment saying why. Neither spec asserts anything about the band; both are about CTA
+  contrast and the report step.
+
+  **Pinned, in a new spec and a unit file.**
+  `tests/e2e/stored-answers-membership.regression-43.spec.ts` is **8** cases: the two
+  disabled-submit cases, the dropped concern, the valid control through to `/report`'s
+  **4** merchant links, a draft whose five fields are all non-members over a good
+  submitted survey, the off-scale 만족도, a non-boolean 트러블, and a valid `/checkin`
+  draft. `tests/stored-option.test.ts` is **7** unit cases on the two helpers, including
+  the `-0`/`0` edge SameValueZero allows (no option list either screen passes in contains
+  `0`, so nothing on the funnel reaches it; it is pinned so a future list that does is a
+  deliberate decision).
+
+  **Proved live by breaking each half once**, each on its own clean production build with
+  the port asserted free first, all against the final 8-case spec:
+  - **Break 1**, `storedOption` dropped from `type`, `category` and `budget` back to the
+    old truthiness/`typeof`: **3 failed** / **5 passed (8)** — both disabled-submit cases
+    at `toBeDisabled()`, plus the draft case.
+  - **Break 2**, `storedOptions` dropped from `concerns` and `avoid` back to a bare
+    `Array.isArray`: **2 failed** / **6 passed (8)** — the dropped-concern case and the
+    draft case.
+  - **Break 3**, `/checkin`'s `storedOption(SAT_VALUES, …)` back to
+    `typeof draft.sat === "number"`: **1 failed** / **7 passed (8)** at
+    `toBeDisabled()`.
+  - All three reverted from copies taken before the breaks; `sha256sum -c` printed `OK`
+    for `app/survey/page.tsx`
+    (`ab8a9fa60ca82a219b44cc55e5e771147ab4fcfef99a937798e06dc7ecb1eb69`),
+    `app/checkin/page.tsx`
+    (`8b9de544d22b5163dd4650b458405d0482827eb768c692c3c80a0697703da02a`) and
+    `lib/stored-option.ts`
+    (`e1f409e141d960c6645d4abe6580e3c33d341a972aa169c117234a390363cc72`).
+  - `regression-40` (**6**) and `regression-42` (**2**) pass unchanged next to the new
+    spec: **16 passed** in one run before the fixture edit, **26 passed** with the two
+    edited specs added after it.
+
+  **Two measurement hazards, recorded because both produced a wrong number first.**
+  Break 3's first run read **7 passed** — the case did not catch the break at all, because
+  its seed paired the off-scale `sat` with a non-boolean `trouble`, so the card was
+  unsaveable for the other field's sake. The seed is now `{sat: 7, trouble: false,
+  repurchase: true}`, where the off-scale value is the only thing between the card and an
+  enabled 기록하기, and breaks 1 and 2 were re-measured against that final spec. Earlier
+  still, a break-1 run read **5 failed** / **2 passed** because `next build` overwrote
+  `.next` under a `next start` that was still serving it: three cases failed with the page
+  un-hydrated and rendering in `en`, which is the same class of false result
+  `playwright.mobile.config.ts` already documents for `reuseExistingServer`. Every break
+  number above comes from a build made with the port verified free.
+
+  **Research / ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and
+  is green (below).
+
+  **What this does NOT establish.** It does not make a stored survey trustworthy — only
+  that `/survey` will not render one as answered when it is not. `/report` and `/care`
+  still read `gyeol_survey` through `isSurvey` alone, deliberately: a visitor who never
+  passes through `/survey` can still land on a report built from a non-member category,
+  and the empty-picks branch is what handles it. Nothing is filed against `isSurvey`,
+  because a membership test there would break the state `tests/survey-shape.test.ts`
+  pins. A membership check is also not a version check: a value that IS a member but
+  meant something different in an older build still restores, and the `30000` case above
+  is the one instance of that class this cycle found. The guard is per field and silent —
+  no copy was added, so a visitor whose every stored answer is dropped sees a fresh
+  survey and only the `필수 항목 n/3` counter to say so. The chip assertions were measured
+  in `ko` only (the other locales are covered for their own cases by `regression-40` and
+  `regression-42`), on one container, in Chromium. `lib/consent.ts` is still the one
+  device-store read left deliberately unguarded, unchanged by this cycle, and nothing
+  about the affiliate blockers moved.
+
+  **Diff and rotation.** `git diff --stat a0438a3 -- app lib` is `app/checkin/page.tsx`
+  **16** and `app/survey/page.tsx` **52**, `2 files changed, 53 insertions(+), 15
+  deletions(-)`; `lib/recommend.ts`, `lib/commerce.ts`, `lib/consent.ts`,
+  `package.json` and `package-lock.json` are all untouched, and no dependency was added.
+  Rotation: cycle 63's entry moved verbatim to the end of
+  `docs/autopilot-changelog.md` after cycle 62 — **145** lines out of
+  `docs/AUTOPILOT.md` (**2584** → **2438** before the new writing, the extra line being
+  the blank separator) and **145** plus a blank separator appended to the changelog
+  (**13819** → **13965**). `diff` of the appended block against the extracted block
+  reports no difference, and `comm -23` over `sort -u` of both files at `a0438a3` against
+  this pair drops **0** lines. One line beyond the brief's docs list: the `[~]` backlog
+  item on unchecked `JSON.parse` reads gained an append-only 2026-10-02 note, the way
+  cycle 32 appended to it, because this cycle is the same class one layer up and a cycle
+  that reads only that item would otherwise re-derive it. No existing line in it was
+  edited, which is why `comm -23` still drops **0**.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` —
+  `Test Files  122 passed (122)` / `Tests  1107 passed (1107)`, **329 passed (9.6m)**,
+  `Ran 146 tests in 1.814s` **OK**, **Smoke test passed.**, exit **0**. The vitest suite
+  went from the supervisor's **121** files / **1100** tests on `a0438a3` to **122** /
+  **1107**, which is the one unit file and the **7** cases this cycle added and nothing
+  else; the Playwright suite went from **321** to **329**, which is the **8** cases in
+  `regression-43` and nothing else. The three below were each run on their own after every
+  doc edit but the one that wrote these numbers in: `npx tsc --noEmit | grep -c "error
+  TS"` **13**; `npx eslint .` `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing
+  `_reads` / `_result` at `lib/care.ts:70`); `python3 ml/selftest.py`
+  `Ran 146 tests in 1.790s` **OK**. `tests/stored-option.test.ts` alone is **7 passed**.
+  An earlier gate run on this same code, before the two fixture edits, read **2 failed** /
+  **327 passed** — the two specs named above — so the **329** is the first clean one and
+  the failure it replaced is recorded rather than dropped. `git diff --stat a0438a3 --
+  app lib tests` is `app/checkin/page.tsx | 16 ++`, `app/survey/page.tsx | 52 ++`,
+  `tests/e2e/conversion-path-accessibility.spec.ts | 6 ++`,
+  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts | 6 ++`,
+  `4 files changed, 63 insertions(+), 17 deletions(-)`, the three new files being
+  untracked until the commit. Ports 3100–3109 and 3017: none listening afterwards;
+  `git status` carries only this cycle's files. What the smoke run does not cover: this
+  paragraph, written after it — `npx tsc --noEmit`, `npx eslint .` and
+  `python3 ml/selftest.py` were each re-run after it and still give **13**, `0 errors` and
+  **OK**.
+
+  *Supervisor review:* sound, merged.
+  - **Scope of the product change.** The diff touches only `app/survey/page.tsx`,
+    `app/checkin/page.tsx` and a new pure `lib/stored-option.ts`. `isSurvey`, what is
+    saved, and the `hintFor` rule are unchanged; `regression-40` passes unedited.
+  - **The two fixture edits (30000 → 29000) are justified.** `grep` finds exactly one
+    writer of the submitted survey, `app/survey/page.tsx:200`. It writes a chip's `won`,
+    and `won: 29000` has been the 2만원 ceiling since `7419b54`, so no chip has ever
+    produced 30000.
+  - **Independent reproduction.** On this tree, `stored-answers-membership.regression-43`,
+    `survey-draft-lang-switch.regression-40` and `checkin-draft-lang-switch.regression-42`
+    together gave **16 passed (1.4m)**; `tests/stored-option.test.ts` gave **7 passed**.
+  - **A break the worker did not try.** I made `storedOptions` return the array
+    unfiltered, so non-member concerns or avoids are carried into state. Results:
+    unit **3 failed | 4 passed (7)**; e2e **2 failed**, one reading
+    `a non-member ingredient is filtered out, not carried`. I then restored the file and
+    `sha256sum -c` printed `OK` for all three product files.
+  - **Rotation.** `comm -23` drops **0** lines.
+  - **Gate on this tree:**
+    - `npm run smoke`: `Test Files 122 passed (122) / Tests 1107 passed (1107)`,
+      **329 passed (11.7m)**, **Smoke test passed.**
+    - tsc: **13**.
+    - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+    - `python3 ml/selftest.py`: **OK**.
+    - Ports 3100–3109: none listening.
+
 - 2026-10-02 (cycle 65) — Branch `autopilot/2026-10-02-0039`. **The owner can now answer
   "what will `/api/out` actually send a visitor to for each of my overrides?" on their own
   machine, before any deploy, instead of reading it out of a deployed server's request log
@@ -2436,149 +2635,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening.
-
-- 2026-10-01 (cycle 63) — Branch `autopilot/2026-10-01-1239`. **The owner's affiliate
-  switch-on is now a one-step change for one of the three programmes and an explicitly
-  unknown one for the other two, which is the opposite of what this file said yesterday.
-  쿠팡 파트너스 issues `link.coupang.com/a/<code>`, so the host the override needs is named
-  and the exact `ALLOWED_HOSTS` line to approve is written down. 올리브영's and 네이버's
-  issued-link hosts are **UNKNOWN** — not "probably `smartstore.naver.com`", not "already on
-  the allowlist" — and the one claim in the old shortlist that mattered most is wrong:
-  올리브영's curator programme runs on `m.oliveyoung.co.kr`, which is NOT on the allowlist,
-  so a curator link cannot be assumed to pass the gate. No code changed. `lib/commerce.ts`,
-  `ALLOWED_HOSTS` and every disclosure string are byte-identical to `495e530`.**
-
-  **The research channel, stated before the findings, because it bounds all of them.** This
-  container has two ways out: container curl (long known to refuse every Korean commerce and
-  government host) and the agent's hosted fetch + hosted search. The hosted **search**
-  works and is the only reason this cycle produced anything. The hosted **fetch** does not:
-  `partners.coupang.com`, `m.oliveyoung.co.kr`, `www.ftc.go.kr`, `www.korea.kr`,
-  `www.kfcf.or.kr`, `www.shinkim.com`, `www.kimchang.com`, `easylaw.go.kr`,
-  `csafety.kakao.com`, `llily.co.kr` and `aisum.com` — **11** hosts, every one probed this
-  cycle — each returned `Access to <host> is blocked by the network egress proxy.` So **nothing below is VERIFIED in the sense the brief asked for**: not one claim is
-  quoted from a programme's own page or from 공정위's own document. Every row is **REPORTED**
-  (a third-party source states it) or **UNKNOWN** (no source states it). That is recorded in
-  the egress blocker so cycle 64 does not spend its budget rediscovering it.
-
-  **Hosts.** The table with every source is "Switch-on checklist, verified hosts" in
-  [`docs/commerce-partnership-playbook.md`](commerce-partnership-playbook.md). In short:
-
-  | Programme | Issued-link host | Status |
-  |---|---|---|
-  | 쿠팡 파트너스 | `link.coupang.com`, path `/a/<code>` | REPORTED |
-  | 쿠팡 파트너스, after the redirect | `www.coupang.com?lptag=<id>` | REPORTED |
-  | 올리브영 쇼핑 큐레이터 | UNKNOWN (programme surfaces are on `m.oliveyoung.co.kr`) | UNKNOWN |
-  | 네이버 쇼핑 커넥트 | UNKNOWN | UNKNOWN |
-
-  The Coupang link does redirect: the source describes a `trac_lptag` cookie set on the
-  `link.coupang.com` hop and "`?lptag=EXAMPLEID88`" on the product URL it lands on. That
-  matters for the override because the gate checks the URL the owner pastes, not the URL the
-  browser ends on — `www.coupang.com` being allowlisted does nothing for a
-  `link.coupang.com` override, which is exactly the silent discard cycle 58 demonstrated on
-  a production server. For 올리브영 the search results never state the host; what they do
-  show is that the programme's guide, dashboard and withdraw pages are all
-  `m.oliveyoung.co.kr/m/mtn/affiliate/*`, so `www.oliveyoung.co.kr` is an assumption and not
-  a finding. For 네이버 the sources are consistent that a *copied* product URL earns nothing
-  and only an issued link counts, and silent about what that link looks like.
-
-  **A failure mode the host question hides.** `addCommerceTracking()` appends four `utm_*`
-  parameters to whatever an override supplies, including a real tracking link, and both
-  올리브영 and 네이버 are reported to refuse credit for a modified link. Whether a query
-  parameter counts as modification is UNKNOWN and unreachable from here. If it does, the
-  owner's links pass the gate, redirect correctly and still earn $0. Filed as an owner item
-  because the fix is in `lib/commerce.ts`.
-
-  **Disclosure.** The 2024-12-01 revision of 공정위 「추천·보증 등에 관한 표시·광고 심사지침」
-  moved the required position for 문자 중심 매체 from "첫 부분 또는 끝 부분" to "게시물의 제목
-  또는 첫 부분", and added conditional phrasing ("소정의 수수료를 지급받을 수 있음") to the
-  examples of 불명확한 표시문구. Measured against the tree, not recalled:
-
-  - **Position is inconsistent across ARU's three commerce surfaces.** `/care`
-    (`app/care/page.tsx:189`) and every product card (`app/components/product-card.tsx:81`)
-    render `CommerceDisclosure` **before** the link. `/report`
-    (`app/report/page.tsx:469`) renders it **after** the buy link and after the `/care`
-    link, so on that one surface a visitor can tap through without passing it. **1** of
-    **3** surfaces, and it is the first one a visitor reaches.
-  - **The wording is probably not the prohibited shape, and that is a lawyer's call.**
-    `구매가 이뤄지면 ARU가 수수료를 받아요` is definite about the payment (`받아요`, not
-    `받을 수 있어요`), so it is not "소정의 수수료를 지급받을 수 있음". It also never uses
-    the word 광고, which is what the revision exists to surface.
-  - **No programme-specific sentence exists.** 쿠팡 파트너스 posts in the wild carry a fixed
-    sentence ARU's single string does not, and whether one sentence may stand for three
-    programmes on one screen is in terms the loop cannot read.
-
-  All three are in BLOCKERS as one owner/legal item, each with the exact replacement wording
-  proposed so the owner's decision is a yes/no. **No copy was changed and none should be
-  until that item is answered** — `app/components/commerce-disclosure.tsx` and all **4**
-  translation dictionaries (`ar`, `en`, `ja`, `zh`) are untouched.
-
-  **Revenue table.** The Verified? column is unchanged, deliberately. The brief said to
-  update it only where a primary source was found and none was reachable on either channel;
-  a note to that effect now sits under the table so the next cycle does not re-run these
-  searches.
-
-  **ML / UI:** both skipped, as the item said. `python3 ml/selftest.py` was still run and is
-  green (below).
-
-  **What this does NOT establish.** Not one host is VERIFIED. `link.coupang.com` rests on
-  third-party descriptions and one link seen in a public post; it was never fetched, never
-  followed, and no request left this container toward any merchant. 올리브영's and 네이버's
-  hosts are unknown and this cycle did not narrow them — it only removed a guess that was
-  being treated as settled. The 공정위 requirements are search-result summaries of 공정위's
-  own press release, not the guideline text, so the position rule, the effective date and the
-  불명확한 표시문구 example are all REPORTED; whether a scan-result screen is a 게시물 of a
-  문자 중심 매체 at all is unanswered and is the question that decides whether the `/report`
-  ordering is a defect or a preference. Whether `utm_*` breaks attribution is unknown. No
-  programme site was signed up for, logged into or submitted to, and nothing was fetched from
-  one. `NEXT_PUBLIC_FUNNEL_FLUSH` stays unset and no affiliate id exists anywhere in the tree.
-
-  **Diff and rotation.** Docs only: `docs/AUTOPILOT.md`,
-  `docs/autopilot-changelog.md`, `docs/commerce-partnership-playbook.md`. `git diff --stat
-  495e530 -- app lib tests ml public` is empty. Rotation: cycle 60's entry moved verbatim to
-  the end of `docs/autopilot-changelog.md` after cycle 59 — **209** lines cut from
-  `docs/AUTOPILOT.md` (2537 → 2328 before the new writing) and **209** appended
-  (13260 → 13469). `comm -23` over `sort -u` of both files at `495e530` against this pair
-  drops **0** lines, so nothing was lost: the
-  revenue table's Verified? column was not edited, and both additions to existing sections
-  (the host blocker, the note under the rates table) append rather than rewrite. Ports 3100–3109: none listening afterwards.
-
-  Gate on this tree:
-  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-    **317 passed (10.3m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-
-  *Supervisor review:* sound, merged, with one item added. This was a docs-only cycle:
-  `git diff --stat 495e530 -- lib app public ml tests` prints nothing, and
-  `grep -c "link.coupang.com" lib/commerce.ts` prints **0**. So `ALLOWED_HOSTS` and every
-  disclosure string are unchanged.
-
-  The code-location claims check out against the tree:
-  - `/report` renders `<CommerceDisclosure>` at `app/report/page.tsx:469`, after the `<a>`
-    at `:457`.
-  - `/care` renders it at `app/care/page.tsx:189`, and the product card at
-    `app/components/product-card.tsx:81`.
-  - `addCommerceTracking()` is at `lib/commerce.ts:111` and `ALLOWED_HOSTS` at `:24`.
-  - The `en` string is at `lib/i18n/en.ts:504`.
-
-  I re-checked the 공정위 revision with my own search. It returned the 행정예고 summaries
-  ([신&김 2613](https://shinkim.com/kor/media/newsletter/2613),
-  [뉴스서울](https://www.newsseoul.co.kr/news/view/1065579623819806)), which confirm
-  "게시물의 제목 또는 첫 부분" and the 2024-12-01 시행. The same results carry a requirement
-  the worker did not report: the disclosure is to be made recognisable by "글자 크기를 본문보다
-  크게 하거나 글자색을 본문과 달리하는 등". ARU's is `fontSize: 11.5` in `--text-muted`. That is
-  added as item 4 of the BLOCKERS legal item, with the same search-summary caveat.
-
-  The `utm_*`-breaks-attribution finding is the most revenue-relevant result of the cycle.
-  It is correctly filed as UNKNOWN rather than fixed.
-
-  Rotation: `comm -23` over `sort -u` of both files at `495e530` drops **0** lines.
-
-  Gate on this tree:
-  - `npm run smoke`: `Test Files 120 passed (120) / Tests 1089 passed (1089)`,
-    **317 passed (12.7m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - `npx eslint .`: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening afterwards.

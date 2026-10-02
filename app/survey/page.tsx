@@ -10,6 +10,7 @@ import { shouldApplyScan, type ScanReads, type Survey as SurveyT } from "@/lib/r
 import { t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
 import { isScanReads } from "@/lib/last-result";
+import { storedOption, storedOptions } from "@/lib/stored-option";
 
 const TYPES: SkinType[] = ["지성", "건성", "복합성", "민감성", "중성"];
 const CONCERNS: Concern[] = ["모공", "블랙헤드", "붉은기", "건조", "수분부족", "유분", "트러블", "잡티", "칙칙함", "각질", "탄력", "민감"];
@@ -27,6 +28,10 @@ const BUDGETS = [
   { label: "5만원 이상", won: 999999 },
 ];
 const BUDGET_LABELS = BUDGETS.map((b) => b.label);
+// The band ceilings the chips above offer, which is the whole of what a restored
+// `budget` is allowed to be. Derived from BUDGETS rather than written out again, so a
+// chip cannot be added without the restore accepting it.
+const BUDGET_WONS = BUDGETS.map((b) => b.won);
 
 type ScanHint = { concerns: Concern[]; text: string } | null;
 
@@ -83,6 +88,37 @@ function loadSurveyDraft(): SurveyDraft | null {
   }
 }
 
+// The one place either stored shape reaches state, so the submitted survey and the
+// draft cannot be guarded differently. Each field is applied only when it is a member of
+// the list the chips are built from: a value this build no longer renders a chip for
+// would otherwise sit in state unselectable and unseen while `ready` counted it, which
+// is how an out-of-enum `category` reached /report with submit enabled and no chip
+// pressed. A field that is absent, or of the wrong kind, leaves state as it stands —
+// which is what lets the draft be applied over the submitted survey field by field.
+function applyStoredAnswers(
+  stored: unknown,
+  set: {
+    setType: (value: SkinType) => void;
+    setConcerns: (value: Concern[]) => void;
+    setCategory: (value: Category) => void;
+    setBudget: (value: number) => void;
+    setAvoid: (value: Avoid[]) => void;
+  },
+): void {
+  if (!stored || typeof stored !== "object") return;
+  const answers = stored as Record<string, unknown>;
+  const type = storedOption(TYPES, answers.type);
+  if (type) set.setType(type);
+  const concerns = storedOptions(CONCERNS, answers.concerns);
+  if (concerns) set.setConcerns(concerns);
+  const category = storedOption(CATEGORIES, answers.category);
+  if (category) set.setCategory(category);
+  const budget = storedOption(BUDGET_WONS, answers.budget);
+  if (budget !== null) set.setBudget(budget);
+  const avoid = storedOptions(AVOIDS, answers.avoid);
+  if (avoid) set.setAvoid(avoid);
+}
+
 export default function Survey() {
   const router = useRouter();
   const surveyViewRecorded = useRef(false);
@@ -110,12 +146,8 @@ export default function Survey() {
     try {
     const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
       if (raw) {
-        const saved = JSON.parse(raw) as Partial<SurveyT>;
-        if (saved.type) setType(saved.type);
-        if (Array.isArray(saved.concerns)) setConcerns(saved.concerns);
-        if (saved.category) setCategory(saved.category);
-        if (typeof saved.budget === "number") setBudget(saved.budget);
-        if (Array.isArray(saved.avoid)) setAvoid(saved.avoid);
+        const saved: unknown = JSON.parse(raw);
+        applyStoredAnswers(saved, { setType, setConcerns, setCategory, setBudget, setAvoid });
       }
     } catch {}
     // The unsubmitted answers, applied AFTER the submitted survey because a draft
@@ -124,13 +156,7 @@ export default function Survey() {
     // (`lib/i18n.tsx`), so without this the five chips a visitor had tapped are
     // discarded by the tap that changes the language.
     const draft = loadSurveyDraft();
-    if (draft) {
-      if (draft.type) setType(draft.type);
-      if (Array.isArray(draft.concerns)) setConcerns(draft.concerns);
-      if (draft.category) setCategory(draft.category);
-      if (typeof draft.budget === "number") setBudget(draft.budget);
-      if (Array.isArray(draft.avoid)) setAvoid(draft.avoid);
-    }
+    if (draft) applyStoredAnswers(draft, { setType, setConcerns, setCategory, setBudget, setAvoid });
     setDraftLoaded(true);
     const hint = loadScanHint();
     if (!hint) return;
