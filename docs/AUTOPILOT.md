@@ -2228,7 +2228,39 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `npx eslint .` and `python3 ml/selftest.py` were each re-run after it and still give
   **13**, `0 errors` and **OK**.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged. The tool is read-only and `git diff --stat
+  6e4e0ae -- lib app` prints nothing, so `/api/out`, `ALLOWED_HOSTS` and
+  `addCommerceTracking` are unchanged. It imports `lib/commerce.ts` and `lib/skus.ts`
+  rather than copying them. Neither of those, nor `lib/ingredients.ts`, contains a
+  `fetch`, so it makes no request.
+
+  **Independent run.** I ran it on `v22.22.2` against a fake fixture with an
+  allowlisted Olive Young override, a `link.coupang.com/a/dryrun` override, an empty
+  string and an unknown sku. It printed `1 accepted, 3 ignored, 1 with appended tracking
+  parameters.` and exited **1**. It quoted the server's own two log lines, and it named
+  the empty-string row the server logs nothing for.
+  - An env with only the Olive Young override exited **0**, with the `utm_*` warning.
+  - A top-level array exited **1** with `No override resolves`.
+
+  **Breaks.** Two breaks the worker did not try, each reverted, then
+  `sha256sum -c` printed `OK`:
+  - Exiting 0 when rows are ignored: **1 failed | 10 passed (11)**.
+  - Suppressing the appended-parameters warning: **2 failed | 9 passed (11)**.
+
+  **One addition.** The script depends on Node's `--experimental-strip-types` and
+  `module.registerHooks`, and the playbook did not say so. On an older Node it fails at
+  start-up, and the owner could read that as a verdict on their overrides. I added a
+  short note with the version it was run on.
+
+  **Rotation:** `comm -23` drops **0** lines.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 121 passed (121) / Tests 1100 passed (1100)`,
+    **321 passed (11.8m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening.
 
 - 2026-10-01 (cycle 64) — Branch `autopilot/2026-10-01-1839`. **The two language-switch
   state losses cycle 61 left behind are fixed. `/survey`'s scan hint no longer overrides a
