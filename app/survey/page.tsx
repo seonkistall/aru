@@ -161,16 +161,28 @@ export default function Survey() {
     const hint = loadScanHint();
     if (!hint) return;
     setScanHint(hint);
-    // The hint pre-selects into an empty concern list, once per hint. `/survey` writes
-    // a draft on every mount, so "a draft exists" cannot be the test: a visitor who
-    // opened the survey earlier in the session and then scanned would see "사진에서
-    // 확인한 … 항목을 먼저 선택했어요" with nothing selected. Instead the draft records
-    // which hint it has already absorbed (`hintFor`). A remount after a language
-    // switch finds the same hint absorbed and leaves the restored list alone, so a
-    // visitor who deliberately cleared every concern chip keeps that choice. The hint
-    // TEXT is unconditional either way.
+    // The hint ADDS its concerns to whatever is already on screen, once per hint. The
+    // sentence above names those signals as selected, so each one has to be pressed or the
+    // screen says something untrue on the step before the report: a visitor whose
+    // submitted survey carries 건조 and whose photo flags 유분 read "사진에서 확인한 유분
+    // 항목을 먼저 선택했어요" over a 건조 chip alone, because the earlier form filled an
+    // EMPTY list only. The union keeps the visitor's own answers first, in their order,
+    // and adds nothing twice — the same set `/report` already scores on
+    // (`effectiveConcerns`, lib/recommend.ts, which unions the identical three signals).
+    // Neither the chips nor `lib/recommend.ts` caps how many concerns may be selected, so
+    // there is no cap for the union to run into.
+    //
+    // Once per hint, not once per mount: `/survey` writes a draft on every mount, so "a
+    // draft exists" cannot be the test — a visitor who opened the survey earlier in the
+    // session and then scanned would see that same sentence with nothing selected.
+    // Instead the draft records which hint it has already absorbed (`hintFor`). A remount
+    // after a language switch finds the same hint absorbed and leaves the restored list
+    // alone, so a visitor who deliberately cleared every concern chip keeps that choice.
+    // The hint TEXT is unconditional either way.
     const signature = hint.concerns.join(",");
-    if (hint.concerns.length && draft?.hintFor !== signature) setConcerns((prev) => (prev.length ? prev : hint.concerns));
+    if (hint.concerns.length && draft?.hintFor !== signature) {
+      setConcerns((prev) => [...prev, ...hint.concerns.filter((concern) => !prev.includes(concern))]);
+    }
     setHintFor(signature);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
