@@ -2268,7 +2268,30 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `python3 ml/selftest.py` were each re-run after it and still give **13**, `0 errors` and
   **OK**.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* sound, merged.
+  - **Scope of the product change.** The diff touches only `app/survey/page.tsx`,
+    `app/checkin/page.tsx` and a new pure `lib/stored-option.ts`. `isSurvey`, what is
+    saved, and the `hintFor` rule are unchanged; `regression-40` passes unedited.
+  - **The two fixture edits (30000 → 29000) are justified.** `grep` finds exactly one
+    writer of the submitted survey, `app/survey/page.tsx:200`. It writes a chip's `won`,
+    and `won: 29000` has been the 2만원 ceiling since `7419b54`, so no chip has ever
+    produced 30000.
+  - **Independent reproduction.** On this tree, `stored-answers-membership.regression-43`,
+    `survey-draft-lang-switch.regression-40` and `checkin-draft-lang-switch.regression-42`
+    together gave **16 passed (1.4m)**; `tests/stored-option.test.ts` gave **7 passed**.
+  - **A break the worker did not try.** I made `storedOptions` return the array
+    unfiltered, so non-member concerns or avoids are carried into state. Results:
+    unit **3 failed | 4 passed (7)**; e2e **2 failed**, one reading
+    `a non-member ingredient is filtered out, not carried`. I then restored the file and
+    `sha256sum -c` printed `OK` for all three product files.
+  - **Rotation.** `comm -23` drops **0** lines.
+  - **Gate on this tree:**
+    - `npm run smoke`: `Test Files 122 passed (122) / Tests 1107 passed (1107)`,
+      **329 passed (11.7m)**, **Smoke test passed.**
+    - tsc: **13**.
+    - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+    - `python3 ml/selftest.py`: **OK**.
+    - Ports 3100–3109: none listening.
 
 - 2026-10-02 (cycle 65) — Branch `autopilot/2026-10-02-0039`. **The owner can now answer
   "what will `/api/out` actually send a visitor to for each of my overrides?" on their own
