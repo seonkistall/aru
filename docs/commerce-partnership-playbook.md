@@ -175,6 +175,11 @@ the tracking — a copy would pass this check and still be wrong. It reads
 argument. It is read-only, it exits non-zero unless every override resolves, and **it never
 fetches a url**, so running it cannot register a click with any programme.
 
+It runs the TypeScript sources directly through Node's `--experimental-strip-types` and
+`module.registerHooks`, so it needs a Node that has both; it was run on `v22.22.2`. On an
+older Node the npm script fails at start-up with an unknown-flag or missing-export error.
+That is not a verdict on the overrides — upgrade Node and run it again.
+
 ```
 $ npm run affiliate:check -- overrides.json
 affiliate:check — the same functions /api/out uses, no network request.
