@@ -1474,6 +1474,32 @@ partly done and stays here.
   [`docs/discovery-metadata.md`](discovery-metadata.md). Not attempted, and no cycle
   should invent the URL structure on its own.
 
+- [AI] **A double-tap on a merchant link opens two tabs and logs two
+  `commerce_clicked` events.** Observed by cycle 68's hunt and confirmed in the code by
+  cycle 69; not measured in a browser by either, and not fixed. `/care`'s `openCareLink`
+  (`app/care/page.tsx:114`) calls `recordCareIntent`, `recordFunnelEvent` and
+  `window.open` with no in-flight guard, so two taps inside the same gesture window run
+  all three twice. `/report`'s summary link (`app/report/page.tsx:459`) and the product
+  cards are plain `<a target="_blank">` with an `onClick` that records
+  `commerce_clicked`, so the second tab is the browser's own doing and the second event
+  rides with it. Two consequences, and the second is the one that matters:
+  `commerce_clicked` is the numerator of the conversion rate the revenue arithmetic at
+  the top of this file is built on, so a double-tap inflates it against a `care_viewed`
+  that cannot double. Any fix has to keep the open synchronous inside the click gesture —
+  the comment above `openCareLink` says why — so it is a short re-entrancy guard, not an
+  await. Noted 2026-10-03.
+- [AI] **A double-tap on `/survey`'s submit logs two `survey_completed` events.**
+  Observed by cycle 68's hunt and confirmed in the code by cycle 69; not measured in a
+  browser by either, and not fixed. `submit()` (`app/survey/page.tsx:207`) has no
+  in-flight flag: it writes the answers, calls
+  `recordFunnelEvent("survey_completed", …)` and then `router.push("/report")`, and
+  `router.push` is not instant, so a second tap before the route changes runs the whole
+  body again. Same consequence as the item above and on the same funnel: `survey_viewed
+  → survey_completed` is the step the arithmetic reads to decide whether the survey is
+  where visitors are lost, and a duplicate makes that step look better than it is. The
+  `disabled={!ready}` on the button does not help — `ready` is about the three required
+  answers, not about a submit already in flight. Noted 2026-10-03.
+
 ### Next
 
 Items ticked `[x]` move to [`docs/autopilot-changelog.md`](autopilot-changelog.md)
@@ -2103,6 +2129,151 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-03 (cycle 69) — Branch `autopilot/2026-10-03-0039`. **A visitor whose browser
+  refuses `sessionStorage` can now finish the funnel. `/survey`'s submit wrote the answers
+  with `sessionStorage.setItem` and, on a throw, showed "설문을 저장하지 못했어요…" and
+  returned (`app/survey/page.tsx:220` at `8852af2`); `/report` and `/care` read those
+  answers back out of `sessionStorage` and nowhere else. So in a browser that blocks site
+  storage the funnel ENDED at `/survey` — no report, no merchant link. A new
+  `lib/session-store.ts` tries `sessionStorage` and keeps the value in a module-level
+  `Map` when that throws, and reads storage first then the `Map`. Only the existing
+  session-scoped funnel sites are routed through it. No new storage key, nothing to
+  `localStorage`, `lib/consent.ts` and the /scan consent checkboxes untouched, no copy
+  changed: the diff over `app` and `lib` is **41** insertions and **23** deletions in five
+  files plus the new module, and `git diff -U0 -- app lib | grep -c 't("'` over the
+  changed lines is **0**.**
+
+  **Cycle 68 was a hunt and pushed nothing.** Its four observations: (1) this defect;
+  (2) a double-tap on a merchant link opens 2 tabs; (3) a double-tap on `/survey`'s submit
+  logs 2 `survey_completed` events; (4) offline errors are network-layer only. (2) and (3)
+  are now filed as open `[AI]` items in the backlog above, unfixed — this cycle confirmed
+  both in the code and measured neither in a browser. (4) was left as observed.
+
+  **Reproduced first, with numbers, on a production build.** `next build` + `next start`
+  on port **3107**, port verified free first, 360x800, `ko` forced by seeding `aru.lang`,
+  one browser context per case, `window.open` replaced by a collector and every
+  `/api/out` request fulfilled locally in all of them, so no merchant redirect was ever
+  followed (**0** `window.open` calls in every case, before and after). Four cases, the
+  three failure shapes real browsers produce plus a control:
+  - `none` — the control, storage works.
+  - `both` — `getItem` and `setItem` throw (an in-app browser, a blocked store).
+  - `set` — only `setItem` throws (a full quota).
+  - `access` — touching `window.sessionStorage` throws, which is what Chrome with
+    "block all cookies" does.
+
+  `both` and `set` are installed on `Storage.prototype`, which `localStorage` shares, so
+  those two cases get a Map-backed `localStorage` put back — otherwise the measurement
+  would be about `loadLastResult()` and not about this fix. In `access` only the
+  sessionStorage property is taken away, so `localStorage` there is the real one.
+
+  Before, on a build of `8852af2`:
+  - `none` — submit landed on `/report`, **4** `a[href^="/api/out"]` on the picks step,
+    **1** `/care` link, **3** `[id^="care-merchants-"]` panels on `/care`, **3** again
+    after a reload.
+  - `both` — submit showed the error and stayed on `/survey`. A hand-typed `/report`
+    rendered the error boundary: **0** tabs, **0** out-links. `/care`: error boundary,
+    **0** merchant panels.
+  - `set` — submit showed the error and stayed on `/survey`. A hand-typed `/report`
+    bounced to `/survey`: **0** out-links. `/care`: the 아직 이어서 볼 리포트가 없어요
+    dead end, **0** merchant panels.
+  - `access` — same as `both`: error shown, stayed on `/survey`, error boundary on both
+    `/report` and `/care`, **0** out-links and **0** merchant panels.
+
+  After, the same four cases and the same harness on a clean production build: all four
+  submit straight to `/report` with the error shown **0** times, all four serve **4**
+  `a[href^="/api/out"]` on the picks step and **1** `/care` link, and all four reach
+  `/care` through that link with **3** merchant panels and no dead end and no error
+  boundary. `window.open` was called **0** times in all four.
+
+  **The limit, measured rather than assumed.** The `Map` is module state, so it survives
+  `router.push` — which is how `/report` reads what `/survey` wrote — and not a full
+  document load. Reloading `/care` at the end of each case: `none` **3** panels (the real
+  `sessionStorage` holds them), `both` **0**, `set` **0**, `access` **3** (its
+  `localStorage` is real, so `loadLastResult()` brings the report back). A visitor whose
+  browser refuses storage gets the funnel once, start to finish, and a reload puts them
+  back at the start. That is the trade, stated plainly.
+
+  **What is routed, and what is not.** `sessionGet`/`sessionSet`/`sessionRemove` replaced
+  the direct calls at exactly the sites the brief listed: the submitted survey, the survey
+  draft and the scan hint on `app/survey/page.tsx`; the survey, scan, reads and report
+  step on `app/report/page.tsx`; the survey, scan and reads on `app/care/page.tsx`; the
+  scan, reads and report-step clear in `app/scan/use-capture-analysis.ts`.
+  `grep -n "sessionStorage\." app/survey/page.tsx app/report/page.tsx app/care/page.tsx
+  app/scan/use-capture-analysis.ts lib/session-store.ts` now returns **3** lines and all
+  **3** are inside `lib/session-store.ts`. `lib/consent.ts`, the /scan consent checkboxes,
+  the check-in draft, `ALLOWED_HOSTS`, `lib/commerce.ts` and every string are untouched.
+
+  **"Delete my device data" clears the fallback too.** `clearAllDeviceData`
+  (`lib/device-data.ts`) now calls `clearSessionFallback()` before it walks the two
+  stores, because a survey held in memory is device data like any other.
+  `tests/session-store.test.ts` pins it: five funnel keys written through a throwing
+  store, then `clearAllDeviceData`, then every one of the five reads back `null`.
+
+  **The error message is now unreachable in practice, and stays.** `sessionSet` and
+  `sessionRemove` swallow a blocked or full store, so the only thing left inside
+  `submit()`'s `try` that can throw is `JSON.stringify`. The
+  "설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요." string and its
+  `catch` are kept for that, with a comment saying so. No copy was deleted or changed.
+
+  **One existing test had to learn the new spelling, and its own tripwire caught it.**
+  `tests/device-store-guards.test.ts` enumerates every
+  `getItem(DEVICE_DATA_KEY.reads|scan)` in `app/` and `lib/` and asserts a shape guard is
+  called near it. Routing the funnel through `sessionGet` took the scan case to **0**
+  readers, and the `expect(readers.length).toBeGreaterThan(0)` line that exists for
+  exactly that reported `expected 0 to be greater than 0` — caught by the first
+  `npm run smoke` of this cycle, not by a hand-grep. The matcher now accepts both
+  spellings. Coverage is restored, not merely the count: it enumerates **3** readers for
+  `reads` (`app/care/page.tsx`, `app/report/page.tsx`, `app/studio/page.tsx`) and **3**
+  for `scan` (`app/care/page.tsx`, `app/report/page.tsx`, `app/survey/page.tsx`), the same
+  files as before, and the guard assertion on each is unchanged.
+
+  **Pinned in a new spec, and proved live by breaking the fix once.**
+  `tests/e2e/storage-blocked-funnel.regression-45.spec.ts` is **4** cases — the three
+  blocked modes and the working-storage control — each walking `/survey` submit →
+  `/report` picks → the in-app `/care` link, each asserting the merchant counts above and
+  the reload limit, each intercepting `window.open` and `/api/out`. With the fix in:
+  **4 passed (59.0s)**. With the one-line fallback read in `sessionGet` reverted to
+  `return null`, on its own clean production build: **3 failed / 1 passed (54.4s)** — the
+  three blocked modes, with the control still green, which is the point. The unit tests on
+  the same break: `tests/session-store.test.ts` + `tests/device-data.test.ts` went from
+  **14 passed** to **4 failed | 10 passed**. Reverted from a copy taken before the break;
+  `sha256sum -c` printed `OK` for all **8** touched files, among them `lib/session-store.ts`
+  (`4c33707ad684096f83e9ec2707c13b77c696cf47810a1eeaade92f1822198395`) and
+  `tests/e2e/storage-blocked-funnel.regression-45.spec.ts`
+  (`5604cb24b398a3fa9454dcb48e65dd1491e84d5b160b8301c496687731e61177`).
+
+  **Research / ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and
+  is green (below).
+
+  **What this cycle did NOT establish.** It did not measure a real Chrome with "block all
+  cookies" — the three modes are emulations installed by an init script, and in that real
+  browser `localStorage` throws as well, which the `access` case here does not model. It
+  did not touch `/privacy`'s delete UI: with storage blocked, `remainingDeviceDataKeys`
+  still throws per key and reports every key as remaining, so the page shows its error
+  state even though the deletion did happen — pre-existing, unchanged, and not measured in
+  a browser this cycle. It did not route the check-in draft or anything in
+  `localStorage`. And it did not fix cycle 68's observations (2) and (3); they are filed.
+
+  **Rotation.** Cycle 65's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 64:
+  `diff` between the extracted 167 lines and the last 167 lines of the changelog is empty,
+  and `comm -23` of the `sort -u` union of both files at `8852af2` against the `sort -u`
+  union of both files now drops **0** lines.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 123 passed (123) / Tests 1116 passed (1116)`,
+    **336 passed (10.3m)**, **Smoke test passed.** The supervisor's baseline on
+    `8852af2` was `122 passed (122)` / `1107 passed (1107)` and **332 passed**; the
+    deltas are this cycle's own tests — **9** unit tests in
+    `tests/session-store.test.ts` (one new file) and **4** e2e cases in
+    `tests/e2e/storage-blocked-funnel.regression-45.spec.ts`.
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.921s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* pending.
+
 - 2026-10-02 (cycle 67) — Branch `autopilot/2026-10-02-1239`. **The scan hint on `/survey`
   no longer claims a selection it did not make. The sentence "사진에서 확인한 {signals}
   항목을 먼저 선택했어요" is unconditional; the pre-selection behind it was
@@ -2474,170 +2645,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
     - `python3 ml/selftest.py`: **OK**.
     - Ports 3100–3109: none listening.
 
-- 2026-10-02 (cycle 65) — Branch `autopilot/2026-10-02-0039`. **The owner can now answer
-  "what will `/api/out` actually send a visitor to for each of my overrides?" on their own
-  machine, before any deploy, instead of reading it out of a deployed server's request log
-  afterwards. `npm run affiliate:check` prints, per sku/merchant pair, accepted or ignored
-  with the server's own sentence, the exact final URL including the four `utm_*`, and a
-  warning when that URL is not the one the owner supplied. It exits non-zero unless every
-  override resolves. Nothing about `/api/out`, `ALLOWED_HOSTS` or `addCommerceTracking` was
-  changed: `git diff --stat 6e4e0ae -- lib app public ml` prints nothing.**
-
-  **Why this item and not the allowlist.** Cycle 58 proved on a production server that an
-  override on a non-allowlisted host is silently dropped and the search URL served instead;
-  cycle 63 found that ARU appends four `utm_*` parameters to whatever the override supplies,
-  which two programmes are reported to treat as a modified link. Both failures leave the
-  product looking correct — the link works, the disclosure still reads 제휴 링크 — so the
-  owner's first real affiliate links can earn $0 with nothing visibly wrong. Neither cause
-  is fixable from the loop (`ALLOWED_HOSTS` and `lib/commerce.ts` are the owner's), but both
-  are **visible** before a deploy, which is what this adds.
-
-  **How it reuses the real functions, which is the whole point.** A copy of the allowlist or
-  of the tracking would pass its own check and still be wrong, so
-  `scripts/check-affiliate-overrides.mjs` imports `auditCommerceOverrides`,
-  `commerceOverrideUrl`, `addCommerceTracking` and `describeCommerceOverrideIssue` from
-  `lib/commerce.ts`, and the sku ids from `lib/skus.ts`. The npm script runs Node's own type
-  stripping (`node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
-  --experimental-strip-types`), so no dependency was added — `package-lock.json` is
-  unchanged and the only edit to `package.json` is the one `affiliate:check` line. One
-  mechanism was needed beyond the flag: the repo's TS imports are extensionless
-  (`lib/skus.ts` imports `"./commerce"`), which Node's ESM resolver refuses with
-  `ERR_MODULE_NOT_FOUND`, so the script installs a `node:module` `registerHooks` resolve
-  hook that appends `.ts` only when the default resolution has already thrown and the
-  `.ts` file exists. `lib/commerce.ts` imports nothing and loads without the hook; the hook
-  is what makes `lib/skus.ts` — **22** sku ids — loadable, and so what lets the script
-  report a misspelled sku id the same way `/api/out` does. Measured on Node **v22.22.0**.
-
-  **What it reports.** The run in the new playbook section, on a file carrying the two pairs
-  the dry run uses, prints the server's log line verbatim
-  (`[commerce] override for tn1/coupang ignored: the URL is not an https URL on the
-  allowlist (…) (https://link.coupang.com/a/dryrun). The link is still a search URL.`), then
-  `tn1/oliveyoung  ACCEPTED` with
-  `redirect: …goodsNo=DRYRUN000000&utm_source=kbeauty_ai_camera&utm_medium=commerce_link&utm_campaign=skin_scan_recommendation&utm_content=report_summary_tn1_oliveyoung`
-  and the `utm_*` warning pointing at the BLOCKERS item, then `tn1/coupang  IGNORED` with
-  `redirect: none`, then `1 accepted, 1 ignored, 1 with appended tracking parameters.` and
-  exit **1**. Three exit conditions, so a pre-deploy step cannot pass by accident: any
-  ignored override, unparseable JSON (every override is lost, which must not read as "none
-  set"), or nothing configured at all. The last one is an addition to the brief, stated as
-  such: an empty env is a correct state to ship but never a successful switch-on check.
-
-  **One defect found in the script's own first output and fixed before the tests were
-  written.** For an `unknown-sku` or `unknown-merchant` row it printed a resolved redirect
-  URL, because `commerceOverrideUrl` looks up `parsed[skuId]?.[merchant]` literally and
-  neither key is checked there. `/api/out` never reaches that lookup for either: an unknown
-  sku id 404s at `app/api/out/route.ts:12-17`, and an unknown merchant key is never what
-  `route.ts:10` reads off the query string. Those two rows now say so instead
-  (`none — /api/out answers 404 for a sku id that is not in the catalogue`,
-  `none — /api/out only ever looks up a real merchant id`), and only the blocked-host row —
-  a lookup that does happen and returns null — is probed for real.
-
-  **Pinned, and proved live by breaking the script twice.**
-  `tests/affiliate-check-script.test.ts` runs the script in a child process and asserts both
-  the printed URLs and the exit codes: **11 passed (1.15s)** on its own. The final URL is
-  parsed back out of the report and asserted parameter by parameter, not substring-matched.
-  - **Break A**, `process.exit(ignored || !accepted ? 1 : 0)` replaced with
-    `process.exit(0)`: **3 failed** / **8 passed (11)** — the `link.coupang.com` case, the
-    accepted-plus-ignored case and the misspelled-keys case. The malformed-JSON and
-    empty-env cases still passed, because those exit earlier at their own `process.exit(1)`.
-  - **Break B**, `addCommerceTracking(resolved, …)` replaced with `resolved`: **4 failed** /
-    **7 passed (11)** — the four `utm_*`, the warning line, `--placement`, and the
-    accepted-plus-ignored summary count.
-  - Both reverted from a copy taken before the breaks. `sha256sum -c` printed `OK` for all
-    three files afterwards:
-    `a4747de13e13e4eeb7989fbe07b2173a5b5ecc9a9bc4b2656aaf8122dd715e22`
-    (`scripts/check-affiliate-overrides.mjs`),
-    `7a619f4e3be22608db122a03d6c85c230df050e11c882e3c602e5e7dc20fc7eb`
-    (`tests/affiliate-check-script.test.ts`) and
-    `2999f7f8ecec1258abbcd2a74578bd257fa5dbd92f47917bb858ed4878e74359` (`package.json`).
-
-  **No request left the container, and no real id exists anywhere.** The script has no
-  `fetch(`, no `node:http`/`https`/`net`/`dns` import and no `XMLHttpRequest`, and one of the
-  11 cases asserts that over the script's own source — a pre-deploy check that fetched the
-  URLs would register clicks with a programme from the owner's laptop. Every id used is
-  invented, the same convention `tests/e2e/commerce-switch-on.spec.ts` uses:
-  `DRYRUN000000` is not an Olive Young goods number and `/a/dryrun` is not a 파트너스 link.
-  `NEXT_PUBLIC_FUNNEL_FLUSH` stays unset.
-
-  **ML / UI:** both skipped, as the item said. `python3 ml/selftest.py` was still run and is
-  green (below).
-
-  **What this does NOT establish.** It does not settle the open `utm_*` question — it makes
-  the appended parameters visible and points at the blocker, and whether 올리브영 or 네이버
-  treats them as 수정 is still UNKNOWN and still the owner's one-minute read of a programme's
-  own link policy. It cannot tell the owner whether a link *earns*: it checks the gate and
-  the final URL, never the programme. It was never run on a real override JSON, because none
-  exists — every pair above is invented. `--placement` defaults to `report_summary`, the
-  literal `/report` passes at `app/report/page.tsx:458`; the other placements in the tree
-  (`report_product`, and whatever `/care` passes) were not enumerated, and placement only
-  ever changes `utm_content`. The resolve hook and the type stripping were exercised on one
-  Node (**v22.22.0**) on one container and on Linux only; `--experimental-strip-types` is
-  flagged experimental by Node itself, so a future Node could change the flag name and the
-  npm script with it. The script reads the env var or a file path and deliberately does not
-  read `.env.local`, unlike `supabase:check`. Nothing about the allowlist was decided: two of
-  cycle 63's three programme hosts are still UNKNOWN, `link.coupang.com` is still not
-  accepted, and this cycle did not probe a single network host.
-
-  **Diff and rotation.** `git diff --stat 6e4e0ae -- lib app public ml` prints nothing, and
-  `git diff 6e4e0ae -- package-lock.json` prints nothing. Rotation: cycle 62's entry moved
-  verbatim to the end of `docs/autopilot-changelog.md` after cycle 61 — **182** lines out of
-  `docs/AUTOPILOT.md` (**2598** → **2416** before the new writing) and **182** plus a blank
-  separator appended to the changelog (**13636** → **13819**), which is the one line in the
-  pair that is new rather than moved. `diff` of the appended block against the extracted
-  block reports no difference, and `comm -23` over `sort -u` of both files at `6e4e0ae`
-  against this pair drops **0** lines.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` —
-  `Test Files  121 passed (121)` / `Tests  1100 passed (1100)`, **321 passed (9.1m)**,
-  `Ran 146 tests in 1.619s` **OK**, **Smoke test passed.** The vitest suite went from the
-  supervisor's **120** files / **1089** tests on `6e4e0ae` to **121** / **1100**, which is
-  the one file and the **11** tests this cycle added and nothing else; the Playwright count
-  is **321** on both, because nothing under `tests/e2e` was touched. The three below were
-  each run on their own after every doc edit but the one that wrote these numbers in:
-  `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .`
-  `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing `_reads` / `_result` at
-  `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in 1.700s` **OK**.
-  `tests/affiliate-check-script.test.ts` alone is **11 passed (1.15s)**, and
-  `tests/commerce.test.ts` is unchanged and passing in the same run as the two docs tests:
-  **3 files**, **30 passed**. The tracked diff outside the three docs is one line:
-  `git diff --stat 6e4e0ae -- package.json` is `package.json | 3 ++-`,
-  `1 file changed, 2 insertions(+), 1 deletion(-)`, and
-  `git diff --stat 6e4e0ae -- lib app public ml tests scripts` prints nothing, the two new
-  files being untracked until the commit. Ports 3100–3109 and 3017: none listening afterwards. What the
-  smoke run does not cover: this paragraph, written after it — `npx tsc --noEmit`,
-  `npx eslint .` and `python3 ml/selftest.py` were each re-run after it and still give
-  **13**, `0 errors` and **OK**.
-
-  *Supervisor review:* sound, merged. The tool is read-only and `git diff --stat
-  6e4e0ae -- lib app` prints nothing, so `/api/out`, `ALLOWED_HOSTS` and
-  `addCommerceTracking` are unchanged. It imports `lib/commerce.ts` and `lib/skus.ts`
-  rather than copying them. Neither of those, nor `lib/ingredients.ts`, contains a
-  `fetch`, so it makes no request.
-
-  **Independent run.** I ran it on `v22.22.2` against a fake fixture with an
-  allowlisted Olive Young override, a `link.coupang.com/a/dryrun` override, an empty
-  string and an unknown sku. It printed `1 accepted, 3 ignored, 1 with appended tracking
-  parameters.` and exited **1**. It quoted the server's own two log lines, and it named
-  the empty-string row the server logs nothing for.
-  - An env with only the Olive Young override exited **0**, with the `utm_*` warning.
-  - A top-level array exited **1** with `No override resolves`.
-
-  **Breaks.** Two breaks the worker did not try, each reverted, then
-  `sha256sum -c` printed `OK`:
-  - Exiting 0 when rows are ignored: **1 failed | 10 passed (11)**.
-  - Suppressing the appended-parameters warning: **2 failed | 9 passed (11)**.
-
-  **One addition.** The script depends on Node's `--experimental-strip-types` and
-  `module.registerHooks`, and the playbook did not say so. On an older Node it fails at
-  start-up, and the owner could read that as a verdict on their overrides. I added a
-  short note with the version it was run on.
-
-  **Rotation:** `comm -23` drops **0** lines.
-
-  **Gate on the final tree:**
-  - `npm run smoke`: `Test Files 121 passed (121) / Tests 1100 passed (1100)`,
-    **321 passed (11.8m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening.

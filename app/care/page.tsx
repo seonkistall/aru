@@ -15,6 +15,7 @@ import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { ProductVisual } from "@/app/components/product-visual";
 import { t, useLanguage } from "@/lib/i18n";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { sessionGet } from "@/lib/session-store";
 
 // The sessionStorage read below has to happen after mount (reading it during
 // render is an SSR hydration mismatch), but it must not happen after a PAINT: the
@@ -33,7 +34,7 @@ type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
 function loadCareView(): CareView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
+  const raw = sessionGet(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Returning visitor in a fresh tab (no sessionStorage): fall back to the
     // saved result, mirroring /report, so report's care CTA doesn't dead-end.
@@ -57,7 +58,7 @@ function loadCareView(): CareView | null {
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
-    const scanRaw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
+    const scanRaw = sessionGet(DEVICE_DATA_KEY.scan);
     // Same hole again, one key over, and the one that does not announce itself: a
     // wrong-shaped `scan` does not throw, it makes `shouldApplyScan` true (it is a
     // truthiness test plus two optional fields), so the picks are the survey-only picks
@@ -69,7 +70,7 @@ function loadCareView(): CareView | null {
     }
   } catch {}
   try {
-    const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
+    const readsRaw = sessionGet(DEVICE_DATA_KEY.reads);
     // The third read of the same store, and the only one that had no guard. It is
     // harmless TODAY only because `careSummary` ignores its `_reads` argument
     // (`lib/care.ts:70`) — so the moment anything on /care renders a read field, a

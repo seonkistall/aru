@@ -9,6 +9,7 @@ import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
 import { shouldApplyScan, type ScanReads, type Survey as SurveyT } from "@/lib/recommend";
 import { t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { sessionGet, sessionRemove, sessionSet } from "@/lib/session-store";
 import { isScanReads } from "@/lib/last-result";
 import { storedOption, storedOptions } from "@/lib/stored-option";
 
@@ -38,7 +39,7 @@ type ScanHint = { concerns: Concern[]; text: string } | null;
 function loadScanHint(): ScanHint {
   if (typeof window === "undefined") return null;
   try {
-  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
+  const raw = sessionGet(DEVICE_DATA_KEY.scan);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     // The same guard /report and /care read this key through (isScanReads, lib/last-result.ts):
@@ -76,7 +77,7 @@ type SurveyDraft = Partial<Pick<SurveyT, "type" | "concerns" | "category" | "bud
 
 function loadSurveyDraft(): SurveyDraft | null {
   try {
-    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.surveyDraft);
+    const raw = sessionGet(DEVICE_DATA_KEY.surveyDraft);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     // Same reasoning as loadScanHint above: a sessionStorage value is not private
@@ -144,7 +145,7 @@ export default function Survey() {
     // Rehydrate a previously submitted survey so returning from /report (its
     // scan nudge routes scan→survey) doesn't wipe every answer.
     try {
-    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
+    const raw = sessionGet(DEVICE_DATA_KEY.survey);
       if (raw) {
         const saved: unknown = JSON.parse(raw);
         applyStoredAnswers(saved, { setType, setConcerns, setCategory, setBudget, setAvoid });
@@ -193,10 +194,10 @@ export default function Survey() {
   useEffect(() => {
     if (!draftLoaded) return;
     try {
-      sessionStorage.setItem(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ type, concerns, category, budget, avoid, hintFor }));
+      sessionSet(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ type, concerns, category, budget, avoid, hintFor }));
     } catch {
-      // Storage unavailable (private mode, quota). A draft is a convenience; the
-      // submit path has its own error surface for the answer that matters.
+      // `sessionSet` does not throw on a blocked store — it keeps the draft in
+      // memory (`lib/session-store.ts`). What is left here is `JSON.stringify`.
     }
   }, [draftLoaded, type, concerns, category, budget, avoid, hintFor]);
 
@@ -209,14 +210,19 @@ export default function Survey() {
     setSaveErr("");
     const survey: SurveyT = { type, concerns, category, budget, avoid };
     try {
-      sessionStorage.setItem(DEVICE_DATA_KEY.survey, JSON.stringify(survey));
+      sessionSet(DEVICE_DATA_KEY.survey, JSON.stringify(survey));
       // A new survey is a new report: open it on its first step, not on the step
       // the previous report was left on.
-      sessionStorage.removeItem(DEVICE_DATA_KEY.reportStep);
+      sessionRemove(DEVICE_DATA_KEY.reportStep);
       // Submitted answers live under DEVICE_DATA_KEY.survey from here on, so the
       // draft has nothing left to hold.
-      sessionStorage.removeItem(DEVICE_DATA_KEY.surveyDraft);
+      sessionRemove(DEVICE_DATA_KEY.surveyDraft);
     } catch {
+      // Reachable only if the fallback itself fails. `sessionSet`/`sessionRemove`
+      // swallow a blocked or full store and keep the value in memory, which is the
+      // whole point: this return was the end of the funnel for a visitor whose
+      // browser refuses site storage. What can still throw inside the try is
+      // `JSON.stringify`. The message stays for that.
       setSaveErr(t("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요."));
       return;
     }

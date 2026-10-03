@@ -38,12 +38,20 @@ function readSrc(file: string) {
   return readFileSync(resolve(root, file), "utf8");
 }
 
-// The code that follows each `getItem(DEVICE_DATA_KEY.<key>)`, with comment lines dropped,
-// so a guard has to be CALLED near the read. (Supervisor, cycle 49 review: the previous
-// check was "the file contains the word isSkinReads", which the import line alone
-// satisfies — replacing /care's guard with a bare cast still passed.)
+// The code that follows each read of the key, with comment lines dropped, so a guard has
+// to be CALLED near the read. (Supervisor, cycle 49 review: the previous check was "the
+// file contains the word isSkinReads", which the import line alone satisfies — replacing
+// /care's guard with a bare cast still passed.)
+//
+// Two spellings, because there are two ways to read the store. `sessionGet`
+// (`lib/session-store.ts`) is the funnel's reader: it tries `sessionStorage` and falls
+// back to an in-memory copy for a browser that refuses site storage. When cycle 69 routed
+// /report, /care and /survey through it, the scan case of this test dropped to **0**
+// readers and its own `toBeGreaterThan(0)` tripwire caught it — which is what that line is
+// for. A value out of the in-memory Map needs the same shape guard as one out of the
+// store, so both spellings are enumerated here rather than one.
 function windowsAfterReads(src: string, key: "reads" | "scan"): string[] {
-  const read = new RegExp(`getItem\\(DEVICE_DATA_KEY\\.${key}\\)`, "g");
+  const read = new RegExp(`(?:getItem|sessionGet)\\(DEVICE_DATA_KEY\\.${key}\\)`, "g");
   return [...src.matchAll(read)].map((match) =>
     src
       .slice(match.index, match.index + 800)

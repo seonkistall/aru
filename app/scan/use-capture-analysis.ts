@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { CONSENT_VERSION, getConsentEvents } from "@/lib/consent";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { sessionRemove, sessionSet } from "@/lib/session-store";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { t } from "@/lib/i18n/core";
 import { labelCount, type SampleMeta } from "@/lib/labels";
@@ -273,7 +274,7 @@ export function useCaptureAnalysis({
 
       if (!(await advanceStep(4))) return;
       try {
-        sessionStorage.setItem(
+        sessionSet(
           DEVICE_DATA_KEY.scan,
           JSON.stringify({
             oil: final.oil.level,
@@ -284,11 +285,12 @@ export function useCaptureAnalysis({
             source: final.source,
           })
         );
-        sessionStorage.setItem(DEVICE_DATA_KEY.reads, JSON.stringify(final));
+        sessionSet(DEVICE_DATA_KEY.reads, JSON.stringify(final));
         // A new reading is a new report: /report opens on its first step again.
-        sessionStorage.removeItem(DEVICE_DATA_KEY.reportStep);
+        sessionRemove(DEVICE_DATA_KEY.reportStep);
       } catch {
-        /* result still renders from in-memory `final` below */
+        /* `sessionSet` keeps the reading in memory when the store is blocked
+           (`lib/session-store.ts`); the result still renders from `final` below */
       }
       recordFunnelEvent("scan_completed", { retake: final.retakeRecommended, source: final.source });
       pushScanHistory({

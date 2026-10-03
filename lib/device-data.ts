@@ -1,3 +1,5 @@
+import { clearSessionFallback } from "@/lib/session-store";
+
 export const DEVICE_DATA_KEY = {
   language: "aru.lang",
   lastResult: "aru_last_result",
@@ -79,6 +81,11 @@ export function remainingDeviceDataKeys(storage: DeviceStorage): string[] {
 }
 
 export function clearAllDeviceData(storage: DeviceStorage): string[] {
+  // The funnel's session-scoped values can be held in memory instead of in
+  // `sessionStorage` when the browser refuses it (`lib/session-store.ts`). Those are
+  // device data too, so a deletion that walked the two stores alone would leave the
+  // submitted survey and the scan reads alive for the rest of the tab session.
+  clearSessionFallback();
   for (const entry of DEVICE_DATA_KEYS) {
     try {
       storage[entry.area].removeItem(entry.key);
