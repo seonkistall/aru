@@ -44,7 +44,16 @@ export function sessionSet(key: string, value: string): void {
     memory.delete(key);
     return;
   } catch {
-    // Quota, or a browser that refuses site storage.
+    // Quota, or a browser that refuses site storage. On a full quota only the write
+    // throws: the read still works and still returns the PREVIOUS value, which
+    // `sessionGet` would prefer over the newer one kept below. Drop it; a remove frees
+    // space, so it succeeds where the write did not.
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // A store that refuses the write refuses this too, and its reads throw as well,
+      // so `sessionGet` falls through to the Map anyway.
+    }
   }
   memory.set(key, value);
 }

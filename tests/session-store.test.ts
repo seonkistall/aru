@@ -104,6 +104,19 @@ describe("session store", () => {
     expect(sessionGet(DEVICE_DATA_KEY.survey)).toBeNull();
   });
 
+  it("a write that fails on a full quota is not shadowed by the older stored value", () => {
+    // Added by the cycle 69 supervisor review. A full quota throws on setItem only, so
+    // getItem still works and still holds whatever the LAST successful write left — the
+    // previous survey. sessionGet prefers the store, so without dropping that copy the
+    // visitor's new answers would sit in memory unread and /report would score the old
+    // ones.
+    const { values, storage } = throwingStorage("set");
+    values.set(DEVICE_DATA_KEY.survey, "previous");
+    install(storage);
+    sessionSet(DEVICE_DATA_KEY.survey, SURVEY);
+    expect(sessionGet(DEVICE_DATA_KEY.survey)).toBe(SURVEY);
+  });
+
   it("removes from memory as well as from the store", () => {
     install(throwingStorage().storage);
     sessionSet(DEVICE_DATA_KEY.reportStep, "2");
