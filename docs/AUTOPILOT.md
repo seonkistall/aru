@@ -1716,6 +1716,11 @@ partly done and stays here.
   storage client and a crop row that passes `hasCropConsent`, none of which this
   container can reach, and cycle 71's brief forbids pushing a fix it cannot prove. A
   cycle that can stub `getSupabaseAdmin` should pin both halves. Noted 2026-10-03.
+  **The `ts` half is fixed (cycle 71 supervisor review):** reproduced with the client
+  mocked (`RangeError: Invalid time value`), fixed, and pinned in
+  `tests/sync-crop-timestamp.test.ts`; see the cycle 71 entry. **The `sample.id` half
+  stays open.** It is behind the sync token, so only an operator can send it, and the
+  id format the client writes was not checked, so a charset rule could refuse real rows.
 - [OWNER] Google Play Console identity, payment account, support email, App Signing.
 
 ## Blockers
@@ -2289,7 +2294,31 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.646s`).
   - Ports 3100–3109: none listening.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* merged, with the filed `ts` half fixed on top. **The worker's
+  fix holds.** Read against the route: nothing between the gate and the `dryRun` return
+  reads an element except `validatePayload` → `hasCropConsent` → `latestConsentGranted`,
+  and both reads are now behind `rowArray`. One consequence is worth knowing, and it is
+  not new: one corrupt row still blocks the whole sync. Before, it did that with an empty
+  500; now it does it with a 400. The one exception is a non-object row like `"x"`,
+  which used to pass and now blocks; the worker chose that on purpose. **What the worker
+  filed as unreproducible was reproducible.** The `uploadCropSamples` storage key throws
+  on a bad `ts`, and mocking `getSupabaseAdmin` (the pattern
+  `tests/funnel-ingest.test.ts` already uses) reproduces it: `RangeError: Invalid time
+  value`, uncaught, after `consent_events`, `funnel_events`, `pilot_notes` and `labels`
+  had been upserted. The worker's suggested guard, `Number.isFinite`, would not have been
+  enough: `1e20` is finite and `new Date(1e20)` is still an Invalid Date. Fixed by
+  checking the Date itself and skipping the row with a warning BEFORE the upload, so a
+  bad row leaves no orphan object in storage. Pinned in `tests/sync-crop-timestamp.test.ts`
+  (a string, an object, `1e20`): with the fix, together with
+  `tests/api-json-boundaries.test.ts`, `Tests 15 passed (15)`; with the route restored to
+  the worker's version, `Tests 3 failed (3)`; `sha256sum -c` on the restored file printed
+  `app/api/sync/route.ts: OK`. The `sample.id` half of that backlog item stays open, with
+  the reason written on it. Rotation re-checked independently: `comm -23` of `sort -u` over
+  both files at `c87deb6` against the final tree printed nothing. Gate on the final tree:
+  `npm run smoke` gives `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
+  **344 passed (13.9m)** and **Smoke test passed.** tsc gives **13**. eslint gives
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
+  Ports 3100–3109: none listening.
 
 - 2026-10-03 (cycle 70) — Branch `autopilot/2026-10-03-0639`. **One double-tap now counts
   once on all four funnel surfaces that could double it. What a duplicate cost: a second
