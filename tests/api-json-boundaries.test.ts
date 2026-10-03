@@ -54,6 +54,64 @@ describe("remaining JSON API boundaries", () => {
     expect(response.status).toBe(400);
   });
 
+  // The same defect one level down. The funnelEvents fix above checked that each of the
+  // five arrays IS an array; nothing checked what was in one. Every element is then read
+  // field by field, so a `null` element threw an uncaught TypeError — 500, with an empty
+  // body, on the `dryRun` preflight and before any write. Two distinct throws, one per
+  // reader, so both are pinned: `cropSamples: [null]` reaches `sample.meta` in
+  // `hasCropConsent`, and `consentEvents: [null]` reaches `event.kind` in
+  // `latestConsentGranted`. `[{}]` must still be accepted — an empty object has no field
+  // the route can use but nothing it can throw on either, and refusing it would be a
+  // different rule than the one this fixes.
+  it.each([
+    ["a null crop sample", { cropSamples: [null] }],
+    ["a null consent event", { consentEvents: [null] }],
+    ["a non-object crop sample", { cropSamples: ["x"] }],
+    ["a null funnel event", { funnelEvents: [null] }],
+  ])("rejects %s with a 400 rather than throwing", async (_label, overrides) => {
+    process.env.SUPABASE_SYNC_TOKEN = "tok-0123456789012345678901234567890123";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_abcdefghijklmnop";
+    const payload = {
+      schemaVersion: "2026-07-04.sync.v2",
+      clientGeneratedAt: 1,
+      source: "ops-local",
+      labels: [],
+      cropSamples: [],
+      pilotNotes: [],
+      consentEvents: [],
+      ...overrides,
+    };
+    const response = await syncPost(jsonRequest("http://localhost/api/sync", { dryRun: true, payload }, {
+      authorization: "Bearer tok-0123456789012345678901234567890123",
+    }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toEqual(["Unsupported or missing sync payload."]);
+  });
+
+  it("still accepts an empty object in every row array", async () => {
+    process.env.SUPABASE_SYNC_TOKEN = "tok-0123456789012345678901234567890123";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_abcdefghijklmnop";
+    const payload = {
+      schemaVersion: "2026-07-04.sync.v2",
+      clientGeneratedAt: 1,
+      source: "ops-local",
+      labels: [{}],
+      cropSamples: [{}],
+      pilotNotes: [{}],
+      consentEvents: [{}],
+      funnelEvents: [{}],
+    };
+    const response = await syncPost(jsonRequest("http://localhost/api/sync", { dryRun: true, payload }, {
+      authorization: "Bearer tok-0123456789012345678901234567890123",
+    }));
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).counts.cropSamples).toBe(1);
+  });
+
   it("rejects an oversized subscription body using actual bytes", async () => {
     const response = await subscribePost(jsonRequest("http://localhost/api/reengage/subscribe", {
       email: "a@example.com",
