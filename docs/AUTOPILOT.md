@@ -1488,7 +1488,11 @@ partly done and stays here.
   the top of this file is built on, so a double-tap inflates it against a `care_viewed`
   that cannot double. Any fix has to keep the open synchronous inside the click gesture —
   the comment above `openCareLink` says why — so it is a short re-entrancy guard, not an
-  await. Noted 2026-10-03.
+  await. Noted 2026-10-03. **Correction (cycle 70 supervisor review):** the
+  conversion-rate consequence above, and the matching one in the item below, is wrong.
+  `summarizeFunnel` (`lib/funnel.ts`) counts distinct sessions per step, so a second
+  event in the same session never reached a rate. What the duplicate did cost is in the
+  cycle 70 entry.
 - [x] [AI] **A double-tap on `/survey`'s submit logs two `survey_completed` events.**
   **Fixed 2026-10-03 (cycle 70) — see the cycle 70 entry under "Recent cycles".**
   Observed by cycle 68's hunt and confirmed in the code by cycle 69; not measured in a
@@ -2132,11 +2136,10 @@ Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
 - 2026-10-03 (cycle 70) — Branch `autopilot/2026-10-03-0639`. **One double-tap now counts
-  once on all four funnel surfaces that could double it. `commerce_clicked` is the
-  numerator of the conversion rate the revenue arithmetic at the top of this file is built
-  on, and `survey_viewed → survey_completed` is the step that arithmetic reads to decide
-  whether the survey is where visitors are lost; both divide by a denominator that cannot
-  double, so each duplicate made a number the loop steers by look better than it was. Two
+  once on all four funnel surfaces that could double it. What a duplicate cost: a second
+  merchant tab, a second `/api/out` request, a second care-intent row on `/care` (the click
+  log `/privacy` counts), and a doubled raw event log. It did NOT move a conversion rate —
+  corrected by the supervisor review below; the worker's entry said it did. Two
   fixes, because the two halves are different defects: `/survey`'s submit has `router.push`
   in flight and takes a `useRef` flag; `/care`'s `openCareLink` and the two
   `<a target="_blank">` links on `/report` have nothing in flight and share a synchronous
@@ -2228,7 +2231,33 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.963s`).
   - Ports 3100–3109: none listening.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* merged with two corrections. **(1) The premise was wrong, and the
+  supervisor that filed the backlog items in cycle 69 shares the blame.** Both items, the
+  worker's entry, the `lib/tap-guard.ts` header, the `/survey` comment and the regression-46
+  header said a duplicate inflated a conversion rate. It cannot: `summarizeFunnel`
+  (`lib/funnel.ts`) builds every step as a `Set` of session ids, and every rate and the
+  cumulative `funnelDropoff` are built on those sets, so a second event in the same session
+  was already counted once. The real costs are the second tab, the second `/api/out`
+  request, the second `recordCareIntent` row on `/care` (the count `/privacy` shows), and
+  the raw `events` total. All five texts now say that; the backlog items carry a dated
+  correction. The fix is still worth having for the tab and the click log. **(2) A clock
+  that steps backwards blocked a deliberate tap.** `createTapGuard` read `Date.now()`, so
+  after an NTP correction or a manual clock change the accepted timestamp sat in the future,
+  `now - previous` was negative, and a negative age read as inside the window. The guard
+  then suppressed the link for the size of the step plus the window. Reproduced with fake
+  timers (clock stepped back 5 s, deliberate tap 2 s later: `expected true to be false`).
+  Fixed by treating a negative age as outside the window. Pinned by "does not suppress a
+  tap after the wall clock steps backwards" in `tests/tap-guard.test.ts`. With the guard
+  restored to the worker's version the file gives `Tests 1 failed | 9 passed (10)`; with
+  the fix it gives `Tests 10 passed (10)`; `sha256sum -c` on the restored file printed
+  `lib/tap-guard.ts: OK`. Rotation re-checked independently: `comm -23` of `sort -u` over
+  both files at `9f22788` against the final tree drops 4 lines, and all 4 are edits to
+  the two backlog bullets this cycle ticked: their first lines, where `- [AI]` became
+  `- [x] [AI]`; the merchant item's second line, which gained the "Fixed" pointer; and its
+  `await. Noted 2026-10-03.` line, which this review extended with the correction. Gate on the final tree with both corrections: `npm run smoke`
+  gives `Test Files 124 passed (124) / Tests 1127 passed (1127)`, **344 passed (12.0m)** and
+  **Smoke test passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`.
+  `python3 ml/selftest.py` prints **OK**. Ports 3100–3109: none listening.
 
 - 2026-10-03 (cycle 69) — Branch `autopilot/2026-10-03-0039`. **A visitor whose browser
   refuses `sessionStorage` can now finish the funnel. `/survey`'s submit wrote the answers
