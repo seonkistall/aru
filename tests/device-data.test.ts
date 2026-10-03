@@ -25,6 +25,7 @@ const expected = [
   "aru_report_step_v1",
   "aru_survey_draft_v1",
   "aru_checkin_draft_v1",
+  "aru_studio_draft_v1",
 ];
 const root = resolve(import.meta.dirname, "..");
 

@@ -37,6 +37,11 @@ export const DEVICE_DATA_KEY = {
   // the survey draft: "delete my device data" has to clear everything ARU puts in a
   // browser, a half-answered check-in included.
   checkinDraft: "aru_checkin_draft_v1",
+  // The card copy on /studio after the visitor has typed over it. Session-scoped
+  // and registered here for the same reason as the check-in draft: "delete my
+  // device data" has to clear everything ARU puts in a browser, a half-edited
+  // share card included.
+  studioDraft: "aru_studio_draft_v1",
 } as const;
 
 type DeviceDataArea = "local" | "session";
@@ -65,6 +70,7 @@ export const DEVICE_DATA_KEYS = [
   { key: DEVICE_DATA_KEY.reportStep, area: "session", group: "preferences" },
   { key: DEVICE_DATA_KEY.surveyDraft, area: "session", group: "survey" },
   { key: DEVICE_DATA_KEY.checkinDraft, area: "session", group: "activity" },
+  { key: DEVICE_DATA_KEY.studioDraft, area: "session", group: "scan" },
 ] as const satisfies readonly DeviceDataEntry[];
 
 type DeviceStorageArea = Pick<Storage, "getItem" | "removeItem">;
