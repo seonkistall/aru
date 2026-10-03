@@ -31,6 +31,69 @@ const PRESETS: { name: string; headline: string; reads: Read[] }[] = [
   },
 ];
 
+// The card copy as the visitor last left it. Written only once they have typed over a
+// field, because that is the only content on this card that cannot be re-derived: the
+// preset and the scan prefill below are both rebuilt on every mount, in the language
+// that is on screen, and freezing those would stop them translating.
+//
+// Why it has to be written down at all: `LanguageProvider` renders its children under
+// `key={active}` (`lib/i18n.tsx`), so a language tap unmounts and remounts this page and
+// every `useState` in it goes with the discarded tree. Measured on a production build at
+// 360x800 before this draft existed, a headline typed in `ko` came back as the English
+// preset on the tap. Same defect and same fix as `/survey` (`surveyDraft`) and
+// `/checkin` (`checkinDraft`): mirror into `sessionStorage` under a key registered in
+// `lib/device-data.ts`, so "delete my device data" clears it. Nothing goes in
+// `localStorage`, the remount is untouched, and what the share sheet is handed is
+// unchanged.
+//
+// `scanFor` is the scan the visitor typed over (empty when the card came from a preset).
+// The draft carries the four read VALUES as well as the headline, so without it a draft
+// typed over one scan would put that scan's readings on the card of a newer scan in the
+// same tab. Added by the cycle 72 supervisor review.
+type StudioDraft = { headline: string; reads: Read[]; scanFor: string };
+
+function isDraftRead(value: unknown): value is Read {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const read = value as Record<string, unknown>;
+  return typeof read.label === "string" && typeof read.value === "string" && (read.calm === undefined || typeof read.calm === "boolean");
+}
+
+function loadStudioDraft(): StudioDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.studioDraft);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    // Same reasoning as /checkin's draft read: a sessionStorage value is not private to
+    // the code that wrote it, so the shape is checked before anything reaches state.
+    // A wrong-shaped draft is no draft, and the presets are the path this page already
+    // has for that.
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const draft = parsed as Record<string, unknown>;
+    if (typeof draft.headline !== "string" || typeof draft.scanFor !== "string") return null;
+    if (!Array.isArray(draft.reads) || draft.reads.length === 0 || !draft.reads.every(isDraftRead)) return null;
+    return { headline: draft.headline, reads: draft.reads, scanFor: draft.scanFor };
+  } catch {
+    return null;
+  }
+}
+
+function removeStudioDraft(): void {
+  try {
+    sessionStorage.removeItem(DEVICE_DATA_KEY.studioDraft);
+  } catch {
+    // Nothing of ours can be there if the store refuses access.
+  }
+}
+
+function writeStudioDraft(draft: StudioDraft): void {
+  try {
+    sessionStorage.setItem(DEVICE_DATA_KEY.studioDraft, JSON.stringify(draft));
+  } catch {
+    // Storage unavailable (private mode, quota). The card still works; only the
+    // survive-a-language-tap part is lost, which is what it was before this existed.
+  }
+}
+
 export default function Studio() {
   const cardRef = useRef<HTMLDivElement>(null);
   const [headline, setHeadline] = useState(() => t(PRESETS[0].headline));
@@ -38,12 +101,22 @@ export default function Studio() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fromScan, setFromScan] = useState(false);
+  // `edited` is what makes the draft the visitor's rather than the build's: until they
+  // type, there is nothing here a remount cannot rebuild. `draftLoaded` gates the write
+  // effect so the first render cannot overwrite a stored draft with the initial preset,
+  // the same gate `/checkin` uses.
+  const [edited, setEdited] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  // The scan this mount prefilled from, as the draft records it. A ref: it is fixed once
+  // the mount effect has run and nothing renders from it.
+  const scanFor = useRef("");
 
   useEffect(() => {
     // Prefill with the user's real scan — this tab's session first, then the
     // saved last result (returning visitor), so a returning user still shares
     // their real card. Presets stay as the fallback. Loaded after mount
     // (sessionStorage is client-only; render-time reads break hydration).
+    /* eslint-disable react-hooks/set-state-in-effect */
     let scan: SkinReads | null = null;
     try {
       const raw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
@@ -58,8 +131,23 @@ export default function Studio() {
       /* ignore */
     }
     if (!scan?.oil?.value) scan = loadLastResult()?.reads ?? null;
-    if (!scan?.oil?.value) return;
-    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!scan?.oil?.value) scan = null;
+    scanFor.current = scan ? JSON.stringify(scan) : "";
+    const draft = loadStudioDraft();
+    if (draft && draft.scanFor === scanFor.current) {
+      // The visitor's own words win over both the preset and the scan prefill, and
+      // `fromScan` stays false because the note it shows is about a prefill this
+      // mount did not do.
+      setHeadline(draft.headline);
+      setReads(draft.reads);
+      setEdited(true);
+      setDraftLoaded(true);
+      return;
+    }
+    // A draft typed over a different scan, or over none, is not this card's.
+    if (draft) removeStudioDraft();
+    setDraftLoaded(true);
+    if (!scan) return;
     setHeadline(t(scan.headline || PRESETS[0].headline));
     setReads([
       { label: t("유분"), value: t(scan.oil.value), calm: scan.oil.calm },
@@ -71,13 +159,32 @@ export default function Studio() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
+  // Keep the draft in step with the card, but only once the visitor has typed: an
+  // untouched card writes nothing, so a visitor who never edits leaves no draft behind
+  // and their next visit still gets today's prefill in today's language.
+  useEffect(() => {
+    if (!draftLoaded || !edited) return;
+    writeStudioDraft({ headline, reads, scanFor: scanFor.current });
+  }, [draftLoaded, edited, headline, reads]);
+
   function applyPreset(i: number) {
+    // A preset is the build's copy again, not the visitor's: rebuilt in whatever language
+    // is on screen. Kept as a draft, it froze in the language it was tapped in and came
+    // back Korean on an English card after a switch (cycle 72 supervisor review).
+    setEdited(false);
+    removeStudioDraft();
     setHeadline(t(PRESETS[i].headline));
     setReads(PRESETS[i].reads.map((read) => ({ ...read, label: t(read.label), value: t(read.value) })));
   }
 
   function setRead(i: number, patch: Partial<Read>) {
+    setEdited(true);
     setReads((list) => list.map((read, idx) => (idx === i ? { ...read, ...patch } : read)));
+  }
+
+  function editHeadline(next: string) {
+    setEdited(true);
+    setHeadline(next);
   }
 
   async function download() {
@@ -128,7 +235,7 @@ export default function Studio() {
         </div>
 
         <label style={labelStyle} htmlFor="studio-headline">{t("헤드라인")}</label>
-        <textarea id="studio-headline" aria-label={t("헤드라인")} value={headline} onChange={(e) => setHeadline(e.target.value)} rows={2} style={textareaStyle} />
+        <textarea id="studio-headline" aria-label={t("헤드라인")} value={headline} onChange={(e) => editHeadline(e.target.value)} rows={2} style={textareaStyle} />
 
         {reads.map((read, i) => (
           // The name field used to be a fixed `width: 96`, which is 94px of content box.

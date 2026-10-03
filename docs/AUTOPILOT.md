@@ -287,6 +287,41 @@ partly done and stays here.
   nothing except two pages nobody reads — which is the same risk every item above the
   affiliate blocker carries.
 
+- [AI] **A shared skin card carries no link back to ARU, and the comment above it says
+  it does.** **Duplicate of the cycle 25 `shareUrl` item further down, which already
+  waits on the owner's choice in `docs/share-return-path-decision.md`; kept for the new
+  payload measurement and the `onShare` docstring correction (cycle 72 supervisor
+  review).** `shareCardImage` (`app/components/share-card.tsx`) takes an optional
+  `opts.shareUrl` and, when it is set, adds `url` and an invite sentence to the
+  `navigator.share` payload — "Include the deep link so the shared post carries a way
+  back to aru (viral loop)". **No caller sets it.** `grep -rn "shareCardImage\|shareUrl"
+  app lib tests` returns exactly four hits: the declaration, the conditional spread, that
+  one comment, and `app/studio/page.tsx:101`, which passes `onShare` only — and `/studio`
+  is the component's only renderer. Measured on a production build at 360x800 with a
+  recording `navigator.share` stub: the sheet was handed
+  `{"keys":["files","title"],"url":null,"text":null,"title":"오늘의 피부 리포트","files":1}`.
+  The card image itself draws no url by an owner decision recorded in the same file, so
+  the PNG plus a sheet with no `url` means a recipient has nothing to tap and nothing to
+  search: `share_landed` is reachable only from `/scan`'s clipboard link. Two smaller
+  corrections belong with it. The docstring says "onShare fires right before the action
+  so callers can log intent", but every `onShare` call sits AFTER its action — so a
+  cancelled share records nothing, measured as `{"clicked":0,"err":false}` against an
+  `AbortError` stub. Not counting a cancel is the better behaviour; the sentence
+  describing it is wrong. **Left unfixed on purpose: this cycle was forbidden to touch
+  `shareUrl`.** Filed 2026-10-03 (cycle 72).
+
+- [AI] **`readMoodFromHash` accepts a too-long `m` and renders its first three digits.**
+  `/[#&]m=([0-2]{3})/` (`lib/share-link.ts`) matches a prefix, so `decodeMood`'s
+  `code.length !== 3` guard never sees the extra characters. Measured on a production
+  build at 360x800: `/#m=2100` renders the callout and the summary
+  `유분 많음 · 붉은기 약간 · 결 매끈` — the mood for `210` — and records one `share_landed`,
+  while `#m=999`, `#m=abc`, `#m=21` and a percent-encoded `<script>` payload are all
+  correctly refused with no callout and no event. Nothing injects (`main script` count
+  **0** in all eight shapes tested) and nothing throws, so this is a silent mis-render of
+  a corrupted link rather than a crash: a truncated or mangled share URL shows a
+  confident wrong reading instead of nothing. Anchoring the group to the end of the value
+  is the fix. Filed 2026-10-03 (cycle 72).
+
 - [AI] **Deep-link the commerce out-links to product pages.** Every entry in
   `buildCommerceLinks` (`lib/commerce.ts`) currently points at a merchant *search* URL —
   `oliveYoungSearchUrl`, `naverShoppingSearchUrl`, `coupangSearchUrl` all build
@@ -2154,6 +2189,168 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-03 (cycle 72) — Branch `autopilot/2026-10-03-1840`. **A bounded bug hunt over
+  `/checkin`, `/privacy` + `lib/device-data.ts`, the share flow and switching language
+  mid-flow. Four hypotheses tested, three defects confirmed, one fixed, two filed. The
+  fixed defect: a language tap on `/studio` threw away the card copy the visitor had
+  typed. `LanguageProvider` renders its children under `key={active}` (`lib/i18n.tsx`),
+  so a language change unmounts and remounts the whole subtree and every `useState` in
+  it goes with the discarded tree. `/studio` held `headline` and the four read rows in
+  `useState` alone and wrote nothing anywhere, so the remount reran the preset
+  initializers in the NEW language and the visitor's own words were gone. It is the third
+  page in this exact defect class — `/survey` (cycle 40) and `/checkin` (cycle 42) were
+  the first two — and the last one of the three left unfixed. `/studio` is the share
+  card's only renderer and the `/scan` result screen links to it
+  (`app/scan/page.tsx:547`), so it is the editing step in front of the one image this
+  product puts into a chat. Fixed with the pattern the two siblings already use: the card
+  copy is mirrored into `sessionStorage` under a new `DEVICE_DATA_KEY.studioDraft`,
+  registered in `lib/device-data.ts` so "delete my device data" clears it, and written
+  ONLY once the visitor has typed — the preset and the scan prefill are rebuilt on every
+  mount in the language on screen, and freezing either would stop it translating. The
+  tracked diff over `app` and `lib` is **90** insertions and **2** deletions in **2**
+  files, and `git diff -U0 -- app lib | grep 't("'` over the changed lines returns one
+  pair: the `textarea`'s `onChange` renamed from `setHeadline` to `editHeadline`, with its
+  `t("헤드라인")` label byte-identical. No copy changed, nothing new goes in
+  `localStorage`, the `key={active}` remount is untouched, and what the share sheet is
+  handed is unchanged.**
+
+  **Reproduced first on a production build.** `next build` + `next start` on port **3100**
+  for `6406dcd`, at 360x800, driven through the real language picker. Typed
+  `내 피부, 오늘은 최고` into `#studio-headline`, then tapped English:
+
+  ```
+  STUDIO ko  {"headline":"내 피부, 오늘은 최고","cardHeadline":"내 피부, 오늘은 최고","lang":"ko"}
+  STUDIO en  {"headline":"Calm and\ncomfortable texture","cardHeadline":"Calm and\ncomfortable texture","lang":"en"}
+  STUDIO pageerrors= 0
+  ```
+
+  Both the textarea and the card's own `<h2>` came back as the English preset. No
+  OpenAI, Gemini, Resend, Supabase or merchant was contacted: `/studio` makes no network
+  call, `navigator.share` was a local stub, and `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+  `RESEND_API_KEY`, `SUPABASE_SYNC_TOKEN`, `CRON_SECRET`, `UNSUBSCRIBE_SECRET` and
+  `NEXT_PUBLIC_FUNNEL_FLUSH` were unset throughout.
+
+  **Pinned** in a new e2e spec, `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`
+  — **2 passed (34.2s)** on the fixed tree. The first case types a headline and a read
+  value, switches ko → en → ja, and asserts the textarea, the card `<h2>` and the read
+  field all keep the typed strings, that the draft holds exactly
+  `{headline, reads}` with 4 rows under `aru_studio_draft_v1` in `sessionStorage`, and
+  that `localStorage` holds nothing under that key. The second case is not decoration: it
+  loads `/studio`, touches nothing, switches to `en`, and asserts the headline DID change
+  and that no draft was written — a draft that froze the untouched prefill would pass the
+  first test and fail this one.
+
+  **Broken on purpose, then reverted.** `git checkout app/studio/page.tsx` with the new
+  spec in place gives **1 failed | 1 passed (39.9s)** — the typed-copy case and only it;
+  the untouched-card case passes on the broken code too, which is what it is for.
+  Reverted from a copy taken before the break, and `sha256sum` over the two changed source
+  files printed the same two digests before and after:
+  `app/studio/page.tsx`
+  `1917d92cadb0cae74fda8a0317c9466fa56ed60847b79316f32064fdb2b612d5`,
+  `lib/device-data.ts`
+  `8fdcf5a7da46d5cb8f96e18b5d105d012bcd9d1e82e30a6d6a310a8573244671`.
+
+  **Filed, not fixed.** Two confirmed defects are open `[AI]` backlog items above: the
+  share sheet carries no link back to ARU because nothing passes `shareCardImage`'s
+  `shareUrl` (this cycle was forbidden to touch `shareUrl`), and `readMoodFromHash`
+  accepts a too-long `m` and renders its first three digits. Both carry their measurement
+  in the item.
+
+  **Refuted, one line each.**
+  - **"Delete my device data" leaves no ARU key behind.** The registry is complete:
+    `grep -rhoE '"(aru[._][a-zA-Z0-9_.]+|gyeol_[a-zA-Z0-9_]+)"' app lib | sort -u` returns
+    **21** literals and `lib/device-data.ts` is the only file that holds any of them (the
+    one hit in `lib/recommend.ts` is inside a comment), which is already pinned by
+    `tests/device-data.test.ts`. In a browser, with all 21 keys seeded (**14** local,
+    **7** session) on a production build, the delete left
+    `localStorage keys: []` and `sessionStorage keys: []` with the status row
+    `이 기기에 저장된 ARU 데이터를 모두 지웠어요.`, and the three downstream pages then showed
+    nothing of the old visit: `/report` redirected to `/survey`
+    (`Let's find skincare that suits you`), `/care` showed
+    `There's no report to continue from yet.` and `/checkin` showed its empty state. The
+    only keys back afterwards were the two funnel ids and a fresh survey draft the new
+    visits wrote. No consent key survived, so nothing was filed under that heading.
+  - **No check-in can be submitted for a product the visitor never picked, and no stored
+    shape crashes the page.** Six `gyeol_purchases` values on a production build —
+    `[null]`, `[{}]`, `["x"]`, `[valid, null]`, a valid row with `ts: "soon"`, and a valid
+    row — gave **0** page errors and **0** blank screens; only the valid row rendered a
+    `기록하기` button, and the `ts: "soon"` row rendered as `사용 중` with no button because
+    `roundFor` reads `NaN` as round 0. `[valid, null]` falls to the empty state, which is
+    the documented behaviour of the `.catch` added in cycle 15 rather than a new defect.
+  - **The share flow does not throw when the share API is missing, rejects, or is
+    cancelled.** With `navigator.canShare`/`navigator.share` both `undefined`, `/studio`
+    took the download fallback and recorded `{"surface":"studio","mode":"download"}` with
+    no error row; with an `AbortError` stub it recorded nothing and showed no error; with
+    a resolving stub it recorded `{"surface":"studio","mode":"web-share"}`. **0** page
+    errors in all three.
+  - **A `share_landed` URL with garbage params does not crash or inject.** Eight hash
+    shapes on `/`: `#m=210`, `#x=1&m=012` and `#m=210&m=001` each rendered the callout and
+    recorded exactly **1** `share_landed`; `#m=999`, `#m=abc`, `#m=21` and a
+    percent-encoded `<script>alert(1)</script>` rendered no callout and recorded **0**;
+    `main script` count was **0** and page errors **0** in all eight. The one that
+    mis-renders (`#m=2100`) is filed above.
+  - **A language switch mid-flow loses no state and double-fires no event on the four
+    funnel pages.** ko → en → ja through the real picker on a production build, with a
+    submitted survey and one due product use seeded. `/survey` kept all four pressed chips
+    (`["세럼","지성","모공","2만원"]` → `["Serum","Oily","Pores","₩20,000"]` →
+    `["セラム","脂性肌","毛穴","2万ウォン"]`) and `survey_viewed` stayed at **1**; `/report` kept
+    `aru_report_step_v1` at `"1"` and `reco_viewed` at **1**; `/care` kept `care_viewed` at
+    **1**; `/checkin` kept both pressed answers and its draft
+    (`{"u-valid":{"sat":3,"trouble":true,"repurchase":null}}`) with `checkin_opened` at
+    **1**. **0** page errors, and no Korean message id reached the chips or the `<h1>` in
+    `en` or `ja`. `/privacy`'s open delete confirmation DOES close on a language tap
+    (`confirmOpen` true → false); a destructive confirmation that resets to its safe state
+    is not a loss, so it is recorded here and not filed.
+
+  **Rotation.** Cycle 69's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 67: **176** lines
+  moved, and `wc -l` over both files straight after the move read **2445** + **14857** =
+  **17302**, the same total as at `6406dcd`. `comm -23` of the
+  `sort -u` union of both files at `6406dcd` against the `sort -u` union of both files now
+  drops **0** lines.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
+    **346 passed (10.5m)**, **Smoke test passed.** The supervisor's baseline on `6406dcd`
+    was `125 passed (125)` / `1135 passed (1135)` and **344 passed**; the only delta is
+    this cycle's own **2** e2e cases in
+    `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`, and the unit counts are
+    unchanged because the one unit edit added a key to an existing array rather than a
+    case.
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.690s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* merged, with two regressions in the fix closed first. Both are
+  paths the worker's spec did not walk, and on both the page was BETTER before the draft
+  existed. **(1) A preset tapped after typing froze in the language it was tapped in.**
+  `edited` stayed true across `applyPreset`, so the draft recorded the Korean preset and
+  handed it back on the switch to `en`: a Korean headline on an English card. Fixed by
+  making a preset reset `edited` and remove the draft, so the card is the build's copy
+  again and translates like an untouched one. **(2) A draft outlived the scan it was
+  typed over.** The draft holds the four read VALUES as well as the headline, so after a
+  new scan in the same tab `/studio` put the older scan's readings on the newer card,
+  which is the image that goes into a chat. Fixed by recording the scan in the draft
+  (`scanFor`, the prefill source as JSON, empty for a preset card). A draft is restored
+  only for the same scan, and is removed otherwise. Two cases added to
+  `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`. Against the worker's
+  `app/studio/page.tsx` the spec gave **2 failed | 2 passed (1.5m)**, with
+  `Received: "윤기가` for the preset case and `Received: "내 피부, 오늘은 최고"` against an
+  expected `"두 번째 스캔"` for the scan case. With the fix it gave **4 passed (42.3s)**,
+  and `sha256sum -c` on the fixed file printed `app/studio/page.tsx: OK` after the run.
+  **Also corrected:** the worker filed the share sheet's missing return link as a new
+  item; it duplicates the cycle 25 `shareUrl` item, which already waits on the owner. The
+  new item now says so and keeps only its new measurement. The worker's own session
+  summary claims two fixes, including `/privacy`'s delete confirmation; the branch fixes
+  `/studio` only, and its entry records the `/privacy` behaviour as not a defect, which
+  is right. Rotation re-checked independently: `comm -23` of `sort -u` over both files at
+  `6406dcd` against the final tree printed nothing. Gate on the final tree:
+  `npm run smoke` gives `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
+  **348 passed (12.4m)** and **Smoke test passed.** tsc gives **13**. eslint gives
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
+  Ports 3100–3109: none listening.
+
 - 2026-10-03 (cycle 71) — Branch `autopilot/2026-10-03-1240`. **A bounded bug hunt over
   every route under `app/api/`. Five hypotheses tested, one confirmed, one fixed, one
   filed. The confirmed defect: `/api/sync` answered **500** with an empty body for a
@@ -2443,180 +2640,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   gives `Test Files 124 passed (124) / Tests 1127 passed (1127)`, **344 passed (12.0m)** and
   **Smoke test passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`.
   `python3 ml/selftest.py` prints **OK**. Ports 3100–3109: none listening.
-
-- 2026-10-03 (cycle 69) — Branch `autopilot/2026-10-03-0039`. **A visitor whose browser
-  refuses `sessionStorage` can now finish the funnel. `/survey`'s submit wrote the answers
-  with `sessionStorage.setItem` and, on a throw, showed "설문을 저장하지 못했어요…" and
-  returned (`app/survey/page.tsx:220` at `8852af2`); `/report` and `/care` read those
-  answers back out of `sessionStorage` and nowhere else. So in a browser that blocks site
-  storage the funnel ENDED at `/survey` — no report, no merchant link. A new
-  `lib/session-store.ts` tries `sessionStorage` and keeps the value in a module-level
-  `Map` when that throws, and reads storage first then the `Map`. Only the existing
-  session-scoped funnel sites are routed through it. No new storage key, nothing to
-  `localStorage`, `lib/consent.ts` and the /scan consent checkboxes untouched, no copy
-  changed: the diff over `app` and `lib` is **41** insertions and **23** deletions in five
-  files plus the new module, and `git diff -U0 -- app lib | grep -c 't("'` over the
-  changed lines is **0**.**
-
-  **Cycle 68 was a hunt and pushed nothing.** Its four observations: (1) this defect;
-  (2) a double-tap on a merchant link opens 2 tabs; (3) a double-tap on `/survey`'s submit
-  logs 2 `survey_completed` events; (4) offline errors are network-layer only. (2) and (3)
-  are now filed as open `[AI]` items in the backlog above, unfixed — this cycle confirmed
-  both in the code and measured neither in a browser. (4) was left as observed.
-
-  **Reproduced first, with numbers, on a production build.** `next build` + `next start`
-  on port **3107**, port verified free first, 360x800, `ko` forced by seeding `aru.lang`,
-  one browser context per case, `window.open` replaced by a collector and every
-  `/api/out` request fulfilled locally in all of them, so no merchant redirect was ever
-  followed (**0** `window.open` calls in every case, before and after). Four cases, the
-  three failure shapes real browsers produce plus a control:
-  - `none` — the control, storage works.
-  - `both` — `getItem` and `setItem` throw (an in-app browser, a blocked store).
-  - `set` — only `setItem` throws (a full quota).
-  - `access` — touching `window.sessionStorage` throws, which is what Chrome with
-    "block all cookies" does.
-
-  `both` and `set` are installed on `Storage.prototype`, which `localStorage` shares, so
-  those two cases get a Map-backed `localStorage` put back — otherwise the measurement
-  would be about `loadLastResult()` and not about this fix. In `access` only the
-  sessionStorage property is taken away, so `localStorage` there is the real one.
-
-  Before, on a build of `8852af2`:
-  - `none` — submit landed on `/report`, **4** `a[href^="/api/out"]` on the picks step,
-    **1** `/care` link, **3** `[id^="care-merchants-"]` panels on `/care`, **3** again
-    after a reload.
-  - `both` — submit showed the error and stayed on `/survey`. A hand-typed `/report`
-    rendered the error boundary: **0** tabs, **0** out-links. `/care`: error boundary,
-    **0** merchant panels.
-  - `set` — submit showed the error and stayed on `/survey`. A hand-typed `/report`
-    bounced to `/survey`: **0** out-links. `/care`: the 아직 이어서 볼 리포트가 없어요
-    dead end, **0** merchant panels.
-  - `access` — same as `both`: error shown, stayed on `/survey`, error boundary on both
-    `/report` and `/care`, **0** out-links and **0** merchant panels.
-
-  After, the same four cases and the same harness on a clean production build: all four
-  submit straight to `/report` with the error shown **0** times, all four serve **4**
-  `a[href^="/api/out"]` on the picks step and **1** `/care` link, and all four reach
-  `/care` through that link with **3** merchant panels and no dead end and no error
-  boundary. `window.open` was called **0** times in all four.
-
-  **The limit, measured rather than assumed.** The `Map` is module state, so it survives
-  `router.push` — which is how `/report` reads what `/survey` wrote — and not a full
-  document load. Reloading `/care` at the end of each case: `none` **3** panels (the real
-  `sessionStorage` holds them), `both` **0**, `set` **0**, `access` **3** (its
-  `localStorage` is real, so `loadLastResult()` brings the report back). A visitor whose
-  browser refuses storage gets the funnel once, start to finish, and a reload puts them
-  back at the start. That is the trade, stated plainly.
-
-  **What is routed, and what is not.** `sessionGet`/`sessionSet`/`sessionRemove` replaced
-  the direct calls at exactly the sites the brief listed: the submitted survey, the survey
-  draft and the scan hint on `app/survey/page.tsx`; the survey, scan, reads and report
-  step on `app/report/page.tsx`; the survey, scan and reads on `app/care/page.tsx`; the
-  scan, reads and report-step clear in `app/scan/use-capture-analysis.ts`.
-  `grep -n "sessionStorage\." app/survey/page.tsx app/report/page.tsx app/care/page.tsx
-  app/scan/use-capture-analysis.ts lib/session-store.ts` now returns **3** lines and all
-  **3** are inside `lib/session-store.ts`. `lib/consent.ts`, the /scan consent checkboxes,
-  the check-in draft, `ALLOWED_HOSTS`, `lib/commerce.ts` and every string are untouched.
-
-  **"Delete my device data" clears the fallback too.** `clearAllDeviceData`
-  (`lib/device-data.ts`) now calls `clearSessionFallback()` before it walks the two
-  stores, because a survey held in memory is device data like any other.
-  `tests/session-store.test.ts` pins it: five funnel keys written through a throwing
-  store, then `clearAllDeviceData`, then every one of the five reads back `null`.
-
-  **The error message is now unreachable in practice, and stays.** `sessionSet` and
-  `sessionRemove` swallow a blocked or full store, so the only thing left inside
-  `submit()`'s `try` that can throw is `JSON.stringify`. The
-  "설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요." string and its
-  `catch` are kept for that, with a comment saying so. No copy was deleted or changed.
-
-  **One existing test had to learn the new spelling, and its own tripwire caught it.**
-  `tests/device-store-guards.test.ts` enumerates every
-  `getItem(DEVICE_DATA_KEY.reads|scan)` in `app/` and `lib/` and asserts a shape guard is
-  called near it. Routing the funnel through `sessionGet` took the scan case to **0**
-  readers, and the `expect(readers.length).toBeGreaterThan(0)` line that exists for
-  exactly that reported `expected 0 to be greater than 0` — caught by the first
-  `npm run smoke` of this cycle, not by a hand-grep. The matcher now accepts both
-  spellings. Coverage is restored, not merely the count: it enumerates **3** readers for
-  `reads` (`app/care/page.tsx`, `app/report/page.tsx`, `app/studio/page.tsx`) and **3**
-  for `scan` (`app/care/page.tsx`, `app/report/page.tsx`, `app/survey/page.tsx`), the same
-  files as before, and the guard assertion on each is unchanged.
-
-  **Pinned in a new spec, and proved live by breaking the fix once.**
-  `tests/e2e/storage-blocked-funnel.regression-45.spec.ts` is **4** cases — the three
-  blocked modes and the working-storage control — each walking `/survey` submit →
-  `/report` picks → the in-app `/care` link, each asserting the merchant counts above and
-  the reload limit, each intercepting `window.open` and `/api/out`. With the fix in:
-  **4 passed (59.0s)**. With the one-line fallback read in `sessionGet` reverted to
-  `return null`, on its own clean production build: **3 failed / 1 passed (54.4s)** — the
-  three blocked modes, with the control still green, which is the point. The unit tests on
-  the same break: `tests/session-store.test.ts` + `tests/device-data.test.ts` went from
-  **14 passed** to **4 failed | 10 passed**. Reverted from a copy taken before the break;
-  `sha256sum -c` printed `OK` for all **8** touched files, among them `lib/session-store.ts`
-  (`4c33707ad684096f83e9ec2707c13b77c696cf47810a1eeaade92f1822198395`) and
-  `tests/e2e/storage-blocked-funnel.regression-45.spec.ts`
-  (`5604cb24b398a3fa9454dcb48e65dd1491e84d5b160b8301c496687731e61177`).
-
-  **Research / ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and
-  is green (below).
-
-  **What this cycle did NOT establish.** It did not measure a real Chrome with "block all
-  cookies" — the three modes are emulations installed by an init script, and in that real
-  browser `localStorage` throws as well, which the `access` case here does not model. It
-  did not touch `/privacy`'s delete UI: with storage blocked, `remainingDeviceDataKeys`
-  still throws per key and reports every key as remaining, so the page shows its error
-  state even though the deletion did happen — pre-existing, unchanged, and not measured in
-  a browser this cycle. It did not route the check-in draft or anything in
-  `localStorage`. And it did not fix cycle 68's observations (2) and (3); they are filed.
-
-  **Rotation.** Cycle 65's entry moved verbatim to the end of
-  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 64:
-  `diff` between the extracted 167 lines and the last 167 lines of the changelog is empty,
-  and `comm -23` of the `sort -u` union of both files at `8852af2` against the `sort -u`
-  union of both files now drops **0** lines.
-
-  **Gate on the final tree.**
-  - `npm run smoke`: `Test Files 123 passed (123) / Tests 1116 passed (1116)`,
-    **336 passed (10.3m)**, **Smoke test passed.** The supervisor's baseline on
-    `8852af2` was `122 passed (122)` / `1107 passed (1107)` and **332 passed**; the
-    deltas are this cycle's own tests — **9** unit tests in
-    `tests/session-store.test.ts` (one new file) and **4** e2e cases in
-    `tests/e2e/storage-blocked-funnel.regression-45.spec.ts`.
-  - tsc: **13**.
-  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.921s`).
-  - Ports 3100–3109: none listening.
-
-  *Supervisor review:* merged after one fix, to a stale read on a full quota.
-
-  The design is sound and narrow: one module, no new key, no `localStorage`, consent
-  untouched, and `clearAllDeviceData` empties the in-memory Map. Breaking that last part
-  by removing the `clearSessionFallback()` call gives **1 failed | 9 passed (10)**, on
-  `clears the in-memory fallback`. After reverting, `sha256sum -c` printed
-  `lib/device-data.ts: OK`.
-
-  **The defect.** A full quota throws on `setItem` only; `getItem` still works and still
-  returns the PREVIOUS value. `sessionGet` prefers the store over the Map. So a second
-  survey submitted on a full quota was kept in memory and never read, and `/report`
-  scored the first one. The worker's tests covered "only setItem throws" with an empty
-  store, never with a stale value already in it.
-
-  **Reproduced** with a new unit case, "a write that fails on a full quota is not
-  shadowed by the older stored value": **1 failed | 9 passed (10)**,
-  `Received: "previous"`.
-
-  **Fixed in `sessionSet`.** When the write throws, it now also removes the stored key.
-  A full quota allows removal, and a blocked store's reads throw anyway, so either way
-  the read lands on the Map. With the fix, `session-store`, `device-store-guards` and
-  `device-data` give **19 passed (19)**, and `storage-blocked-funnel.regression-45`
-  gives **4 passed (1.4m)**.
-
-  **Rotation:** `comm -23` drops **0** lines.
-
-  **Gate on the final tree:**
-  - `npm run smoke`: `Test Files 123 passed (123) / Tests 1117 passed (1117)`,
-    **336 passed (13.2m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening.

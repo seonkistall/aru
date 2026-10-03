@@ -14678,3 +14678,180 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening.
 
+
+- 2026-10-03 (cycle 69) — Branch `autopilot/2026-10-03-0039`. **A visitor whose browser
+  refuses `sessionStorage` can now finish the funnel. `/survey`'s submit wrote the answers
+  with `sessionStorage.setItem` and, on a throw, showed "설문을 저장하지 못했어요…" and
+  returned (`app/survey/page.tsx:220` at `8852af2`); `/report` and `/care` read those
+  answers back out of `sessionStorage` and nowhere else. So in a browser that blocks site
+  storage the funnel ENDED at `/survey` — no report, no merchant link. A new
+  `lib/session-store.ts` tries `sessionStorage` and keeps the value in a module-level
+  `Map` when that throws, and reads storage first then the `Map`. Only the existing
+  session-scoped funnel sites are routed through it. No new storage key, nothing to
+  `localStorage`, `lib/consent.ts` and the /scan consent checkboxes untouched, no copy
+  changed: the diff over `app` and `lib` is **41** insertions and **23** deletions in five
+  files plus the new module, and `git diff -U0 -- app lib | grep -c 't("'` over the
+  changed lines is **0**.**
+
+  **Cycle 68 was a hunt and pushed nothing.** Its four observations: (1) this defect;
+  (2) a double-tap on a merchant link opens 2 tabs; (3) a double-tap on `/survey`'s submit
+  logs 2 `survey_completed` events; (4) offline errors are network-layer only. (2) and (3)
+  are now filed as open `[AI]` items in the backlog above, unfixed — this cycle confirmed
+  both in the code and measured neither in a browser. (4) was left as observed.
+
+  **Reproduced first, with numbers, on a production build.** `next build` + `next start`
+  on port **3107**, port verified free first, 360x800, `ko` forced by seeding `aru.lang`,
+  one browser context per case, `window.open` replaced by a collector and every
+  `/api/out` request fulfilled locally in all of them, so no merchant redirect was ever
+  followed (**0** `window.open` calls in every case, before and after). Four cases, the
+  three failure shapes real browsers produce plus a control:
+  - `none` — the control, storage works.
+  - `both` — `getItem` and `setItem` throw (an in-app browser, a blocked store).
+  - `set` — only `setItem` throws (a full quota).
+  - `access` — touching `window.sessionStorage` throws, which is what Chrome with
+    "block all cookies" does.
+
+  `both` and `set` are installed on `Storage.prototype`, which `localStorage` shares, so
+  those two cases get a Map-backed `localStorage` put back — otherwise the measurement
+  would be about `loadLastResult()` and not about this fix. In `access` only the
+  sessionStorage property is taken away, so `localStorage` there is the real one.
+
+  Before, on a build of `8852af2`:
+  - `none` — submit landed on `/report`, **4** `a[href^="/api/out"]` on the picks step,
+    **1** `/care` link, **3** `[id^="care-merchants-"]` panels on `/care`, **3** again
+    after a reload.
+  - `both` — submit showed the error and stayed on `/survey`. A hand-typed `/report`
+    rendered the error boundary: **0** tabs, **0** out-links. `/care`: error boundary,
+    **0** merchant panels.
+  - `set` — submit showed the error and stayed on `/survey`. A hand-typed `/report`
+    bounced to `/survey`: **0** out-links. `/care`: the 아직 이어서 볼 리포트가 없어요
+    dead end, **0** merchant panels.
+  - `access` — same as `both`: error shown, stayed on `/survey`, error boundary on both
+    `/report` and `/care`, **0** out-links and **0** merchant panels.
+
+  After, the same four cases and the same harness on a clean production build: all four
+  submit straight to `/report` with the error shown **0** times, all four serve **4**
+  `a[href^="/api/out"]` on the picks step and **1** `/care` link, and all four reach
+  `/care` through that link with **3** merchant panels and no dead end and no error
+  boundary. `window.open` was called **0** times in all four.
+
+  **The limit, measured rather than assumed.** The `Map` is module state, so it survives
+  `router.push` — which is how `/report` reads what `/survey` wrote — and not a full
+  document load. Reloading `/care` at the end of each case: `none` **3** panels (the real
+  `sessionStorage` holds them), `both` **0**, `set` **0**, `access` **3** (its
+  `localStorage` is real, so `loadLastResult()` brings the report back). A visitor whose
+  browser refuses storage gets the funnel once, start to finish, and a reload puts them
+  back at the start. That is the trade, stated plainly.
+
+  **What is routed, and what is not.** `sessionGet`/`sessionSet`/`sessionRemove` replaced
+  the direct calls at exactly the sites the brief listed: the submitted survey, the survey
+  draft and the scan hint on `app/survey/page.tsx`; the survey, scan, reads and report
+  step on `app/report/page.tsx`; the survey, scan and reads on `app/care/page.tsx`; the
+  scan, reads and report-step clear in `app/scan/use-capture-analysis.ts`.
+  `grep -n "sessionStorage\." app/survey/page.tsx app/report/page.tsx app/care/page.tsx
+  app/scan/use-capture-analysis.ts lib/session-store.ts` now returns **3** lines and all
+  **3** are inside `lib/session-store.ts`. `lib/consent.ts`, the /scan consent checkboxes,
+  the check-in draft, `ALLOWED_HOSTS`, `lib/commerce.ts` and every string are untouched.
+
+  **"Delete my device data" clears the fallback too.** `clearAllDeviceData`
+  (`lib/device-data.ts`) now calls `clearSessionFallback()` before it walks the two
+  stores, because a survey held in memory is device data like any other.
+  `tests/session-store.test.ts` pins it: five funnel keys written through a throwing
+  store, then `clearAllDeviceData`, then every one of the five reads back `null`.
+
+  **The error message is now unreachable in practice, and stays.** `sessionSet` and
+  `sessionRemove` swallow a blocked or full store, so the only thing left inside
+  `submit()`'s `try` that can throw is `JSON.stringify`. The
+  "설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요." string and its
+  `catch` are kept for that, with a comment saying so. No copy was deleted or changed.
+
+  **One existing test had to learn the new spelling, and its own tripwire caught it.**
+  `tests/device-store-guards.test.ts` enumerates every
+  `getItem(DEVICE_DATA_KEY.reads|scan)` in `app/` and `lib/` and asserts a shape guard is
+  called near it. Routing the funnel through `sessionGet` took the scan case to **0**
+  readers, and the `expect(readers.length).toBeGreaterThan(0)` line that exists for
+  exactly that reported `expected 0 to be greater than 0` — caught by the first
+  `npm run smoke` of this cycle, not by a hand-grep. The matcher now accepts both
+  spellings. Coverage is restored, not merely the count: it enumerates **3** readers for
+  `reads` (`app/care/page.tsx`, `app/report/page.tsx`, `app/studio/page.tsx`) and **3**
+  for `scan` (`app/care/page.tsx`, `app/report/page.tsx`, `app/survey/page.tsx`), the same
+  files as before, and the guard assertion on each is unchanged.
+
+  **Pinned in a new spec, and proved live by breaking the fix once.**
+  `tests/e2e/storage-blocked-funnel.regression-45.spec.ts` is **4** cases — the three
+  blocked modes and the working-storage control — each walking `/survey` submit →
+  `/report` picks → the in-app `/care` link, each asserting the merchant counts above and
+  the reload limit, each intercepting `window.open` and `/api/out`. With the fix in:
+  **4 passed (59.0s)**. With the one-line fallback read in `sessionGet` reverted to
+  `return null`, on its own clean production build: **3 failed / 1 passed (54.4s)** — the
+  three blocked modes, with the control still green, which is the point. The unit tests on
+  the same break: `tests/session-store.test.ts` + `tests/device-data.test.ts` went from
+  **14 passed** to **4 failed | 10 passed**. Reverted from a copy taken before the break;
+  `sha256sum -c` printed `OK` for all **8** touched files, among them `lib/session-store.ts`
+  (`4c33707ad684096f83e9ec2707c13b77c696cf47810a1eeaade92f1822198395`) and
+  `tests/e2e/storage-blocked-funnel.regression-45.spec.ts`
+  (`5604cb24b398a3fa9454dcb48e65dd1491e84d5b160b8301c496687731e61177`).
+
+  **Research / ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and
+  is green (below).
+
+  **What this cycle did NOT establish.** It did not measure a real Chrome with "block all
+  cookies" — the three modes are emulations installed by an init script, and in that real
+  browser `localStorage` throws as well, which the `access` case here does not model. It
+  did not touch `/privacy`'s delete UI: with storage blocked, `remainingDeviceDataKeys`
+  still throws per key and reports every key as remaining, so the page shows its error
+  state even though the deletion did happen — pre-existing, unchanged, and not measured in
+  a browser this cycle. It did not route the check-in draft or anything in
+  `localStorage`. And it did not fix cycle 68's observations (2) and (3); they are filed.
+
+  **Rotation.** Cycle 65's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 64:
+  `diff` between the extracted 167 lines and the last 167 lines of the changelog is empty,
+  and `comm -23` of the `sort -u` union of both files at `8852af2` against the `sort -u`
+  union of both files now drops **0** lines.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 123 passed (123) / Tests 1116 passed (1116)`,
+    **336 passed (10.3m)**, **Smoke test passed.** The supervisor's baseline on
+    `8852af2` was `122 passed (122)` / `1107 passed (1107)` and **332 passed**; the
+    deltas are this cycle's own tests — **9** unit tests in
+    `tests/session-store.test.ts` (one new file) and **4** e2e cases in
+    `tests/e2e/storage-blocked-funnel.regression-45.spec.ts`.
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.921s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* merged after one fix, to a stale read on a full quota.
+
+  The design is sound and narrow: one module, no new key, no `localStorage`, consent
+  untouched, and `clearAllDeviceData` empties the in-memory Map. Breaking that last part
+  by removing the `clearSessionFallback()` call gives **1 failed | 9 passed (10)**, on
+  `clears the in-memory fallback`. After reverting, `sha256sum -c` printed
+  `lib/device-data.ts: OK`.
+
+  **The defect.** A full quota throws on `setItem` only; `getItem` still works and still
+  returns the PREVIOUS value. `sessionGet` prefers the store over the Map. So a second
+  survey submitted on a full quota was kept in memory and never read, and `/report`
+  scored the first one. The worker's tests covered "only setItem throws" with an empty
+  store, never with a stale value already in it.
+
+  **Reproduced** with a new unit case, "a write that fails on a full quota is not
+  shadowed by the older stored value": **1 failed | 9 passed (10)**,
+  `Received: "previous"`.
+
+  **Fixed in `sessionSet`.** When the write throws, it now also removes the stored key.
+  A full quota allows removal, and a blocked store's reads throw anyway, so either way
+  the read lands on the Map. With the fix, `session-store`, `device-store-guards` and
+  `device-data` give **19 passed (19)**, and `storage-blocked-funnel.regression-45`
+  gives **4 passed (1.4m)**.
+
+  **Rotation:** `comm -23` drops **0** lines.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 123 passed (123) / Tests 1117 passed (1117)`,
+    **336 passed (13.2m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening.
