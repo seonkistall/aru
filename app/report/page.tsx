@@ -18,6 +18,7 @@ import { ReengageOptIn } from "@/app/components/reengage-optin";
 import { buildReportTrust } from "@/lib/report-trust";
 import { getLang, t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
+import { sessionGet, sessionSet } from "@/lib/session-store";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -67,7 +68,7 @@ type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult
 
 function loadInitialView(): InitialView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionStorage.getItem(DEVICE_DATA_KEY.survey);
+  const raw = sessionGet(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Fresh tab session: fall back to the last saved result so a returning
     // visitor re-enters their report instead of being bounced to the survey.
@@ -91,7 +92,7 @@ function loadInitialView(): InitialView | null {
   let scan: ScanReads = null;
   let reads: SkinReads | null = null;
   try {
-    const scanRaw = sessionStorage.getItem(DEVICE_DATA_KEY.scan);
+    const scanRaw = sessionGet(DEVICE_DATA_KEY.scan);
     // Same hole again, one key over, and the one that does not announce itself: a
     // wrong-shaped `scan` does not throw, it makes `shouldApplyScan` true (it is a
     // truthiness test plus two optional fields), so the picks are the survey-only picks
@@ -103,7 +104,7 @@ function loadInitialView(): InitialView | null {
     }
   } catch {}
   try {
-    const readsRaw = sessionStorage.getItem(DEVICE_DATA_KEY.reads);
+    const readsRaw = sessionGet(DEVICE_DATA_KEY.reads);
     // Same hole the survey read had, one key over: the catch covers the parse only, and
     // this page renders reads.oil.value / .pores / .redness / .overall and reads.signals
     // straight out of the store, so a value that PARSES to the wrong shape throws during
@@ -125,7 +126,7 @@ type ReportStep = "analysis" | "picks" | "routine";
 /** 0-2, or 0 when nothing is stored or storage is unreadable. */
 function readStoredStep(): number {
   try {
-    const raw = sessionStorage.getItem(DEVICE_DATA_KEY.reportStep);
+    const raw = sessionGet(DEVICE_DATA_KEY.reportStep);
     const n = raw === null ? 0 : Number.parseInt(raw, 10);
     return Number.isInteger(n) && n >= 0 && n <= 2 ? n : 0;
   } catch {
@@ -226,10 +227,11 @@ export default function Report() {
     const clamped = Math.max(0, Math.min(steps.length - 1, next));
     setStepIndex(clamped);
     try {
-      sessionStorage.setItem(DEVICE_DATA_KEY.reportStep, String(clamped));
+      sessionSet(DEVICE_DATA_KEY.reportStep, String(clamped));
     } catch {
-      // storage unavailable (private mode) — the step still works for this
-      // render, it just will not survive a language switch
+      // `sessionSet` keeps the step in memory when the store is blocked
+      // (`lib/session-store.ts`), so a language switch no longer loses it there.
+      // A full reload still does, in that browser only.
     }
     window.scrollTo({ top: 0 });
   };
