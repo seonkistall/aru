@@ -123,6 +123,7 @@ function applyStoredAnswers(
 export default function Survey() {
   const router = useRouter();
   const surveyViewRecorded = useRef(false);
+  const submitting = useRef(false);
   const [scanHint, setScanHint] = useState<ScanHint>(null);
   const [type, setType] = useState<SkinType | null>(null);
   const [concerns, setConcerns] = useState<Concern[]>([]);
@@ -207,6 +208,23 @@ export default function Survey() {
 
   function submit() {
     if (!ready) return;
+    // `router.push` below is not instant, so until this flag existed a second tap
+    // before the route changed ran the whole body again and recorded a second
+    // `survey_completed`. Measured on a production build at 360x800 in `ko`: one
+    // `dblclick` on the submit button gave `survey_completed=2`, and ran the writes
+    // and `router.push` twice. The survey-completion rate was not moved by it:
+    // `summarizeFunnel` (`lib/funnel.ts`) counts distinct sessions per step, so the
+    // duplicate only inflated the raw event log. `disabled={!ready}` never helped —
+    // `ready` is about the three required answers, not about a submit already in
+    // flight — and it keeps its own meaning, untouched, above.
+    //
+    // A flag and not the time window the three click surfaces use
+    // (`lib/tap-guard.ts`): this one really does have something in flight, and the
+    // navigation it is waiting for is what ends the guard's usefulness. It is
+    // cleared on the `setSaveErr` path below so a visitor whose save failed can
+    // still retry.
+    if (submitting.current) return;
+    submitting.current = true;
     setSaveErr("");
     const survey: SurveyT = { type, concerns, category, budget, avoid };
     try {
@@ -224,6 +242,7 @@ export default function Survey() {
       // browser refuses site storage. What can still throw inside the try is
       // `JSON.stringify`. The message stays for that.
       setSaveErr(t("설문을 저장하지 못했어요. 브라우저 저장공간을 확인한 뒤 다시 시도해 주세요."));
+      submitting.current = false;
       return;
     }
     recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: Boolean(scanHint?.concerns.length) });

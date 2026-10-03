@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { careSummary, clinicLinks, productSearchLinks, type CareLink } from "@/lib/care";
 import { isSurvey, recommend, type RecoResult, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent } from "@/lib/funnel";
+import { createTapGuard } from "@/lib/tap-guard";
 import { useFunnelPageView } from "@/app/use-funnel-page-view";
 import { isScanReads, isSkinReads, loadLastResult } from "@/lib/last-result";
 import { recordCareIntent } from "@/lib/store";
@@ -29,6 +30,13 @@ import { sessionGet } from "@/lib/session-store";
 // fall back to useEffect there to avoid the SSR warning (same shape as
 // lib/i18n.tsx).
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+// MODULE scope, not a `useRef`: `LanguageProvider` renders its children under
+// `key={active}` (`lib/i18n.tsx`), so a language change unmounts and remounts this
+// whole page and resets every ref in it — the same remount that made every page-view
+// event fire twice (see `recordPageView` in `lib/funnel.ts`). A guard that the
+// remount can clear is not a guard.
+const careTapGuard = createTapGuard();
 
 type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
@@ -113,6 +121,14 @@ export default function CarePage() {
   const clinics = clinicLinks(lang);
 
   function openCareLink(link: CareLink, context?: string) {
+    // One double-tap used to run this whole body twice: measured before the guard,
+    // a `dblclick` on the purchase button gave `window.open=2` and
+    // `commerce_clicked=2`. The guard is a synchronous time window keyed by href
+    // (`lib/tap-guard.ts`) and not an in-flight flag, because nothing here is in
+    // flight — and nothing may be awaited before the open, for the reason the next
+    // comment gives. A deliberate second tap after the window still opens and still
+    // records.
+    if (careTapGuard(link.href)) return;
     // Open synchronously inside the click gesture — awaiting the record first
     // pushes window.open past the user-gesture window and popup blockers kill it.
     void recordCareIntent({

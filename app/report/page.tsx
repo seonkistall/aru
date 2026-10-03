@@ -7,6 +7,7 @@ import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
 import { budgetLabel, isSurvey, recommend, type RecoResult, type RoutineStep, type ScanReads, type Survey } from "@/lib/recommend";
 import { recordFunnelEvent, recordPageView } from "@/lib/funnel";
+import { createTapGuard } from "@/lib/tap-guard";
 import { isScanReads, isSkinReads, loadLastResult, saveLastResult } from "@/lib/last-result";
 import { ProductCard } from "@/app/components/product-card";
 import { ProductCompare } from "@/app/components/product-compare";
@@ -120,6 +121,10 @@ function loadInitialView(): InitialView | null {
   saveLastResult({ survey, scan, reads, ts: Date.now() });
   return { survey, reads, result: recommend(survey, scan) };
 }
+
+// MODULE scope for the same reason `app/care/page.tsx` keeps its guard there:
+// `LanguageProvider`'s `key={active}` remount resets every ref in this subtree.
+const reportTapGuard = createTapGuard();
 
 type ReportStep = "analysis" | "picks" | "routine";
 
@@ -460,7 +465,18 @@ export default function Report() {
                   href={topCommerce ? commerceOutHref(top.sku.id, topCommerce.merchant, "report_summary") : top.sku.buyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => {
+                  onClick={(event) => {
+                    // Measured before this guard, on a production build at 360x800 in
+                    // `ko`: one `dblclick` here opened 2 tabs and recorded
+                    // `commerce_clicked` twice. The second tab is the browser's own
+                    // doing on a native `<a target="_blank">`, so the event is not the
+                    // only thing to dedupe — the navigation has to be cancelled too,
+                    // which is why this returns `preventDefault()` rather than just
+                    // skipping the record. `href`, `target` and `rel` are untouched.
+                    if (reportTapGuard(event.currentTarget.href)) {
+                      event.preventDefault();
+                      return;
+                    }
                     recordFunnelEvent("commerce_clicked", { placement: "report_summary", merchant: topCommerce?.merchant ?? "search" });
                   }}
                   style={buyBtn}

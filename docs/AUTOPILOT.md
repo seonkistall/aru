@@ -1474,8 +1474,9 @@ partly done and stays here.
   [`docs/discovery-metadata.md`](discovery-metadata.md). Not attempted, and no cycle
   should invent the URL structure on its own.
 
-- [AI] **A double-tap on a merchant link opens two tabs and logs two
-  `commerce_clicked` events.** Observed by cycle 68's hunt and confirmed in the code by
+- [x] [AI] **A double-tap on a merchant link opens two tabs and logs two
+  `commerce_clicked` events.** **Fixed 2026-10-03 (cycle 70) — see the cycle 70 entry under
+  "Recent cycles".** Observed by cycle 68's hunt and confirmed in the code by
   cycle 69; not measured in a browser by either, and not fixed. `/care`'s `openCareLink`
   (`app/care/page.tsx:114`) calls `recordCareIntent`, `recordFunnelEvent` and
   `window.open` with no in-flight guard, so two taps inside the same gesture window run
@@ -1487,8 +1488,13 @@ partly done and stays here.
   the top of this file is built on, so a double-tap inflates it against a `care_viewed`
   that cannot double. Any fix has to keep the open synchronous inside the click gesture —
   the comment above `openCareLink` says why — so it is a short re-entrancy guard, not an
-  await. Noted 2026-10-03.
-- [AI] **A double-tap on `/survey`'s submit logs two `survey_completed` events.**
+  await. Noted 2026-10-03. **Correction (cycle 70 supervisor review):** the
+  conversion-rate consequence above, and the matching one in the item below, is wrong.
+  `summarizeFunnel` (`lib/funnel.ts`) counts distinct sessions per step, so a second
+  event in the same session never reached a rate. What the duplicate did cost is in the
+  cycle 70 entry.
+- [x] [AI] **A double-tap on `/survey`'s submit logs two `survey_completed` events.**
+  **Fixed 2026-10-03 (cycle 70) — see the cycle 70 entry under "Recent cycles".**
   Observed by cycle 68's hunt and confirmed in the code by cycle 69; not measured in a
   browser by either, and not fixed. `submit()` (`app/survey/page.tsx:207`) has no
   in-flight flag: it writes the answers, calls
@@ -2129,6 +2135,130 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-03 (cycle 70) — Branch `autopilot/2026-10-03-0639`. **One double-tap now counts
+  once on all four funnel surfaces that could double it. What a duplicate cost: a second
+  merchant tab, a second `/api/out` request, a second care-intent row on `/care` (the click
+  log `/privacy` counts), and a doubled raw event log. It did NOT move a conversion rate —
+  corrected by the supervisor review below; the worker's entry said it did. Two
+  fixes, because the two halves are different defects: `/survey`'s submit has `router.push`
+  in flight and takes a `useRef` flag; `/care`'s `openCareLink` and the two
+  `<a target="_blank">` links on `/report` have nothing in flight and share a synchronous
+  800 ms window keyed by href in a new `lib/tap-guard.ts`. On the two anchors the second
+  tab is the browser's own doing, so the handler calls `preventDefault()` as well as
+  skipping the duplicate event. `window.open` stays synchronous inside the click gesture —
+  no `await` and no `setTimeout` before it, for the reason the comment above `openCareLink`
+  already gave. `href`, `target`, `rel`, `ALLOWED_HOSTS` and `lib/commerce.ts` are
+  untouched, `disabled={!ready}` keeps its meaning, and no copy changed: the tracked diff
+  over `app` and `lib` is **68** insertions and **2** deletions in four files plus the new
+  module, the two deletions are the two `onClick={() => {` lines that became
+  `onClick={(event) => {`, and `git diff -U0 -- app lib | grep -c 't("'` over the changed
+  lines is **0**.**
+
+  **Reproduced first, with numbers, on a production build.** `next build` + `next start` on
+  port **3199**, 360x800, `ko` forced by seeding `aru.lang`, one browser context per case.
+  No merchant redirect was ever followed: `window.open` replaced by a collector, every
+  `/api/out` request fulfilled locally, and every host in `ALLOWED_HOSTS`
+  (`www.oliveyoung.co.kr`, `search.shopping.naver.com`, `www.coupang.com`,
+  `www.google.com`) fulfilled locally as well. Tabs counted with `context.on('page')`,
+  events counted out of `aru_funnel_events_v1`. Two gestures per surface,
+  `page.dblclick()` and two `click()`s ~50 ms apart.
+
+  Before, on a build of `9f22788`:
+  - `/survey` submit, `dblclick` — `survey_completed=2`.
+  - `/care` purchase link — `window.open=2` and `commerce_clicked=2`, both gestures.
+  - `/report` summary link (`placement=report_summary`) — tabs **2** and
+    `commerce_clicked=2`, both gestures.
+  - `/report` product card (`placement=report_product`) — tabs **2** and
+    `commerce_clicked=2`, both gestures.
+
+  After, the same harness and the same gestures on a clean production build of the fix:
+  `/survey` `survey_completed=1`; `/care` `window.open=1` and `commerce_clicked=1` on both
+  gestures; `/report` summary tabs **1** and `commerce_clicked=1` on both gestures;
+  `/report` product card tabs **1** and `commerce_clicked=1` on both gestures.
+
+  **What the 50 ms gesture did NOT establish, stated because the brief asked for it.** On
+  `/survey` it read `survey_completed=1` BEFORE the fix as well as after. The second
+  Playwright click never landed — `TimeoutError: locator.click: Timeout 2000ms exceeded.` —
+  because `router.push` had already replaced the page inside 50 ms on this container. So
+  only `dblclick` reproduces the `/survey` half here, and the 50 ms variant is evidence of
+  nothing on that surface in either direction. On the three click surfaces both gestures
+  reproduced, and both are fixed.
+
+  **Pinned** in `tests/e2e/double-tap-funnel.regression-46.spec.ts`, **8 passed (37.1s)**
+  on its own against the fixed build: four that a double-tap counts once, and four that a
+  DELIBERATE second click still counts — a second tap on `/care` and on each `/report`
+  anchor after the window (1100 ms) gives `window.open`/tabs **2** and `commerce_clicked`
+  **2**, and a visitor who goes back to `/survey` and submits again records a second
+  `survey_completed`. A guard that swallowed a real second visit would trade one wrong
+  number for another. `lib/tap-guard.ts` also has unit tests on fake timers
+  (`tests/tap-guard.test.ts`, **9 passed**), covering the window boundary and the rule that
+  the window is measured from the last ACCEPTED tap, so a run of rapid taps cannot extend
+  the suppression indefinitely.
+
+  **Broken on purpose, then reverted.** Deleting the suppression from `createTapGuard` and
+  the `submitting.current` set and check from `submit()`, then rebuilding and restarting the
+  production server, gives **4 failed | 4 passed (40.6s)** on regression-46 — the four
+  dedupe tests, and only those; the four "deliberate second click" tests still pass, which
+  is what they are for. The unit tests on the broken guard give
+  **Tests 7 failed | 2 passed (9)**. Reverted from copies taken before the break, and
+  `sha256sum` over the five changed source files printed the same five digests before and
+  after: `lib/tap-guard.ts`
+  `5ceeb4ee0cecd2011d19859cfcd5524a827e62036938c10ef73775841ed20aac`,
+  `app/survey/page.tsx`
+  `29abfbec5d3e6e3bff2525eccb68c7d689eb369b113b02b28a89cc4825d82912`,
+  `app/care/page.tsx`
+  `22b9c468d4f73a268799e8b12e6cdb49ca09e97e9cdba3f4ebdfbd314e5a394a`,
+  `app/report/page.tsx`
+  `f9852c3dfcf6ed9fd458846410f79944d8bfba5e1a2f934cd4bc3082b9004ff7`,
+  `app/components/product-card.tsx`
+  `e3146701e1f16515a60b6cd8358a030ab56ac39b08acf64c2060388fc236f293`.
+
+  **Research / ML: skipped,** as the brief said.
+
+  **Rotation:** cycle 66's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 65. `sort -u` over
+  both files at `9f22788` against `sort -u` over both files immediately after the move:
+  `comm -23` drops **0** lines and `comm -13` adds **0**.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 124 passed (124) / Tests 1126 passed (1126)`,
+    **344 passed (11.0m)**, **Smoke test passed.** (The baseline on `9f22788` was
+    `123 (123)` / `1117 (1117)` and **336**; the deltas are this cycle's
+    `tests/tap-guard.test.ts` — **1** file, **9** tests — and regression-46's **8** e2e
+    tests.)
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.963s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* merged with two corrections. **(1) The premise was wrong, and the
+  supervisor that filed the backlog items in cycle 69 shares the blame.** Both items, the
+  worker's entry, the `lib/tap-guard.ts` header, the `/survey` comment and the regression-46
+  header said a duplicate inflated a conversion rate. It cannot: `summarizeFunnel`
+  (`lib/funnel.ts`) builds every step as a `Set` of session ids, and every rate and the
+  cumulative `funnelDropoff` are built on those sets, so a second event in the same session
+  was already counted once. The real costs are the second tab, the second `/api/out`
+  request, the second `recordCareIntent` row on `/care` (the count `/privacy` shows), and
+  the raw `events` total. All five texts now say that; the backlog items carry a dated
+  correction. The fix is still worth having for the tab and the click log. **(2) A clock
+  that steps backwards blocked a deliberate tap.** `createTapGuard` read `Date.now()`, so
+  after an NTP correction or a manual clock change the accepted timestamp sat in the future,
+  `now - previous` was negative, and a negative age read as inside the window. The guard
+  then suppressed the link for the size of the step plus the window. Reproduced with fake
+  timers (clock stepped back 5 s, deliberate tap 2 s later: `expected true to be false`).
+  Fixed by treating a negative age as outside the window. Pinned by "does not suppress a
+  tap after the wall clock steps backwards" in `tests/tap-guard.test.ts`. With the guard
+  restored to the worker's version the file gives `Tests 1 failed | 9 passed (10)`; with
+  the fix it gives `Tests 10 passed (10)`; `sha256sum -c` on the restored file printed
+  `lib/tap-guard.ts: OK`. Rotation re-checked independently: `comm -23` of `sort -u` over
+  both files at `9f22788` against the final tree drops 4 lines, and all 4 are edits to
+  the two backlog bullets this cycle ticked: their first lines, where `- [AI]` became
+  `- [x] [AI]`; the merchant item's second line, which gained the "Fixed" pointer; and its
+  `await. Noted 2026-10-03.` line, which this review extended with the correction. Gate on the final tree with both corrections: `npm run smoke`
+  gives `Test Files 124 passed (124) / Tests 1127 passed (1127)`, **344 passed (12.0m)** and
+  **Smoke test passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`.
+  `python3 ml/selftest.py` prints **OK**. Ports 3100–3109: none listening.
+
 - 2026-10-03 (cycle 69) — Branch `autopilot/2026-10-03-0039`. **A visitor whose browser
   refuses `sessionStorage` can now finish the funnel. `/survey`'s submit wrote the answers
   with `sessionStorage.setItem` and, on a throw, showed "설문을 저장하지 못했어요…" and
@@ -2486,194 +2616,4 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening.
-
-- 2026-10-02 (cycle 66) — Branch `autopilot/2026-10-02-0639`. **A stored answer that is
-  not one of the values the screen offers no longer becomes state. On `/survey` an
-  out-of-enum `type` and `category` used to restore invisibly — no chip pressed, because
-  nothing in the rendered list equals the value — while `ready` counted both fields, so
-  submit was ENABLED and the submit wrote the pair through to `/report`, whose picks step
-  then read `앰플 · 0개` with **0** `/api/out` links. Both are now dropped and submit is
-  DISABLED. The same rule covers `/survey`'s draft restore and `/checkin`'s draft, where
-  an off-scale 만족도 left 기록하기 enabled over a question showing no pressed pill.
-  `isSurvey` in `lib/recommend.ts` is untouched: `git diff a0438a3 -- lib/recommend.ts`
-  prints nothing.**
-
-  **Reproduced first, with numbers, on a production build.** `next build` + `next start`
-  on port **3107**, 360x800, one browser context per case, `window.open` replaced by a
-  collector in every one so no merchant link could be followed (**0** calls in all four
-  cases, before and after). `gyeol_survey` seeded, then the picks step reached by the
-  stored step key. Before:
-  - `{"type":"초지성", …,"category":"앰플"}` — pressed chips **2** (유분, 2만원), submit
-    **ENABLED**, draft rewritten to carry both non-members. After the submit,
-    `/report`'s picks step: `앰플 · 0개`, **0** `a[href^="/api/out"]`, **6** `main a`, and
-    the `report-picks-empty` section rendered (**1**).
-  - `{…,"budget":1234}` — pressed **3**, no 예산 chip pressed, submit **ENABLED**, and
-    `/report` scored `세럼 · 3개` with **4** `/api/out` links against a band no chip
-    offers.
-  - `{…,"concerns":["우주고민","유분"]}` — pressed **4**, and the non-member rode through
-    the submit into `gyeol_survey` and on to `/report`.
-  - Valid control `{"type":"지성","concerns":["유분"],"budget":29000,"avoid":[],"category":"세럼"}`
-    — pressed **4**, enabled, `세럼 · 3개`, **4** `/api/out` links, **9** `main a`.
-
-  After, same four seeds on the same kind of build: the first two leave submit
-  **DISABLED** (`필수 항목 1/3` and `2/3`) with the bad fields `null` in the draft; the
-  third keeps `["유분"]` and stays submittable, because 고민 is optional so the valid part
-  of the answer is a complete answer; the control is unchanged in every number above.
-
-  **The fix, and where it lives.** Two pure helpers in a new `lib/stored-option.ts` —
-  `storedOption` returns the value if it is in the list it is given, else `null`;
-  `storedOptions` filters an array to its members and returns `null` only for a non-array,
-  so a cleared optional group still restores as `[]`, which cycle 64's `hintFor` rule
-  depends on. Neither holds a list of its own: the caller passes the array its own chips
-  are rendered from, so there is no second copy to drift. `/survey`'s two restore paths
-  now go through one `applyStoredAnswers`, so the submitted survey and the draft cannot be
-  guarded differently, and `BUDGET_WONS` is `BUDGETS.map((b) => b.won)` rather than the
-  five numbers written out again. `/checkin` hoists its 만족도 options to `SAT_OPTIONS`,
-  which both `Seg` and the guard read, and its `trouble`/`repurchase` keep the
-  `typeof === "boolean"` they already had — `boolean` IS their option list, both members
-  rendered. Nothing about what is saved, when it is saved, or any copy changed; `hintFor`
-  and the `key={active}` remount are untouched.
-
-  **One consequence worth stating rather than hiding.** The budget rule drops a value that
-  an older build could legitimately have written: the comment above `BUDGETS` records that
-  the chips used to store band MIDPOINTS and now store ceilings, so a visitor who
-  submitted before that change has a `30000` in `sessionStorage`. Before this cycle their
-  budget chip already showed nothing; now submit is disabled until they tap a band, and
-  `필수 항목 n/3` says so. That is one extra tap for a returning visitor, against a report
-  silently scored on a band they cannot see or change. Two existing specs carried exactly
-  that fixture and went red on it —
-  `tests/e2e/conversion-path-accessibility.spec.ts:93` and
-  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts:318`, **2 failed** in the first
-  gate run — and their seeded budget is now `29000`, the 2만원 chip's own ceiling, with a
-  comment saying why. Neither spec asserts anything about the band; both are about CTA
-  contrast and the report step.
-
-  **Pinned, in a new spec and a unit file.**
-  `tests/e2e/stored-answers-membership.regression-43.spec.ts` is **8** cases: the two
-  disabled-submit cases, the dropped concern, the valid control through to `/report`'s
-  **4** merchant links, a draft whose five fields are all non-members over a good
-  submitted survey, the off-scale 만족도, a non-boolean 트러블, and a valid `/checkin`
-  draft. `tests/stored-option.test.ts` is **7** unit cases on the two helpers, including
-  the `-0`/`0` edge SameValueZero allows (no option list either screen passes in contains
-  `0`, so nothing on the funnel reaches it; it is pinned so a future list that does is a
-  deliberate decision).
-
-  **Proved live by breaking each half once**, each on its own clean production build with
-  the port asserted free first, all against the final 8-case spec:
-  - **Break 1**, `storedOption` dropped from `type`, `category` and `budget` back to the
-    old truthiness/`typeof`: **3 failed** / **5 passed (8)** — both disabled-submit cases
-    at `toBeDisabled()`, plus the draft case.
-  - **Break 2**, `storedOptions` dropped from `concerns` and `avoid` back to a bare
-    `Array.isArray`: **2 failed** / **6 passed (8)** — the dropped-concern case and the
-    draft case.
-  - **Break 3**, `/checkin`'s `storedOption(SAT_VALUES, …)` back to
-    `typeof draft.sat === "number"`: **1 failed** / **7 passed (8)** at
-    `toBeDisabled()`.
-  - All three reverted from copies taken before the breaks; `sha256sum -c` printed `OK`
-    for `app/survey/page.tsx`
-    (`ab8a9fa60ca82a219b44cc55e5e771147ab4fcfef99a937798e06dc7ecb1eb69`),
-    `app/checkin/page.tsx`
-    (`8b9de544d22b5163dd4650b458405d0482827eb768c692c3c80a0697703da02a`) and
-    `lib/stored-option.ts`
-    (`e1f409e141d960c6645d4abe6580e3c33d341a972aa169c117234a390363cc72`).
-  - `regression-40` (**6**) and `regression-42` (**2**) pass unchanged next to the new
-    spec: **16 passed** in one run before the fixture edit, **26 passed** with the two
-    edited specs added after it.
-
-  **Two measurement hazards, recorded because both produced a wrong number first.**
-  Break 3's first run read **7 passed** — the case did not catch the break at all, because
-  its seed paired the off-scale `sat` with a non-boolean `trouble`, so the card was
-  unsaveable for the other field's sake. The seed is now `{sat: 7, trouble: false,
-  repurchase: true}`, where the off-scale value is the only thing between the card and an
-  enabled 기록하기, and breaks 1 and 2 were re-measured against that final spec. Earlier
-  still, a break-1 run read **5 failed** / **2 passed** because `next build` overwrote
-  `.next` under a `next start` that was still serving it: three cases failed with the page
-  un-hydrated and rendering in `en`, which is the same class of false result
-  `playwright.mobile.config.ts` already documents for `reuseExistingServer`. Every break
-  number above comes from a build made with the port verified free.
-
-  **Research / ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and
-  is green (below).
-
-  **What this does NOT establish.** It does not make a stored survey trustworthy — only
-  that `/survey` will not render one as answered when it is not. `/report` and `/care`
-  still read `gyeol_survey` through `isSurvey` alone, deliberately: a visitor who never
-  passes through `/survey` can still land on a report built from a non-member category,
-  and the empty-picks branch is what handles it. Nothing is filed against `isSurvey`,
-  because a membership test there would break the state `tests/survey-shape.test.ts`
-  pins. A membership check is also not a version check: a value that IS a member but
-  meant something different in an older build still restores, and the `30000` case above
-  is the one instance of that class this cycle found. The guard is per field and silent —
-  no copy was added, so a visitor whose every stored answer is dropped sees a fresh
-  survey and only the `필수 항목 n/3` counter to say so. The chip assertions were measured
-  in `ko` only (the other locales are covered for their own cases by `regression-40` and
-  `regression-42`), on one container, in Chromium. `lib/consent.ts` is still the one
-  device-store read left deliberately unguarded, unchanged by this cycle, and nothing
-  about the affiliate blockers moved.
-
-  **Diff and rotation.** `git diff --stat a0438a3 -- app lib` is `app/checkin/page.tsx`
-  **16** and `app/survey/page.tsx` **52**, `2 files changed, 53 insertions(+), 15
-  deletions(-)`; `lib/recommend.ts`, `lib/commerce.ts`, `lib/consent.ts`,
-  `package.json` and `package-lock.json` are all untouched, and no dependency was added.
-  Rotation: cycle 63's entry moved verbatim to the end of
-  `docs/autopilot-changelog.md` after cycle 62 — **145** lines out of
-  `docs/AUTOPILOT.md` (**2584** → **2438** before the new writing, the extra line being
-  the blank separator) and **145** plus a blank separator appended to the changelog
-  (**13819** → **13965**). `diff` of the appended block against the extracted block
-  reports no difference, and `comm -23` over `sort -u` of both files at `a0438a3` against
-  this pair drops **0** lines. One line beyond the brief's docs list: the `[~]` backlog
-  item on unchecked `JSON.parse` reads gained an append-only 2026-10-02 note, the way
-  cycle 32 appended to it, because this cycle is the same class one layer up and a cycle
-  that reads only that item would otherwise re-derive it. No existing line in it was
-  edited, which is why `comm -23` still drops **0**.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` —
-  `Test Files  122 passed (122)` / `Tests  1107 passed (1107)`, **329 passed (9.6m)**,
-  `Ran 146 tests in 1.814s` **OK**, **Smoke test passed.**, exit **0**. The vitest suite
-  went from the supervisor's **121** files / **1100** tests on `a0438a3` to **122** /
-  **1107**, which is the one unit file and the **7** cases this cycle added and nothing
-  else; the Playwright suite went from **321** to **329**, which is the **8** cases in
-  `regression-43` and nothing else. The three below were each run on their own after every
-  doc edit but the one that wrote these numbers in: `npx tsc --noEmit | grep -c "error
-  TS"` **13**; `npx eslint .` `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing
-  `_reads` / `_result` at `lib/care.ts:70`); `python3 ml/selftest.py`
-  `Ran 146 tests in 1.790s` **OK**. `tests/stored-option.test.ts` alone is **7 passed**.
-  An earlier gate run on this same code, before the two fixture edits, read **2 failed** /
-  **327 passed** — the two specs named above — so the **329** is the first clean one and
-  the failure it replaced is recorded rather than dropped. `git diff --stat a0438a3 --
-  app lib tests` is `app/checkin/page.tsx | 16 ++`, `app/survey/page.tsx | 52 ++`,
-  `tests/e2e/conversion-path-accessibility.spec.ts | 6 ++`,
-  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts | 6 ++`,
-  `4 files changed, 63 insertions(+), 17 deletions(-)`, the three new files being
-  untracked until the commit. Ports 3100–3109 and 3017: none listening afterwards;
-  `git status` carries only this cycle's files. What the smoke run does not cover: this
-  paragraph, written after it — `npx tsc --noEmit`, `npx eslint .` and
-  `python3 ml/selftest.py` were each re-run after it and still give **13**, `0 errors` and
-  **OK**.
-
-  *Supervisor review:* sound, merged.
-  - **Scope of the product change.** The diff touches only `app/survey/page.tsx`,
-    `app/checkin/page.tsx` and a new pure `lib/stored-option.ts`. `isSurvey`, what is
-    saved, and the `hintFor` rule are unchanged; `regression-40` passes unedited.
-  - **The two fixture edits (30000 → 29000) are justified.** `grep` finds exactly one
-    writer of the submitted survey, `app/survey/page.tsx:200`. It writes a chip's `won`,
-    and `won: 29000` has been the 2만원 ceiling since `7419b54`, so no chip has ever
-    produced 30000.
-  - **Independent reproduction.** On this tree, `stored-answers-membership.regression-43`,
-    `survey-draft-lang-switch.regression-40` and `checkin-draft-lang-switch.regression-42`
-    together gave **16 passed (1.4m)**; `tests/stored-option.test.ts` gave **7 passed**.
-  - **A break the worker did not try.** I made `storedOptions` return the array
-    unfiltered, so non-member concerns or avoids are carried into state. Results:
-    unit **3 failed | 4 passed (7)**; e2e **2 failed**, one reading
-    `a non-member ingredient is filtered out, not carried`. I then restored the file and
-    `sha256sum -c` printed `OK` for all three product files.
-  - **Rotation.** `comm -23` drops **0** lines.
-  - **Gate on this tree:**
-    - `npm run smoke`: `Test Files 122 passed (122) / Tests 1107 passed (1107)`,
-      **329 passed (11.7m)**, **Smoke test passed.**
-    - tsc: **13**.
-    - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-    - `python3 ml/selftest.py`: **OK**.
-    - Ports 3100–3109: none listening.
 
