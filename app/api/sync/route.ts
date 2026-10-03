@@ -100,15 +100,15 @@ export async function POST(request: Request) {
   if (
     !payload ||
     !SYNC_SCHEMA_VERSIONS.includes(payload.schemaVersion) ||
-    !Array.isArray(payload.labels) ||
-    !Array.isArray(payload.cropSamples) ||
-    !Array.isArray(payload.pilotNotes) ||
-    !Array.isArray(payload.consentEvents) ||
+    !rowArray(payload.labels) ||
+    !rowArray(payload.cropSamples) ||
+    !rowArray(payload.pilotNotes) ||
+    !rowArray(payload.consentEvents) ||
     // Optional since v2, and therefore the one array in the payload that was never
     // type-checked. `funnelEvents ?? []` accepts any truthy value, and a string gets
     // as far as `.length` before `.map` throws — an uncaught TypeError, i.e. a 500
     // where every other malformed array is a 400.
-    (payload.funnelEvents !== undefined && !Array.isArray(payload.funnelEvents))
+    (payload.funnelEvents !== undefined && !rowArray(payload.funnelEvents))
   ) {
     return Response.json(result(false, ["Unsupported or missing sync payload."]), { status: 400 });
   }
@@ -248,6 +248,32 @@ export async function POST(request: Request) {
     warnings,
     errors,
   } satisfies SyncResult, { status: errors.length ? 207 : 200 });
+}
+
+/**
+ * An array of rows, every element a plain object.
+ *
+ * `Array.isArray` was the whole check, and every element is then read field by field —
+ * `sample.meta`, `event.kind`, `note.participant`. A `null` element reaches that read
+ * and throws where nothing catches it, so `cropSamples: [null]` and
+ * `consentEvents: [null]` each answered 500 while every other malformed payload
+ * answers 400. It fires on the `dryRun` preflight, which is the request an operator
+ * sends precisely to find out whether the real sync will work, and the 500 body is
+ * empty — so the screen that reports it has nothing to report.
+ *
+ * Reachable without anyone hand-writing a body: `/ops` builds these five arrays
+ * straight out of `localStorage`, and the getters do not check elements either
+ * (`getCropSamples` in `lib/crops.ts` returns `parsed as CropSample[]`, and
+ * `getConsentEvents` in `lib/consent.ts` returns `JSON.parse(...)` as-is). One corrupt
+ * stored row is enough.
+ *
+ * A non-object element is refused rather than tolerated, which is a deliberate change
+ * from the old behaviour for the elements that did NOT throw: `cropSamples: ["x"]` used
+ * to answer 200 and count towards `counts.cropSamples`, having no field the route could
+ * use and no chance of being uploaded. Counting it was the bug's quieter half.
+ */
+function rowArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((row) => Boolean(row) && typeof row === "object" && !Array.isArray(row));
 }
 
 function validatePayload(payload: GyeolSyncPayload) {

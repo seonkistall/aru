@@ -1702,6 +1702,20 @@ partly done and stays here.
   stays open for exactly the reason it was opened. The duplicate is merged into this
   one, which is the other thing that kept it from being read.
   `docs/melanin-index-verification.md` §4.
+- [AI] `/api/sync`'s crop upload builds its storage key from `new Date(sample.ts)
+  .toISOString()` (`app/api/sync/route.ts`, in `uploadCropSamples`), and nothing checks
+  that `sample.ts` is a finite number. `new Date(undefined).toISOString()` throws
+  `RangeError: Invalid time value`, so a crop row with a missing or non-numeric `ts`
+  would answer 500 for the same reason cycle 71 fixed on the preflight — except this one
+  is past the preflight, on the write path. `retentionUntil` in the same file already
+  guards the same field (`Number.isFinite(ts) ? ts : Date.now()`), so the asymmetry is
+  within one function's reach of itself. The other half of the same line is `sample.id`,
+  which goes into the object path unvalidated: `id: "../x"` would place the object
+  outside `pilot-crops/<date>/`. **Found by reading, NOT reproduced**, and that is why it
+  is filed instead of fixed: the path needs `SUPABASE_CROP_BUCKET` set, a live Supabase
+  storage client and a crop row that passes `hasCropConsent`, none of which this
+  container can reach, and cycle 71's brief forbids pushing a fix it cannot prove. A
+  cycle that can stub `getSupabaseAdmin` should pin both halves. Noted 2026-10-03.
 - [OWNER] Google Play Console identity, payment account, support email, App Signing.
 
 ## Blockers
@@ -2135,6 +2149,148 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-03 (cycle 71) — Branch `autopilot/2026-10-03-1240`. **A bounded bug hunt over
+  every route under `app/api/`. Five hypotheses tested, one confirmed, one fixed, one
+  filed. The confirmed defect: `/api/sync` answered **500** with an empty body for a
+  payload array whose ELEMENTS were malformed, where every other malformed payload
+  answers 400. The earlier fix in the same gate checked that each of the five arrays IS an array;
+  nothing checked what was in one, and the route then reads every element field by field.
+  `cropSamples: [null]` reaches `sample.meta` in `hasCropConsent` and `consentEvents:
+  [null]` reaches `event.kind` in `latestConsentGranted` — two distinct uncaught throws.
+  It fires on the `dryRun` preflight, which is the request an operator sends to find out
+  whether the real sync will work, and before any write, so no row was ever at risk. It
+  needs no hand-written body: `/ops` builds the five arrays straight out of
+  `localStorage` and the getters do not check elements either — `getCropSamples`
+  (`lib/crops.ts`) returns `parsed as CropSample[]`, `getConsentEvents` (`lib/consent.ts`)
+  returns `JSON.parse(...)` as-is — so one corrupt stored row is enough. Fixed with one
+  helper, `rowArray`, replacing the five `Array.isArray` calls in the gate that already
+  returns 400. The tracked diff over `app` and `lib` is **31** insertions and **5**
+  deletions in **1** file, `git diff -U0 -- app lib | grep -c 't("'` over the changed
+  lines is **0**, and nothing outside `app/api/sync/route.ts` changed in `app` or `lib`.**
+
+  **Reproduced first on a production build.** `next build` + `next start` on port
+  **3100** for `c87deb6`, port **3101** for the fix. `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SYNC_TOKEN` set to throwaway local values —
+  the `dryRun` branch returns before `getSupabaseAdmin()` is called, so no Supabase,
+  OpenAI, Gemini, Resend or merchant was contacted in either direction.
+  `OPENAI_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `CRON_SECRET`,
+  `UNSUBSCRIBE_SECRET` and `SUPABASE_CROP_BUCKET` left unset throughout, which is what
+  put every LLM and email route on its no-key path.
+
+  Before, on a build of `c87deb6`:
+  - `cropSamples: [null]` — **500**, an empty body, server log
+    `⨯ TypeError: Cannot read properties of null (reading 'meta')`.
+  - `cropSamples: [{}]` with `consentEvents: [null]` — **500**, server log
+    `⨯ TypeError: Cannot read properties of null (reading 'kind')`,
+    `at Array.filter (<anonymous>)`.
+  - `cropSamples: ["x"]` — **200**, and `counts.cropSamples` **1**. The bug's quieter
+    half: a string has no field the route can use and no chance of being uploaded, and
+    it was counted anyway.
+
+  After, the same seven bodies against a clean production build of the fix:
+  `cropSamples: [null]` **400**, `consentEvents: [null]` **400**, `cropSamples: ["x"]`
+  **400**, `funnelEvents: "abc"` **400**, `funnelEvents: [null]` **400** — all five with
+  `errors: ["Unsupported or missing sync payload."]`; `cropSamples: [{}]` **200** with
+  `counts.cropSamples` **1** and the all-empty payload **200**, which are the two that
+  had to keep working. `grep -c TypeError` over that server's whole log: **0**.
+
+  **Pinned** in `tests/api-json-boundaries.test.ts`, the file that already owns this
+  defect class — **12 passed (12)** on the fixed tree. Five new cases: four that a
+  malformed element is a 400 (`cropSamples: [null]`, `consentEvents: [null]`,
+  `cropSamples: ["x"]`, `funnelEvents: [null]`) and one that `[{}]` in all five arrays
+  is still a 200. The last is not decoration: an empty object has no field the route can
+  throw on, and refusing it would be a different rule than the one this fixes.
+
+  **Broken on purpose, then reverted.** `git checkout app/api/sync/route.ts` with the
+  new tests in place gives **Tests 4 failed | 8 passed (12)** — the four malformed-element
+  cases and only those; the `[{}]` test passes on the broken code too, which is what it
+  is for. Reverted from a copy taken before the break, and `sha256sum` over the two
+  changed source files printed the same two digests before and after:
+  `app/api/sync/route.ts`
+  `f2a63d5dacdd4fa2701e9675f01c4c6fc948a9a54b3dc992588cc12dd4ecaca8`,
+  `tests/api-json-boundaries.test.ts`
+  `ebae4cfde61418a564d1ee6f0ab1662d53db2b97c9911307456484a524ba38bc`.
+
+  **Refuted, one line each.**
+  - **`/api/out` cannot redirect off `ALLOWED_HOSTS`, 500, or inject a header.** All
+    **88** combinations (**22** sku ids × **4** merchant ids) returned 302 to one of
+    exactly the **4** allowlisted hosts, **22** per host; unknown sku, unknown merchant,
+    `sku=../../evil` and no params at all gave **404**; `placement=a%0d%0aX-Injected:%201`
+    came back as `utm_content=a%0D%0AX-Injected%3A+1_cl1_oliveyoung` inside the `Location`
+    value with no injected header in the response; a duplicated `sku`/`merchant`, a
+    percent-encoded `merchant`, an empty `placement`, a 2000-character `placement` and an
+    absolute URL smuggled into `placement` all still went to oliveyoung. An unknown
+    `placement` is NOT unescaped — `URLSearchParams.set` encodes it.
+  - **No allowlist bypass in `isAllowedCommerceUrl`.** **13** URL shapes checked against
+    `new URL().hostname` (userinfo `@`, `:443@`, `#`/`?` suffixes, a sibling domain,
+    `http:`, `javascript:`, a bare `//`, punycode, backslashes): the only two that parse
+    to an allowlisted hostname are `https://WWW.COUPANG.COM/x` and
+    `https://www.coupang.com\@evil.example/`, and both genuinely ARE coupang — WHATWG
+    lowercases the host and treats `\` as `/` in a special scheme, so the `@evil.example`
+    lands in the path.
+  - **No token or secret check passes open on an unset env var.** **10** auth probes with
+    `CRON_SECRET`, `UNSUBSCRIBE_SECRET` and `RESEND_API_KEY` unset — including
+    `Authorization: Bearer undefined`, `Bearer ` and a bare `Bearer` — gave 401 on
+    `/api/reengage` and `/api/reengage/run`, 503 on `/api/reengage/unsubscribe` and 401
+    on `/api/sync` POST; not one returned 200. The two unauthenticated status GETs
+    (`/api/sync`, `/api/funnel`) returned 200 carrying only env booleans and the limiter
+    numbers, with no `commerceOverrides` and no `aggregate` field. `cronAuthorized` and `hasValidSyncToken` both return false on a
+    missing secret before any compare, and `getSyncToken` additionally requires **32**
+    characters, so `"" === ""` is unreachable.
+  - **Every route that spends money or writes has a limiter or a token.** `/api/reason`
+    and `/api/analyze`: origin guard then `createRateLimiter({ max: 10 })`. `/api/sync`
+    POST: token then `max: 12`. `/api/funnel` POST: origin guard then `max: 20`.
+    `/api/reengage/subscribe`: `max: 5`. `/api/reengage` and `/api/reengage/run`:
+    `cronAuthorized`. `/api/out` spends nothing and writes nothing.
+  - **No oversized, non-JSON or wrong-typed body produces a 500 on any route but
+    `/api/sync`.** **28** malformed bodies (non-JSON, empty, `null`, an array, a string, a
+    number, 200-deep nesting) across `/api/reason`, `/api/analyze`, `/api/funnel` and
+    `/api/reengage/subscribe` all returned 4xx. The size caps bite before the LLM call:
+    a **60792**-byte reason body gave **413** against its 32768 cap and a **2200041**-byte
+    analyze body gave **413** against its 2100000 cap, both from `readBoundedJson`, which
+    runs before the provider `fetch`. 9 reason items gave 400 against the cap of 8; 101
+    funnel events gave 400 against the cap of 100.
+  - **`efficacyClean()` is on every path that returns LLM text.** `/api/analyze` filters
+    `payload.narrative` with it directly; `/api/reason` filters each candidate with
+    `reasonClean`, whose first line is `if (!efficacyClean(candidate).ok) return false`.
+    The three non-LLM paths (no key, filter rejected, catch) return `item.fallback`, which
+    is the caller's own string and is itself `efficacyClean`-guarded where it is generated
+    — `lib/recommend.ts`'s `reasonFor` rewrites the reason when the check trips. There is
+    no cache in either route.
+  - **No env value or stack trace reaches a response body.** The **4** `NEXT_PUBLIC_`
+    names in `app` and `lib` are `NEXT_PUBLIC_COMMERCE_AFFILIATE`,
+    `NEXT_PUBLIC_FUNNEL_FLUSH`, `NEXT_PUBLIC_SUPABASE_URL` and
+    `NEXT_PUBLIC_VISIBLE_ATTR_MODEL` — no secret among them. The six secret names appear
+    in client-reachable files only as comment text and as the literal string in the
+    `/ops` token field's `placeholder=` and two of its labels, never a value. The only `error.message` that reaches a body is a
+    Supabase `PostgrestError` behind the sync token. The 500 this cycle fixed had an empty body.
+
+  **Filed, not fixed.** `uploadCropSamples` builds its storage key from
+  `new Date(sample.ts).toISOString()` with no finiteness check, while `retentionUntil`
+  five lines away guards the same field, and `sample.id` goes into the object path
+  unvalidated. Found by reading and NOT reproduced — the path needs
+  `SUPABASE_CROP_BUCKET` and a live storage client — so it is an open `[AI]` backlog item
+  rather than a speculative push.
+
+  **Research / ML: skipped,** as the brief said.
+
+  **Rotation:** cycle 67's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 66. `sort -u` over
+  both files at `c87deb6` against `sort -u` over both files immediately after the move:
+  `comm -23` drops **0** lines and `comm -13` adds **0**.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 124 passed (124) / Tests 1132 passed (1132)`,
+    **344 passed (10.2m)**, **Smoke test passed.** (The baseline on `c87deb6` was
+    `124 (124)` / `1127 (1127)` and **344**; the delta is this cycle's **5** new cases in
+    an existing file, so the file count and the e2e count are unchanged.)
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.646s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* pending.
+
 - 2026-10-03 (cycle 70) — Branch `autopilot/2026-10-03-0639`. **One double-tap now counts
   once on all four funnel surfaces that could double it. What a duplicate cost: a second
   merchant tab, a second `/api/out` request, a second care-intent row on `/care` (the click
@@ -2435,185 +2591,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening.
-
-- 2026-10-02 (cycle 67) — Branch `autopilot/2026-10-02-1239`. **The scan hint on `/survey`
-  no longer claims a selection it did not make. The sentence "사진에서 확인한 {signals}
-  항목을 먼저 선택했어요" is unconditional; the pre-selection behind it was
-  `setConcerns((prev) => (prev.length ? prev : hint.concerns))`, which fills an EMPTY list
-  only. So a visitor with a submitted survey — the one `/report`'s scan nudge sends to
-  `/scan` and back — read that the photo's concerns were selected over chips that showed
-  none of them, on the step before the report. The hint now ADDS its concerns to the list,
-  the visitor's own answers first and in their order, and nothing twice. Cycle 64's
-  `hintFor` rule is untouched, so a deliberately cleared list stays cleared;
-  `survey-draft-lang-switch.regression-40` passes UNEDITED. No copy changed:
-  `git diff b1aa148 -- lib` prints nothing, and the diff is **21** insertions and **9**
-  deletions in one file.**
-
-  **Reproduced first, with numbers, on a production build.** `next build` + `next start` on
-  port **3105** with the port verified free first, 360x800, one browser context per case,
-  `window.open` replaced by a collector in every one (**0** calls in all three cases, before
-  and after). `gyeol_survey` seeded with
-  `{"type":"건성","concerns":["건조"],"budget":29000,"avoid":[],"category":"세럼"}`, whose one
-  concern is disjoint from anything the readings flag, and `gyeol_scan` with a reading that
-  passes `isScanReads` and `shouldApplyScan`. The signals were parsed back out of the
-  rendered sentence rather than assumed. Before:
-  - `{"oil":3,"redness":0,"pores":0,"confidence":0.9}` — the sentence named **1** signal
-    (유분); pressed chips **4** (세럼, 건성, 건조, 2만원); named but NOT pressed **1** (유분).
-    Draft `concerns` `["건조"]`, `hintFor` `"유분"`.
-  - `{"oil":3,"redness":2,"pores":2,"confidence":0.9}` — named **3** (유분·붉은기·모공);
-    pressed the same **4**; named but NOT pressed **3**. Draft `concerns` `["건조"]`,
-    `hintFor` `"유분,붉은기,모공"`.
-  - Control, the same three-signal reading over a submitted survey whose `concerns` is `[]`
-    — named **3**, pressed **6**, named but not pressed **0**, draft
-    `["유분","붉은기","모공"]`. This is the path the old form did cover, and it is what the
-    fix had to leave alone.
-
-  After, same three seeds on a clean production build made with the port verified free: the
-  first case presses **5** chips with draft `["건조","유분"]`, the second **7** with
-  `["건조","유분","붉은기","모공"]`, and in both the count of signals named but not pressed is
-  **0**. The control is unchanged in every number above — **3** named, **6** pressed, **0**
-  missing, the same draft.
-
-  **The fix, and the one line it is.** `app/survey/page.tsx`, inside the same
-  `draft?.hintFor !== signature` guard cycle 64 added:
-  `setConcerns((prev) => [...prev, ...hint.concerns.filter((concern) => !prev.includes(concern))])`.
-  The visitor's list keeps its order and its head, which is what the draft above shows
-  (`["건조","유분"]`, not `["유분","건조"]`). It is also the set `/report` already scores on:
-  `effectiveConcerns` (`lib/recommend.ts:162`) unions the identical three signals at the
-  identical thresholds into `survey.concerns` through a `Set`, so the screen was out of step
-  with the report as well as with its own sentence. `shouldApplyScan`, the thresholds, what
-  `blemishCount`/`toneSpread` report, `lib/consent.ts`, the `key={active}` remount and every
-  string are untouched.
-
-  **The cap: there is none, so nothing to respect.** `grep -rn "concerns" app lib` filtered
-  to `slice|\.length (>|>=|<|<=) [0-9]|MAX_CONCERN` returns exactly **3** lines, and all
-  three are display truncations downstream of the selection, not caps on it:
-  `app/report/page.tsx:238` (`concernText`, first two for the 추천 기준 sentence),
-  `lib/guides.ts:157` and `lib/recommend.ts:216` (the first two matched concerns in a
-  product reason). The chips themselves go through `toggle`, which is unbounded, and
-  `isSurvey` checks `Array.isArray(survey.concerns)` and no length. So the union can at most
-  add the **3** concerns the hint can ever name, and at 12 chips the widest possible list is
-  within what the UI already allows a visitor to tap by hand.
-
-  **Pinned in a new spec.** `tests/e2e/scan-hint-union.regression-44.spec.ts` is **3** cases:
-  the one-signal and three-signal hints over the disjoint submitted survey, each asserting
-  that every signal the rendered sentence names is pressed AND that the visitor's own 건조
-  and three required answers are still pressed and submit still enabled, plus a third case
-  that the absorbed hint is not re-applied on the next mount — the visitor taps one hint
-  concern off, remounts, and it stays off while the other two and 건조 stay on. The draft is
-  asserted for order (`concerns[0]` is 건조), for no duplicate (`new Set(...).size`) and for
-  `hintFor`.
-
-  **Proved live by breaking the fix once.** The union reverted to the old
-  `prev.length ? prev : hint.concerns`, on its own clean production build, against the final
-  spec plus `regression-40`: **3 failed** / **6 passed (48.2s)** — all three new cases, and
-  all six of `regression-40` still passing, which is the point: `regression-40` was written
-  against the old form and cannot see this defect. With the fix in, the same nine are
-  **9 passed (44.8s)**. Reverted from a copy taken before the break; `sha256sum -c` printed
-  `OK` for `app/survey/page.tsx`
-  (`8744f34d4b86c51f9e6d456696803c466961c3be6e50c30444feab2215905a45`) and
-  `tests/e2e/scan-hint-union.regression-44.spec.ts`
-  (`ae30f25d1f45854bffbf17df46e16527e3e3504e7c93c98b5a7caecdda3b82b2`).
-
-  **Research / ML:** both skipped, as the item said. `python3 ml/selftest.py` was still run
-  and is green (below).
-
-  **One consequence worth stating rather than hiding.** A visitor who now submits from this
-  screen submits the wider list, so `gyeol_survey.concerns` carries the hint's concerns and
-  `/report`'s 추천 기준 sentence reads them back through `concernText`
-  (`app/report/page.tsx:238`, the first two). Measured on the fixed build, submitting the
-  one-signal case: the stored survey became
-  `{"type":"건성","concerns":["건조","유분"],"category":"세럼","budget":29000,"avoid":[]}`
-  and the sentence read `피부 타입 건성, 고민 건조·유분, 예산 2만원을 함께 고려했어요. 이 조건에
-  가까운 세럼 제품을 최대 세 개 보여드릴게요.` On a build of `b1aa148` made for the comparison,
-  from the same seeds, it stored `["건조"]` and read `고민 건조`. Both runs served **4**
-  `a[href^="/api/out"]` on that step and **0** `window.open` calls, so the picks did not
-  move — `effectiveConcerns` was already unioning the same signals, and what changed is that
-  the screen, the stored answer and the report now agree about what was selected. The
-  `survey_completed` funnel event's `concerns` count widens with the list for the same
-  reason; `NEXT_PUBLIC_FUNNEL_FLUSH` stays unset, so nothing leaves the device either way.
-
-  **What this does NOT establish.** The hint TEXT is still unconditional, which cycle 64
-  decided on purpose and this cycle kept: once the visitor edits the list, the sentence can
-  again name a signal that is not pressed — the third case in `regression-44` asserts exactly
-  that state, because the sentence invites the edit ("내 느낌과 다르면 바꿔주세요") and no copy
-  was in scope. Unticking a hint concern also does not reach `/report`:
-  `effectiveConcerns` re-unions it from `gyeol_scan` on every render, so the chip is the
-  visitor's record of their own answer and not a veto over the reading. Nothing was changed
-  about `shouldApplyScan`, the three thresholds, or the hint's two other sentences (the
-  low-confidence one and the no-signal one), and neither of those paths is in the new spec —
-  they pre-select nothing, so they cannot have this defect. Measured in `ko` only, in
-  Chromium, on one container; the other locales are covered for their own cases by
-  `regression-40`. Nothing about the affiliate blockers, the consent streams or the manifest
-  gate moved.
-
-  **Diff and rotation.** `git diff --stat b1aa148 -- app lib` is `app/survey/page.tsx | 30`,
-  `1 file changed, 21 insertions(+), 9 deletions(-)`; `git diff b1aa148 -- lib package.json
-  package-lock.json` prints nothing, and no dependency was added. Rotation: cycle 64's entry
-  moved verbatim to the end of `docs/autopilot-changelog.md` after cycle 63 — **174** lines
-  out of `docs/AUTOPILOT.md` (**2637** → **2462**, the extra line being the blank separator)
-  and **174** plus a blank separator appended to the changelog (**13965** → **14140**).
-  `diff` of the appended block against the extracted block reports no difference, and
-  `comm -23` over `sort -u` of both files at `b1aa148` against this pair drops **0** lines —
-  **14429** unique lines on each side immediately after the move, and still **0** dropped
-  when the check was re-run with this entry written in.
-
-  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
-  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` —
-  `Test Files  122 passed (122)` / `Tests  1107 passed (1107)`, **332 passed (10.7m)**,
-  `Ran 146 tests in 2.020s` **OK**, **Smoke test passed.**, exit **0**. The vitest suite is
-  unchanged from the supervisor's **122** files / **1107** tests on `b1aa148`, because this
-  cycle added no unit file; the Playwright suite went from **329** to **332**, which is the
-  **3** cases in `regression-44` and nothing else. The three below were each re-run after the
-  doc edits: `npx tsc --noEmit | grep -c "error TS"` **13**; `npx eslint .`
-  `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing `_reads` / `_result` at
-  `lib/care.ts:70`); `python3 ml/selftest.py` `Ran 146 tests in 2.069s` **OK**. That re-run
-  also followed `npx vitest run tests/doc-links.test.ts`, **2 passed**, the one test that
-  reads these two docs — this entry adds no markdown link for it to check
-  (`grep -c "](\(\./\|docs/\|[a-z]\)"` over the entry is **0**).
-  `git diff --stat b1aa148 -- app lib tests docs` is `app/survey/page.tsx | 30`,
-  `docs/AUTOPILOT.md | 175 ------`, `docs/autopilot-changelog.md | 175 ++++++`,
-  `3 files changed, 196 insertions(+), 184 deletions(-)`, the new spec being untracked until
-  the commit. Ports 3100–3109 and 3017: none listening afterwards; `git status` carries only
-  this cycle's files. What the smoke run does not cover: the `/report` measurement above and
-  this paragraph, both written after it — the product file it ran against is byte-identical
-  to the pushed one, which `sha256sum -c` confirms
-  (`8744f34d4b86c51f9e6d456696803c466961c3be6e50c30444feab2215905a45`), and the only edits
-  since are to these two docs.
-
-  *Supervisor review:* sound, merged.
-
-  **Scope.** The product diff is one line of `setConcerns` logic in `app/survey/page.tsx`
-  plus its comment. `regression-40` is unedited.
-
-  **The comment's claim about `/report` checks out.** `effectiveConcerns`
-  (`lib/recommend.ts:162`) builds a `Set` from `survey.concerns` and adds 유분 / 붉은기 /
-  모공 under `shouldApplyScan`. `/report` was therefore already scoring on the union, and
-  `/survey` now shows the same set it is scored on.
-
-  **One consequence, recorded rather than fixed.** Take a visitor who deselects a
-  hint-added concern and submits. The submit clears the draft, so on a later visit
-  `hintFor` is unset and the hint adds that concern back on screen. This matches what
-  `/report` already does with the scan, so it makes the screen consistent with the
-  scoring rather than overriding a choice the scoring ever honoured.
-
-  **Independent reproduction.** On this tree, `scan-hint-union.regression-44`,
-  `survey-draft-lang-switch.regression-40` and `stored-answers-membership.regression-43`
-  gave **17 passed (1.8m)**.
-
-  **A break the worker did not try.** I replaced the union with the hint alone
-  (`setConcerns(() => [...hint.concerns])`), a plausible "make the sentence true" shortcut.
-  - Result: **3 failed**, **14 passed**, on `the submitted concern must still be pressed`
-    (twice) and `and so is the visitor's own concern`.
-  - The file was then restored from a copy, and `sha256sum -c` printed `OK`.
-
-  **Rotation.** `comm -23` drops **0** lines.
-
-  **Gate on this tree.**
-  - `npm run smoke`: `Test Files 122 passed (122) / Tests 1107 passed (1107)`,
-    **332 passed (12.7m)**, **Smoke test passed.**
-  - tsc: **13**.
-  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK**.
-  - Ports 3100–3109: none listening.
-
