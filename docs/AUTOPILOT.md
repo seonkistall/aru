@@ -288,7 +288,10 @@ partly done and stays here.
   affiliate blocker carries.
 
 - [AI] **A shared skin card carries no link back to ARU, and the comment above it says
-  it does.** `shareCardImage` (`app/components/share-card.tsx`) takes an optional
+  it does.** **Duplicate of the cycle 25 `shareUrl` item further down, which already
+  waits on the owner's choice in `docs/share-return-path-decision.md`; kept for the new
+  payload measurement and the `onShare` docstring correction (cycle 72 supervisor
+  review).** `shareCardImage` (`app/components/share-card.tsx`) takes an optional
   `opts.shareUrl` and, when it is set, adds `url` and an invite sentence to the
   `navigator.share` payload — "Include the deep link so the shared post carries a way
   back to aru (viral loop)". **No caller sets it.** `grep -rn "shareCardImage\|shareUrl"
@@ -2319,7 +2322,34 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.690s`).
   - Ports 3100–3109: none listening.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* merged, with two regressions in the fix closed first. Both are
+  paths the worker's spec did not walk, and on both the page was BETTER before the draft
+  existed. **(1) A preset tapped after typing froze in the language it was tapped in.**
+  `edited` stayed true across `applyPreset`, so the draft recorded the Korean preset and
+  handed it back on the switch to `en`: a Korean headline on an English card. Fixed by
+  making a preset reset `edited` and remove the draft, so the card is the build's copy
+  again and translates like an untouched one. **(2) A draft outlived the scan it was
+  typed over.** The draft holds the four read VALUES as well as the headline, so after a
+  new scan in the same tab `/studio` put the older scan's readings on the newer card,
+  which is the image that goes into a chat. Fixed by recording the scan in the draft
+  (`scanFor`, the prefill source as JSON, empty for a preset card). A draft is restored
+  only for the same scan, and is removed otherwise. Two cases added to
+  `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`. Against the worker's
+  `app/studio/page.tsx` the spec gave **2 failed | 2 passed (1.5m)**, with
+  `Received: "윤기가` for the preset case and `Received: "내 피부, 오늘은 최고"` against an
+  expected `"두 번째 스캔"` for the scan case. With the fix it gave **4 passed (42.3s)**,
+  and `sha256sum -c` on the fixed file printed `app/studio/page.tsx: OK` after the run.
+  **Also corrected:** the worker filed the share sheet's missing return link as a new
+  item; it duplicates the cycle 25 `shareUrl` item, which already waits on the owner. The
+  new item now says so and keeps only its new measurement. The worker's own session
+  summary claims two fixes, including `/privacy`'s delete confirmation; the branch fixes
+  `/studio` only, and its entry records the `/privacy` behaviour as not a defect, which
+  is right. Rotation re-checked independently: `comm -23` of `sort -u` over both files at
+  `6406dcd` against the final tree printed nothing. Gate on the final tree:
+  `npm run smoke` gives `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
+  **348 passed (12.4m)** and **Smoke test passed.** tsc gives **13**. eslint gives
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
+  Ports 3100–3109: none listening.
 
 - 2026-10-03 (cycle 71) — Branch `autopilot/2026-10-03-1240`. **A bounded bug hunt over
   every route under `app/api/`. Five hypotheses tested, one confirmed, one fixed, one
