@@ -2272,7 +2272,39 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.921s`).
   - Ports 3100–3109: none listening.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* merged after one fix, to a stale read on a full quota.
+
+  The design is sound and narrow: one module, no new key, no `localStorage`, consent
+  untouched, and `clearAllDeviceData` empties the in-memory Map. Breaking that last part
+  by removing the `clearSessionFallback()` call gives **1 failed | 9 passed (10)**, on
+  `clears the in-memory fallback`. After reverting, `sha256sum -c` printed
+  `lib/device-data.ts: OK`.
+
+  **The defect.** A full quota throws on `setItem` only; `getItem` still works and still
+  returns the PREVIOUS value. `sessionGet` prefers the store over the Map. So a second
+  survey submitted on a full quota was kept in memory and never read, and `/report`
+  scored the first one. The worker's tests covered "only setItem throws" with an empty
+  store, never with a stale value already in it.
+
+  **Reproduced** with a new unit case, "a write that fails on a full quota is not
+  shadowed by the older stored value": **1 failed | 9 passed (10)**,
+  `Received: "previous"`.
+
+  **Fixed in `sessionSet`.** When the write throws, it now also removes the stored key.
+  A full quota allows removal, and a blocked store's reads throw anyway, so either way
+  the read lands on the Map. With the fix, `session-store`, `device-store-guards` and
+  `device-data` give **19 passed (19)**, and `storage-blocked-funnel.regression-45`
+  gives **4 passed (1.4m)**.
+
+  **Rotation:** `comm -23` drops **0** lines.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 123 passed (123) / Tests 1117 passed (1117)`,
+    **336 passed (13.2m)**, **Smoke test passed.**
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK**.
+  - Ports 3100–3109: none listening.
 
 - 2026-10-02 (cycle 67) — Branch `autopilot/2026-10-02-1239`. **The scan hint on `/survey`
   no longer claims a selection it did not make. The sentence "사진에서 확인한 {signals}
