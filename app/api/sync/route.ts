@@ -330,7 +330,19 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
       continue;
     }
 
-    const objectPath = `pilot-crops/${new Date(sample.ts).toISOString().slice(0, 10)}/${sample.id}.${parsed.ext}`;
+    // `toISOString()` throws a RangeError on an Invalid Date, and nothing above catches
+    // it: a crop whose `ts` was a string, an object, or a number past the Date range
+    // answered 500 after the other four tables had already been written. Checked on the
+    // Date itself, not with `Number.isFinite`, because `1e20` is finite and still
+    // invalid. Skipped before the upload so it cannot leave an orphan object. Pinned in
+    // tests/sync-crop-timestamp.test.ts (cycle 71 supervisor review).
+    const day = new Date(typeof sample.ts === "number" ? sample.ts : Number.NaN);
+    if (Number.isNaN(day.getTime())) {
+      warnings.push(`Skipping crop ${sample.id}: invalid timestamp.`);
+      continue;
+    }
+
+    const objectPath = `pilot-crops/${day.toISOString().slice(0, 10)}/${sample.id}.${parsed.ext}`;
     const consentEvent = latestConsentEvent(payload, "learning_crop", sample);
     const upload = await supabase.storage.from(bucket).upload(objectPath, parsed.buffer, {
       contentType: parsed.contentType,
