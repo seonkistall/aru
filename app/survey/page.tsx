@@ -211,12 +211,12 @@ export default function Survey() {
     // `router.push` below is not instant, so until this flag existed a second tap
     // before the route changed ran the whole body again and recorded a second
     // `survey_completed`. Measured on a production build at 360x800 in `ko`: one
-    // `dblclick` on the submit button gave `survey_completed=2`. `survey_viewed →
-    // survey_completed` is the step the revenue arithmetic reads to decide whether
-    // the survey is where visitors are lost, so a duplicate makes that step look
-    // better than it is. `disabled={!ready}` never helped — `ready` is about the
-    // three required answers, not about a submit already in flight — and it keeps
-    // its own meaning, untouched, above.
+    // `dblclick` on the submit button gave `survey_completed=2`, and ran the writes
+    // and `router.push` twice. The survey-completion rate was not moved by it:
+    // `summarizeFunnel` (`lib/funnel.ts`) counts distinct sessions per step, so the
+    // duplicate only inflated the raw event log. `disabled={!ready}` never helped —
+    // `ready` is about the three required answers, not about a submit already in
+    // flight — and it keeps its own meaning, untouched, above.
     //
     // A flag and not the time window the three click surfaces use
     // (`lib/tap-guard.ts`): this one really does have something in flight, and the

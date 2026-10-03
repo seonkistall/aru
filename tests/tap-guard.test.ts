@@ -80,6 +80,18 @@ describe("createTapGuard", () => {
     expect(guard("https://example.test/0")).toBe(true);
   });
 
+  // Added by the cycle 70 supervisor review. Before the fix the second tap below was
+  // suppressed: the accepted timestamp sat in the "future", so `now - previous` was
+  // negative and read as inside the window.
+  it("does not suppress a tap after the wall clock steps backwards", () => {
+    const guard = createTapGuard();
+    expect(guard("https://example.test/a")).toBe(false);
+    vi.setSystemTime(new Date("2026-10-02T23:59:55.000Z")); // stepped back 5 s
+    vi.advanceTimersByTime(2000);
+    expect(guard("https://example.test/a")).toBe(false);
+    expect(guard("https://example.test/a")).toBe(true);
+  });
+
   it("gives each guard its own store", () => {
     const one = createTapGuard();
     const two = createTapGuard();

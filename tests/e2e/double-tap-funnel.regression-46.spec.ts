@@ -11,11 +11,10 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
  *   /report summary       tabs=2         commerce_clicked=2
  *   /report product card  tabs=2         commerce_clicked=2
  *
- * `commerce_clicked` is the numerator of the conversion rate the revenue arithmetic in
- * `docs/AUTOPILOT.md` is built on, and it divides by a `care_viewed`/`reco_viewed` that
- * cannot double; `survey_viewed → survey_completed` is the step that arithmetic reads to
- * decide whether the survey is where visitors are lost. So each duplicate makes a number
- * the loop steers by look better than it is.
+ * What a duplicate cost: a second merchant tab, a second `/api/out` request, a second
+ * care-intent row on `/care`, and a doubled raw event log. It did not move a conversion
+ * rate — `summarizeFunnel` (`lib/funnel.ts`) counts distinct sessions per step — so these
+ * tests count raw events, which is where the duplicate showed.
  *
  * Two different fixes, because the two halves are different defects.
  * `/survey`'s submit has `router.push` in flight and uses a `useRef` flag

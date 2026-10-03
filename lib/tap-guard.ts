@@ -5,9 +5,11 @@
  * before this module existed: one `dblclick` on `/care`'s purchase button called
  * `window.open` twice and recorded `commerce_clicked` twice; one `dblclick` on
  * `/report`'s summary link or a product card's link opened 2 tabs and recorded
- * `commerce_clicked` twice. `commerce_clicked` is the numerator of the conversion
- * rate the revenue arithmetic in `docs/AUTOPILOT.md` is built on, against a
- * `care_viewed`/`reco_viewed` that cannot double, so a double-tap inflates it.
+ * `commerce_clicked` twice. What that cost: a second merchant tab, a second
+ * `/api/out` request, and on `/care` a second care-intent row (`recordCareIntent`,
+ * the click log `/privacy` counts). It did NOT move a conversion rate:
+ * `summarizeFunnel` (`lib/funnel.ts`) counts distinct sessions per step, so a
+ * duplicate event in the same session is counted once there already.
  *
  * Why a time window and not an in-flight flag: these three handlers have nothing
  * in flight. `/care`'s `openCareLink` MUST call `window.open` synchronously inside
@@ -56,11 +58,15 @@ export function createTapGuard(windowMs: number = TAP_GUARD_WINDOW_MS): TapGuard
   const accepted = new Map<string, number>();
   return function isRepeatTap(key: string): boolean {
     const now = Date.now();
+    // `Date.now()` is wall-clock time and can step BACKWARDS (an NTP correction, a
+    // manual clock change). A negative age is therefore treated as outside the window,
+    // not inside it: otherwise a clock stepped back by N seconds would keep that link
+    // suppressed for N seconds plus the window. Found by the cycle 70 supervisor review.
     for (const [seen, at] of accepted) {
-      if (now - at >= windowMs) accepted.delete(seen);
+      const age = now - at;
+      if (age < 0 || age >= windowMs) accepted.delete(seen);
     }
-    const previous = accepted.get(key);
-    if (previous !== undefined && now - previous < windowMs) return true;
+    if (accepted.has(key)) return true;
     accepted.set(key, now);
     return false;
   };
