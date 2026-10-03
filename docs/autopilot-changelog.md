@@ -14306,3 +14306,193 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening.
+
+- 2026-10-02 (cycle 66) — Branch `autopilot/2026-10-02-0639`. **A stored answer that is
+  not one of the values the screen offers no longer becomes state. On `/survey` an
+  out-of-enum `type` and `category` used to restore invisibly — no chip pressed, because
+  nothing in the rendered list equals the value — while `ready` counted both fields, so
+  submit was ENABLED and the submit wrote the pair through to `/report`, whose picks step
+  then read `앰플 · 0개` with **0** `/api/out` links. Both are now dropped and submit is
+  DISABLED. The same rule covers `/survey`'s draft restore and `/checkin`'s draft, where
+  an off-scale 만족도 left 기록하기 enabled over a question showing no pressed pill.
+  `isSurvey` in `lib/recommend.ts` is untouched: `git diff a0438a3 -- lib/recommend.ts`
+  prints nothing.**
+
+  **Reproduced first, with numbers, on a production build.** `next build` + `next start`
+  on port **3107**, 360x800, one browser context per case, `window.open` replaced by a
+  collector in every one so no merchant link could be followed (**0** calls in all four
+  cases, before and after). `gyeol_survey` seeded, then the picks step reached by the
+  stored step key. Before:
+  - `{"type":"초지성", …,"category":"앰플"}` — pressed chips **2** (유분, 2만원), submit
+    **ENABLED**, draft rewritten to carry both non-members. After the submit,
+    `/report`'s picks step: `앰플 · 0개`, **0** `a[href^="/api/out"]`, **6** `main a`, and
+    the `report-picks-empty` section rendered (**1**).
+  - `{…,"budget":1234}` — pressed **3**, no 예산 chip pressed, submit **ENABLED**, and
+    `/report` scored `세럼 · 3개` with **4** `/api/out` links against a band no chip
+    offers.
+  - `{…,"concerns":["우주고민","유분"]}` — pressed **4**, and the non-member rode through
+    the submit into `gyeol_survey` and on to `/report`.
+  - Valid control `{"type":"지성","concerns":["유분"],"budget":29000,"avoid":[],"category":"세럼"}`
+    — pressed **4**, enabled, `세럼 · 3개`, **4** `/api/out` links, **9** `main a`.
+
+  After, same four seeds on the same kind of build: the first two leave submit
+  **DISABLED** (`필수 항목 1/3` and `2/3`) with the bad fields `null` in the draft; the
+  third keeps `["유분"]` and stays submittable, because 고민 is optional so the valid part
+  of the answer is a complete answer; the control is unchanged in every number above.
+
+  **The fix, and where it lives.** Two pure helpers in a new `lib/stored-option.ts` —
+  `storedOption` returns the value if it is in the list it is given, else `null`;
+  `storedOptions` filters an array to its members and returns `null` only for a non-array,
+  so a cleared optional group still restores as `[]`, which cycle 64's `hintFor` rule
+  depends on. Neither holds a list of its own: the caller passes the array its own chips
+  are rendered from, so there is no second copy to drift. `/survey`'s two restore paths
+  now go through one `applyStoredAnswers`, so the submitted survey and the draft cannot be
+  guarded differently, and `BUDGET_WONS` is `BUDGETS.map((b) => b.won)` rather than the
+  five numbers written out again. `/checkin` hoists its 만족도 options to `SAT_OPTIONS`,
+  which both `Seg` and the guard read, and its `trouble`/`repurchase` keep the
+  `typeof === "boolean"` they already had — `boolean` IS their option list, both members
+  rendered. Nothing about what is saved, when it is saved, or any copy changed; `hintFor`
+  and the `key={active}` remount are untouched.
+
+  **One consequence worth stating rather than hiding.** The budget rule drops a value that
+  an older build could legitimately have written: the comment above `BUDGETS` records that
+  the chips used to store band MIDPOINTS and now store ceilings, so a visitor who
+  submitted before that change has a `30000` in `sessionStorage`. Before this cycle their
+  budget chip already showed nothing; now submit is disabled until they tap a band, and
+  `필수 항목 n/3` says so. That is one extra tap for a returning visitor, against a report
+  silently scored on a band they cannot see or change. Two existing specs carried exactly
+  that fixture and went red on it —
+  `tests/e2e/conversion-path-accessibility.spec.ts:93` and
+  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts:318`, **2 failed** in the first
+  gate run — and their seeded budget is now `29000`, the 2만원 chip's own ceiling, with a
+  comment saying why. Neither spec asserts anything about the band; both are about CTA
+  contrast and the report step.
+
+  **Pinned, in a new spec and a unit file.**
+  `tests/e2e/stored-answers-membership.regression-43.spec.ts` is **8** cases: the two
+  disabled-submit cases, the dropped concern, the valid control through to `/report`'s
+  **4** merchant links, a draft whose five fields are all non-members over a good
+  submitted survey, the off-scale 만족도, a non-boolean 트러블, and a valid `/checkin`
+  draft. `tests/stored-option.test.ts` is **7** unit cases on the two helpers, including
+  the `-0`/`0` edge SameValueZero allows (no option list either screen passes in contains
+  `0`, so nothing on the funnel reaches it; it is pinned so a future list that does is a
+  deliberate decision).
+
+  **Proved live by breaking each half once**, each on its own clean production build with
+  the port asserted free first, all against the final 8-case spec:
+  - **Break 1**, `storedOption` dropped from `type`, `category` and `budget` back to the
+    old truthiness/`typeof`: **3 failed** / **5 passed (8)** — both disabled-submit cases
+    at `toBeDisabled()`, plus the draft case.
+  - **Break 2**, `storedOptions` dropped from `concerns` and `avoid` back to a bare
+    `Array.isArray`: **2 failed** / **6 passed (8)** — the dropped-concern case and the
+    draft case.
+  - **Break 3**, `/checkin`'s `storedOption(SAT_VALUES, …)` back to
+    `typeof draft.sat === "number"`: **1 failed** / **7 passed (8)** at
+    `toBeDisabled()`.
+  - All three reverted from copies taken before the breaks; `sha256sum -c` printed `OK`
+    for `app/survey/page.tsx`
+    (`ab8a9fa60ca82a219b44cc55e5e771147ab4fcfef99a937798e06dc7ecb1eb69`),
+    `app/checkin/page.tsx`
+    (`8b9de544d22b5163dd4650b458405d0482827eb768c692c3c80a0697703da02a`) and
+    `lib/stored-option.ts`
+    (`e1f409e141d960c6645d4abe6580e3c33d341a972aa169c117234a390363cc72`).
+  - `regression-40` (**6**) and `regression-42` (**2**) pass unchanged next to the new
+    spec: **16 passed** in one run before the fixture edit, **26 passed** with the two
+    edited specs added after it.
+
+  **Two measurement hazards, recorded because both produced a wrong number first.**
+  Break 3's first run read **7 passed** — the case did not catch the break at all, because
+  its seed paired the off-scale `sat` with a non-boolean `trouble`, so the card was
+  unsaveable for the other field's sake. The seed is now `{sat: 7, trouble: false,
+  repurchase: true}`, where the off-scale value is the only thing between the card and an
+  enabled 기록하기, and breaks 1 and 2 were re-measured against that final spec. Earlier
+  still, a break-1 run read **5 failed** / **2 passed** because `next build` overwrote
+  `.next` under a `next start` that was still serving it: three cases failed with the page
+  un-hydrated and rendering in `en`, which is the same class of false result
+  `playwright.mobile.config.ts` already documents for `reuseExistingServer`. Every break
+  number above comes from a build made with the port verified free.
+
+  **Research / ML:** skipped, as the item said. `python3 ml/selftest.py` was still run and
+  is green (below).
+
+  **What this does NOT establish.** It does not make a stored survey trustworthy — only
+  that `/survey` will not render one as answered when it is not. `/report` and `/care`
+  still read `gyeol_survey` through `isSurvey` alone, deliberately: a visitor who never
+  passes through `/survey` can still land on a report built from a non-member category,
+  and the empty-picks branch is what handles it. Nothing is filed against `isSurvey`,
+  because a membership test there would break the state `tests/survey-shape.test.ts`
+  pins. A membership check is also not a version check: a value that IS a member but
+  meant something different in an older build still restores, and the `30000` case above
+  is the one instance of that class this cycle found. The guard is per field and silent —
+  no copy was added, so a visitor whose every stored answer is dropped sees a fresh
+  survey and only the `필수 항목 n/3` counter to say so. The chip assertions were measured
+  in `ko` only (the other locales are covered for their own cases by `regression-40` and
+  `regression-42`), on one container, in Chromium. `lib/consent.ts` is still the one
+  device-store read left deliberately unguarded, unchanged by this cycle, and nothing
+  about the affiliate blockers moved.
+
+  **Diff and rotation.** `git diff --stat a0438a3 -- app lib` is `app/checkin/page.tsx`
+  **16** and `app/survey/page.tsx` **52**, `2 files changed, 53 insertions(+), 15
+  deletions(-)`; `lib/recommend.ts`, `lib/commerce.ts`, `lib/consent.ts`,
+  `package.json` and `package-lock.json` are all untouched, and no dependency was added.
+  Rotation: cycle 63's entry moved verbatim to the end of
+  `docs/autopilot-changelog.md` after cycle 62 — **145** lines out of
+  `docs/AUTOPILOT.md` (**2584** → **2438** before the new writing, the extra line being
+  the blank separator) and **145** plus a blank separator appended to the changelog
+  (**13819** → **13965**). `diff` of the appended block against the extracted block
+  reports no difference, and `comm -23` over `sort -u` of both files at `a0438a3` against
+  this pair drops **0** lines. One line beyond the brief's docs list: the `[~]` backlog
+  item on unchecked `JSON.parse` reads gained an append-only 2026-10-02 note, the way
+  cycle 32 appended to it, because this cycle is the same class one layer up and a cycle
+  that reads only that item would otherwise re-derive it. No existing line in it was
+  edited, which is why `comm -23` still drops **0**.
+
+  *Validation on this tree:* `PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(ls -d
+  /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1) npm run smoke` —
+  `Test Files  122 passed (122)` / `Tests  1107 passed (1107)`, **329 passed (9.6m)**,
+  `Ran 146 tests in 1.814s` **OK**, **Smoke test passed.**, exit **0**. The vitest suite
+  went from the supervisor's **121** files / **1100** tests on `a0438a3` to **122** /
+  **1107**, which is the one unit file and the **7** cases this cycle added and nothing
+  else; the Playwright suite went from **321** to **329**, which is the **8** cases in
+  `regression-43` and nothing else. The three below were each run on their own after every
+  doc edit but the one that wrote these numbers in: `npx tsc --noEmit | grep -c "error
+  TS"` **13**; `npx eslint .` `✖ 2 problems (0 errors, 2 warnings)` (the same pre-existing
+  `_reads` / `_result` at `lib/care.ts:70`); `python3 ml/selftest.py`
+  `Ran 146 tests in 1.790s` **OK**. `tests/stored-option.test.ts` alone is **7 passed**.
+  An earlier gate run on this same code, before the two fixture edits, read **2 failed** /
+  **327 passed** — the two specs named above — so the **329** is the first clean one and
+  the failure it replaced is recorded rather than dropped. `git diff --stat a0438a3 --
+  app lib tests` is `app/checkin/page.tsx | 16 ++`, `app/survey/page.tsx | 52 ++`,
+  `tests/e2e/conversion-path-accessibility.spec.ts | 6 ++`,
+  `tests/e2e/lang-chunk-tap-hold.regression-30.spec.ts | 6 ++`,
+  `4 files changed, 63 insertions(+), 17 deletions(-)`, the three new files being
+  untracked until the commit. Ports 3100–3109 and 3017: none listening afterwards;
+  `git status` carries only this cycle's files. What the smoke run does not cover: this
+  paragraph, written after it — `npx tsc --noEmit`, `npx eslint .` and
+  `python3 ml/selftest.py` were each re-run after it and still give **13**, `0 errors` and
+  **OK**.
+
+  *Supervisor review:* sound, merged.
+  - **Scope of the product change.** The diff touches only `app/survey/page.tsx`,
+    `app/checkin/page.tsx` and a new pure `lib/stored-option.ts`. `isSurvey`, what is
+    saved, and the `hintFor` rule are unchanged; `regression-40` passes unedited.
+  - **The two fixture edits (30000 → 29000) are justified.** `grep` finds exactly one
+    writer of the submitted survey, `app/survey/page.tsx:200`. It writes a chip's `won`,
+    and `won: 29000` has been the 2만원 ceiling since `7419b54`, so no chip has ever
+    produced 30000.
+  - **Independent reproduction.** On this tree, `stored-answers-membership.regression-43`,
+    `survey-draft-lang-switch.regression-40` and `checkin-draft-lang-switch.regression-42`
+    together gave **16 passed (1.4m)**; `tests/stored-option.test.ts` gave **7 passed**.
+  - **A break the worker did not try.** I made `storedOptions` return the array
+    unfiltered, so non-member concerns or avoids are carried into state. Results:
+    unit **3 failed | 4 passed (7)**; e2e **2 failed**, one reading
+    `a non-member ingredient is filtered out, not carried`. I then restored the file and
+    `sha256sum -c` printed `OK` for all three product files.
+  - **Rotation.** `comm -23` drops **0** lines.
+  - **Gate on this tree:**
+    - `npm run smoke`: `Test Files 122 passed (122) / Tests 1107 passed (1107)`,
+      **329 passed (11.7m)**, **Smoke test passed.**
+    - tsc: **13**.
+    - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+    - `python3 ml/selftest.py`: **OK**.
+    - Ports 3100–3109: none listening.

@@ -7,11 +7,17 @@ import { useState } from "react";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "./commerce-disclosure";
 import { recordFunnelEvent } from "@/lib/funnel";
+import { createTapGuard } from "@/lib/tap-guard";
 import { recordProductUse } from "@/lib/store";
 import type { Recommendation } from "@/lib/recommend";
 import { budgetBand } from "@/lib/skus";
 import { ProductVisual } from "./product-visual";
 import { t } from "@/lib/i18n/core";
+
+// MODULE scope, shared by every card on the screen: a `useRef` inside the component
+// is reset by `LanguageProvider`'s `key={active}` remount, and the keying by href
+// already keeps one card from suppressing another.
+const cardTapGuard = createTapGuard();
 
 export function ProductCard({ pick, placement, rank }: { pick: Recommendation; placement: string; rank?: number }) {
   const { sku } = pick;
@@ -84,7 +90,16 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
         href={commerceOutHref(sku.id, commerce.merchant, placement)}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={() => {
+        onClick={(event) => {
+          // Measured before this guard: one `dblclick` here opened 2 tabs and recorded
+          // `commerce_clicked` twice. Same shape as `/report`'s summary link — the
+          // second tab is the browser's own, so the navigation is cancelled as well as
+          // the duplicate event. `href`, `target` and `rel` are untouched. The guard is
+          // keyed by href, so the cards on a screen never block each other.
+          if (cardTapGuard(event.currentTarget.href)) {
+            event.preventDefault();
+            return;
+          }
           recordFunnelEvent("commerce_clicked", { placement, merchant: commerce.merchant });
         }}
         style={buyBtn}
