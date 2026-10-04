@@ -310,7 +310,9 @@ partly done and stays here.
   describing it is wrong. **Left unfixed on purpose: this cycle was forbidden to touch
   `shareUrl`.** Filed 2026-10-03 (cycle 72).
 
-- [AI] **`readMoodFromHash` accepts a too-long `m` and renders its first three digits.**
+- [x] [AI] **`readMoodFromHash` accepts a too-long `m` and renders its first three digits.**
+  **Fixed 2026-10-04 (cycle 73)** — the value is anchored to `&` or the end of the hash
+  and the shapes are pinned in `tests/share-link.test.ts`; see the cycle 73 entry.
   `/[#&]m=([0-2]{3})/` (`lib/share-link.ts`) matches a prefix, so `decodeMood`'s
   `code.length !== 3` guard never sees the extra characters. Measured on a production
   build at 360x800: `/#m=2100` renders the callout and the summary
@@ -1737,7 +1739,7 @@ partly done and stays here.
   stays open for exactly the reason it was opened. The duplicate is merged into this
   one, which is the other thing that kept it from being read.
   `docs/melanin-index-verification.md` §4.
-- [AI] `/api/sync`'s crop upload builds its storage key from `new Date(sample.ts)
+- [x] [AI] `/api/sync`'s crop upload builds its storage key from `new Date(sample.ts)
   .toISOString()` (`app/api/sync/route.ts`, in `uploadCropSamples`), and nothing checks
   that `sample.ts` is a finite number. `new Date(undefined).toISOString()` throws
   `RangeError: Invalid time value`, so a crop row with a missing or non-numeric `ts`
@@ -1754,8 +1756,12 @@ partly done and stays here.
   **The `ts` half is fixed (cycle 71 supervisor review):** reproduced with the client
   mocked (`RangeError: Invalid time value`), fixed, and pinned in
   `tests/sync-crop-timestamp.test.ts`; see the cycle 71 entry. **The `sample.id` half
-  stays open.** It is behind the sync token, so only an operator can send it, and the
-  id format the client writes was not checked, so a charset rule could refuse real rows.
+  is fixed 2026-10-04 (cycle 73).** The id format the client writes was the open
+  question and it has now been read: `uid()` in `lib/crops.ts` is `crypto.randomUUID()`
+  with `String(Math.random()).slice(2)` as the fallback, and both branches stay inside
+  `^[A-Za-z0-9_-]{1,128}$`, so the charset refuses no real row. Pinned in
+  `tests/sync-crop-id.test.ts`; see the cycle 73 entry. Both halves of the line are now
+  closed.
 - [OWNER] Google Play Console identity, payment account, support email, App Signing.
 
 ## Blockers
@@ -2189,6 +2195,147 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-04 (cycle 73) — Branch `autopilot/2026-10-04-0040`. **Two filed defects closed,
+  both of them a pattern that accepts more than it was written to accept. (1) The share
+  landing read a corrupted `m` as a valid one: `/[#&]m=([0-2]{3})/` in
+  `lib/share-link.ts` matches anywhere in the value, so `decodeMood`'s
+  `code.length !== 3` guard never saw the extra characters and `/#m=2100` rendered the
+  mood for `210` and recorded a `share_landed` — cycle 72 measured that on a production
+  build. Fixed with a lookahead, `/[#&]m=([0-2]{3})(?=&|$)/`: the three digits must be
+  the whole value. (2) `sample.id` went into the crop storage object path unvalidated in
+  `uploadCropSamples` (`app/api/sync/route.ts`), so `id: "../x"` would have placed the
+  object outside `pilot-crops/<date>/`. That half of the cycle 71 item stayed open
+  because the id format the client writes had not been read, and a charset rule that
+  refused real rows would have been worse than the traversal. It has now been read, which
+  is what made the fix safe to push. Both fixes are skips and refusals, not rewrites:
+  nothing that was accepted before and is real is refused now. The tracked diff over
+  `app` and `lib` is **61** insertions and **1** deletion in **2** files, and
+  `git diff -U0 -- app lib | grep 't("'` over the changed lines returns **0** — no copy
+  changed. `lib/consent.ts`, the crop consent evaluation, `shareUrl`, `lib/commerce.ts`
+  and the `key={active}` remount are untouched.**
+
+  **The id format, established before the charset was chosen.** `saveCropSample` in
+  `lib/crops.ts` is the only writer of a crop id and it stamps every row with `uid()`
+  from the same file, verbatim:
+
+  ```
+  function uid() {
+    return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
+  }
+  ```
+
+  So a real id is a `crypto.randomUUID()` — 36 characters of `[0-9a-f-]` — or, on a
+  browser without it, the decimal digits of a random fraction. Both branches sampled
+  against `^[A-Za-z0-9_-]{1,128}$`:
+
+  ```
+  samples per branch: 200000
+  randomUUID() not matching ^[A-Za-z0-9_-]{1,128}$: 0
+  String(Math.random()).slice(2) not matching: 0
+  the one degenerate fallback output: "" matches: false
+  randomUUID length: 36 charset check: true
+  ```
+
+  The one output the charset refuses is the empty string, which
+  `String(Math.random()).slice(2)` returns when `Math.random()` returns exactly `0`. That
+  id would have written `pilot-crops/<date>/.<ext>` — a dotfile with no row naming it —
+  so refusing it is the behaviour wanted anyway, and that is the whole of what the
+  charset costs. The check is a `typeof` test and not `CROP_ID_PATTERN.test(sample.id)`
+  on its own, because `RegExp.test` coerces its argument and a missing id coerces to the
+  string `"undefined"`, which the charset ACCEPTS: the declared type says `string`, the
+  payload is JSON off the wire and does not have to agree. The skip is the first thing in
+  the loop, before the consent check, the image parse and the `ts` guard, so no refused
+  id reaches `supabase.storage.upload` and none can leave an orphan object.
+
+  **What the anchor changes and what it does not**, both regexes evaluated side by side
+  on every shape cycle 72 measured plus the ones the fix is for:
+
+  ```
+  "#m=210"           before= "210"   after= "210"
+  "#x=1&m=012"       before= "012"   after= "012"
+  "#m=210&m=001"     before= "210"   after= "210"
+  "#m=2100"          before= "210"   after= null
+  "#m=210&other=1"   before= "210"   after= "210"
+  "#m=210&"          before= "210"   after= "210"
+  "#m=99"            before= null    after= null
+  "#m=abc"           before= null    after= null
+  "#m=21"            before= null    after= null
+  ""                 before= null    after= null
+  "#m=2100&m=012"    before= "210"   after= "012"
+  "#m=0120"          before= "012"   after= null
+  ```
+
+  Every shape that rendered a mood before and was a well-formed `m` still renders the
+  same mood. **A duplicated `m` resolves to the FIRST one** — `exec` returns the leftmost
+  match — and that is today's behaviour, kept deliberately rather than reconsidered. The
+  one shape whose reading moves is `#m=2100&m=012`, where the leading `m` is corrupt and
+  the valid later one now wins instead of the first three digits of the corrupt one.
+
+  **Pinned.** Three cases added to `tests/share-link.test.ts` (the too-long value, the
+  trailing `&other`, and the shapes that must keep working) taking that file from
+  **7 passed** at `7da49ee` to **10 passed**, and a new `tests/sync-crop-id.test.ts`
+  (**9 passed**) built on `tests/sync-crop-timestamp.test.ts`'s mock of
+  `getSupabaseAdmin` — nothing in either file talks to a real project. The crop file
+  covers `../x`, `a/b`, `/etc/x`, the empty string, a number, a MISSING id and an object,
+  and asserts in each case that the only object that reached storage is
+  `pilot-crops/2026-10-03/<a real randomUUID>.jpg` and that `counts.cropUploads` is 1. A
+  third case uploads two real generated-format ids and asserts both land under
+  `pilot-crops/<date>/` with no `unsupported id.` warning; a fourth holds the charset
+  against 2000 live samples of each `uid()` branch, so a generator drift fails the suite
+  before the server starts refusing real rows in silence.
+
+  **Broken on purpose, then reverted, once each.**
+  - `lib/share-link.ts`, lookahead removed: `tests/share-link.test.ts` gives
+    **1 failed | 9 passed (10)** — `expect(readMoodFromHash("#m=2100")).toBeNull()`
+    receiving `{"oil": 2, "pores": 0, "redness": 1}`. `sha256sum lib/share-link.ts` read
+    `7ba03af808eadad4331314d953e3e6f5dd757279938bc5e8a91c02f581f5d875` before the break
+    and the same digest after the revert, and the file then gives **10 passed**.
+  - `app/api/sync/route.ts`, the four-line id skip deleted: `tests/sync-crop-id.test.ts`
+    gives **7 failed | 2 passed (9)** — the seven refusal cases, with the charset case
+    and the real-ids case still passing, which is what they are for.
+    `sha256sum app/api/sync/route.ts` read
+    `f75d370b6863cffffdec15c44fea7dd7528654eb9cb02a2d7d5cfe1f850db2fe` before the break
+    and the same digest after the revert, and the file then gives **9 passed**.
+
+  **Research / ML: skipped**, as briefed. No model, dataset, manifest or
+  `ml/` source was read or changed; `python3 ml/selftest.py` was run only as a gate.
+
+  **Not established.** Neither fix was reproduced in a browser or against a live
+  Supabase project this cycle. Item (1) rests on cycle 72's production-build measurement
+  of `/#m=2100` plus the regex comparison above, not on a fresh render; item (2) rests on
+  reading the route and on the mocked client, because the real path needs
+  `SUPABASE_CROP_BUCKET`, a live storage client and a consented crop row, none of which
+  this container can reach. Whether Supabase's own storage API would have normalised or
+  rejected `pilot-crops/<date>/../x.jpg` server-side was NOT tested, so how much the
+  traversal would actually have moved an object in production is unknown — the fix stops
+  it leaving the route either way. The empty-id output of the `uid()` fallback was shown
+  by construction (`String(0).slice(2)`), not observed in 200000 samples.
+
+  **Rotation.** Cycle 70's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 69: **123** lines
+  moved. `wc -l` over both files straight after the move read **2518** + **14981** =
+  **17499**, the same total as at `7da49ee` (**2642** + **14857**). `comm -23` of the
+  `sort -u` union of both files at `7da49ee` against the `sort -u` union straight after
+  the move drops **0** lines. Against the FINAL tree it drops **4**, and all four are the
+  two backlog bullets this cycle ticked: both first lines, where `- [AI]` became
+  `- [x] [AI]`, and the two lines of the `sample.id` half's "stays open" sentence, which
+  this cycle replaced. Nothing from a cycle entry is among them.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 126 passed (126) / Tests 1147 passed (1147)`,
+    **348 passed (10.3m)**, **Smoke test passed.** The supervisor's baseline on `7da49ee`
+    was `125 passed (125)` / `1135 passed (1135)` and **348 passed**; the only delta is
+    this cycle's own unit tests — **+1** file (`tests/sync-crop-id.test.ts`) and **+12**
+    cases, which is **9** there plus the **3** added to `tests/share-link.test.ts`. The
+    e2e count is unchanged because neither fix is reachable from a browser without a
+    sync token or a hand-mangled URL.
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.653s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* pending.
+
 - 2026-10-03 (cycle 72) — Branch `autopilot/2026-10-03-1840`. **A bounded bug hunt over
   `/checkin`, `/privacy` + `lib/device-data.ts`, the share flow and switching language
   mid-flow. Four hypotheses tested, three defects confirmed, one fixed, two filed. The
@@ -2516,127 +2663,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   **344 passed (13.9m)** and **Smoke test passed.** tsc gives **13**. eslint gives
   `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
   Ports 3100–3109: none listening.
-
-- 2026-10-03 (cycle 70) — Branch `autopilot/2026-10-03-0639`. **One double-tap now counts
-  once on all four funnel surfaces that could double it. What a duplicate cost: a second
-  merchant tab, a second `/api/out` request, a second care-intent row on `/care` (the click
-  log `/privacy` counts), and a doubled raw event log. It did NOT move a conversion rate —
-  corrected by the supervisor review below; the worker's entry said it did. Two
-  fixes, because the two halves are different defects: `/survey`'s submit has `router.push`
-  in flight and takes a `useRef` flag; `/care`'s `openCareLink` and the two
-  `<a target="_blank">` links on `/report` have nothing in flight and share a synchronous
-  800 ms window keyed by href in a new `lib/tap-guard.ts`. On the two anchors the second
-  tab is the browser's own doing, so the handler calls `preventDefault()` as well as
-  skipping the duplicate event. `window.open` stays synchronous inside the click gesture —
-  no `await` and no `setTimeout` before it, for the reason the comment above `openCareLink`
-  already gave. `href`, `target`, `rel`, `ALLOWED_HOSTS` and `lib/commerce.ts` are
-  untouched, `disabled={!ready}` keeps its meaning, and no copy changed: the tracked diff
-  over `app` and `lib` is **68** insertions and **2** deletions in four files plus the new
-  module, the two deletions are the two `onClick={() => {` lines that became
-  `onClick={(event) => {`, and `git diff -U0 -- app lib | grep -c 't("'` over the changed
-  lines is **0**.**
-
-  **Reproduced first, with numbers, on a production build.** `next build` + `next start` on
-  port **3199**, 360x800, `ko` forced by seeding `aru.lang`, one browser context per case.
-  No merchant redirect was ever followed: `window.open` replaced by a collector, every
-  `/api/out` request fulfilled locally, and every host in `ALLOWED_HOSTS`
-  (`www.oliveyoung.co.kr`, `search.shopping.naver.com`, `www.coupang.com`,
-  `www.google.com`) fulfilled locally as well. Tabs counted with `context.on('page')`,
-  events counted out of `aru_funnel_events_v1`. Two gestures per surface,
-  `page.dblclick()` and two `click()`s ~50 ms apart.
-
-  Before, on a build of `9f22788`:
-  - `/survey` submit, `dblclick` — `survey_completed=2`.
-  - `/care` purchase link — `window.open=2` and `commerce_clicked=2`, both gestures.
-  - `/report` summary link (`placement=report_summary`) — tabs **2** and
-    `commerce_clicked=2`, both gestures.
-  - `/report` product card (`placement=report_product`) — tabs **2** and
-    `commerce_clicked=2`, both gestures.
-
-  After, the same harness and the same gestures on a clean production build of the fix:
-  `/survey` `survey_completed=1`; `/care` `window.open=1` and `commerce_clicked=1` on both
-  gestures; `/report` summary tabs **1** and `commerce_clicked=1` on both gestures;
-  `/report` product card tabs **1** and `commerce_clicked=1` on both gestures.
-
-  **What the 50 ms gesture did NOT establish, stated because the brief asked for it.** On
-  `/survey` it read `survey_completed=1` BEFORE the fix as well as after. The second
-  Playwright click never landed — `TimeoutError: locator.click: Timeout 2000ms exceeded.` —
-  because `router.push` had already replaced the page inside 50 ms on this container. So
-  only `dblclick` reproduces the `/survey` half here, and the 50 ms variant is evidence of
-  nothing on that surface in either direction. On the three click surfaces both gestures
-  reproduced, and both are fixed.
-
-  **Pinned** in `tests/e2e/double-tap-funnel.regression-46.spec.ts`, **8 passed (37.1s)**
-  on its own against the fixed build: four that a double-tap counts once, and four that a
-  DELIBERATE second click still counts — a second tap on `/care` and on each `/report`
-  anchor after the window (1100 ms) gives `window.open`/tabs **2** and `commerce_clicked`
-  **2**, and a visitor who goes back to `/survey` and submits again records a second
-  `survey_completed`. A guard that swallowed a real second visit would trade one wrong
-  number for another. `lib/tap-guard.ts` also has unit tests on fake timers
-  (`tests/tap-guard.test.ts`, **9 passed**), covering the window boundary and the rule that
-  the window is measured from the last ACCEPTED tap, so a run of rapid taps cannot extend
-  the suppression indefinitely.
-
-  **Broken on purpose, then reverted.** Deleting the suppression from `createTapGuard` and
-  the `submitting.current` set and check from `submit()`, then rebuilding and restarting the
-  production server, gives **4 failed | 4 passed (40.6s)** on regression-46 — the four
-  dedupe tests, and only those; the four "deliberate second click" tests still pass, which
-  is what they are for. The unit tests on the broken guard give
-  **Tests 7 failed | 2 passed (9)**. Reverted from copies taken before the break, and
-  `sha256sum` over the five changed source files printed the same five digests before and
-  after: `lib/tap-guard.ts`
-  `5ceeb4ee0cecd2011d19859cfcd5524a827e62036938c10ef73775841ed20aac`,
-  `app/survey/page.tsx`
-  `29abfbec5d3e6e3bff2525eccb68c7d689eb369b113b02b28a89cc4825d82912`,
-  `app/care/page.tsx`
-  `22b9c468d4f73a268799e8b12e6cdb49ca09e97e9cdba3f4ebdfbd314e5a394a`,
-  `app/report/page.tsx`
-  `f9852c3dfcf6ed9fd458846410f79944d8bfba5e1a2f934cd4bc3082b9004ff7`,
-  `app/components/product-card.tsx`
-  `e3146701e1f16515a60b6cd8358a030ab56ac39b08acf64c2060388fc236f293`.
-
-  **Research / ML: skipped,** as the brief said.
-
-  **Rotation:** cycle 66's entry moved verbatim to the end of
-  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 65. `sort -u` over
-  both files at `9f22788` against `sort -u` over both files immediately after the move:
-  `comm -23` drops **0** lines and `comm -13` adds **0**.
-
-  **Gate on the final tree:**
-  - `npm run smoke`: `Test Files 124 passed (124) / Tests 1126 passed (1126)`,
-    **344 passed (11.0m)**, **Smoke test passed.** (The baseline on `9f22788` was
-    `123 (123)` / `1117 (1117)` and **336**; the deltas are this cycle's
-    `tests/tap-guard.test.ts` — **1** file, **9** tests — and regression-46's **8** e2e
-    tests.)
-  - tsc: **13**.
-  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.963s`).
-  - Ports 3100–3109: none listening.
-
-  *Supervisor review:* merged with two corrections. **(1) The premise was wrong, and the
-  supervisor that filed the backlog items in cycle 69 shares the blame.** Both items, the
-  worker's entry, the `lib/tap-guard.ts` header, the `/survey` comment and the regression-46
-  header said a duplicate inflated a conversion rate. It cannot: `summarizeFunnel`
-  (`lib/funnel.ts`) builds every step as a `Set` of session ids, and every rate and the
-  cumulative `funnelDropoff` are built on those sets, so a second event in the same session
-  was already counted once. The real costs are the second tab, the second `/api/out`
-  request, the second `recordCareIntent` row on `/care` (the count `/privacy` shows), and
-  the raw `events` total. All five texts now say that; the backlog items carry a dated
-  correction. The fix is still worth having for the tab and the click log. **(2) A clock
-  that steps backwards blocked a deliberate tap.** `createTapGuard` read `Date.now()`, so
-  after an NTP correction or a manual clock change the accepted timestamp sat in the future,
-  `now - previous` was negative, and a negative age read as inside the window. The guard
-  then suppressed the link for the size of the step plus the window. Reproduced with fake
-  timers (clock stepped back 5 s, deliberate tap 2 s later: `expected true to be false`).
-  Fixed by treating a negative age as outside the window. Pinned by "does not suppress a
-  tap after the wall clock steps backwards" in `tests/tap-guard.test.ts`. With the guard
-  restored to the worker's version the file gives `Tests 1 failed | 9 passed (10)`; with
-  the fix it gives `Tests 10 passed (10)`; `sha256sum -c` on the restored file printed
-  `lib/tap-guard.ts: OK`. Rotation re-checked independently: `comm -23` of `sort -u` over
-  both files at `9f22788` against the final tree drops 4 lines, and all 4 are edits to
-  the two backlog bullets this cycle ticked: their first lines, where `- [AI]` became
-  `- [x] [AI]`; the merchant item's second line, which gained the "Fixed" pointer; and its
-  `await. Noted 2026-10-03.` line, which this review extended with the correction. Gate on the final tree with both corrections: `npm run smoke`
-  gives `Test Files 124 passed (124) / Tests 1127 passed (1127)`, **344 passed (12.0m)** and
-  **Smoke test passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`.
-  `python3 ml/selftest.py` prints **OK**. Ports 3100–3109: none listening.

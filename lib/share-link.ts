@@ -32,8 +32,20 @@ export function moodShareUrl(levels: MoodLevels, origin?: string): string {
   return `${base}/#m=${encodeMood(levels)}`;
 }
 
+/**
+ * The `m` value must be the WHOLE value, not a prefix of it.
+ *
+ * The pattern was `/[#&]m=([0-2]{3})/`, which matches anywhere in the value, so
+ * `decodeMood`'s `code.length !== 3` guard never saw the extra characters: `#m=2100`
+ * rendered the mood for `210` and recorded a `share_landed`. A truncated or mangled
+ * share URL therefore showed a confident wrong reading of someone's skin instead of
+ * nothing. The lookahead requires the next character to be `&` or the end of the
+ * hash, which is the only thing that changed — `#m=210`, `#x=1&m=012` and a
+ * duplicated `m` all still read the same way, and the first `m` still wins because
+ * `exec` returns the leftmost match.
+ */
 export function readMoodFromHash(hash: string): MoodLevels | null {
-  const match = /[#&]m=([0-2]{3})/.exec(hash);
+  const match = /[#&]m=([0-2]{3})(?=&|$)/.exec(hash);
   return match ? decodeMood(match[1]) : null;
 }
 
