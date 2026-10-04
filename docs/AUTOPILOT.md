@@ -2334,7 +2334,26 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.653s`).
   - Ports 3100–3109: none listening.
 
-  *Supervisor review:* pending.
+  *Supervisor review:* merged, with one comment corrected and the crop-id charset
+  backed by an argument as well as by sampling. **Re-run independently:** 200000
+  `crypto.randomUUID()` values and 200000 `String(Math.random()).slice(2)` values against
+  `^[A-Za-z0-9_-]{1,128}$` gave `uuid refused 0 random refused 0`. The edge cases gave
+  `1e-7` → `"-7"` accepted, `1.5e-10` → `"5e-10"` accepted, and `0` → `""` refused, as
+  the code comment says. The sampling is also backed by an argument: for `x` in [0, 1),
+  `String(x)` is either `0.ddd…` or `d[.ddd]e-N`. Index 1 is therefore always `.` or `e`,
+  so `slice(2)` keeps only digits, `e` and `-`, all inside the charset, and a UUID is
+  `[0-9a-f-]`. **Corrected:** the `readMoodFromHash` comment said "the first `m` still
+  wins". That holds only when the first `m` is well-formed. Run against the new pattern,
+  `#m=2100&m=012` reads `012` where it used to read `210`, so the comment now says the
+  first WELL-FORMED `m` wins. That behaviour is harmless (a hand-built URL either way)
+  and is left as is. The other shapes run against the new pattern: `#m=210` → `210`,
+  `#m=2100` → `null`, `#x=1&m=012` → `012`, `#m=210&m=001` → `210`, `#m=210&x=1` → `210`,
+  `#m=21` → `null`. The three affected test files give `Tests 22 passed (22)`. Rotation
+  re-checked independently: `comm -23` against `7da49ee` drops 4 lines, all from the two
+  backlog items this cycle ticked and rewrote, as intended. Gate on the final tree:
+  `npm run smoke` gives `Test Files 126 passed (126) / Tests 1147 passed (1147)`,
+  **348 passed (13.8m)** and **Smoke test passed.** tsc gives **13**. eslint gives
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
 
 - 2026-10-03 (cycle 72) — Branch `autopilot/2026-10-03-1840`. **A bounded bug hunt over
   `/checkin`, `/privacy` + `lib/device-data.ts`, the share flow and switching language
