@@ -308,7 +308,8 @@ partly done and stays here.
   cancelled share records nothing, measured as `{"clicked":0,"err":false}` against an
   `AbortError` stub. Not counting a cancel is the better behaviour; the sentence
   describing it is wrong. **Left unfixed on purpose: this cycle was forbidden to touch
-  `shareUrl`.** Filed 2026-10-03 (cycle 72).
+  `shareUrl`.** Filed 2026-10-03 (cycle 72). **The docstring half is corrected
+  2026-10-04 (cycle 76); the return path itself still waits on the owner.**
 
 - [x] [AI] **`readMoodFromHash` accepts a too-long `m` and renders its first three digits.**
   **Fixed 2026-10-04 (cycle 73)** — the value is anchored to `&` or the end of the hash
@@ -2195,6 +2196,29 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-04 (cycles 74, 75, 76) — **Two bounded hunts that pushed nothing, then a
+  supervisor-only cycle.** Cycle 74 hunted `/scan` (camera failures, the survey hint) and
+  `recommend()`; cycle 75 hunted the i18n runtime and `ar` right-to-left layout on the five
+  funnel pages. Neither worker confirmed a defect and neither pushed, so `main` stayed at
+  `d5cf57c`. Worker cost, from each session's own usage record: cycle 74 **$7.13**,
+  cycle 75 **$4.94**. The workers' own coverage claims were not re-run by the supervisor
+  and are not repeated here. With every hunt area of cycles 71–75 covered (server routes,
+  `/checkin`, `/privacy`, share, language switch, `/scan`, `recommend()`, i18n), cycle 76
+  spawned no worker. It closed the last confirmed `[AI]` item it could close without an
+  owner decision: the `shareCardImage` comment in `app/components/share-card.tsx` said
+  `onShare` fires "right before the action"; every call sits after it, so a dismissed
+  sheet records nothing. Comment only, no behaviour change, and `shareUrl` untouched.
+  What is left needs the owner: affiliate signup, the share-link return path
+  (`docs/share-return-path-decision.md`), and the cadence.
+
+  *Gate on the final tree:* `npm run smoke` gives `Test Files 126 passed (126) / Tests
+  1147 passed (1147)`, **348 passed (15.3m)** and **Smoke test passed.** tsc gives
+  **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py`
+  prints **OK**. No port in 3100–3109 was listening before the run. Rotation: cycle 71's
+  entry moved verbatim to the end of `docs/autopilot-changelog.md`, after cycle 70.
+  `comm -23` of `sort -u` over both files at `d5cf57c` against the final tree drops one
+  line, the backlog line this cycle extended with its "docstring half is corrected" note.
+
 - 2026-10-04 (cycle 73) — Branch `autopilot/2026-10-04-0040`. **Two filed defects closed,
   both of them a pattern that accepts more than it was written to accept. (1) The share
   landing read a corrupted `m` as a valid one: `/[#&]m=([0-2]{3})/` in
@@ -2514,171 +2538,5 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   `6406dcd` against the final tree printed nothing. Gate on the final tree:
   `npm run smoke` gives `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
   **348 passed (12.4m)** and **Smoke test passed.** tsc gives **13**. eslint gives
-  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
-  Ports 3100–3109: none listening.
-
-- 2026-10-03 (cycle 71) — Branch `autopilot/2026-10-03-1240`. **A bounded bug hunt over
-  every route under `app/api/`. Five hypotheses tested, one confirmed, one fixed, one
-  filed. The confirmed defect: `/api/sync` answered **500** with an empty body for a
-  payload array whose ELEMENTS were malformed, where every other malformed payload
-  answers 400. The earlier fix in the same gate checked that each of the five arrays IS an array;
-  nothing checked what was in one, and the route then reads every element field by field.
-  `cropSamples: [null]` reaches `sample.meta` in `hasCropConsent` and `consentEvents:
-  [null]` reaches `event.kind` in `latestConsentGranted` — two distinct uncaught throws.
-  It fires on the `dryRun` preflight, which is the request an operator sends to find out
-  whether the real sync will work, and before any write, so no row was ever at risk. It
-  needs no hand-written body: `/ops` builds the five arrays straight out of
-  `localStorage` and the getters do not check elements either — `getCropSamples`
-  (`lib/crops.ts`) returns `parsed as CropSample[]`, `getConsentEvents` (`lib/consent.ts`)
-  returns `JSON.parse(...)` as-is — so one corrupt stored row is enough. Fixed with one
-  helper, `rowArray`, replacing the five `Array.isArray` calls in the gate that already
-  returns 400. The tracked diff over `app` and `lib` is **31** insertions and **5**
-  deletions in **1** file, `git diff -U0 -- app lib | grep -c 't("'` over the changed
-  lines is **0**, and nothing outside `app/api/sync/route.ts` changed in `app` or `lib`.**
-
-  **Reproduced first on a production build.** `next build` + `next start` on port
-  **3100** for `c87deb6`, port **3101** for the fix. `SUPABASE_URL`,
-  `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SYNC_TOKEN` set to throwaway local values —
-  the `dryRun` branch returns before `getSupabaseAdmin()` is called, so no Supabase,
-  OpenAI, Gemini, Resend or merchant was contacted in either direction.
-  `OPENAI_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `CRON_SECRET`,
-  `UNSUBSCRIBE_SECRET` and `SUPABASE_CROP_BUCKET` left unset throughout, which is what
-  put every LLM and email route on its no-key path.
-
-  Before, on a build of `c87deb6`:
-  - `cropSamples: [null]` — **500**, an empty body, server log
-    `⨯ TypeError: Cannot read properties of null (reading 'meta')`.
-  - `cropSamples: [{}]` with `consentEvents: [null]` — **500**, server log
-    `⨯ TypeError: Cannot read properties of null (reading 'kind')`,
-    `at Array.filter (<anonymous>)`.
-  - `cropSamples: ["x"]` — **200**, and `counts.cropSamples` **1**. The bug's quieter
-    half: a string has no field the route can use and no chance of being uploaded, and
-    it was counted anyway.
-
-  After, the same seven bodies against a clean production build of the fix:
-  `cropSamples: [null]` **400**, `consentEvents: [null]` **400**, `cropSamples: ["x"]`
-  **400**, `funnelEvents: "abc"` **400**, `funnelEvents: [null]` **400** — all five with
-  `errors: ["Unsupported or missing sync payload."]`; `cropSamples: [{}]` **200** with
-  `counts.cropSamples` **1** and the all-empty payload **200**, which are the two that
-  had to keep working. `grep -c TypeError` over that server's whole log: **0**.
-
-  **Pinned** in `tests/api-json-boundaries.test.ts`, the file that already owns this
-  defect class — **12 passed (12)** on the fixed tree. Five new cases: four that a
-  malformed element is a 400 (`cropSamples: [null]`, `consentEvents: [null]`,
-  `cropSamples: ["x"]`, `funnelEvents: [null]`) and one that `[{}]` in all five arrays
-  is still a 200. The last is not decoration: an empty object has no field the route can
-  throw on, and refusing it would be a different rule than the one this fixes.
-
-  **Broken on purpose, then reverted.** `git checkout app/api/sync/route.ts` with the
-  new tests in place gives **Tests 4 failed | 8 passed (12)** — the four malformed-element
-  cases and only those; the `[{}]` test passes on the broken code too, which is what it
-  is for. Reverted from a copy taken before the break, and `sha256sum` over the two
-  changed source files printed the same two digests before and after:
-  `app/api/sync/route.ts`
-  `f2a63d5dacdd4fa2701e9675f01c4c6fc948a9a54b3dc992588cc12dd4ecaca8`,
-  `tests/api-json-boundaries.test.ts`
-  `ebae4cfde61418a564d1ee6f0ab1662d53db2b97c9911307456484a524ba38bc`.
-
-  **Refuted, one line each.**
-  - **`/api/out` cannot redirect off `ALLOWED_HOSTS`, 500, or inject a header.** All
-    **88** combinations (**22** sku ids × **4** merchant ids) returned 302 to one of
-    exactly the **4** allowlisted hosts, **22** per host; unknown sku, unknown merchant,
-    `sku=../../evil` and no params at all gave **404**; `placement=a%0d%0aX-Injected:%201`
-    came back as `utm_content=a%0D%0AX-Injected%3A+1_cl1_oliveyoung` inside the `Location`
-    value with no injected header in the response; a duplicated `sku`/`merchant`, a
-    percent-encoded `merchant`, an empty `placement`, a 2000-character `placement` and an
-    absolute URL smuggled into `placement` all still went to oliveyoung. An unknown
-    `placement` is NOT unescaped — `URLSearchParams.set` encodes it.
-  - **No allowlist bypass in `isAllowedCommerceUrl`.** **13** URL shapes checked against
-    `new URL().hostname` (userinfo `@`, `:443@`, `#`/`?` suffixes, a sibling domain,
-    `http:`, `javascript:`, a bare `//`, punycode, backslashes): the only two that parse
-    to an allowlisted hostname are `https://WWW.COUPANG.COM/x` and
-    `https://www.coupang.com\@evil.example/`, and both genuinely ARE coupang — WHATWG
-    lowercases the host and treats `\` as `/` in a special scheme, so the `@evil.example`
-    lands in the path.
-  - **No token or secret check passes open on an unset env var.** **10** auth probes with
-    `CRON_SECRET`, `UNSUBSCRIBE_SECRET` and `RESEND_API_KEY` unset — including
-    `Authorization: Bearer undefined`, `Bearer ` and a bare `Bearer` — gave 401 on
-    `/api/reengage` and `/api/reengage/run`, 503 on `/api/reengage/unsubscribe` and 401
-    on `/api/sync` POST; not one returned 200. The two unauthenticated status GETs
-    (`/api/sync`, `/api/funnel`) returned 200 carrying only env booleans and the limiter
-    numbers, with no `commerceOverrides` and no `aggregate` field. `cronAuthorized` and `hasValidSyncToken` both return false on a
-    missing secret before any compare, and `getSyncToken` additionally requires **32**
-    characters, so `"" === ""` is unreachable.
-  - **Every route that spends money or writes has a limiter or a token.** `/api/reason`
-    and `/api/analyze`: origin guard then `createRateLimiter({ max: 10 })`. `/api/sync`
-    POST: token then `max: 12`. `/api/funnel` POST: origin guard then `max: 20`.
-    `/api/reengage/subscribe`: `max: 5`. `/api/reengage` and `/api/reengage/run`:
-    `cronAuthorized`. `/api/out` spends nothing and writes nothing.
-  - **No oversized, non-JSON or wrong-typed body produces a 500 on any route but
-    `/api/sync`.** **28** malformed bodies (non-JSON, empty, `null`, an array, a string, a
-    number, 200-deep nesting) across `/api/reason`, `/api/analyze`, `/api/funnel` and
-    `/api/reengage/subscribe` all returned 4xx. The size caps bite before the LLM call:
-    a **60792**-byte reason body gave **413** against its 32768 cap and a **2200041**-byte
-    analyze body gave **413** against its 2100000 cap, both from `readBoundedJson`, which
-    runs before the provider `fetch`. 9 reason items gave 400 against the cap of 8; 101
-    funnel events gave 400 against the cap of 100.
-  - **`efficacyClean()` is on every path that returns LLM text.** `/api/analyze` filters
-    `payload.narrative` with it directly; `/api/reason` filters each candidate with
-    `reasonClean`, whose first line is `if (!efficacyClean(candidate).ok) return false`.
-    The three non-LLM paths (no key, filter rejected, catch) return `item.fallback`, which
-    is the caller's own string and is itself `efficacyClean`-guarded where it is generated
-    — `lib/recommend.ts`'s `reasonFor` rewrites the reason when the check trips. There is
-    no cache in either route.
-  - **No env value or stack trace reaches a response body.** The **4** `NEXT_PUBLIC_`
-    names in `app` and `lib` are `NEXT_PUBLIC_COMMERCE_AFFILIATE`,
-    `NEXT_PUBLIC_FUNNEL_FLUSH`, `NEXT_PUBLIC_SUPABASE_URL` and
-    `NEXT_PUBLIC_VISIBLE_ATTR_MODEL` — no secret among them. The six secret names appear
-    in client-reachable files only as comment text and as the literal string in the
-    `/ops` token field's `placeholder=` and two of its labels, never a value. The only `error.message` that reaches a body is a
-    Supabase `PostgrestError` behind the sync token. The 500 this cycle fixed had an empty body.
-
-  **Filed, not fixed.** `uploadCropSamples` builds its storage key from
-  `new Date(sample.ts).toISOString()` with no finiteness check, while `retentionUntil`
-  five lines away guards the same field, and `sample.id` goes into the object path
-  unvalidated. Found by reading and NOT reproduced — the path needs
-  `SUPABASE_CROP_BUCKET` and a live storage client — so it is an open `[AI]` backlog item
-  rather than a speculative push.
-
-  **Research / ML: skipped,** as the brief said.
-
-  **Rotation:** cycle 67's entry moved verbatim to the end of
-  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 66. `sort -u` over
-  both files at `c87deb6` against `sort -u` over both files immediately after the move:
-  `comm -23` drops **0** lines and `comm -13` adds **0**.
-
-  **Gate on the final tree:**
-  - `npm run smoke`: `Test Files 124 passed (124) / Tests 1132 passed (1132)`,
-    **344 passed (10.2m)**, **Smoke test passed.** (The baseline on `c87deb6` was
-    `124 (124)` / `1127 (1127)` and **344**; the delta is this cycle's **5** new cases in
-    an existing file, so the file count and the e2e count are unchanged.)
-  - tsc: **13**.
-  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
-  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.646s`).
-  - Ports 3100–3109: none listening.
-
-  *Supervisor review:* merged, with the filed `ts` half fixed on top. **The worker's
-  fix holds.** Read against the route: nothing between the gate and the `dryRun` return
-  reads an element except `validatePayload` → `hasCropConsent` → `latestConsentGranted`,
-  and both reads are now behind `rowArray`. One consequence is worth knowing, and it is
-  not new: one corrupt row still blocks the whole sync. Before, it did that with an empty
-  500; now it does it with a 400. The one exception is a non-object row like `"x"`,
-  which used to pass and now blocks; the worker chose that on purpose. **What the worker
-  filed as unreproducible was reproducible.** The `uploadCropSamples` storage key throws
-  on a bad `ts`, and mocking `getSupabaseAdmin` (the pattern
-  `tests/funnel-ingest.test.ts` already uses) reproduces it: `RangeError: Invalid time
-  value`, uncaught, after `consent_events`, `funnel_events`, `pilot_notes` and `labels`
-  had been upserted. The worker's suggested guard, `Number.isFinite`, would not have been
-  enough: `1e20` is finite and `new Date(1e20)` is still an Invalid Date. Fixed by
-  checking the Date itself and skipping the row with a warning BEFORE the upload, so a
-  bad row leaves no orphan object in storage. Pinned in `tests/sync-crop-timestamp.test.ts`
-  (a string, an object, `1e20`): with the fix, together with
-  `tests/api-json-boundaries.test.ts`, `Tests 15 passed (15)`; with the route restored to
-  the worker's version, `Tests 3 failed (3)`; `sha256sum -c` on the restored file printed
-  `app/api/sync/route.ts: OK`. The `sample.id` half of that backlog item stays open, with
-  the reason written on it. Rotation re-checked independently: `comm -23` of `sort -u` over
-  both files at `c87deb6` against the final tree printed nothing. Gate on the final tree:
-  `npm run smoke` gives `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
-  **344 passed (13.9m)** and **Smoke test passed.** tsc gives **13**. eslint gives
   `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
   Ports 3100–3109: none listening.
