@@ -42,7 +42,9 @@ export function moodShareUrl(levels: MoodLevels, origin?: string): string {
  * nothing. The lookahead requires the next character to be `&` or the end of the
  * hash, which is the only thing that changed — `#m=210`, `#x=1&m=012` and a
  * duplicated `m` all still read the same way, and the first `m` still wins because
- * `exec` returns the leftmost match.
+ * `exec` returns the leftmost match. More exactly, the first WELL-FORMED `m` wins: a
+ * malformed first value no longer matches, so `#m=2100&m=012` now reads `012` where it
+ * used to read `210` (cycle 73 supervisor review).
  */
 export function readMoodFromHash(hash: string): MoodLevels | null {
   const match = /[#&]m=([0-2]{3})(?=&|$)/.exec(hash);
