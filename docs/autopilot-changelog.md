@@ -14855,3 +14855,127 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
   - `python3 ml/selftest.py`: **OK**.
   - Ports 3100–3109: none listening.
+
+- 2026-10-03 (cycle 70) — Branch `autopilot/2026-10-03-0639`. **One double-tap now counts
+  once on all four funnel surfaces that could double it. What a duplicate cost: a second
+  merchant tab, a second `/api/out` request, a second care-intent row on `/care` (the click
+  log `/privacy` counts), and a doubled raw event log. It did NOT move a conversion rate —
+  corrected by the supervisor review below; the worker's entry said it did. Two
+  fixes, because the two halves are different defects: `/survey`'s submit has `router.push`
+  in flight and takes a `useRef` flag; `/care`'s `openCareLink` and the two
+  `<a target="_blank">` links on `/report` have nothing in flight and share a synchronous
+  800 ms window keyed by href in a new `lib/tap-guard.ts`. On the two anchors the second
+  tab is the browser's own doing, so the handler calls `preventDefault()` as well as
+  skipping the duplicate event. `window.open` stays synchronous inside the click gesture —
+  no `await` and no `setTimeout` before it, for the reason the comment above `openCareLink`
+  already gave. `href`, `target`, `rel`, `ALLOWED_HOSTS` and `lib/commerce.ts` are
+  untouched, `disabled={!ready}` keeps its meaning, and no copy changed: the tracked diff
+  over `app` and `lib` is **68** insertions and **2** deletions in four files plus the new
+  module, the two deletions are the two `onClick={() => {` lines that became
+  `onClick={(event) => {`, and `git diff -U0 -- app lib | grep -c 't("'` over the changed
+  lines is **0**.**
+
+  **Reproduced first, with numbers, on a production build.** `next build` + `next start` on
+  port **3199**, 360x800, `ko` forced by seeding `aru.lang`, one browser context per case.
+  No merchant redirect was ever followed: `window.open` replaced by a collector, every
+  `/api/out` request fulfilled locally, and every host in `ALLOWED_HOSTS`
+  (`www.oliveyoung.co.kr`, `search.shopping.naver.com`, `www.coupang.com`,
+  `www.google.com`) fulfilled locally as well. Tabs counted with `context.on('page')`,
+  events counted out of `aru_funnel_events_v1`. Two gestures per surface,
+  `page.dblclick()` and two `click()`s ~50 ms apart.
+
+  Before, on a build of `9f22788`:
+  - `/survey` submit, `dblclick` — `survey_completed=2`.
+  - `/care` purchase link — `window.open=2` and `commerce_clicked=2`, both gestures.
+  - `/report` summary link (`placement=report_summary`) — tabs **2** and
+    `commerce_clicked=2`, both gestures.
+  - `/report` product card (`placement=report_product`) — tabs **2** and
+    `commerce_clicked=2`, both gestures.
+
+  After, the same harness and the same gestures on a clean production build of the fix:
+  `/survey` `survey_completed=1`; `/care` `window.open=1` and `commerce_clicked=1` on both
+  gestures; `/report` summary tabs **1** and `commerce_clicked=1` on both gestures;
+  `/report` product card tabs **1** and `commerce_clicked=1` on both gestures.
+
+  **What the 50 ms gesture did NOT establish, stated because the brief asked for it.** On
+  `/survey` it read `survey_completed=1` BEFORE the fix as well as after. The second
+  Playwright click never landed — `TimeoutError: locator.click: Timeout 2000ms exceeded.` —
+  because `router.push` had already replaced the page inside 50 ms on this container. So
+  only `dblclick` reproduces the `/survey` half here, and the 50 ms variant is evidence of
+  nothing on that surface in either direction. On the three click surfaces both gestures
+  reproduced, and both are fixed.
+
+  **Pinned** in `tests/e2e/double-tap-funnel.regression-46.spec.ts`, **8 passed (37.1s)**
+  on its own against the fixed build: four that a double-tap counts once, and four that a
+  DELIBERATE second click still counts — a second tap on `/care` and on each `/report`
+  anchor after the window (1100 ms) gives `window.open`/tabs **2** and `commerce_clicked`
+  **2**, and a visitor who goes back to `/survey` and submits again records a second
+  `survey_completed`. A guard that swallowed a real second visit would trade one wrong
+  number for another. `lib/tap-guard.ts` also has unit tests on fake timers
+  (`tests/tap-guard.test.ts`, **9 passed**), covering the window boundary and the rule that
+  the window is measured from the last ACCEPTED tap, so a run of rapid taps cannot extend
+  the suppression indefinitely.
+
+  **Broken on purpose, then reverted.** Deleting the suppression from `createTapGuard` and
+  the `submitting.current` set and check from `submit()`, then rebuilding and restarting the
+  production server, gives **4 failed | 4 passed (40.6s)** on regression-46 — the four
+  dedupe tests, and only those; the four "deliberate second click" tests still pass, which
+  is what they are for. The unit tests on the broken guard give
+  **Tests 7 failed | 2 passed (9)**. Reverted from copies taken before the break, and
+  `sha256sum` over the five changed source files printed the same five digests before and
+  after: `lib/tap-guard.ts`
+  `5ceeb4ee0cecd2011d19859cfcd5524a827e62036938c10ef73775841ed20aac`,
+  `app/survey/page.tsx`
+  `29abfbec5d3e6e3bff2525eccb68c7d689eb369b113b02b28a89cc4825d82912`,
+  `app/care/page.tsx`
+  `22b9c468d4f73a268799e8b12e6cdb49ca09e97e9cdba3f4ebdfbd314e5a394a`,
+  `app/report/page.tsx`
+  `f9852c3dfcf6ed9fd458846410f79944d8bfba5e1a2f934cd4bc3082b9004ff7`,
+  `app/components/product-card.tsx`
+  `e3146701e1f16515a60b6cd8358a030ab56ac39b08acf64c2060388fc236f293`.
+
+  **Research / ML: skipped,** as the brief said.
+
+  **Rotation:** cycle 66's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 65. `sort -u` over
+  both files at `9f22788` against `sort -u` over both files immediately after the move:
+  `comm -23` drops **0** lines and `comm -13` adds **0**.
+
+  **Gate on the final tree:**
+  - `npm run smoke`: `Test Files 124 passed (124) / Tests 1126 passed (1126)`,
+    **344 passed (11.0m)**, **Smoke test passed.** (The baseline on `9f22788` was
+    `123 (123)` / `1117 (1117)` and **336**; the deltas are this cycle's
+    `tests/tap-guard.test.ts` — **1** file, **9** tests — and regression-46's **8** e2e
+    tests.)
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.963s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* merged with two corrections. **(1) The premise was wrong, and the
+  supervisor that filed the backlog items in cycle 69 shares the blame.** Both items, the
+  worker's entry, the `lib/tap-guard.ts` header, the `/survey` comment and the regression-46
+  header said a duplicate inflated a conversion rate. It cannot: `summarizeFunnel`
+  (`lib/funnel.ts`) builds every step as a `Set` of session ids, and every rate and the
+  cumulative `funnelDropoff` are built on those sets, so a second event in the same session
+  was already counted once. The real costs are the second tab, the second `/api/out`
+  request, the second `recordCareIntent` row on `/care` (the count `/privacy` shows), and
+  the raw `events` total. All five texts now say that; the backlog items carry a dated
+  correction. The fix is still worth having for the tab and the click log. **(2) A clock
+  that steps backwards blocked a deliberate tap.** `createTapGuard` read `Date.now()`, so
+  after an NTP correction or a manual clock change the accepted timestamp sat in the future,
+  `now - previous` was negative, and a negative age read as inside the window. The guard
+  then suppressed the link for the size of the step plus the window. Reproduced with fake
+  timers (clock stepped back 5 s, deliberate tap 2 s later: `expected true to be false`).
+  Fixed by treating a negative age as outside the window. Pinned by "does not suppress a
+  tap after the wall clock steps backwards" in `tests/tap-guard.test.ts`. With the guard
+  restored to the worker's version the file gives `Tests 1 failed | 9 passed (10)`; with
+  the fix it gives `Tests 10 passed (10)`; `sha256sum -c` on the restored file printed
+  `lib/tap-guard.ts: OK`. Rotation re-checked independently: `comm -23` of `sort -u` over
+  both files at `9f22788` against the final tree drops 4 lines, and all 4 are edits to
+  the two backlog bullets this cycle ticked: their first lines, where `- [AI]` became
+  `- [x] [AI]`; the merchant item's second line, which gained the "Fixed" pointer; and its
+  `await. Noted 2026-10-03.` line, which this review extended with the correction. Gate on the final tree with both corrections: `npm run smoke`
+  gives `Test Files 124 passed (124) / Tests 1127 passed (1127)`, **344 passed (12.0m)** and
+  **Smoke test passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`.
+  `python3 ml/selftest.py` prints **OK**. Ports 3100–3109: none listening.

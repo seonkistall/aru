@@ -311,6 +311,47 @@ function originAllowed(request: Request) {
   return Boolean(origin && allowList.includes(origin));
 }
 
+/**
+ * What a crop id is allowed to look like before it is pasted into an object path.
+ *
+ * `uploadCropSamples` built `pilot-crops/<date>/${sample.id}.${ext}` and nothing
+ * checked `sample.id`, so `id: "../x"` placed the object OUTSIDE `pilot-crops/<date>/`
+ * and `id: "a/b"` invented a subdirectory. The route is behind the sync token, so only
+ * an operator can send it — but `/ops` builds this array straight out of
+ * `localStorage` and `getCropSamples` returns the parsed value as-is, so a hand-edited
+ * or corrupted stored row is enough, which is the same reachability the element-shape
+ * guard above was added for.
+ *
+ * The charset is deliberately narrower than "anything without a slash": it is the set
+ * the client's own generator produces. `uid()` in `lib/crops.ts` is
+ * `crypto.randomUUID()` with `String(Math.random()).slice(2)` as the fallback, so a
+ * real id is either 36 characters of `[0-9a-f-]` or the decimal digits of a random
+ * fraction (`-` and `e` too, for a value small enough that `String` prints it in
+ * exponential form). Over 200000 samples per branch, neither branch produced a value
+ * this pattern refuses. The one output it does refuse is the empty string, which
+ * `String(Math.random()).slice(2)` returns when `Math.random()` returns exactly `0`;
+ * that id would have written `pilot-crops/<date>/.<ext>`, a dotfile with no row to
+ * find it by, so refusing it is the behaviour wanted anyway.
+ */
+const CROP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * Typed `unknown` and checked with `typeof`, not handed straight to
+ * `CROP_ID_PATTERN.test`. `RegExp.test` coerces its argument, and the string it
+ * coerces a missing id to is `"undefined"` — which this pattern ACCEPTS, so a row
+ * with no `id` at all would have written `pilot-crops/<date>/undefined.<ext>`. The
+ * declared type says `string`; the payload is JSON off the wire and does not have to
+ * agree.
+ */
+function isCropId(id: unknown): id is string {
+  return typeof id === "string" && CROP_ID_PATTERN.test(id);
+}
+
+/** Bounded, so a refused id cannot pad the response with its own text. */
+function cropIdLabel(id: unknown): string {
+  return typeof id === "string" ? id.slice(0, 64) : typeof id;
+}
+
 async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabaseAdmin>>, bucket: string, payload: GyeolSyncPayload) {
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -319,6 +360,13 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
   if (!supabase) return { count, warnings, errors: ["Supabase admin client unavailable."] };
 
   for (const sample of payload.cropSamples) {
+    // Before anything else in the loop, because the id is what every line below
+    // names the row by and what the object path is built from.
+    if (!isCropId(sample.id)) {
+      warnings.push(`Skipping crop ${cropIdLabel(sample.id)}: unsupported id.`);
+      continue;
+    }
+
     if (!hasCropConsent(payload, sample)) {
       warnings.push(`Skipping crop ${sample.id}: no matching learning_crop consent.`);
       continue;
