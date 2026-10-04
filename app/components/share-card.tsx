@@ -92,9 +92,11 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 // Rasterize the card and hand it to the OS share sheet, falling back to a PNG
 // download where Web Share with files is unavailable (most desktop browsers).
-// onShare fires right before the action so callers can log intent with their
-// own surface label. AbortError (user dismissed the sheet) propagates so the
-// caller can ignore it silently.
+// onShare fires right AFTER the action completes, so a caller logs only a share
+// that happened, under its own surface label: a dismissed sheet records nothing.
+// AbortError (user dismissed the sheet) propagates so the caller can ignore it
+// silently. (The comment used to say "right before the action"; every call below
+// sits after it. Corrected 2026-10-04, cycle 76.)
 export async function shareCardImage(
   node: HTMLElement,
   opts?: { onShare?: (mode: ShareMode) => void; shareUrl?: string }
