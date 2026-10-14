@@ -277,6 +277,12 @@ def subgroup_key(row: dict) -> str:
     return f"{resolve_tone_band(row)}/{resolve_age_band(row)}"
 
 
+#: group_key for a row with no participant, subject, session or device id, and the fold
+#: stratified_group_folds gives those rows: training only, never validation.
+ANON_GROUP = "anon"
+ANON_FOLD = -1
+
+
 def group_key(row: dict) -> str:
     """Identity used to prevent leakage across folds.
 
@@ -295,11 +301,12 @@ def group_key(row: dict) -> str:
         value = str(row.get(key) or "").strip()
         if value:
             return f"d:{value}"
-    for key in ("id", "image"):
-        value = str(row.get(key) or "").strip()
-        if value:
-            return f"row:{value}"
-    return "row:unknown"
+    # No person, session or device id: nothing says whose face this is, so every such
+    # row is ONE group. It used to be one group per row (`row:<id>`), which made each
+    # consumer crop a distinct person: the group-safe split put the same face in train
+    # and validation, and the distinct-people coverage warnings counted crops as people.
+    # External manifests always carry subject_id, so this is the first-party path only.
+    return ANON_GROUP
 
 
 @dataclass
@@ -415,6 +422,11 @@ def stratified_group_folds(rows: list[dict], n_folds: int = 5) -> list[int]:
     to the fold whose subgroup histogram is furthest below target. Plain GroupKFold
     keeps people whole but happily puts every darker-skin sample in one fold, which
     makes per-cell validation numbers meaningless.
+
+    Rows with no identity at all (group_key "anon") get fold ANON_FOLD (-1): training
+    only, never validation. Packed as one group they were usually the largest and
+    landed whole in fold 0, the default validation fold, so validation became the
+    anonymous crops and training saw none of them.
     """
     if n_folds < 2:
         raise ValueError("n_folds must be >= 2")
@@ -422,6 +434,7 @@ def stratified_group_folds(rows: list[dict], n_folds: int = 5) -> list[int]:
     by_group: defaultdict = defaultdict(list)
     for idx, row in enumerate(rows):
         by_group[group_key(row)].append(idx)
+    anonymous = by_group.pop(ANON_GROUP, [])
 
     cell_of: dict[int, str] = {idx: subgroup_key(rows[idx]) for idx in range(len(rows))}
     fold_cell_counts: list[Counter] = [Counter() for _ in range(n_folds)]
@@ -444,6 +457,8 @@ def stratified_group_folds(rows: list[dict], n_folds: int = 5) -> list[int]:
             assignment[idx] = best_fold
             fold_cell_counts[best_fold][cell_of[idx]] += 1
         fold_sizes[best_fold] += len(indices)
+    for idx in anonymous:
+        assignment[idx] = ANON_FOLD
 
     return assignment
 

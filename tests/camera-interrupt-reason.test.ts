@@ -74,4 +74,16 @@ describe("a camera interruption carries why it happened", () => {
     expect(block).toContain("다른 앱이 카메라를 쓰고 있을 수 있어요");
     expect(block).not.toContain("카메라 권한이 필요해요");
   });
+
+  // The "noface" screen keeps the stream for its 다시 시도 and hides the <video>. With
+  // "noface" left out of both guards, hiding the tab there kept the camera capturing in
+  // the background and a track that died there went unnoticed. The cycle 115 hunt saw it
+  // in a hook harness that is not in this repo (the track stayed live; with the fix it is
+  // stopped and camera_interrupted is recorded); this pins the two guards it turned on.
+  it("treats the noface screen as a live camera, for backgrounding and for the watcher", () => {
+    expect(page).toMatch(
+      /if \(phaseRef\.current !== "ready" && phaseRef\.current !== "analyzing" && phaseRef\.current !== "noface"\) return;/
+    );
+    expect(page).toMatch(/if \(!stream \|\| \(phase !== "ready" && phase !== "analyzing" && phase !== "noface"\)\) return;/);
+  });
 });

@@ -2263,5 +2263,124 @@ class PromotedCheckpointIsWhatTheGateScores(unittest.TestCase):
         self.assertIn("model_confusion=promoted_val_confusion,", self.SOURCE)
 
 
+
+class IdlessCropsAreOnePerson(unittest.TestCase):
+    """A consumer scan with no pilot session exports crops with no participant,
+    session or device id. group_key used to give each its own `row:<id>` group, so
+    the group-safe split counted every crop as a different person and could put the
+    same face in train and validation (cycle 115 hunt)."""
+
+    def test_rows_without_any_identity_share_one_group(self):
+        self.assertEqual(subgroups.group_key({"id": "a"}), "anon")
+        self.assertEqual(subgroups.group_key({"id": "b", "image": "images/b.jpg"}), "anon")
+        self.assertEqual(subgroups.group_key({}), "anon")
+        # An identity of any kind still wins, in the same order as before.
+        self.assertEqual(subgroups.group_key({"id": "a", "participant_id": "P1"}), "p:P1")
+        self.assertEqual(subgroups.group_key({"id": "a", "device_id": "D1"}), "d:D1")
+
+    def _people(self, n_people, per_person=4):
+        return [
+            {"participant_id": f"P{i // per_person:03d}", "ita": 50 if i % 3 else 20, "age": 25 + i % 40}
+            for i in range(n_people * per_person)
+        ]
+
+    def test_identityless_rows_train_only_and_never_straddle_folds(self):
+        people = self._people(10)
+        anonymous = [{"id": f"crop-{i}", "ita": 50 if i % 2 else 20, "age": 30} for i in range(12)]
+        folds = subgroups.stratified_group_folds(people + anonymous, 5)
+        # Picked by position, not by group_key, so the old code fails on the straddle itself.
+        self.assertEqual(set(folds[len(people):]), {-1})  # subgroups.ANON_FOLD
+        self.assertEqual(sorted(set(folds[: len(people)])), [0, 1, 2, 3, 4])
+
+    def test_many_identityless_rows_do_not_become_the_validation_fold(self):
+        # Packed as one group, 200 anonymous crops were the largest group and went whole
+        # to fold 0, the default validation fold (the cycle 115 review's probe).
+        people = self._people(30)
+        anonymous = [{"id": f"crop-{i}", "ita": 50, "age": 30} for i in range(200)]
+        folds = subgroups.stratified_group_folds(people + anonymous, 5)
+        val = [i for i, fold in enumerate(folds) if fold == 0]
+        self.assertTrue(val)
+        self.assertTrue(all(i < len(people) for i in val), "an identity-less crop reached the validation fold")
+
+    def test_coverage_counts_identityless_rows_as_one_person(self):
+        cov = subgroups.coverage([{"id": f"crop-{i}", "ita": 50, "age": 30} for i in range(25)])
+        self.assertEqual(set(cov.groups_per_cell.values()), {1})
+
+
+class ScopedCropConsent(unittest.TestCase):
+    """run_pipeline's crop-consent warning read ONE device-wide latest learning_crop
+    event, so a participant's revocation was hidden by the next participant's grant
+    (cycle 115 hunt). Mirrors latestConsentGranted's exact-scope rule."""
+
+    CONSENT = [
+        {"kind": "learning_crop", "granted": "true", "participantId": "P001", "sessionId": "S1"},
+        {"kind": "learning_crop", "granted": "false", "participantId": "P001", "sessionId": "S1"},
+        {"kind": "learning_crop", "granted": "true", "participantId": "P002", "sessionId": "S2"},
+    ]
+    CROPS = [
+        {"id": "c1", "meta": {"participantId": "P001", "sessionId": "S1"}},
+        {"id": "c2", "meta": {"participantId": "P001", "sessionId": "S1"}},
+        {"id": "c3", "meta": {"participantId": "P002", "sessionId": "S2"}},
+    ]
+
+    def _summary(self, consent):
+        return {
+            "counts": {"labels": 40, "crops": len(self.CROPS)},
+            "labels": {"distribution": {}},
+            "consent": consent,
+        }
+
+    def test_a_revoked_scope_is_found_although_the_export_ends_on_a_grant(self):
+        consent = run_pipeline.summarize_consent(self.CONSENT, self.CROPS)
+        self.assertTrue(consent["latest"]["learning_crop"]["granted"], "the device-wide check passes; that was the hole")
+        self.assertEqual(consent["crops_without_scoped_consent"], 2)
+        self.assertEqual(consent["unconsented_crop_ids"], ["c1", "c2"])
+        warnings = [w for w in run_pipeline.warnings_for(self._summary(consent)) if "own participant/session scope" in w]
+        self.assertEqual(len(warnings), 1)
+        self.assertTrue(warnings[0].startswith("2 crop(s)"))
+
+    def test_an_unscoped_grant_does_not_cover_a_scoped_crop(self):
+        consent = run_pipeline.summarize_consent([{"kind": "learning_crop", "granted": "true"}], self.CROPS)
+        self.assertEqual(consent["crops_without_scoped_consent"], 3)
+
+    def test_every_scope_granted_reports_nothing(self):
+        rows = [
+            {"kind": "learning_crop", "granted": "true", "participantId": "P001", "sessionId": "S1"},
+            {"kind": "learning_crop", "granted": "true", "participantId": "P002", "sessionId": "S2"},
+        ]
+        consent = run_pipeline.summarize_consent(rows, self.CROPS)
+        self.assertEqual(consent["crops_without_scoped_consent"], 0)
+        self.assertEqual([w for w in run_pipeline.warnings_for(self._summary(consent)) if "scope" in w], [])
+
+    def test_an_unscoped_grant_covers_an_unscoped_crop_and_only_that(self):
+        consumer = [{"id": "u1", "meta": {}}, {"id": "u2"}]
+        unscoped = [{"kind": "learning_crop", "granted": "true", "participantId": "", "sessionId": ""}]
+        self.assertEqual(run_pipeline.summarize_consent(unscoped, consumer)["crops_without_scoped_consent"], 0)
+        scoped_only = [{"kind": "learning_crop", "granted": "true", "participantId": "P001", "sessionId": "S1"}]
+        self.assertEqual(run_pipeline.summarize_consent(scoped_only, consumer)["crops_without_scoped_consent"], 2)
+
+    def test_the_old_call_shape_still_works(self):
+        self.assertNotIn("crops_without_scoped_consent", run_pipeline.summarize_consent(self.CONSENT))
+
+
+class RecordedIta(unittest.TestCase):
+    """An app-measured ITA of 0 is a reading, not a gap (cycle 115 hunt)."""
+
+    def test_zero_is_kept(self):
+        self.assertEqual(ita.recorded_ita({"toneIta": 0}), "0")
+        self.assertEqual(ita.recorded_ita({"toneIta": -0.0}), "-0.0")
+        self.assertEqual(ita.recorded_ita({"toneIta": 12.3}), "12.3")
+        self.assertEqual(ita.recorded_ita({"toneIta": " 8.5 "}), "8.5")
+
+    def test_absent_and_unusable_values_are_empty(self):
+        for features in ({}, {"toneIta": None}, {"toneIta": ""}, {"toneIta": True}, {"toneIta": float("nan")}, {"toneIta": float("inf")}):
+            self.assertEqual(ita.recorded_ita(features), "", features)
+
+    def test_prepare_crop_dataset_uses_it_for_the_value_and_the_source_label(self):
+        source = (Path(__file__).resolve().parent / "prepare_crop_dataset.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count("ita_module.recorded_ita(features)"), 2)
+        self.assertNotIn('features.get("toneIta", "") or ""', source)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

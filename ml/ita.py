@@ -132,6 +132,23 @@ def central_skin_pixels(image, box_ratio: float = 0.4, max_side: int = 96) -> li
     return ranked[trim:-trim]
 
 
+def recorded_ita(features: dict) -> str:
+    """The app-measured ITA in a crop's features, as text, or "" when there is none.
+
+    Presence, not truthiness: lib/skin.ts rounds ITA to 0.1 degree, so a reading
+    within 0.05 of zero (L* near 50, inside brown_dark) is stored as 0, and
+    ml/prepare_crop_dataset.py's `or ""` treated that 0 as missing, recomputed ITA from
+    the crop box and labelled the row recomputed_from_crop, while ml/run_pipeline.py
+    bands the same row from the recorded 0.
+    """
+    raw = features.get("toneIta")
+    if raw is None or isinstance(raw, bool):
+        return ""
+    if isinstance(raw, (int, float)):
+        return str(raw) if math.isfinite(raw) else ""
+    return str(raw).strip()
+
+
 def tone_from_image_path(path) -> ToneReading | None:
     """Read one image file and return its tone. Requires pillow."""
     try:

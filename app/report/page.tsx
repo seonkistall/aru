@@ -38,7 +38,11 @@ function explain(attr: "oil" | "pores" | "redness", value: string): string {
 
 function scanSignalText(reads: SkinReads): string {
   const parts: string[] = [];
-  if (reads.oil.level >= 1) parts.push(t("T존 유분"));
+  // The same thresholds recommend() applies (effectiveConcerns in lib/recommend.ts) and
+  // /survey's scan hint names. Oil at level 1 used to be listed here although nothing
+  // used it: the picks and routine for oil 1 are those for oil 0, and /survey had just
+  // told the same visitor the photo showed little.
+  if (reads.oil.level >= 2) parts.push(t("T존 유분"));
   if (reads.redness.level >= 1) parts.push(t("볼 붉은기"));
   if (reads.pores.level >= 1) parts.push(t("모공·결"));
   return parts.length ? parts.join("·") : t("전반적으로 안정적인");
