@@ -259,6 +259,11 @@ export type FunnelSummary = {
   // Legacy property name: completed-scan sessions that opened a merchant link.
   // Do not present this as a purchase or efficacy outcome.
   failurePreventionConversion: number;
+  // That ratio's numerator as a count: sessions that completed a scan AND opened a
+  // merchant link. NOT `steps.commerce_clicked`, which also counts clicks from /care
+  // and from survey-only sessions with no scan; printed beside "Of N completed scans"
+  // that raw step could claim more conversions than there were scans.
+  scanCommerceSessions: number;
   surveyCompletion: number; // completed-survey sessions / survey-viewed sessions
   shareRate: number; // share clicks / completed scans
   // Share arrivals that also reached a capture. The denominator is share
@@ -355,12 +360,14 @@ export function summarizeFunnel(events: FunnelCountable[] = getFunnelEvents()): 
   // numerator would read >1 on a log where those outnumber the reco views.
   const recoViewedSet = reachedSets.reco_viewed;
   const clickedWithinReco = [...reachedSets.commerce_clicked].filter((id) => recoViewedSet.has(id)).length;
+  const scanCommerceSessions = withinCompleted("commerce_clicked");
 
   return {
     events: events.length,
     sessions: sessions.size,
     steps,
-    failurePreventionConversion: ratio(withinCompleted("commerce_clicked")),
+    failurePreventionConversion: ratio(scanCommerceSessions),
+    scanCommerceSessions,
     surveyCompletion: surveyViewedSet.size ? completedAfterView / surveyViewedSet.size : 0,
     shareRate: ratio(withinCompleted("share_clicked")),
     viralActivation: landedSet.size ? landedThenScanned / landedSet.size : 0,

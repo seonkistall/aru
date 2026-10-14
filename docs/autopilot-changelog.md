@@ -15145,3 +15145,165 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **344 passed (13.9m)** and **Smoke test passed.** tsc gives **13**. eslint gives
   `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
   Ports 3100–3109: none listening.
+
+- 2026-10-03 (cycle 72) — Branch `autopilot/2026-10-03-1840`. **A bounded bug hunt over
+  `/checkin`, `/privacy` + `lib/device-data.ts`, the share flow and switching language
+  mid-flow. Four hypotheses tested, three defects confirmed, one fixed, two filed. The
+  fixed defect: a language tap on `/studio` threw away the card copy the visitor had
+  typed. `LanguageProvider` renders its children under `key={active}` (`lib/i18n.tsx`),
+  so a language change unmounts and remounts the whole subtree and every `useState` in
+  it goes with the discarded tree. `/studio` held `headline` and the four read rows in
+  `useState` alone and wrote nothing anywhere, so the remount reran the preset
+  initializers in the NEW language and the visitor's own words were gone. It is the third
+  page in this exact defect class — `/survey` (cycle 40) and `/checkin` (cycle 42) were
+  the first two — and the last one of the three left unfixed. `/studio` is the share
+  card's only renderer and the `/scan` result screen links to it
+  (`app/scan/page.tsx:547`), so it is the editing step in front of the one image this
+  product puts into a chat. Fixed with the pattern the two siblings already use: the card
+  copy is mirrored into `sessionStorage` under a new `DEVICE_DATA_KEY.studioDraft`,
+  registered in `lib/device-data.ts` so "delete my device data" clears it, and written
+  ONLY once the visitor has typed — the preset and the scan prefill are rebuilt on every
+  mount in the language on screen, and freezing either would stop it translating. The
+  tracked diff over `app` and `lib` is **90** insertions and **2** deletions in **2**
+  files, and `git diff -U0 -- app lib | grep 't("'` over the changed lines returns one
+  pair: the `textarea`'s `onChange` renamed from `setHeadline` to `editHeadline`, with its
+  `t("헤드라인")` label byte-identical. No copy changed, nothing new goes in
+  `localStorage`, the `key={active}` remount is untouched, and what the share sheet is
+  handed is unchanged.**
+
+  **Reproduced first on a production build.** `next build` + `next start` on port **3100**
+  for `6406dcd`, at 360x800, driven through the real language picker. Typed
+  `내 피부, 오늘은 최고` into `#studio-headline`, then tapped English:
+
+  ```
+  STUDIO ko  {"headline":"내 피부, 오늘은 최고","cardHeadline":"내 피부, 오늘은 최고","lang":"ko"}
+  STUDIO en  {"headline":"Calm and\ncomfortable texture","cardHeadline":"Calm and\ncomfortable texture","lang":"en"}
+  STUDIO pageerrors= 0
+  ```
+
+  Both the textarea and the card's own `<h2>` came back as the English preset. No
+  OpenAI, Gemini, Resend, Supabase or merchant was contacted: `/studio` makes no network
+  call, `navigator.share` was a local stub, and `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+  `RESEND_API_KEY`, `SUPABASE_SYNC_TOKEN`, `CRON_SECRET`, `UNSUBSCRIBE_SECRET` and
+  `NEXT_PUBLIC_FUNNEL_FLUSH` were unset throughout.
+
+  **Pinned** in a new e2e spec, `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`
+  — **2 passed (34.2s)** on the fixed tree. The first case types a headline and a read
+  value, switches ko → en → ja, and asserts the textarea, the card `<h2>` and the read
+  field all keep the typed strings, that the draft holds exactly
+  `{headline, reads}` with 4 rows under `aru_studio_draft_v1` in `sessionStorage`, and
+  that `localStorage` holds nothing under that key. The second case is not decoration: it
+  loads `/studio`, touches nothing, switches to `en`, and asserts the headline DID change
+  and that no draft was written — a draft that froze the untouched prefill would pass the
+  first test and fail this one.
+
+  **Broken on purpose, then reverted.** `git checkout app/studio/page.tsx` with the new
+  spec in place gives **1 failed | 1 passed (39.9s)** — the typed-copy case and only it;
+  the untouched-card case passes on the broken code too, which is what it is for.
+  Reverted from a copy taken before the break, and `sha256sum` over the two changed source
+  files printed the same two digests before and after:
+  `app/studio/page.tsx`
+  `1917d92cadb0cae74fda8a0317c9466fa56ed60847b79316f32064fdb2b612d5`,
+  `lib/device-data.ts`
+  `8fdcf5a7da46d5cb8f96e18b5d105d012bcd9d1e82e30a6d6a310a8573244671`.
+
+  **Filed, not fixed.** Two confirmed defects are open `[AI]` backlog items above: the
+  share sheet carries no link back to ARU because nothing passes `shareCardImage`'s
+  `shareUrl` (this cycle was forbidden to touch `shareUrl`), and `readMoodFromHash`
+  accepts a too-long `m` and renders its first three digits. Both carry their measurement
+  in the item.
+
+  **Refuted, one line each.**
+  - **"Delete my device data" leaves no ARU key behind.** The registry is complete:
+    `grep -rhoE '"(aru[._][a-zA-Z0-9_.]+|gyeol_[a-zA-Z0-9_]+)"' app lib | sort -u` returns
+    **21** literals and `lib/device-data.ts` is the only file that holds any of them (the
+    one hit in `lib/recommend.ts` is inside a comment), which is already pinned by
+    `tests/device-data.test.ts`. In a browser, with all 21 keys seeded (**14** local,
+    **7** session) on a production build, the delete left
+    `localStorage keys: []` and `sessionStorage keys: []` with the status row
+    `이 기기에 저장된 ARU 데이터를 모두 지웠어요.`, and the three downstream pages then showed
+    nothing of the old visit: `/report` redirected to `/survey`
+    (`Let's find skincare that suits you`), `/care` showed
+    `There's no report to continue from yet.` and `/checkin` showed its empty state. The
+    only keys back afterwards were the two funnel ids and a fresh survey draft the new
+    visits wrote. No consent key survived, so nothing was filed under that heading.
+  - **No check-in can be submitted for a product the visitor never picked, and no stored
+    shape crashes the page.** Six `gyeol_purchases` values on a production build —
+    `[null]`, `[{}]`, `["x"]`, `[valid, null]`, a valid row with `ts: "soon"`, and a valid
+    row — gave **0** page errors and **0** blank screens; only the valid row rendered a
+    `기록하기` button, and the `ts: "soon"` row rendered as `사용 중` with no button because
+    `roundFor` reads `NaN` as round 0. `[valid, null]` falls to the empty state, which is
+    the documented behaviour of the `.catch` added in cycle 15 rather than a new defect.
+  - **The share flow does not throw when the share API is missing, rejects, or is
+    cancelled.** With `navigator.canShare`/`navigator.share` both `undefined`, `/studio`
+    took the download fallback and recorded `{"surface":"studio","mode":"download"}` with
+    no error row; with an `AbortError` stub it recorded nothing and showed no error; with
+    a resolving stub it recorded `{"surface":"studio","mode":"web-share"}`. **0** page
+    errors in all three.
+  - **A `share_landed` URL with garbage params does not crash or inject.** Eight hash
+    shapes on `/`: `#m=210`, `#x=1&m=012` and `#m=210&m=001` each rendered the callout and
+    recorded exactly **1** `share_landed`; `#m=999`, `#m=abc`, `#m=21` and a
+    percent-encoded `<script>alert(1)</script>` rendered no callout and recorded **0**;
+    `main script` count was **0** and page errors **0** in all eight. The one that
+    mis-renders (`#m=2100`) is filed above.
+  - **A language switch mid-flow loses no state and double-fires no event on the four
+    funnel pages.** ko → en → ja through the real picker on a production build, with a
+    submitted survey and one due product use seeded. `/survey` kept all four pressed chips
+    (`["세럼","지성","모공","2만원"]` → `["Serum","Oily","Pores","₩20,000"]` →
+    `["セラム","脂性肌","毛穴","2万ウォン"]`) and `survey_viewed` stayed at **1**; `/report` kept
+    `aru_report_step_v1` at `"1"` and `reco_viewed` at **1**; `/care` kept `care_viewed` at
+    **1**; `/checkin` kept both pressed answers and its draft
+    (`{"u-valid":{"sat":3,"trouble":true,"repurchase":null}}`) with `checkin_opened` at
+    **1**. **0** page errors, and no Korean message id reached the chips or the `<h1>` in
+    `en` or `ja`. `/privacy`'s open delete confirmation DOES close on a language tap
+    (`confirmOpen` true → false); a destructive confirmation that resets to its safe state
+    is not a loss, so it is recorded here and not filed.
+
+  **Rotation.** Cycle 69's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 67: **176** lines
+  moved, and `wc -l` over both files straight after the move read **2445** + **14857** =
+  **17302**, the same total as at `6406dcd`. `comm -23` of the
+  `sort -u` union of both files at `6406dcd` against the `sort -u` union of both files now
+  drops **0** lines.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
+    **346 passed (10.5m)**, **Smoke test passed.** The supervisor's baseline on `6406dcd`
+    was `125 passed (125)` / `1135 passed (1135)` and **344 passed**; the only delta is
+    this cycle's own **2** e2e cases in
+    `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`, and the unit counts are
+    unchanged because the one unit edit added a key to an existing array rather than a
+    case.
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.690s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* merged, with two regressions in the fix closed first. Both are
+  paths the worker's spec did not walk, and on both the page was BETTER before the draft
+  existed. **(1) A preset tapped after typing froze in the language it was tapped in.**
+  `edited` stayed true across `applyPreset`, so the draft recorded the Korean preset and
+  handed it back on the switch to `en`: a Korean headline on an English card. Fixed by
+  making a preset reset `edited` and remove the draft, so the card is the build's copy
+  again and translates like an untouched one. **(2) A draft outlived the scan it was
+  typed over.** The draft holds the four read VALUES as well as the headline, so after a
+  new scan in the same tab `/studio` put the older scan's readings on the newer card,
+  which is the image that goes into a chat. Fixed by recording the scan in the draft
+  (`scanFor`, the prefill source as JSON, empty for a preset card). A draft is restored
+  only for the same scan, and is removed otherwise. Two cases added to
+  `tests/e2e/studio-draft-lang-switch.regression-47.spec.ts`. Against the worker's
+  `app/studio/page.tsx` the spec gave **2 failed | 2 passed (1.5m)**, with
+  `Received: "윤기가` for the preset case and `Received: "내 피부, 오늘은 최고"` against an
+  expected `"두 번째 스캔"` for the scan case. With the fix it gave **4 passed (42.3s)**,
+  and `sha256sum -c` on the fixed file printed `app/studio/page.tsx: OK` after the run.
+  **Also corrected:** the worker filed the share sheet's missing return link as a new
+  item; it duplicates the cycle 25 `shareUrl` item, which already waits on the owner. The
+  new item now says so and keeps only its new measurement. The worker's own session
+  summary claims two fixes, including `/privacy`'s delete confirmation; the branch fixes
+  `/studio` only, and its entry records the `/privacy` behaviour as not a defect, which
+  is right. Rotation re-checked independently: `comm -23` of `sort -u` over both files at
+  `6406dcd` against the final tree printed nothing. Gate on the final tree:
+  `npm run smoke` gives `Test Files 125 passed (125) / Tests 1135 passed (1135)`,
+  **348 passed (12.4m)** and **Smoke test passed.** tsc gives **13**. eslint gives
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
+  Ports 3100–3109: none listening.

@@ -102,7 +102,9 @@ describe("device data registry", () => {
   it("requires confirmation and verification before claiming device deletion", () => {
     const privacy = readFileSync(resolve(root, "app/privacy/page.tsx"), "utf8");
     expect(privacy).toContain('setDeleteState("confirm")');
-    expect(privacy).toContain("clearAllDeviceData({ local: window.localStorage, session: window.sessionStorage })");
+    expect(privacy).toContain("clearAllDeviceData({");
+    expect(privacy).toMatch(/get local\(\) \{\s*return window\.localStorage;/);
+    expect(privacy).toMatch(/get session\(\) \{\s*return window\.sessionStorage;/);
     expect(privacy).toContain("remaining.length === 0");
     expect(privacy).toContain("스캔 결과, 설문, 체크인과 설정이 삭제돼요.");
     expect(privacy).toContain("이메일 알림과 연구 서버 데이터는 포함되지 않아요.");
