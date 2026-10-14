@@ -30,14 +30,25 @@ type State = "idle" | "sending" | "done" | "expired" | "unavailable";
 
 const NO_TOKEN_NOTE_ID = "unsubscribe-no-token";
 
+// Tokens this tab has already unsubscribed. Module scope, because a language switch
+// remounts the whole subtree under `key={active}` (`lib/i18n.tsx`) and component state
+// does not survive it: a Korean recipient who landed on the English page, unsubscribed
+// and then switched to 한국어 to read the confirmation got the prompt and the button
+// back as if nothing had happened. Kept until the tab reloads, so a visitor who opts
+// back in from /report in the same tab and then presses Back to this URL sees the
+// confirmation rather than the button; that path needs a re-subscribe first, and the
+// lost confirmation hit everyone who switched language.
+const unsubscribedTokens = new Set<string>();
+
 export function UnsubscribeForm({ token }: { token: string }) {
   useLanguage();
-  const [state, setState] = useState<State>("idle");
+  const [state, setState] = useState<State>(() => (token && unsubscribedTokens.has(token) ? "done" : "idle"));
 
   async function unsubscribe() {
     setState("sending");
     const response = await fetch("/api/reengage/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).catch(() => null);
     if (response?.ok) {
+      unsubscribedTokens.add(token);
       setState("done");
       return;
     }

@@ -163,4 +163,38 @@ describe("delete my device data", () => {
       expect(sessionGet(key), `${key} survived the deletion`).toBeNull();
     }
   });
+
+  // A contract, not the /privacy regression itself (that is
+  // `privacy-delete-storage-blocked.regression-51`): /privacy passes getters because
+  // reading `window.sessionStorage` itself throws where storage is refused, and that
+  // only helps if clearAllDeviceData looks each area up inside its per-key try blocks
+  // and clears the in-memory fallback first. This pins both.
+  it("clears the in-memory fallback when reading the storage areas themselves throws", () => {
+    install(throwingStorage().storage);
+    sessionSet(DEVICE_DATA_KEY.survey, SURVEY);
+    sessionSet(DEVICE_DATA_KEY.scan, "{}");
+    const refused = (): DeviceStorage["local"] => {
+      const error = new Error("The operation is insecure.");
+      error.name = "SecurityError";
+      throw error;
+    };
+
+    let remaining: string[] = [];
+    expect(() => {
+      remaining = clearAllDeviceData({
+        get local() {
+          return refused();
+        },
+        get session() {
+          return refused();
+        },
+      });
+    }).not.toThrow();
+
+    expect(sessionGet(DEVICE_DATA_KEY.survey)).toBeNull();
+    expect(sessionGet(DEVICE_DATA_KEY.scan)).toBeNull();
+    // Nothing in a refused area can be read back, so none of it is claimed as deleted:
+    // the page shows its retry message rather than "모두 지웠어요".
+    expect(remaining.length).toBeGreaterThan(0);
+  });
 });

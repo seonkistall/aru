@@ -77,6 +77,7 @@ const emptyFunnel: FunnelSummary = {
     share_landed: 0,
   },
   failurePreventionConversion: 0,
+  scanCommerceSessions: 0,
   surveyCompletion: 0,
   shareRate: 0,
   viralActivation: 0,
@@ -265,7 +266,7 @@ export default function OpsPage() {
               screen for an operator testing their own flow end to end — which is why
               the server-side panel below sits NEXT TO it rather than replacing it. */}
           <p style={bodyText}>
-            Of {snapshot.funnel.steps.scan_completed} completed scans, {snapshot.funnel.steps.commerce_clicked} reached an
+            Of {snapshot.funnel.steps.scan_completed} completed scans, {snapshot.funnel.scanCommerceSessions} reached an
             informed purchase intent.
           </p>
           <strong style={{ ...sectionTitle, fontSize: 30, color: "var(--plum)" }}>

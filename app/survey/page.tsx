@@ -233,8 +233,15 @@ export default function Survey() {
       // the previous report was left on.
       sessionRemove(DEVICE_DATA_KEY.reportStep);
       // Submitted answers live under DEVICE_DATA_KEY.survey from here on, so the
-      // draft has nothing left to hold.
-      sessionRemove(DEVICE_DATA_KEY.surveyDraft);
+      // draft has no answers left to hold. It keeps only which scan hint was absorbed:
+      // the draft is the one place that is recorded, and dropping it made a return to
+      // /survey apply the same hint again, re-pressing a concern the visitor had
+      // unpressed and submitted, which the next submit then saved. No answer fields
+      // are written, so nothing stale can be restored from it. The marker is the
+      // concern list, as before submit, so a rescan that flags the same signals also
+      // leaves the visitor's choice alone; one that flags different signals unions in.
+      if (hintFor) sessionSet(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ hintFor }));
+      else sessionRemove(DEVICE_DATA_KEY.surveyDraft);
     } catch {
       // Reachable only if the fallback itself fails. `sessionSet`/`sessionRemove`
       // swallow a blocked or full store and keep the value in memory, which is the
@@ -245,7 +252,13 @@ export default function Survey() {
       submitting.current = false;
       return;
     }
-    recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: Boolean(scanHint?.concerns.length) });
+    // `hasScan` is whether a scan reading exists, which `loadScanHint` answers with a
+    // non-null hint. It used to be whether the reading flagged a concern, so a calm
+    // scan that /report applied recorded `false` here while the same session's
+    // reco_viewed said scanApplied=true. The two are meant to differ for a reading
+    // /report does not apply (retake-recommended or low confidence): it exists, so
+    // hasScan is true, and scanApplied is false.
+    recordFunnelEvent("survey_completed", { concerns: concerns.length, hasScan: scanHint !== null });
     router.push("/report");
   }
 

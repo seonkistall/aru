@@ -47,7 +47,19 @@ export default function PrivacyPage() {
   }
 
   function clearDeviceData() {
-    const remaining = clearAllDeviceData({ local: window.localStorage, session: window.sessionStorage });
+    // Getters, not values: where the browser refuses storage, reading
+    // `window.localStorage` itself throws. Read here, that throw escaped before
+    // clearAllDeviceData could empty the in-memory session fallback, and the tap did
+    // nothing at all. Read inside its per-key try blocks, the fallback is cleared and
+    // the keys it cannot verify come back as `remaining`.
+    const remaining = clearAllDeviceData({
+      get local() {
+        return window.localStorage;
+      },
+      get session() {
+        return window.sessionStorage;
+      },
+    });
     if (remaining.length === 0) {
       setLabelTotal(0);
       setCropTotal(0);

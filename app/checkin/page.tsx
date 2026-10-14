@@ -71,11 +71,16 @@ export default function Checkin() {
       const seenSku = new Set<string>();
       const nextProductUses = allProductUses.filter((use) => (seenSku.has(use.sku_id) ? false : seenSku.add(use.sku_id)));
       // Done is per round (2주/4주): a week-2 checkin must not block the
-      // week-4 one the re-engagement email brings the user back for.
+      // week-4 one the re-engagement email brings the user back for. It is also per
+      // use: a Checkin row carries the SKU but not the use it answered, so pressing
+      // 사용 시작 again on the same product used to find the previous use's answer and
+      // mark the new round done, and its form never showed. A check-in is only saved
+      // once its use is 2 weeks old, so one recorded before this use started cannot
+      // belong to it.
       const initial: Record<string, boolean> = {};
       for (const use of nextProductUses) {
         const round = roundFor(use.ts);
-        if (checkins.some((c) => c.sku_id === use.sku_id && c.week === round)) initial[use.id] = true;
+        if (checkins.some((c) => c.sku_id === use.sku_id && c.week === round && c.ts >= use.ts)) initial[use.id] = true;
       }
       setDone(initial);
       setProductUses(nextProductUses);

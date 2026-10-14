@@ -1,6 +1,12 @@
 const MAX_IMAGE_BYTES = 1_500_000;
 const ITEM_FIELDS = ["brand", "name", "category", "type", "budgetText", "fallback"] as const;
 type ReasonItem = Record<(typeof ITEM_FIELDS)[number], string> & { matched: string[]; freeOf: string[] };
+// `fallback` is the pre-approved template /report already shows, sent so the route can
+// hand it back; it never enters the prompt. It got the prompt fields' 200 and the
+// English template runs to 224 (scan applied + budget relaxed + an avoid the pick
+// satisfies), so those requests were refused whole and never got a model reason. The
+// 32 KB body bound in readBoundedJson still limits the total.
+const FIELD_MAX: Partial<Record<(typeof ITEM_FIELDS)[number], number>> = { fallback: 600 };
 
 export type Validation<T> = { ok: true; value: T } | { ok: false; reason: string };
 
@@ -40,7 +46,7 @@ export function parseReasonInput(value: unknown): Validation<{ items: ReasonItem
   const valid = items.every((raw) => {
     if (!raw || typeof raw !== "object") return false;
     const item = raw as Record<string, unknown>;
-    if (!ITEM_FIELDS.every((key) => typeof item[key] === "string" && (item[key] as string).length <= 200)) return false;
+    if (!ITEM_FIELDS.every((key) => typeof item[key] === "string" && (item[key] as string).length <= (FIELD_MAX[key] ?? 200))) return false;
     return [item.matched, item.freeOf].every((list) => Array.isArray(list) && list.length <= 12 && list.every((s) => typeof s === "string" && s.length <= 80));
   });
   const lang = (value as Record<string, unknown>).lang;
