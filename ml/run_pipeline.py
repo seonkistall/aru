@@ -250,11 +250,38 @@ def summarize_pilot(rows: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
-def summarize_consent(rows: list[dict[str, str]]) -> dict[str, Any]:
+def _consent_scope(participant: Any, session: Any) -> tuple[str, str]:
+    return (str(participant or "").strip(), str(session or "").strip())
+
+
+def crops_without_scoped_consent(crops: list[dict[str, Any]], rows: list[dict[str, str]]) -> list[str]:
+    """Ids of crops whose OWN scope's latest learning_crop event is not a grant.
+
+    A pilot runs many participants on one device and /scan records each learning_crop
+    toggle under (participantId, sessionId). The device-wide "latest" below reads one
+    event for the whole export, so P001 revoking and P002 granting afterwards left
+    P001's crops looking consented. This uses the exact-scope rule of
+    latestConsentGranted (lib/sync-payload.ts): an unscoped event covers only an
+    unscoped crop, and the last event in export order wins.
+    """
+    latest: dict[tuple[str, str], bool] = {}
+    for row in rows:
+        if row.get("kind") != "learning_crop":
+            continue
+        latest[_consent_scope(row.get("participantId"), row.get("sessionId"))] = parse_bool(row.get("granted"))
+    missing: list[str] = []
+    for crop in crops:
+        meta = crop.get("meta") or {}
+        if not latest.get(_consent_scope(meta.get("participantId"), meta.get("sessionId")), False):
+            missing.append(str(crop.get("id", "")))
+    return missing
+
+
+def summarize_consent(rows: list[dict[str, str]], crops: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     by_kind: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in rows:
         by_kind[row.get("kind", "unknown")].append(row)
-    return {
+    summary: dict[str, Any] = {
         "total": len(rows),
         "latest": {
             kind: {
@@ -266,6 +293,11 @@ def summarize_consent(rows: list[dict[str, str]]) -> dict[str, Any]:
             if events
         },
     }
+    if crops is not None:
+        missing = crops_without_scoped_consent(crops, rows)
+        summary["crops_without_scoped_consent"] = len(missing)
+        summary["unconsented_crop_ids"] = missing[:20]
+    return summary
 
 
 def crop_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -454,6 +486,12 @@ def warnings_for(summary: dict[str, Any]) -> list[str]:
     crop_latest = consent.get("latest", {}).get("learning_crop", {})
     if crops_n and crop_latest.get("granted") is not True:
         warnings.append("Crop data exists but latest learning_crop consent is not granted in the consent export.")
+    unscoped = consent.get("crops_without_scoped_consent", 0)
+    if unscoped:
+        warnings.append(
+            f"{unscoped} crop(s) have no granted learning_crop consent in their own participant/session scope; "
+            "see consent.unconsented_crop_ids before training on them."
+        )
     return warnings
 
 
@@ -704,7 +742,7 @@ def main() -> None:
         },
         "crops": crop_summary(crops),
         "pilot": summarize_pilot(pilot),
-        "consent": summarize_consent(consent),
+        "consent": summarize_consent(consent, crops),
         "heuristic_baseline": heuristic_baseline(labels),
         "decode": decode,
         "decoded_manifest": decode.get("manifest"),

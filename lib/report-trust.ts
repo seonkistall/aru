@@ -35,7 +35,11 @@ function signalCheck(signal: ConfidenceSignal): string {
 
 export function buildReportTrust(reads: ReportTrustInput, scanApplied: boolean): ReportTrust {
   const reasons = reads.retakeReasons.slice(0, 3);
-  const checks = Array.from(new Set(reads.signals.slice(0, 4).map(signalCheck)));
+  // Held checks first (a stable sort keeps the order within each group): /report shows
+  // only the first three chips, and buildSignals returns four, so a retake caused by the
+  // fourth alone (피부 영역) used to show three passing chips and hide the one that failed.
+  const ordered = reads.signals.slice(0, 4).sort((a, b) => Number(a.ok) - Number(b.ok));
+  const checks = Array.from(new Set(ordered.map(signalCheck)));
   if (reads.retakeRecommended) {
     return {
       tone: "retake",

@@ -42,7 +42,7 @@ def ita_for_row(path: Path, features: dict) -> str:
     script averaged the whole crop instead, which put the same face in a different
     tone band depending on which path produced the number.
     """
-    recorded = str(features.get("toneIta", "") or "").strip()
+    recorded = ita_module.recorded_ita(features)
     if recorded:
         return recorded
     reading = ita_module.tone_from_image_path(path)
@@ -121,7 +121,7 @@ def main() -> None:
             "label_confidence": meta.get("labelConfidence", ""),
             "ungradable": meta.get("ungradable", ""),
             "ita": ita_value,
-            "ita_source": "app_measured" if str(features.get("toneIta", "") or "").strip() else "recomputed_from_crop",
+            "ita_source": "app_measured" if ita_module.recorded_ita(features) else "recomputed_from_crop",
             "tone_band": subgroups.tone_band_from_ita(ita_value),
             "age_band": subgroups.resolve_age_band(meta),
             "toneLstar": features.get("toneLstar", ""),

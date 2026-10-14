@@ -240,8 +240,11 @@ export default function Scan() {
     setReads,
   });
 
+  // "noface" holds the stream too: its 다시 시도 returns to "ready" on the same stream, and
+  // the <video> is hidden meanwhile. Left out, a tab hidden on that screen kept the camera
+  // capturing in the background, and a track that died there was never noticed.
   const interruptCamera = useCallback((reason: CameraInterruptionReason | "backgrounded") => {
-    if (phaseRef.current !== "ready" && phaseRef.current !== "analyzing") return;
+    if (phaseRef.current !== "ready" && phaseRef.current !== "analyzing" && phaseRef.current !== "noface") return;
     cancelCapture();
     stopCamera();
     setErr("");
@@ -259,7 +262,7 @@ export default function Scan() {
 
   useEffect(() => {
     const stream = streamRef.current;
-    if (!stream || (phase !== "ready" && phase !== "analyzing")) return;
+    if (!stream || (phase !== "ready" && phase !== "analyzing" && phase !== "noface")) return;
     return watchCameraStream(stream, interruptCamera);
   }, [interruptCamera, phase]);
 

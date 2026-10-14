@@ -2,15 +2,29 @@
 
 import { useState } from "react";
 import { getLang, t } from "@/lib/i18n/core";
+import { getCurrentPilotSession } from "@/lib/pilot";
 
 // Opt-in for the 2/4-week routine reminder (the daily-routine re-entry hook).
 // Explicit consent, minimal PII, no dark patterns. Sending is owner-gated
 // server-side; this only records the opt-in.
 
+// Who has already opted in from this tab. Module scope, because /report renders this
+// box only on its routine step and a language switch remounts the whole subtree, and
+// either one threw the confirmation away: 이전 then 다음 brought back an empty form as if
+// nothing had been sent. Keyed by the pilot participant and session ("" for a consumer)
+// so the next participant on a shared pilot device still gets the form. Nothing about
+// the address is kept, and a reload clears it, the same rule as /unsubscribe's form.
+const optedInScopes = new Set<string>();
+
+function optInScope(): string {
+  const session = getCurrentPilotSession();
+  return session ? `${session.participantId}/${session.sessionId}` : "";
+}
+
 export function ReengageOptIn({ context }: { context?: string }) {
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
-  const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [state, setState] = useState<"idle" | "sending" | "done" | "error">(() => (optedInScopes.has(optInScope()) ? "done" : "idle"));
 
   async function submit() {
     if (!consent || !email.trim()) return;
@@ -21,6 +35,7 @@ export function ReengageOptIn({ context }: { context?: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), consent: true, context, locale: getLang() }),
       });
+      if (res.ok) optedInScopes.add(optInScope());
       setState(res.ok ? "done" : "error");
     } catch {
       setState("error");

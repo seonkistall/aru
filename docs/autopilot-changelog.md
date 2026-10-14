@@ -15307,3 +15307,163 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   **348 passed (12.4m)** and **Smoke test passed.** tsc gives **13**. eslint gives
   `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
   Ports 3100–3109: none listening.
+
+- 2026-10-04 (cycle 73) — Branch `autopilot/2026-10-04-0040`. **Two filed defects closed,
+  both of them a pattern that accepts more than it was written to accept. (1) The share
+  landing read a corrupted `m` as a valid one: `/[#&]m=([0-2]{3})/` in
+  `lib/share-link.ts` matches anywhere in the value, so `decodeMood`'s
+  `code.length !== 3` guard never saw the extra characters and `/#m=2100` rendered the
+  mood for `210` and recorded a `share_landed` — cycle 72 measured that on a production
+  build. Fixed with a lookahead, `/[#&]m=([0-2]{3})(?=&|$)/`: the three digits must be
+  the whole value. (2) `sample.id` went into the crop storage object path unvalidated in
+  `uploadCropSamples` (`app/api/sync/route.ts`), so `id: "../x"` would have placed the
+  object outside `pilot-crops/<date>/`. That half of the cycle 71 item stayed open
+  because the id format the client writes had not been read, and a charset rule that
+  refused real rows would have been worse than the traversal. It has now been read, which
+  is what made the fix safe to push. Both fixes are skips and refusals, not rewrites:
+  nothing that was accepted before and is real is refused now. The tracked diff over
+  `app` and `lib` is **61** insertions and **1** deletion in **2** files, and
+  `git diff -U0 -- app lib | grep 't("'` over the changed lines returns **0** — no copy
+  changed. `lib/consent.ts`, the crop consent evaluation, `shareUrl`, `lib/commerce.ts`
+  and the `key={active}` remount are untouched.**
+
+  **The id format, established before the charset was chosen.** `saveCropSample` in
+  `lib/crops.ts` is the only writer of a crop id and it stamps every row with `uid()`
+  from the same file, verbatim:
+
+  ```
+  function uid() {
+    return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
+  }
+  ```
+
+  So a real id is a `crypto.randomUUID()` — 36 characters of `[0-9a-f-]` — or, on a
+  browser without it, the decimal digits of a random fraction. Both branches sampled
+  against `^[A-Za-z0-9_-]{1,128}$`:
+
+  ```
+  samples per branch: 200000
+  randomUUID() not matching ^[A-Za-z0-9_-]{1,128}$: 0
+  String(Math.random()).slice(2) not matching: 0
+  the one degenerate fallback output: "" matches: false
+  randomUUID length: 36 charset check: true
+  ```
+
+  The one output the charset refuses is the empty string, which
+  `String(Math.random()).slice(2)` returns when `Math.random()` returns exactly `0`. That
+  id would have written `pilot-crops/<date>/.<ext>` — a dotfile with no row naming it —
+  so refusing it is the behaviour wanted anyway, and that is the whole of what the
+  charset costs. The check is a `typeof` test and not `CROP_ID_PATTERN.test(sample.id)`
+  on its own, because `RegExp.test` coerces its argument and a missing id coerces to the
+  string `"undefined"`, which the charset ACCEPTS: the declared type says `string`, the
+  payload is JSON off the wire and does not have to agree. The skip is the first thing in
+  the loop, before the consent check, the image parse and the `ts` guard, so no refused
+  id reaches `supabase.storage.upload` and none can leave an orphan object.
+
+  **What the anchor changes and what it does not**, both regexes evaluated side by side
+  on every shape cycle 72 measured plus the ones the fix is for:
+
+  ```
+  "#m=210"           before= "210"   after= "210"
+  "#x=1&m=012"       before= "012"   after= "012"
+  "#m=210&m=001"     before= "210"   after= "210"
+  "#m=2100"          before= "210"   after= null
+  "#m=210&other=1"   before= "210"   after= "210"
+  "#m=210&"          before= "210"   after= "210"
+  "#m=99"            before= null    after= null
+  "#m=abc"           before= null    after= null
+  "#m=21"            before= null    after= null
+  ""                 before= null    after= null
+  "#m=2100&m=012"    before= "210"   after= "012"
+  "#m=0120"          before= "012"   after= null
+  ```
+
+  Every shape that rendered a mood before and was a well-formed `m` still renders the
+  same mood. **A duplicated `m` resolves to the FIRST one** — `exec` returns the leftmost
+  match — and that is today's behaviour, kept deliberately rather than reconsidered. The
+  one shape whose reading moves is `#m=2100&m=012`, where the leading `m` is corrupt and
+  the valid later one now wins instead of the first three digits of the corrupt one.
+
+  **Pinned.** Three cases added to `tests/share-link.test.ts` (the too-long value, the
+  trailing `&other`, and the shapes that must keep working) taking that file from
+  **7 passed** at `7da49ee` to **10 passed**, and a new `tests/sync-crop-id.test.ts`
+  (**9 passed**) built on `tests/sync-crop-timestamp.test.ts`'s mock of
+  `getSupabaseAdmin` — nothing in either file talks to a real project. The crop file
+  covers `../x`, `a/b`, `/etc/x`, the empty string, a number, a MISSING id and an object,
+  and asserts in each case that the only object that reached storage is
+  `pilot-crops/2026-10-03/<a real randomUUID>.jpg` and that `counts.cropUploads` is 1. A
+  third case uploads two real generated-format ids and asserts both land under
+  `pilot-crops/<date>/` with no `unsupported id.` warning; a fourth holds the charset
+  against 2000 live samples of each `uid()` branch, so a generator drift fails the suite
+  before the server starts refusing real rows in silence.
+
+  **Broken on purpose, then reverted, once each.**
+  - `lib/share-link.ts`, lookahead removed: `tests/share-link.test.ts` gives
+    **1 failed | 9 passed (10)** — `expect(readMoodFromHash("#m=2100")).toBeNull()`
+    receiving `{"oil": 2, "pores": 0, "redness": 1}`. `sha256sum lib/share-link.ts` read
+    `7ba03af808eadad4331314d953e3e6f5dd757279938bc5e8a91c02f581f5d875` before the break
+    and the same digest after the revert, and the file then gives **10 passed**.
+  - `app/api/sync/route.ts`, the four-line id skip deleted: `tests/sync-crop-id.test.ts`
+    gives **7 failed | 2 passed (9)** — the seven refusal cases, with the charset case
+    and the real-ids case still passing, which is what they are for.
+    `sha256sum app/api/sync/route.ts` read
+    `f75d370b6863cffffdec15c44fea7dd7528654eb9cb02a2d7d5cfe1f850db2fe` before the break
+    and the same digest after the revert, and the file then gives **9 passed**.
+
+  **Research / ML: skipped**, as briefed. No model, dataset, manifest or
+  `ml/` source was read or changed; `python3 ml/selftest.py` was run only as a gate.
+
+  **Not established.** Neither fix was reproduced in a browser or against a live
+  Supabase project this cycle. Item (1) rests on cycle 72's production-build measurement
+  of `/#m=2100` plus the regex comparison above, not on a fresh render; item (2) rests on
+  reading the route and on the mocked client, because the real path needs
+  `SUPABASE_CROP_BUCKET`, a live storage client and a consented crop row, none of which
+  this container can reach. Whether Supabase's own storage API would have normalised or
+  rejected `pilot-crops/<date>/../x.jpg` server-side was NOT tested, so how much the
+  traversal would actually have moved an object in production is unknown — the fix stops
+  it leaving the route either way. The empty-id output of the `uid()` fallback was shown
+  by construction (`String(0).slice(2)`), not observed in 200000 samples.
+
+  **Rotation.** Cycle 70's entry moved verbatim to the end of
+  [`docs/autopilot-changelog.md`](autopilot-changelog.md), after cycle 69: **123** lines
+  moved. `wc -l` over both files straight after the move read **2518** + **14981** =
+  **17499**, the same total as at `7da49ee` (**2642** + **14857**). `comm -23` of the
+  `sort -u` union of both files at `7da49ee` against the `sort -u` union straight after
+  the move drops **0** lines. Against the FINAL tree it drops **4**, and all four are the
+  two backlog bullets this cycle ticked: both first lines, where `- [AI]` became
+  `- [x] [AI]`, and the two lines of the `sample.id` half's "stays open" sentence, which
+  this cycle replaced. Nothing from a cycle entry is among them.
+
+  **Gate on the final tree.**
+  - `npm run smoke`: `Test Files 126 passed (126) / Tests 1147 passed (1147)`,
+    **348 passed (10.3m)**, **Smoke test passed.** The supervisor's baseline on `7da49ee`
+    was `125 passed (125)` / `1135 passed (1135)` and **348 passed**; the only delta is
+    this cycle's own unit tests — **+1** file (`tests/sync-crop-id.test.ts`) and **+12**
+    cases, which is **9** there plus the **3** added to `tests/share-link.test.ts`. The
+    e2e count is unchanged because neither fix is reachable from a browser without a
+    sync token or a hand-mangled URL.
+  - tsc: **13**.
+  - eslint: `✖ 2 problems (0 errors, 2 warnings)`.
+  - `python3 ml/selftest.py`: **OK** (`Ran 146 tests in 1.653s`).
+  - Ports 3100–3109: none listening.
+
+  *Supervisor review:* merged, with one comment corrected and the crop-id charset
+  backed by an argument as well as by sampling. **Re-run independently:** 200000
+  `crypto.randomUUID()` values and 200000 `String(Math.random()).slice(2)` values against
+  `^[A-Za-z0-9_-]{1,128}$` gave `uuid refused 0 random refused 0`. The edge cases gave
+  `1e-7` → `"-7"` accepted, `1.5e-10` → `"5e-10"` accepted, and `0` → `""` refused, as
+  the code comment says. The sampling is also backed by an argument: for `x` in [0, 1),
+  `String(x)` is either `0.ddd…` or `d[.ddd]e-N`. Index 1 is therefore always `.` or `e`,
+  so `slice(2)` keeps only digits, `e` and `-`, all inside the charset, and a UUID is
+  `[0-9a-f-]`. **Corrected:** the `readMoodFromHash` comment said "the first `m` still
+  wins". That holds only when the first `m` is well-formed. Run against the new pattern,
+  `#m=2100&m=012` reads `012` where it used to read `210`, so the comment now says the
+  first WELL-FORMED `m` wins. That behaviour is harmless (a hand-built URL either way)
+  and is left as is. The other shapes run against the new pattern: `#m=210` → `210`,
+  `#m=2100` → `null`, `#x=1&m=012` → `012`, `#m=210&m=001` → `210`, `#m=210&x=1` → `210`,
+  `#m=21` → `null`. The three affected test files give `Tests 22 passed (22)`. Rotation
+  re-checked independently: `comm -23` against `7da49ee` drops 4 lines, all from the two
+  backlog items this cycle ticked and rewrote, as intended. Gate on the final tree:
+  `npm run smoke` gives `Test Files 126 passed (126) / Tests 1147 passed (1147)`,
+  **348 passed (13.8m)** and **Smoke test passed.** tsc gives **13**. eslint gives
+  `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.

@@ -514,8 +514,17 @@ def fit_tone_calibration(tone_stats, axes: tuple[str, ...], min_n: int) -> dict:
 def split_rows(rows: list[Row], seed: int, n_folds: int, val_fold: int) -> tuple[list[Row], list[Row], dict]:
     """Group-safe, subgroup-stratified split with an honest description of itself."""
     meta_rows = [dict(row.meta) for row in rows]
-    groups = {subgroups.group_key(meta) for meta in meta_rows}
+    keys = [subgroups.group_key(meta) for meta in meta_rows]
+    # Identity-less rows are one "anon" key but not one person; they train only
+    # (stratified_group_folds gives them ANON_FOLD), so they are not counted as a group.
+    identity_less = sum(1 for key in keys if key == subgroups.ANON_GROUP)
+    groups = set(keys) - {subgroups.ANON_GROUP}
     cov = subgroups.coverage(meta_rows)
+    identity_warnings = (
+        [f"{identity_less} row(s) carry no participant, session or device id; they are used for training only"]
+        if identity_less
+        else []
+    )
 
     if len(groups) >= n_folds:
         assignment = subgroups.stratified_group_folds(meta_rows, n_folds=n_folds)
@@ -528,8 +537,9 @@ def split_rows(rows: list[Row], seed: int, n_folds: int, val_fold: int) -> tuple
                 "folds": n_folds,
                 "val_fold": fold,
                 "group_count": len(groups),
+                "identity_less_rows": identity_less,
                 "subgroup_cells": len(cov.cells),
-                "warnings": subgroups.coverage_warnings(cov),
+                "warnings": subgroups.coverage_warnings(cov) + identity_warnings,
             }
 
     rng = random.Random(seed)
@@ -539,6 +549,7 @@ def split_rows(rows: list[Row], seed: int, n_folds: int, val_fold: int) -> tuple
     return shuffled[cut:], shuffled[:cut], {
         "strategy": "random_row_split",
         "group_count": len(groups),
+        "identity_less_rows": identity_less,
         "warning": (
             "fewer distinct people than folds; validation may leak person identity and "
             "per-subgroup numbers are not trustworthy"
