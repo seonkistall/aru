@@ -359,11 +359,35 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
 
   if (!supabase) return { count, warnings, errors: ["Supabase admin client unavailable."] };
 
+  // Rows the server has already retired. /ops never clears the device, so every sync
+  // sends every stored crop again, and the upsert below used to write `deleted_at: null`
+  // and `exclude_reason: null` back over a deletion or exclusion an operator had made
+  // following docs/supabase-sync-runbook.md section 6, and re-upload the removed image.
+  // Read once, in chunks so the `in` filter stays short. If the read fails, no crop is
+  // uploaded: re-sending one that was deleted is the outcome this exists to prevent.
+  const retired = new Set<string>();
+  const ids = payload.cropSamples.map((sample) => sample.id).filter(isCropId);
+  for (let start = 0; start < ids.length; start += 100) {
+    const { data, error } = await supabase
+      .from("crop_samples")
+      .select("id, deleted_at, exclude_reason")
+      .in("id", ids.slice(start, start + 100));
+    if (error) return { count, warnings, errors: [`crop_samples lookup: ${error.message}`] };
+    for (const row of (data ?? []) as { id: string; deleted_at: unknown; exclude_reason: unknown }[]) {
+      if (row.deleted_at != null || row.exclude_reason != null) retired.add(row.id);
+    }
+  }
+
   for (const sample of payload.cropSamples) {
     // Before anything else in the loop, because the id is what every line below
     // names the row by and what the object path is built from.
     if (!isCropId(sample.id)) {
       warnings.push(`Skipping crop ${cropIdLabel(sample.id)}: unsupported id.`);
+      continue;
+    }
+
+    if (retired.has(sample.id)) {
+      warnings.push(`Skipping crop ${sample.id}: deleted or excluded on the server.`);
       continue;
     }
 
@@ -418,8 +442,8 @@ async function uploadCropSamples(supabase: Awaited<ReturnType<typeof getSupabase
         consent_event_id: consentEvent?.id ?? null,
         consent_version: consentEvent?.version ?? null,
         retention_until: retentionUntil(sample.ts),
-        deleted_at: null,
-        exclude_reason: null,
+        // deleted_at and exclude_reason are not sent: a new row gets the column default
+        // (NULL), and an existing one keeps whatever the server set.
         ts: sample.ts,
       },
       { onConflict: "id" }

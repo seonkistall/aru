@@ -24,6 +24,10 @@ type OpsSnapshot = {
   pilot: PilotSummary;
   funnel: FunnelSummary;
   funnelStages: FunnelStage[];
+  // Read with everything else from the device stores, after mount. It used to be built
+  // in the render body, so the server HTML (no window: every cell "open") and the
+  // hydration render (the stored statuses) disagreed as soon as one pilot note existed.
+  roster: { id: string; status?: string }[];
 };
 
 type SyncStatus = {
@@ -95,6 +99,7 @@ const emptySnapshot: OpsSnapshot = {
   pilot: emptyPilot,
   funnel: emptyFunnel,
   funnelStages: [],
+  roster: PILOT_PARTICIPANT_IDS.map((id) => ({ id })),
 };
 
 export default function OpsPage() {
@@ -157,7 +162,6 @@ export default function OpsPage() {
 
   const completionRate = snapshot.pilot.total ? Math.round((snapshot.pilot.completed / snapshot.pilot.total) * 100) : 0;
   const cropConsentRate = snapshot.pilot.total ? Math.round((snapshot.pilot.cropConsent / snapshot.pilot.total) * 100) : 0;
-  const roster = buildRoster();
 
   async function syncToSupabase() {
     setSyncing(true);
@@ -349,7 +353,7 @@ export default function OpsPage() {
           <p style={sectionLabel}>participant board</p>
           <h2 style={sectionTitle}>P001-P030 lab board</h2>
           <div style={rosterGridStyle}>
-            {roster.map((item) => (
+            {snapshot.roster.map((item) => (
               <div key={item.id} style={rosterCellStyle(item.status)}>
                 <b>{item.id}</b>
                 <span>{item.status || "open"}</span>
@@ -425,6 +429,7 @@ function readSnapshot(): OpsSnapshot {
     pilot: summarizePilotNotes(),
     funnel: summarizeFunnel(),
     funnelStages: funnelDropoff(),
+    roster: buildRoster(),
   };
 }
 

@@ -15467,3 +15467,26 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   `npm run smoke` gives `Test Files 126 passed (126) / Tests 1147 passed (1147)`,
   **348 passed (13.8m)** and **Smoke test passed.** tsc gives **13**. eslint gives
   `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py` prints **OK**.
+
+- 2026-10-04 (cycles 74, 75, 76) — **Two bounded hunts that pushed nothing, then a
+  supervisor-only cycle.** Cycle 74 hunted `/scan` (camera failures, the survey hint) and
+  `recommend()`; cycle 75 hunted the i18n runtime and `ar` right-to-left layout on the five
+  funnel pages. Neither worker confirmed a defect and neither pushed, so `main` stayed at
+  `d5cf57c`. Worker cost, from each session's own usage record: cycle 74 **$7.13**,
+  cycle 75 **$4.94**. The workers' own coverage claims were not re-run by the supervisor
+  and are not repeated here. With every hunt area of cycles 71–75 covered (server routes,
+  `/checkin`, `/privacy`, share, language switch, `/scan`, `recommend()`, i18n), cycle 76
+  spawned no worker. It closed the last confirmed `[AI]` item it could close without an
+  owner decision: the `shareCardImage` comment in `app/components/share-card.tsx` said
+  `onShare` fires "right before the action"; every call sits after it, so a dismissed
+  sheet records nothing. Comment only, no behaviour change, and `shareUrl` untouched.
+  What is left needs the owner: affiliate signup, the share-link return path
+  (`docs/share-return-path-decision.md`), and the cadence.
+
+  *Gate on the final tree:* `npm run smoke` gives `Test Files 126 passed (126) / Tests
+  1147 passed (1147)`, **348 passed (15.3m)** and **Smoke test passed.** tsc gives
+  **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py`
+  prints **OK**. No port in 3100–3109 was listening before the run. Rotation: cycle 71's
+  entry moved verbatim to the end of `docs/autopilot-changelog.md`, after cycle 70.
+  `comm -23` of `sort -u` over both files at `d5cf57c` against the final tree drops one
+  line, the backlog line this cycle extended with its "docstring half is corrected" note.

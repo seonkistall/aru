@@ -29,6 +29,8 @@ vi.mock("@/lib/supabase-admin", () => ({
         store.writes.push({ table, rows });
         return { error: null };
       },
+      // The retired-crop lookup in uploadCropSamples: nothing is retired here.
+      select: () => ({ in: async () => ({ data: [], error: null }) }),
     }),
     storage: {
       from: () => ({

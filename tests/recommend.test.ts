@@ -144,6 +144,23 @@ describe("recommend()", () => {
       expect(efficacyClean(pick.reason).ok, `reason: ${pick.reason}`).toBe(true);
     }
   });
+
+  // routineFor was never told the budget was relaxed, so the am-hydrate step said
+  // "within your budget" over picks[0], an over-budget product (cycle 116 hunt).
+  it("does not claim budget-fit in the routine when the budget was relaxed", () => {
+    const result = recommend({ type: "건성", concerns: [], category: "에센스", budget: 19000, avoid: [] }, null);
+    expect(result.relaxed).toBe("budget");
+    const amHydrate = result.routine.am.find((s) => s.id === "am-hydrate");
+    expect(amHydrate?.heroSku?.price).toBeGreaterThan(19000);
+    expect(amHydrate?.why).not.toContain("예산 안에서");
+    expect(amHydrate?.why).toContain("예산과 건성 피부 답변을 함께 보고 고른");
+  });
+
+  it("still says within budget when nothing was relaxed", () => {
+    const result = recommend({ type: "건성", concerns: [], category: "에센스", budget: 49000, avoid: [] }, null);
+    expect(result.relaxed).toBeNull();
+    expect(result.routine.am.find((s) => s.id === "am-hydrate")?.why).toContain("예산 안에서");
+  });
 });
 
 describe("an exact score tie is broken by price, not by accumulation order", () => {

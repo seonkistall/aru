@@ -23,7 +23,7 @@ export type FeedbackCommitResult = {
 };
 
 export function commitFeedbackSample(input: FeedbackSampleCommit, deps: FeedbackStorageDeps): FeedbackCommitResult {
-  const labelSaved = deps.saveLabel(input.sample);
+  let labelSaved = deps.saveLabel(input.sample);
   const cropSaved = input.cropDataUrl
     ? deps.saveCropSample({
         image: input.cropDataUrl,
@@ -34,6 +34,17 @@ export function commitFeedbackSample(input: FeedbackSampleCommit, deps: Feedback
         ts: input.sample.ts,
       })
     : null;
+  // Labels, crops, consent and pilot notes share one localStorage quota, and only the
+  // crop save makes room (it evicts its own oldest crops until the write fits). So once
+  // crops have filled the quota, the label written first can be refused while the crop
+  // written second succeeds by evicting: the sample kept its image and lost its label.
+  // The label gets one more try after the crop save. That recovers it when the eviction
+  // freed more than the new crop needed (a smaller new crop, or two old ones evicted);
+  // when the new crop is the same size as the one it replaced, the space is no greater
+  // and the retry is refused too. Making room for the label by evicting another crop is
+  // a research-data trade left to the owner (docs/AUTOPILOT.md). saveLabel writes
+  // nothing when it returns false, so the retry cannot duplicate a row.
+  if (!labelSaved && cropSaved === true) labelSaved = deps.saveLabel(input.sample);
   const labelCount = deps.labelCount();
   const cropCount = deps.cropSampleCount();
   const ok = labelSaved && cropSaved !== false;

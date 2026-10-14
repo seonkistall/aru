@@ -80,6 +80,19 @@ describe("a camera interruption carries why it happened", () => {
   // the background and a track that died there went unnoticed. The cycle 115 hunt saw it
   // in a hook harness that is not in this repo (the track stayed live; with the fix it is
   // stopped and camera_interrupted is recorded); this pins the two guards it turned on.
+  // An unload fires pagehide and then visibilitychange in the same task, before React
+  // re-renders, so a guard that waited for the render let both calls through and one
+  // unload recorded camera_interrupted twice (seen in the cycle 116 hunt's hook harness,
+  // which is not in this repo). This pins the claim's place, ahead of every side effect.
+  it("claims the interrupted phase before recording, so one unload records once", () => {
+    const start = page.indexOf("const interruptCamera = useCallback(");
+    const body = page.slice(start, page.indexOf("}, [cancelCapture, stopCamera]);", start));
+    const claim = body.indexOf('phaseRef.current = "interrupted";');
+    expect(claim).toBeGreaterThan(body.indexOf("return;"));
+    expect(claim).toBeLessThan(body.indexOf("recordFunnelEvent("));
+    expect(claim).toBeLessThan(body.indexOf("cancelCapture();"));
+  });
+
   it("treats the noface screen as a live camera, for backgrounding and for the watcher", () => {
     expect(page).toMatch(
       /if \(phaseRef\.current !== "ready" && phaseRef\.current !== "analyzing" && phaseRef\.current !== "noface"\) return;/
