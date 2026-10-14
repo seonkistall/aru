@@ -245,6 +245,10 @@ export default function Scan() {
   // capturing in the background, and a track that died there was never noticed.
   const interruptCamera = useCallback((reason: CameraInterruptionReason | "backgrounded") => {
     if (phaseRef.current !== "ready" && phaseRef.current !== "analyzing" && phaseRef.current !== "noface") return;
+    // Claimed now, not after the render: an unload fires pagehide and then
+    // visibilitychange in the same task, before React re-renders, so the guard above
+    // let both through and one unload recorded camera_interrupted twice.
+    phaseRef.current = "interrupted";
     cancelCapture();
     stopCamera();
     setErr("");

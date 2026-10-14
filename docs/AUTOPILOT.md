@@ -2040,6 +2040,42 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-10-14 — label-only feedback fails for good once crops fill the shared
+  localStorage quota (cycle 116 hunt, survived its skeptic, partly fixed).** Labels,
+  crops, consent and pilot notes share one quota and only `saveCropSample` makes room (it
+  evicts its own oldest crops, only until its own write fits). Cycle 116 retries a label
+  refused before such a crop save, which recovers it when the eviction freed more than the
+  new crop needed; the review's probe showed that with equal-size crops the retry is
+  refused too. And the label-only half is open: staff-mode
+  feedback for a participant who did not tick 학습용 크롭 never evicts anything, so once
+  the slack is gone every later label fails. The finder's quota-enforcing probe (5 Mi
+  UTF-16 units, 60k–100k-char crops): **41** label-only successes, then **79**
+  consecutive failures. Filed, not fixed, because the fix (evict an old crop to keep a
+  label) trades consented research images for labels, which is the owner's call.
+
+- [ ] **2026-10-14 — `crop_samples.consent_event_id` names the scope's latest grant at
+  sync time, not the one that authorised the capture (cycle 116 hunt, survived its
+  skeptic, NOT fixed).** `/scan` records the authorising grant in
+  `meta.consentEventIds.learningCrop`; `uploadCropSamples` ignores it and links
+  `latestConsentEvent(...)`. Tick (E1), scan crop1, untick (E2), re-tick (E3), scan crop2,
+  sync: the probe printed crop1 with `consent_event_id` **E3**, whose ts is later than
+  crop1's, beside its own metadata saying **E1**. Every re-sync rewrites the link, so a
+  `CONSENT_VERSION` bump would also relabel old crops with text the participant never
+  saw. Filed, not fixed: CLAUDE.md says not to change the consent audit model without an
+  explicit request. Fix sketch: keep the latest scoped grant as the upload gate, link the
+  recorded capture-time event when it is present and in scope.
+
+- [ ] **2026-10-14 — the routine puts a texture-care pick on the daily hydrate steps
+  around a "night only, 2–3× a week" texture step (cycle 116 hunt, survived its skeptic,
+  NOT fixed).** `attach()` keeps `pm-texture` product-free so a daily product does not
+  contradict its cadence, but puts `picks[0]` on `am-hydrate` and `pm-hydrate` whatever
+  its roles. 지성 / 세럼 / 2만원 / [모공, 블랙헤드] puts sr4 (PHA·LHA) morning and evening
+  with the texture step between. The skeptic's sweep with 모공: **1195** of **19200**
+  surveys that render `pm-texture` also put a 각질케어/결케어 SKU on a hydrate step (sr4
+  on **340** steps, tn2 on **2050**). Filed, not fixed: whether the step takes the next
+  pick or stays product-free, and whether a mild 각질케어 toner like tn2 counts, are
+  product decisions.
+
 - [ ] **2026-10-14 — a cancelled capture holds the capture lock until its
   `/api/analyze` fetch times out (cycle 115 hunt, survived its skeptic, NOT fixed).**
   `cancelCapture` in `app/scan/use-capture-analysis.ts` bumps the run counter but does
@@ -2259,6 +2295,60 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-14 (cycle 116) — **A third hunt, over the areas cycles 114 and 115 left: eight
+  defects confirmed, six fixed, three filed (one of them half fixed).** Four finders
+  (research pages, the labeling and sync client, catalogue and content integrity, funnel
+  event call sites), each needing a repro it ran itself, and a skeptic per finding.
+  **15** agents, **11** findings, **8** survived, **3** rejected (a /pilot note minting a
+  new session id that nothing joins on; the /pilot status dropdown resetting after save,
+  which is operator UI; budget-relaxed reasons all saying "closest", which is copy).
+
+  **Fixed, each with a test that fails on `e1486e8`:**
+  - **A routine `/ops` re-sync un-deleted crops.** `/ops` never clears the device, so
+    every sync re-sends every crop, and `uploadCropSamples` upserted `deleted_at: null`
+    and `exclude_reason: null` and re-uploaded the image, undoing a deletion or exclusion
+    made by the runbook's section 6. A lookup (in chunks of 100) now skips crops the
+    server has retired, the two columns are no longer sent, and a failed lookup uploads
+    no crop at all. `tests/sync-crop-retired.test.ts` (**5** cases, all failing on the old
+    route).
+  - `/ops` built the P001–P030 board from localStorage in the render body, so the server
+    HTML and the hydration render disagreed once a pilot note existed. The roster is now
+    part of the snapshot read after mount. `tests/ops-roster-hydration.test.ts`.
+  - A label refused by a full localStorage quota is retried once after the crop save.
+    That recovers it when the eviction freed more than the new crop needed, which a test
+    against the real stores and a quota-enforcing storage pins; with equal-size crops it
+    does not, and the rest is filed. `tests/feedback-storage.test.ts`.
+  - The routine's am-hydrate step said "within your budget" over an over-budget pick when
+    the budget was relaxed; it now uses the existing pm-hydrate sentence. No new copy.
+    `tests/recommend.test.ts`.
+  - One unload of `/scan` with a live camera recorded `camera_interrupted` twice
+    (pagehide, then visibilitychange, before React re-rendered). `interruptCamera` claims
+    the phase first. In the hunt's hook harness one unload now records **1** event where
+    it recorded **2**. `tests/camera-interrupt-reason.test.ts`.
+  - The guide pages' "ARU holds no affiliate id and takes no commission today" was a
+    fixed literal. It now drops when `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, as the buy-link
+    disclosure does; with the flag off, as in every deploy today, the page is unchanged.
+    Nothing is added. `tests/guides-affiliate-switch.test.ts`. **For the owner:** this was
+    the one place the affiliate switch-on would have left a false statement live.
+
+  A three-lens review workflow found no blocker. It raised three should-fix items, all
+  taken: the label retry's comment promised space the crop save does not always free
+  (reworded, real-store test added, remainder filed); the sync test's mock returned
+  every column whatever was selected (it now projects like PostgREST, and a lookup that
+  selects `id` alone fails it); the hydration test could not see the board's post-mount
+  content (a contract added). Two nits taken (no unreproducible counts in comments), one
+  left: with the budget relaxed, am-hydrate and pm-hydrate now read the same sentence over
+  the same product, which is true and needs no new copy.
+
+  *Gates:* on `e1486e8` before any change, vitest `128 passed (128) / 1156 passed (1156)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 131 passed (131) / Tests
+  1171 passed (1171)`, **360 passed (14.1m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycles 74–76 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 73.
+
 - 2026-10-14 (cycle 115) — **A second multi-agent hunt over the areas cycle 114 did not
   cover: ten defects confirmed, seven fixed, three filed.** Same shape as cycle 114: five
   finders (report and care screens, the scan capture flow, the ML pipeline, platform —
@@ -2380,26 +2470,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   changed after it, and vitest was rerun on the result.
   Rotation: cycle 72's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
   after cycle 71.
-
-- 2026-10-04 (cycles 74, 75, 76) — **Two bounded hunts that pushed nothing, then a
-  supervisor-only cycle.** Cycle 74 hunted `/scan` (camera failures, the survey hint) and
-  `recommend()`; cycle 75 hunted the i18n runtime and `ar` right-to-left layout on the five
-  funnel pages. Neither worker confirmed a defect and neither pushed, so `main` stayed at
-  `d5cf57c`. Worker cost, from each session's own usage record: cycle 74 **$7.13**,
-  cycle 75 **$4.94**. The workers' own coverage claims were not re-run by the supervisor
-  and are not repeated here. With every hunt area of cycles 71–75 covered (server routes,
-  `/checkin`, `/privacy`, share, language switch, `/scan`, `recommend()`, i18n), cycle 76
-  spawned no worker. It closed the last confirmed `[AI]` item it could close without an
-  owner decision: the `shareCardImage` comment in `app/components/share-card.tsx` said
-  `onShare` fires "right before the action"; every call sits after it, so a dismissed
-  sheet records nothing. Comment only, no behaviour change, and `shareUrl` untouched.
-  What is left needs the owner: affiliate signup, the share-link return path
-  (`docs/share-return-path-decision.md`), and the cadence.
-
-  *Gate on the final tree:* `npm run smoke` gives `Test Files 126 passed (126) / Tests
-  1147 passed (1147)`, **348 passed (15.3m)** and **Smoke test passed.** tsc gives
-  **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py`
-  prints **OK**. No port in 3100–3109 was listening before the run. Rotation: cycle 71's
-  entry moved verbatim to the end of `docs/autopilot-changelog.md`, after cycle 70.
-  `comm -23` of `sort -u` over both files at `d5cf57c` against the final tree drops one
-  line, the backlog line this cycle extended with its "docstring half is corrected" note.

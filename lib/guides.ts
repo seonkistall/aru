@@ -30,6 +30,7 @@
  * `t(sku.highlights)`; EN has "진정": "Soothing").
  */
 
+import { affiliateDisclosureActive } from "./commerce";
 import { EN } from "./i18n/en";
 import { INGREDIENTS, type IngredientRole } from "./ingredients";
 import { CONCERN_ROLES, SKUS, type Category, type Concern, type Sku, type SkinType } from "./skus";
@@ -268,7 +269,16 @@ function buildGuide(seed: GuideSeed): Guide {
     lookForIntro: `Each row below is an ingredient role from ARU's own ingredient dictionary, the concerns the catalogue ties it to, and the ingredients in these ${spelled(skus.length)} products that carry it.`,
     lookFor: lookForOf(skus),
     rowsHeading: `The ${category.toLowerCase()}s ARU lists for this skin`,
-    rowsIntro: `All ${spelled(skus.length)} of them, with the grounds each one is here on. Nothing on this page is ordered by payment: ARU holds no affiliate id and takes no commission today.`,
+    // The "no commission" clause is true only while the affiliate switch is off. The
+    // disclosure next to every buy link follows NEXT_PUBLIC_COMMERCE_AFFILIATE
+    // (affiliateDisclosureActive, lib/commerce.ts) and these indexable pages have to as
+    // well, or the documented switch-on deploy (docs/commerce-partnership-playbook.md)
+    // leaves them telling every visitor and crawler something false. Nothing is added
+    // when it is on; the clause is dropped. NEXT_PUBLIC_ is inlined at build and the
+    // guide pages are static, so they follow the deploy.
+    rowsIntro: affiliateDisclosureActive()
+      ? `All ${spelled(skus.length)} of them, with the grounds each one is here on. Nothing on this page is ordered by payment.`
+      : `All ${spelled(skus.length)} of them, with the grounds each one is here on. Nothing on this page is ordered by payment: ARU holds no affiliate id and takes no commission today.`,
     rows: skus.map((sku) => ({
       id: sku.id,
       brand: enText(sku.brand),

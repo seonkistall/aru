@@ -267,7 +267,7 @@ function diversify(sorted: Sku[]): Sku[] {
   return picks;
 }
 
-function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[], scan: ScanReads, scanApplied: boolean): Routine {
+function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[], scan: ScanReads, scanApplied: boolean, budgetRelaxed: boolean): Routine {
   const reads = scanApplied && scan ? scan : null;
   const scanOil = reads !== null && reads.oil >= 2;
   const scanRedness = reads !== null && reads.redness >= 2;
@@ -317,7 +317,13 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
             ? t("민감·붉은기 답변에 맞춰 순한 수분 제품을 가운데 뒀어요.")
             : saidOil
               ? t("유분 고민 답변에 맞춰 아침에는 가벼운 제형을 골랐어요.")
-              : t("{budget} 예산 안에서 매일 쓰기 부담 없는 제품으로 맞췄어요.", { budget: budgetText }),
+              : budgetRelaxed
+                // The picks are over budget when it was relaxed to fill the category, and
+                // attach() puts picks[0] on this step, so "within your budget" would be
+                // false here, the claim reasonFor() already refuses to make. The pm-hydrate
+                // sentence says what is true instead.
+                ? t("{budget} 예산과 {type} 피부 답변을 함께 보고 고른 단계예요.", { budget: budgetText, type: t(survey.type) })
+                : t("{budget} 예산 안에서 매일 쓰기 부담 없는 제품으로 맞췄어요.", { budget: budgetText }),
     },
     {
       id: "am-protect",
@@ -492,5 +498,5 @@ export function recommend(survey: Survey, scan: ScanReads = null): RecoResult {
   }
   const note = noteParts.length ? noteParts.join(" ") : undefined;
 
-  return { picks, routine: routineFor(survey, concerns, picks, scan, scanApplied), relaxed, scanApplied, note };
+  return { picks, routine: routineFor(survey, concerns, picks, scan, scanApplied, budgetRelaxed), relaxed, scanApplied, note };
 }
