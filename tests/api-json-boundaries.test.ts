@@ -117,7 +117,7 @@ describe("remaining JSON API boundaries", () => {
       email: "a@example.com",
       consent: true,
       context: "가".repeat(700),
-    }, { "x-vercel-forwarded-for": "198.51.100.10" }));
+    }, { "x-vercel-forwarded-for": "198.51.100.10", origin: "http://localhost", host: "localhost", "sec-fetch-site": "same-origin" }));
 
     expect(response.status).toBe(413);
   });
@@ -127,7 +127,7 @@ describe("remaining JSON API boundaries", () => {
       email: "a@example.com",
       consent: true,
       admin: true,
-    }, { "x-vercel-forwarded-for": "198.51.100.11" }));
+    }, { "x-vercel-forwarded-for": "198.51.100.11", origin: "http://localhost", host: "localhost", "sec-fetch-site": "same-origin" }));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ reason: "invalid body" });

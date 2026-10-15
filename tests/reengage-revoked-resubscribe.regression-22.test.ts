@@ -117,7 +117,8 @@ function subscribeRequest(email: string) {
   clientCounter += 1;
   return new Request("https://aru.test/api/reengage/subscribe", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-forwarded-for": `203.0.113.${clientCounter}` },
+    // Shaped the way /report's opt-in sends it: the route refuses a cross-site caller.
+    headers: { "Content-Type": "application/json", "x-forwarded-for": `203.0.113.${clientCounter}`, origin: "https://aru.test", host: "aru.test", "sec-fetch-site": "same-origin" },
     body: JSON.stringify({ email, consent: true, context: "복합성·크림", locale: "ko" }),
   });
 }

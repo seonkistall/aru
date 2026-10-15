@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import robots from "../app/robots";
 import sitemap from "../app/sitemap";
 import { SEO_ROUTES, SITE_URL, absoluteUrl, seoMetadata, seoRoute } from "../lib/seo";
+import { EN } from "../lib/i18n/en";
 import { efficacyClean } from "../lib/recommend";
 
 /**
@@ -205,11 +206,24 @@ describe("per-route metadata", () => {
     for (const route of SEO_ROUTES) {
       const meta = seoMetadata(route.path);
       expect(meta.openGraph?.images).toEqual([
-        { url: "/og.png", width: 1200, height: 630, alt: "ARU today's skin report" },
+        { url: "/og.png", width: 1200, height: 630, alt: "ARU: Find skincare that fits you, in just 30 seconds." },
       ]);
       expect(meta.twitter?.images).toEqual(["/og.png"]);
       expect(meta.openGraph?.title).toBe(route.title);
     }
+  });
+
+  /**
+   * The image's text alternative named a skin report, and og.png is the wordmark over
+   * the home hero line with no report on it; platforms that pass og:image:alt on read
+   * that to a screen-reader user for every shared link. The alt is pinned to the same
+   * hero strings the home page renders, so the two cannot drift apart unnoticed.
+   * Found by the cycle 117 bug hunt.
+   */
+  it("describes the preview image with the words the image shows", () => {
+    const [image] = (seoMetadata("/").openGraph?.images ?? []) as { alt?: string }[];
+    expect(image.alt).toBe(`ARU: ${EN["나에게 맞는 화장품 찾기,"]} ${EN["30초면 충분해요."]}`);
+    expect(image.alt).not.toMatch(/report/i);
   });
 
   it("refuses a path it does not know", () => {

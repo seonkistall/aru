@@ -206,7 +206,7 @@ ARU는 단순히 “얼굴이 보이는가”보다 “분석할 피부 영역�
 | `POST /api/analyze` | 동의한 피부 ROI의 선택형 vision 교차 검증 | 2,100,000 byte, JSON/schema, IP당 10회/60초, provider 15초 timeout | 400/413/429/502/503; 로컬 분석 유지 |
 | `POST /api/reason` | 추천 이유 문구의 선택형 LLM 보정 | 32,768 byte, JSON/schema, IP당 10회/60초, provider 15초 timeout, 출력 claim filter | 검증된 템플릿 fallback |
 | `GET/POST /api/sync` | 파일럿 상태 확인과 인증된 batch sync | sync token, origin allowlist, 5 MiB, 인증 후 IP당 12회/60초, consent/scope 검증 | 비인증·불허 origin·과대 body 거부 |
-| `POST /api/reengage/subscribe` | 명시적 이메일 opt-in | email/schema/body 검증, IP당 5회/60초, private DB | 미구성 시 기능 비활성 또는 안전한 오류 |
+| `POST /api/reengage/subscribe` | 명시적 이메일 opt-in | limiter보다 먼저 same-origin guard(`Sec-Fetch-Site` / `Origin`), email/schema/body 검증, IP당 5회/60초, private DB | cross-site 호출은 403; 미구성 시 기능 비활성 또는 안전한 오류 |
 | `POST /api/reengage/unsubscribe` | 서명된 해지 | token 서명·만료·상태 검증 | 변조·만료 token 거부 |
 | `GET /api/reengage/run` | 2·4주 발송과 retention cleanup | cron secret, batch 50, 최대 45초, 철회 제외 | 인증 실패 거부, 제한 내 재실행 가능 |
 | `GET /api/out` | 허용된 판매처 redirect와 클릭 기록 | SKU/merchant/placement allowlist, UTM 구성 | 잘못된 입력 거부 |

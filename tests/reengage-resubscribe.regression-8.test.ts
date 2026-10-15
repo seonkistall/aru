@@ -31,7 +31,7 @@ describe("re-engagement re-subscription schedule", () => {
     const response = await subscribe(
       new Request("https://aru.example/api/reengage/subscribe", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-forwarded-for": "203.0.113.81" },
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "203.0.113.81", origin: "https://aru.example", host: "aru.example", "sec-fetch-site": "same-origin" },
         body: JSON.stringify({ email: "person@example.com", consent: true, context: "복합성·크림" }),
       })
     );

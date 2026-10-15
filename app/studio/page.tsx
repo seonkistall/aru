@@ -252,7 +252,10 @@ export default function Studio() {
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
             <input aria-label={t("항목 {n} 이름", { n: i + 1 })} value={read.label} onChange={(e) => setRead(i, { label: e.target.value })} style={{ ...inputStyle, flex: "1 1 100%", minWidth: 0 }} />
             <input aria-label={t("항목 {n} 값", { n: i + 1 })} value={read.value} onChange={(e) => setRead(i, { value: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
-            <button onClick={() => setRead(i, { calm: !read.calm })} aria-pressed={read.calm} style={toggleBtn(read.calm)}>{read.calm ? t("차분") : t("강조")}</button>
+            {/* No aria-pressed: the label itself names the current state (차분 / 강조), and
+                pressed tracked calm, so an emphasised row read "Bold, not pressed" and a
+                preset row with calm unset was not a toggle at all. */}
+            <button onClick={() => setRead(i, { calm: !read.calm })} style={toggleBtn(read.calm)}>{read.calm ? t("차분") : t("강조")}</button>
           </div>
         ))}
 

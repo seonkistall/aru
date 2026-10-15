@@ -159,14 +159,20 @@ export function shouldApplyScan(scan: ScanReads): scan is NonNullable<ScanReads>
   return Boolean(scan && !scan.retakeRecommended && (scan.confidence ?? 0.7) >= 0.58);
 }
 
+/** The concerns a usable reading flags, in this order. /survey's scan hint and its
+ * "already absorbed" marker are built from the same list (`app/survey/page.tsx`,
+ * `lib/resume-last-result.ts`), so the three cannot disagree about a reading. */
+export function scanSignalConcerns(scan: ScanReads): Concern[] {
+  if (!shouldApplyScan(scan)) return [];
+  const concerns: Concern[] = [];
+  if (scan.oil >= 2) concerns.push("유분");
+  if (scan.redness >= 1) concerns.push("붉은기");
+  if (scan.pores >= 1) concerns.push("모공");
+  return concerns;
+}
+
 function effectiveConcerns(survey: Survey, scan: ScanReads): Concern[] {
-  const set = new Set<Concern>(survey.concerns);
-  if (shouldApplyScan(scan)) {
-    if (scan.oil >= 2) set.add("유분");
-    if (scan.redness >= 1) set.add("붉은기");
-    if (scan.pores >= 1) set.add("모공");
-  }
-  return [...set];
+  return [...new Set<Concern>([...survey.concerns, ...scanSignalConcerns(scan)])];
 }
 
 function skuRoles(sku: Sku): Set<string> {

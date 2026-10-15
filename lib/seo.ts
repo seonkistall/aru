@@ -155,7 +155,9 @@ export function seoMetadata(path: string): Metadata {
       description,
       url: path,
       siteName: "ARU",
-      images: [{ url: "/og.png", width: 1200, height: 630, alt: "ARU today's skin report" }],
+      // The alt is what og.png shows: the wordmark and the home hero line. It said
+      // "ARU today's skin report", and the image has no report on it.
+      images: [{ url: "/og.png", width: 1200, height: 630, alt: "ARU: Find skincare that fits you, in just 30 seconds." }],
       type: "website",
     },
     twitter: {

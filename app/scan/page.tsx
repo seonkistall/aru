@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { t } from "@/lib/i18n/core";
 import { recordConsentEvent } from "@/lib/consent";
 import type { SkinReads } from "@/lib/skin";
@@ -348,6 +349,33 @@ export default function Scan() {
     setErr(event ? "" : t(CONSENT_STORAGE_ERROR));
   }
 
+  // How the scan went, for a screen reader. Each screen below replaces the one before
+  // it, and a live region that mounts with its own screen is not announced, so the
+  // region stays mounted through every phase and only its text changes. The strings
+  // are the ones those screens already show (Scanning, ResultCard's headline, the
+  // noface / denied / interrupted / unsupported copy) — pinned by
+  // tests/scan-outcome-announcement.test.ts.
+  let announcement = "";
+  if (phase === "analyzing") announcement = t("피부 신호를 읽는 중");
+  else if (phase === "result" && reads) announcement = t(reads.headline);
+  else if (phase === "noface") announcement = t("피부가 선명하게 보이지 않았어요. 가이드라인에 맞춰서 밝은 곳에서 정면으로 다시 촬영해 주세요.");
+  else if (phase === "denied")
+    announcement =
+      deniedReason === "busy"
+        ? t("카메라를 다른 앱이 사용 중이에요. 다른 앱을 닫고 다시 시도해 주세요.")
+        : deniedReason === "notfound"
+          ? t("연결된 카메라를 찾지 못했어요.")
+          : deniedReason === "attach"
+            ? t("카메라는 켜졌는데 화면에 연결하지 못했어요. 다시 시도해 주세요.")
+            : t("카메라 권한이 필요해요.");
+  else if (phase === "interrupted")
+    announcement = `${t("카메라가 잠시 멈췄어요.")} ${
+      interruptReason === "backgrounded"
+        ? t("계속하려면 카메라를 다시 켜주세요.")
+        : t("다른 앱이 카메라를 쓰고 있을 수 있어요. 그 앱을 닫고 다시 켜주세요.")
+    }`;
+  else if (phase === "unsupported") announcement = t("이 브라우저에서는 카메라를 사용할 수 없어요.");
+
   return (
     <main className="px-5 py-9" style={{ background: "var(--paper)", minHeight: "100dvh" }}>
       <div className="mx-auto" style={{ maxWidth: 420 }}>
@@ -355,6 +383,7 @@ export default function Scan() {
         <FlowSteps current="scan" />
         <h1 style={titleStyle}>{t("오늘의 피부를 카메라로 살펴볼게요")}</h1>
         <p style={leadStyle}>{t("얼굴을 가이드에 맞추면 빛과 각도를 확인한 뒤 자동으로 촬영해요.")}</p>
+        <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
 
         {phase !== "result" && (
           <div style={cameraFrame}>
@@ -528,12 +557,15 @@ tzoneL / cheekL = ${reads.raw.tzoneL.toFixed(0)} / ${reads.raw.cheekL.toFixed(0)
             )}
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <button onClick={reset} style={{ ...(reads.retakeRecommended ? primaryBtn : outlineBtn), flex: 1 }}>{t("다시 찍기")}</button>
-              <a
+              {/* <Link>, not <a>: in a browser that refuses site storage the reading is
+                  held only in lib/session-store.ts's in-memory Map, which a full page
+                  load empties before /survey can read it. */}
+              <Link
                 href="/survey"
                 style={{ ...(reads.retakeRecommended ? outlineBtn : primaryBtn), flex: 1, textAlign: "center", textDecoration: "none" }}
               >
                 {t("설문으로 이어가기")}
-              </a>
+              </Link>
             </div>
             <button
               type="button"

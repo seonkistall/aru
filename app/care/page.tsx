@@ -7,7 +7,8 @@ import { isSurvey, recommend, type RecoResult, type ScanReads, type Survey } fro
 import { recordFunnelEvent } from "@/lib/funnel";
 import { createTapGuard } from "@/lib/tap-guard";
 import { useFunnelPageView } from "@/app/use-funnel-page-view";
-import { isScanReads, isSkinReads, loadLastResult } from "@/lib/last-result";
+import { isScanReads, isSkinReads } from "@/lib/last-result";
+import { resumeLastResult } from "@/lib/resume-last-result";
 import { recordCareIntent } from "@/lib/store";
 import type { SkinReads } from "@/lib/skin";
 import { Xiaohei } from "@/app/components/sketch";
@@ -42,13 +43,15 @@ type CareView = { survey: Survey; reads: SkinReads | null; result: RecoResult };
 
 function loadCareView(): CareView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionGet(DEVICE_DATA_KEY.survey);
+  let raw = sessionGet(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Returning visitor in a fresh tab (no sessionStorage): fall back to the
     // saved result, mirroring /report, so report's care CTA doesn't dead-end.
-    const saved = loadLastResult();
-    if (!saved) return null;
-    return { survey: saved.survey, reads: saved.reads ?? null, result: recommend(saved.survey, saved.scan ?? null) };
+    // Through the session, as /report does, so a scan taken in this tab wins
+    // over the saved reading (`lib/resume-last-result.ts`).
+    if (!resumeLastResult()) return null;
+    raw = sessionGet(DEVICE_DATA_KEY.survey);
+    if (!raw) return null;
   }
 
   let parsed: unknown;

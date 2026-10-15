@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { parseSubscribeInput } from "@/lib/server/reengage-input";
-import { createRateLimiter, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
+import { createRateLimiter, isForeignOriginRequest, readBoundedJson, requestClientKey, RequestGuardError } from "@/lib/server/request-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +13,14 @@ const CONSENT_VERSION = "2026-07-15.v1";
 const subscribeLimit = createRateLimiter({ max: 5, windowMs: 60_000, maxKeys: 10_000 });
 
 export async function POST(request: Request) {
+  // The same CSRF boundary /api/analyze and /api/reason have, and for the same reason
+  // placed before the limiter. Without it another site's page could enrol any address
+  // with consent: true (a text/plain form POST needs no preflight and no script), from
+  // each visitor's own IP, so neither the limiter nor an IP-keyed firewall rule bounded
+  // it. The only caller, ReengageOptIn on /report, is a same-origin fetch.
+  if (isForeignOriginRequest(request)) {
+    return Response.json({ ok: false, reason: "forbidden origin" }, { status: 403 });
+  }
   if (!subscribeLimit(requestClientKey(request))) {
     return Response.json({ ok: false, reason: "rate limited" }, { status: 429 });
   }
