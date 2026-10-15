@@ -249,7 +249,16 @@ export function exportPilotNotes() {
     "notes",
     "ts",
   ];
-  const esc = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  // A cell starting with = (and, in Excel and Google Sheets, + - @ or a tab / CR) opens as
+  // a formula: in LibreOffice a note like "=> 재촬영 필요" showed Err:510 and was saved
+  // back as Err:510. The leading apostrophe keeps it text; some spreadsheets, LibreOffice
+  // among them, show the apostrophe. The pipeline reads only enum and boolean columns,
+  // which never start with these.
+  const esc = (value: unknown) => {
+    const text = String(value ?? "");
+    const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safe.replaceAll('"', '""')}"`;
+  };
   const csv = [header.join(","), ...rows.map((row) => header.map((key) => esc(row[key as keyof PilotNote])).join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);

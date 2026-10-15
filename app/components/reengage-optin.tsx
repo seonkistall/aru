@@ -73,6 +73,10 @@ export function ReengageOptIn({ context }: { context?: string }) {
         <input
           type="email"
           required
+          // The route's EMAIL_RE (lib/server/reengage-input.ts), unanchored as `pattern`
+          // requires: type=email alone accepts "kim@gmail", which the route refuses, and
+          // the visitor was told to try again later for an address that never passes.
+          pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
           inputMode="email"
           autoComplete="email"
           aria-label={t("이메일 주소")}

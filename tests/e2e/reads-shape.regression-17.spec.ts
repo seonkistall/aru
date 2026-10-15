@@ -200,6 +200,9 @@ test("/report renders the scan headline on a structurally complete reads", async
   await context.addInitScript(seedStores, [
     [SURVEY_KEY, VALID_SURVEY],
     [READS_KEY, JSON.stringify(VALID_READS)],
+    // The scan the picks are scored on, as /scan writes it beside the reads: the
+    // headline is the reading's only when the report used the reading (cycle 119).
+    [SCAN_KEY, JSON.stringify({ oil: 0, redness: 0, pores: 1, confidence: 0.82, retakeRecommended: false, source: "roi-calibrated" })],
   ] as [string, string][]);
   const page = await context.newPage();
   await page.goto("/report");

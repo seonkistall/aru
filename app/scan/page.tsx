@@ -182,7 +182,10 @@ export default function Scan() {
         opened = await openCamera((constraints) => navigator.mediaDevices.getUserMedia(constraints));
       } catch (lastError) {
         const name = (lastError as { name?: string } | null)?.name;
-        const reason = name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission";
+        // AbortError is a granted camera that failed to start (Chrome "Timeout starting
+        // video source", Firefox "Starting videoinput failed"), typically another app
+        // holding it — the busy copy, not a permission the user has already given.
+        const reason = name === "NotReadableError" || name === "AbortError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission";
         recordFunnelEvent("camera_blocked", { reason });
         setDeniedReason(reason);
         setPhase("denied");

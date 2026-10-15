@@ -236,9 +236,16 @@ export function mergeVisionAnalysis(base: SkinReads, payload: VisionAnalysis): S
   // function has just rewritten, and arrived through `...base` derived from the old
   // ones. Left alone, the <h1> on /report and the scan receipt could read 피부
   // 컨디션이 비교적 안정적이에요 above a row reading 붉은기 뚜렷, from the same object.
-  // payload.narrative stays the override it already was; the template is the fallback.
+  // payload.narrative stays the override it already was, but only while it describes
+  // this reading: it was written for the model's own labels, so once a label it sent is
+  // refused, its sentence (e.g. 볼의 붉은기가 눈에 띄어요) would sit above 붉은기 낮음 in
+  // Korean while every other language rebuilds the text from the levels.
+  const narrativeMatches = ATTRS.every((attr) => {
+    const level = payload.labels?.[attr];
+    return (level !== 0 && level !== 1 && level !== 2) || next[attr].level === level;
+  });
   next.headline = headlineFor(next.oil, next.redness, next.pores);
-  next.narrative = payload.narrative || narrativeFor(next.oil, next.redness, next.pores);
+  next.narrative = (narrativeMatches && payload.narrative) || narrativeFor(next.oil, next.redness, next.pores);
   next.overall = overallFor(next.oil, next.redness, next.pores, next.confidence);
 
   return next;

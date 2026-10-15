@@ -35,7 +35,8 @@ import { SKUS } from "@/lib/skus";
  * product cannot show.
  *
  * COVERAGE OF THE READING STATES, stated as what it is: the six `/report` step-0
- * readings put all NINE `SKIN_LABELS` values on screen and take all FIVE `headlineFor`
+ * readings put all NINE `SKIN_LABELS` values on screen and, with their usable twins
+ * (the heading follows `scanApplied` since cycle 119), take all FIVE `headlineFor`
  * branches and all three `overallFor` values; signals, extras and confidence rotate
  * across them so all four signals appear in both states, `조명`'s third detail
  * (`빛이 강해요`) appears, all three `톤 균일감` and all three `T존 반사광` variants
@@ -388,6 +389,15 @@ const STATES: State[] = [
 // `/report` step 0 over the six readings: this is where the reading itself renders.
 for (const [i, reads] of READS.entries()) {
   STATES.push({ name: `/report reads${i} step0`, path: "/report", store: reportStore(reads, SURVEY_PLAIN), minNodes: 40 });
+}
+// Since cycle 119 the step-0 heading is the reading's headline only when the picks used
+// the reading, and the retake readings above (every i % 3 !== 1) are set aside. The same
+// levels once more as usable readings (rotation slot 1: signals ok, confidence 0.72), so
+// every `headlineFor` branch is still on screen.
+for (const [i, reads] of READS.entries()) {
+  if (i % 3 === 1) continue;
+  const usable = readsFor(reads.oil.level as SkinLevel, reads.redness.level as SkinLevel, reads.pores.level as SkinLevel, 1);
+  STATES.push({ name: `/report reads${i} usable step0`, path: "/report", store: reportStore(usable, SURVEY_PLAIN), minNodes: 40 });
 }
 // Steps 1 and 2 over the survey shapes that change what they render: the budget note,
 // the avoid list, the relaxed note and the routine's hero products.

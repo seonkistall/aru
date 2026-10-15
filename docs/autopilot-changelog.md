@@ -15612,3 +15612,57 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   vitest was rerun on the result.
   Rotation: cycle 73's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
   after cycle 72.
+
+- 2026-10-14 (cycle 116) — **A third hunt, over the areas cycles 114 and 115 left: eight
+  defects confirmed, six fixed, three filed (one of them half fixed).** Four finders
+  (research pages, the labeling and sync client, catalogue and content integrity, funnel
+  event call sites), each needing a repro it ran itself, and a skeptic per finding.
+  **15** agents, **11** findings, **8** survived, **3** rejected (a /pilot note minting a
+  new session id that nothing joins on; the /pilot status dropdown resetting after save,
+  which is operator UI; budget-relaxed reasons all saying "closest", which is copy).
+
+  **Fixed, each with a test that fails on `e1486e8`:**
+  - **A routine `/ops` re-sync un-deleted crops.** `/ops` never clears the device, so
+    every sync re-sends every crop, and `uploadCropSamples` upserted `deleted_at: null`
+    and `exclude_reason: null` and re-uploaded the image, undoing a deletion or exclusion
+    made by the runbook's section 6. A lookup (in chunks of 100) now skips crops the
+    server has retired, the two columns are no longer sent, and a failed lookup uploads
+    no crop at all. `tests/sync-crop-retired.test.ts` (**5** cases, all failing on the old
+    route).
+  - `/ops` built the P001–P030 board from localStorage in the render body, so the server
+    HTML and the hydration render disagreed once a pilot note existed. The roster is now
+    part of the snapshot read after mount. `tests/ops-roster-hydration.test.ts`.
+  - A label refused by a full localStorage quota is retried once after the crop save.
+    That recovers it when the eviction freed more than the new crop needed, which a test
+    against the real stores and a quota-enforcing storage pins; with equal-size crops it
+    does not, and the rest is filed. `tests/feedback-storage.test.ts`.
+  - The routine's am-hydrate step said "within your budget" over an over-budget pick when
+    the budget was relaxed; it now uses the existing pm-hydrate sentence. No new copy.
+    `tests/recommend.test.ts`.
+  - One unload of `/scan` with a live camera recorded `camera_interrupted` twice
+    (pagehide, then visibilitychange, before React re-rendered). `interruptCamera` claims
+    the phase first. In the hunt's hook harness one unload now records **1** event where
+    it recorded **2**. `tests/camera-interrupt-reason.test.ts`.
+  - The guide pages' "ARU holds no affiliate id and takes no commission today" was a
+    fixed literal. It now drops when `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, as the buy-link
+    disclosure does; with the flag off, as in every deploy today, the page is unchanged.
+    Nothing is added. `tests/guides-affiliate-switch.test.ts`. **For the owner:** this was
+    the one place the affiliate switch-on would have left a false statement live.
+
+  A three-lens review workflow found no blocker. It raised three should-fix items, all
+  taken: the label retry's comment promised space the crop save does not always free
+  (reworded, real-store test added, remainder filed); the sync test's mock returned
+  every column whatever was selected (it now projects like PostgREST, and a lookup that
+  selects `id` alone fails it); the hydration test could not see the board's post-mount
+  content (a contract added). Two nits taken (no unreproducible counts in comments), one
+  left: with the budget relaxed, am-hydrate and pm-hydrate now read the same sentence over
+  the same product, which is true and needs no new copy.
+
+  *Gates:* on `e1486e8` before any change, vitest `128 passed (128) / 1156 passed (1156)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 131 passed (131) / Tests
+  1171 passed (1171)`, **360 passed (14.1m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycles 74–76 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 73.
