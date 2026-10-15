@@ -47,7 +47,7 @@ export function ProductCard({ pick, placement, rank }: { pick: Recommendation; p
           </div>
           <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16.5, color: "var(--ink)", lineHeight: 1.25, margin: "3px 0 4px" }}>{t(sku.name)}</p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
-            {sku.volume && <span>{sku.volume}</span>}
+            {sku.volume && <span>{t(sku.volume)}</span>}
             {sku.texture && <span>{t(sku.texture)}</span>}
             {/* `margin-inline-start: auto` pushes the price to the row's reading END in
                 both directions; a physical `marginLeft: auto` resolves on the left,

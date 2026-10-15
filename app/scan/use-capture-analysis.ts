@@ -89,9 +89,18 @@ export function useCaptureAnalysis({
 }: UseCaptureAnalysisOptions) {
   const captureLockRef = useRef(false);
   const captureRunRef = useRef(0);
+  const analyzeAbortRef = useRef<AbortController | null>(null);
 
+  // A cancelled run used to keep the lock until its own finally, so with a slow
+  // /api/analyze every tap after 카메라 다시 켜기 did nothing until the request's 8 s
+  // timer fired (the quality loop's auto-capture waits on the same promise). Ending the
+  // request and releasing the lock here frees both at once; the run's finally leaves
+  // the lock alone once it is no longer current, since by then it may be the next run's.
   const cancelCapture = useCallback(() => {
     captureRunRef.current += 1;
+    analyzeAbortRef.current?.abort();
+    analyzeAbortRef.current = null;
+    captureLockRef.current = false;
   }, []);
 
   const capture = useCallback(async () => {
@@ -225,6 +234,7 @@ export function useCaptureAnalysis({
       let final = out;
       if (aiAllowed && aiCrop) {
         const controller = new AbortController();
+        analyzeAbortRef.current = controller;
         const timeout = window.setTimeout(() => controller.abort(), 8000);
         try {
           const resp = await fetch("/api/analyze", {
@@ -241,6 +251,7 @@ export function useCaptureAnalysis({
           /* Timed out or failed — keep on-device result. */
         } finally {
           window.clearTimeout(timeout);
+          if (analyzeAbortRef.current === controller) analyzeAbortRef.current = null;
         }
         if (cancelled()) return;
       }
@@ -310,7 +321,7 @@ export function useCaptureAnalysis({
       setErr(t("분석 중 문제가 생겼어요. 다시 시도해 주세요."));
       setPhase("ready");
     } finally {
-      captureLockRef.current = false;
+      if (!cancelled()) captureLockRef.current = false;
     }
   }, [
     captureMode,

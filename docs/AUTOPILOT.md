@@ -2040,8 +2040,27 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-10-15 — the week-4 re-engagement mail goes out one daily tick late (cycle 118
+  hunt, survived its skeptic, NOT fixed: send timing is owner-locked).**
+  `app/api/reengage/run/route.ts` stamps `week2_sent_at` with `new Date()` after the send,
+  then the week-4 pass requires `week2_sent_at <= now - 2 weeks` against a later tick's
+  start, so the stamp misses the bound by the send latency. The finder's probe with
+  **250** ms latency: week 2 on day **14.250**, week 4 on day **29.250**, a **15.000**-day
+  gap; with **0** ms latency the gap is **14.000** days. The skeptic's jitter probe shows
+  it is not deterministic on Vercel: when the day-28 tick starts later than the day-14
+  one did, week 4 goes out on time. Nothing is lost or sent twice. Fix sketch: stamp with
+  the run's `now`, as `retention_until` already is, or give the bound slack shorter than
+  one cron period.
+
+- [ ] **2026-10-15 — "1 days ago" (cycle 118, seen in the hunt's history-strip probe, NOT
+  fixed).** `{days}일 전` has one form per language, so the bar for yesterday read "1
+  days ago" in the probe's English render, and the Arabic entry gives "قبل 1 أيام". A fix needs a new string ("1 day ago",
+  or a plural form), which is a copy decision.
+
 - [ ] **2026-10-15 — focus and naming gaps the cycle 117 accessibility finder saw but did
-  not spend a skeptic on (NOT verified, NOT fixed).** On `/report`, "Next: A simple
+  not spend a skeptic on (NOT verified, NOT fixed).** **Partly actioned 2026-10-15 (cycle
+  118): the `/report`, `InfoSheet` and `/studio` items reproduced and are fixed; the
+  language listbox stays open.** On `/report`, "Next: A simple
   routine…" and "← Back" remove themselves and focus drops to `<body>`, the same shape as
   the `/privacy` fix. `InfoSheet`'s `aria-modal` dialog never receives focus. `/studio`'s
   four emphasis toggles share one name per state with no row in it. The language
@@ -2084,8 +2103,11 @@ up rather than rediscover them.
   pick or stays product-free, and whether a mild 각질케어 toner like tn2 counts, are
   product decisions.
 
-- [ ] **2026-10-14 — a cancelled capture holds the capture lock until its
+- [x] **2026-10-14 — a cancelled capture holds the capture lock until its
   `/api/analyze` fetch times out (cycle 115 hunt, survived its skeptic, NOT fixed).**
+  **Actioned 2026-10-15 (cycle 118): fixed as sketched below; the quality loop needed no
+  change because the aborted request settles the run at once.
+  `tests/capture-cancel-releases-lock.test.ts`.**
   `cancelCapture` in `app/scan/use-capture-analysis.ts` bumps the run counter but does
   not abort the run's fetch, and `captureLockRef` is released only in that run's
   `finally`. With AI consent on and a slow `/api/analyze`, hiding the tab mid-request and
@@ -2099,8 +2121,12 @@ up rather than rediscover them.
   `AbortController` in a ref, abort it and release the lock in `cancelCapture`, and
   release in `finally` only when the run is still current.
 
-- [ ] **2026-10-14 — `startCamera` is not single-flight (cycle 115 hunt, survived its
-  skeptic, NOT fixed).** A double tap on 카메라로 살펴보기 / 다시 시도 / 카메라 다시 켜기
+- [x] **2026-10-14 — `startCamera` is not single-flight (cycle 115 hunt, survived its
+  skeptic, NOT fixed).** **Actioned 2026-10-15 (cycle 118): a start that arrives while one
+  is pending is ignored, rather than the sequence-ref sketch below, because the later
+  start's `getUserMedia` is the call that fails on ARU's own camera.
+  `tests/camera-start-single-flight.test.ts`.** A double tap on 카메라로 살펴보기 /
+  다시 시도 / 카메라 다시 켜기
   while `getUserMedia` is pending runs two starts. If both succeed, the second stream is
   never watched (the watcher effect is keyed on `phase`, which does not change). If the
   second fails, which a device can do because ARU's own first stream holds the camera,
@@ -2303,6 +2329,54 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-15 (cycle 118) — **Two filed `/scan` defects and the filed accessibility gaps
+  fixed, and a hunt along two new lenses (time and dates, locale formatting): nine
+  defects fixed, one filed.** One workflow: two fix agents on files no one else touched,
+  and two finders with a skeptic per finding. **9** agents, **5** findings, **5**
+  survived, **0** rejected.
+
+  **Fixed, each with a test that fails on `933d120`:**
+  - **A cancelled capture held the capture lock until its `/api/analyze` request timed
+    out** (filed by cycle 115). `cancelCapture` now aborts the run's request and releases
+    the lock; a run's `finally` releases it only while that run is still current.
+    `tests/capture-cancel-releases-lock.test.ts`.
+  - **`startCamera` was not single-flight** (filed by cycle 115). A start that arrives
+    while one is pending is ignored, so a double tap no longer opens a second stream or
+    shows the busy screen over ARU's own live camera. The later tap is the one ignored
+    because its `getUserMedia` is the call that fails on ARU's own camera.
+    `tests/camera-start-single-flight.test.ts`.
+  - The three cycle 117 accessibility gaps that reproduced: `/report`'s 다음 / 이전 now
+    move focus to the step heading; `InfoSheet` takes focus on open and returns it to
+    its opener on close; `/studio`'s four emphasis toggles, all named "차분", are each
+    named by their own text and their row. `tests/report-step-focus.test.ts`,
+    `tests/info-sheet-focus.test.ts`, `tests/studio-toggle-name.test.ts`,
+    `step-focus-and-toggle-names.regression-55`. The language listbox stays filed.
+  - The mask-pack volume "1매" reached en / ja / zh / ar in Korean; every dictionary
+    already had it. `tests/catalogue-volume-locale.test.ts`.
+  - The `/scan` receipt read the clock in its render body, so a share tap after midnight
+    re-dated it and its ARU·SKIN id. `tests/result-card-timestamp.test.ts`.
+  - `/report`'s history strip said "최근 10회 스캔" over 6 bars; it counts the bars.
+    `tests/scan-history-strip-count.test.ts`.
+  - `/ops`'s funnel_events window printed UTC dates beside a local "Read at".
+    `tests/ops-window-local-day.test.ts`.
+
+  A three-lens review found no blocker and no should-fix, and three nits. Two were taken:
+  the `/ops` test now removes `TZ` instead of leaving the string "undefined" behind, and
+  the cycle 115 and 117 entries below are ticked. One is left as a stated trade-off: a
+  start whose `getUserMedia` or `play()` never settles keeps the start button inert until
+  reload, where a second tap used to open a second request. Releasing the guard once the
+  stream is attached would reopen exactly the window in which the second request fails
+  on ARU's own camera.
+
+  *Gates:* on `933d120` before any change, vitest `136 passed (136) / 1209 passed (1209)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 145 passed (145) / Tests
+  1250 passed (1250)`, **366 passed (10.7m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycle 115 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycles 77–114.
+
 - 2026-10-15 (cycle 117) — **A fourth hunt, along lenses no earlier hunt took
   (accessibility, server trust boundaries, service worker and caching, flow continuity,
   search and share metadata): eight defects confirmed, eight fixed.** Five finders, each
@@ -2416,63 +2490,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   vitest was rerun on the result.
   Rotation: the cycles 74–76 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycle 73.
-
-- 2026-10-14 (cycle 115) — **A second multi-agent hunt over the areas cycle 114 did not
-  cover: ten defects confirmed, seven fixed, three filed.** Same shape as cycle 114: five
-  finders (report and care screens, the scan capture flow, the ML pipeline, platform —
-  service worker, SEO, CSP, rate limiter — and i18n dictionary integrity), each needing a
-  repro it ran itself, and an independent skeptic per finding. **17** agents, **12**
-  findings, **10** survived, **2** rejected (the product card's "use started" label
-  resetting on step change, which never read the store anyway; English and Arabic count
-  strings with no singular form, which is copy). The platform finder confirmed nothing.
-
-  **Fixed, each with a test that fails on `365f071`:**
-  - `/report`'s 추천 기준 sentence listed "T존 유분" for an oil level-1 reading, which
-    `recommend()` ignores (it adds 유분 at level 2) and `/survey` had just called not
-    distinct. `scanSignalText` now uses level 2. `report-basis-and-optin.regression-52`.
-  - `/report`'s trust card shows three chips of the four `buildSignals` returns, so a
-    retake caused by 피부 영역 alone showed three passing chips. `buildReportTrust` now
-    puts held checks first (stable order otherwise). `tests/report-trust.test.ts`.
-  - `/report`'s email opt-in lost its confirmation on 이전 → 다음 (the box renders only
-    on the routine step) and offered an empty form again. A module-level flag keeps it
-    until reload, keyed by the pilot participant and session so the next participant on a
-    shared pilot device still gets the form (the review's case, pinned too; with one
-    tab-wide key that case fails). Nothing about the address is stored. regression-52.
-  - `/scan`'s "noface" screen keeps the stream for 다시 시도 with the `<video>` hidden,
-    but neither the backgrounding guard nor the track watcher included it, so a hidden
-    tab kept the camera capturing. In the hunt's hook harness the hidden tab now stops the
-    track (**1** stop call, readyState `ended`) where before it stayed `live` with **0**.
-    `tests/camera-interrupt-reason.test.ts` pins both guards.
-  - `ml/subgroups.group_key` gave every crop with no participant, session or device id
-    its own `row:<id>` group, so consumer crops counted as distinct people and the
-    group-safe split could put one face in train and validation. They are now one `anon`
-    group, and `stratified_group_folds` gives that group fold −1: training only, never
-    validation. `split_rows` reports `identity_less_rows` and warns. The review caught the
-    first version bin-packing the whole group into fold 0, the default validation fold;
-    with 30 participants and 200 such crops, validation now holds **0** of them (checked
-    with torch stubbed, since the trainer imports it at module scope).
-  - `ml/run_pipeline.py`'s crop-consent warning read one device-wide latest
-    `learning_crop` event, so P001 revoking and P002 granting afterwards hid P001's
-    crops. `summarize_consent` now also counts crops whose own (participantId,
-    sessionId) scope has no grant, the exact-scope rule of `latestConsentGranted`, and
-    `warnings_for` names them.
-  - `ml/prepare_crop_dataset.py` treated an app-measured `toneIta` of 0 as missing and
-    recomputed it from the crop. `ml/ita.recorded_ita` tests presence, not truthiness.
-  The three ML fixes are pinned by **12** new selftests; on the old code **11** fail and
-  the one control passes. `npm run smoke`'s ML step went from **146** to **158** tests.
-
-  **Measured, not assumed:** regression-52 against the old app code gave **2 failed | 1
-  passed**, the pass being the oil-2 control. A three-lens review workflow raised two
-  should-fix items (the fold above, and a missing unscoped-consent case in the selftests)
-  and three nits; all were taken. Not changed: `lib/consent.ts`,
-  what the re-engage email sends or when (the server receives the same request), the
-  manifest, the `key={active}` remount, and no `t()` string.
-
-  *Gates:* on `365f071` before any change, vitest `128 passed (128) / 1153 passed (1153)`.
-  On the code-final tree: `npm run smoke` gives `Test Files 128 passed (128) / Tests
-  1156 passed (1156)`, **360 passed (10.3m)**, `Ran 158 tests` **OK** and **Smoke test
-  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
-  in 3100–3109 was listening before the run. Only this gate line changed after it, and
-  vitest was rerun on the result.
-  Rotation: cycle 73's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
-  after cycle 72.

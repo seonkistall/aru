@@ -17,7 +17,7 @@ export function ProductCompare({ picks }: { picks: Recommendation[] }) {
     },
     {
       label: t("용량"),
-      render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.volume ?? "—"}</span>,
+      render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.volume ? t(p.sku.volume) : "—"}</span>,
     },
     { label: t("제형"), render: (p) => <span style={{ color: "var(--ink-soft)" }}>{p.sku.texture ? t(p.sku.texture) : "—"}</span> },
     {

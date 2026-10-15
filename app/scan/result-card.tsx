@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { getLang, t } from "@/lib/i18n/core";
 import { localizedNarrative, type SkinReads } from "@/lib/skin";
 import { eyebrow } from "./scan-styles";
@@ -62,7 +63,11 @@ function DotRow({ label, value, calm, delay }: { label: string; value: string; c
 // confidence as the "total" line, a sketch barcode, and a tilted stamp.
 export function ResultCard({ reads }: { reads: SkinReads }) {
   const confidencePct = Math.round(reads.confidence * 100);
-  const now = new Date();
+  // The moment this reading was shown, held for the card's life: read in the render
+  // body it moved with every re-render of /scan (a share tap re-renders it), so a tap
+  // after midnight re-dated the receipt and its ARU·SKIN id under the same reading.
+  // A new scan unmounts this card (the result phase ends), so each reading gets its own.
+  const [now] = useState(() => new Date());
   const dateLine = now.toLocaleDateString(LOCALES[getLang()] ?? "ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
   const timeLine = now.toLocaleTimeString(LOCALES[getLang()] ?? "ko-KR", { hour: "2-digit", minute: "2-digit" });
   const rows = [
