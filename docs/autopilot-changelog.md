@@ -15666,3 +15666,63 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   vitest was rerun on the result.
   Rotation: the cycles 74–76 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycle 73.
+
+- 2026-10-15 (cycle 117) — **A fourth hunt, along lenses no earlier hunt took
+  (accessibility, server trust boundaries, service worker and caching, flow continuity,
+  search and share metadata): eight defects confirmed, eight fixed.** Five finders, each
+  needing a repro it ran itself, and a skeptic per finding. **14** agents, **9** findings,
+  **8** survived, **1** rejected (`public/icon.svg` shadowing `app/icon.svg`, which only
+  holds under `next start`, not on Vercel). The service-worker lens found nothing: in a node harness
+  only `/offline.html` and the MediaPipe files are ever cached, and the finder read the
+  same in the five earlier `sw.js` versions it checked.
+
+  **Fixed, each with a test that fails on `f00cdc5`:**
+  - **`/api/reengage/subscribe` took a POST from any site.** A page elsewhere could make
+    its visitors' browsers enrol any address with `consent: true` (a `text/plain` form
+    needs no script and no preflight) and clear an earlier opt-out, from a different IP
+    each time, so the per-client limiter did not bound it. It now refuses a cross-site
+    caller before the limiter, as `/api/analyze` and `/api/reason` already did. What
+    re-subscribing means is still the owner's open decision; this only stops other sites
+    driving the route. `tests/reengage-subscribe-origin.test.ts`.
+  - `/report` and `/care` in a fresh tab rendered the saved result but never handed it to
+    the session, so a scan taken after the report's own scan nudge never reached the
+    report, and `/survey` came back with every answer gone. The saved survey (and the
+    saved reading, when this tab has none) now goes into the session, with the marker
+    that its scan hint was already absorbed, and the normal session path runs.
+    `aru_last_result` is rewritten only when its content changed. `tests/fresh-tab-resume.test.ts`.
+  - `/scan` announced nothing after the countdown: analysing, the result headline, and
+    the noface / denied / interrupted / unsupported screens. One always-mounted `sr-only`
+    status region now carries the strings those screens already show.
+    `tests/scan-outcome-announcement.test.ts`.
+  - `/scan`'s 설문으로 이어가기 was a plain `<a>`, a full load that empties the in-memory
+    session fallback in a browser that refuses site storage, so the reading was lost.
+    Now a `<Link>`; the landmarker runs in a worker that unmount closes. Same test file.
+  - `/privacy` delete-all dropped focus to `<body>` at each step. Focus now moves to the
+    confirmation heading, back to the button on 취소, and to the done line.
+    `tests/privacy-delete-focus.test.ts`, `privacy-delete-focus.regression-54`.
+  - `/checkin`'s answer toggles were not tied to their question: in English 트러블 and
+    재구매 are both "Yes". Each row is now a group named by its product and its question.
+    `checkin-answer-groups.regression-53` (both cases fail on the old page).
+  - `/studio`'s emphasis toggle carried `aria-pressed={calm}` beside a label naming the
+    state, so a bold row read "Bold, not pressed". The attribute is gone.
+    `tests/studio-emphasis-toggle.test.ts`.
+  - `og:image:alt` on every route said "ARU today's skin report"; `og.png` shows the
+    wordmark and the home hero line. The alt is now that line, pinned to the same
+    dictionary strings. `tests/seo-metadata.test.ts`.
+
+  No new wording: every announcement, group name and the alt reuse strings the pages
+  already show. A three-lens review found no blocker and two should-fix items, both
+  taken: the fresh-tab resume brought the regression-49 hint re-press back across tabs
+  (fixed with the `hintFor` marker above and a shared `scanSignalConcerns`); the studio
+  fix had no failing test (added). Its six nits were taken too (README rows for the
+  subscribe guard, `sr-only` over an inline style, a fake DOM that now models which
+  elements can take focus, three comments reworded to claims that hold).
+
+  *Gates:* on `f00cdc5` before any change, vitest `131 passed (131) / 1171 passed (1171)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 136 passed (136) / Tests
+  1209 passed (1209)`, **363 passed (9.6m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycles 77–114 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycles 74–76.

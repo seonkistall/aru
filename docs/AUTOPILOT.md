@@ -2040,6 +2040,21 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-10-15 — a calm face reads 분석 신뢰도 보통 where a less clear-cut face reads
+  높음 (cycle 120 hunt, survived its skeptic, NOT fixed).** `distanceConfidence`
+  (`lib/skin.ts`) rises at 0.45 per span inside a band but 0.225 per span outside it, so a
+  reading a quarter-span outside its cut scores **0.7512** where a quarter-span inside
+  scores **0.8075**, and oil level 0 tops out at **0.7973**. The finder's fixtures, all
+  signals ok: a level-0 face whose readings are **0.455 / 0.460 / 0.432** span clear reads
+  **0.8531 보통**, a level-1 face only **0.372 / 0.253 / 0.204** span clear reads **0.8702
+  높음**; with every reading at least a quarter-span clear, all-level-1 faces read 높음
+  **8000/8000**, all-level-0 faces **11295/18259**. Filed rather than fixed: the
+  symmetric slope the skeptic sketched raises the displayed confidence and label, and the
+  `analysisConfidence` stored with every research label, so labels collected before and
+  after it would not compare; that makes it a calibration decision. By the finder's
+  analysis retake and `scanApplied` would not move, since a reading with every signal ok
+  stays above the 0.58 line either way.
+
 - [ ] **2026-10-15 — the week-4 re-engagement mail goes out one daily tick late (cycle 118
   hunt, survived its skeptic, NOT fixed: send timing is owner-locked).**
   `app/api/reengage/run/route.ts` stamps `week2_sent_at` with `new Date()` after the send,
@@ -2329,6 +2344,64 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-15 (cycle 120) — **A seventh hunt, by method rather than by area (metrics
+  checked against reference implementations, property fuzzing of `recommend()` and of
+  the reading pipeline, and mutation of production guards): six findings confirmed: three
+  defects fixed, two unpinned guards pinned, one filed.** Four finders, each needing a repro it ran itself, and a skeptic per
+  finding. **14** agents, **10** findings, **6** survived, **4** rejected (a sub-5-person
+  trainer split and an unread manifest minimum that no real export reaches, the 120-crop
+  device cap that AGENTS.md documents, and a red spot the redness trim discards by its
+  documented design). What held: QWK, MAE, accuracy and quantiles agreed with
+  pure-Python references on every generated case; `recommend()` kept every invariant the
+  fuzz checked over **1,378,400** calls (the one contradiction below came from listing
+  every routine sentence it can show); the reading pipeline stayed finite and
+  order-independent on synthetic and degenerate frames; and of **12** guard mutations,
+  **5** were killed by vitest, **3** are pinned by e2e specs, **1** guards an input no
+  caller sends, and **3** are the findings below.
+
+  **Fixed, each with a test that fails on `8217e65`:**
+  - The fresh-tab resume kept a draft `/survey` had written on a mere look, and `/survey`
+    then applied it over the resumed survey: the submitted concerns and avoid list were
+    cleared and the saved scan's hint pressed again. An untouched draft (every answer
+    field empty, no hint) is now replaced or removed; a typed draft is left alone.
+    `tests/fresh-tab-resume.test.ts`.
+  - The routine's evening cleanse took its "더 꼼꼼하게" title from the skin type alone
+    while its why fell through to the gentle redness sentence, so 복합성 + 붉은기 read
+    "cleanse more thoroughly" beside "the evening cleanse stays gentle". The why now
+    follows the title's branch with an existing sentence.
+    `tests/routine-pm-cleanse-why.test.ts`.
+  - `/ops`'s ML readiness gate counted the pilot roster (any note, planned and excluded
+    included) as participants linked to crops; it now counts the distinct participants
+    on the stored crops. The roster tile is unchanged.
+    `tests/ops-readiness-linked-participants.test.ts`.
+
+  **Pinned, guards that already held but no test caught** (these pass on `8217e65` and
+  fail only with the guard mutated away, in a scratch copy):
+  - `/api/sync` counts a request against its limiter only after the token check. With
+    the limiter moved above it: `a token-less request was answered with something other
+    than 401: expected Set{ 401, 429 } to deeply equal Set{ 401 }`.
+    `tests/sync-rate-limit-after-auth.test.ts`.
+  - `use-landmarker` clears its pending creation only if it is still its own. With the
+    check made unconditional: `another creation started beside the one still in flight:
+    expected 3 to be 2`. `tests/landmarker-superseded-pending.test.ts`.
+
+  A three-lens review found no blocker, two should-fix items and four nits, all taken:
+  the untouched-draft check missed the look's draft when this tab's scan flags nothing
+  (`hintFor: ""`) or pressed its own hint, so a look still wiped the resumed answers in
+  those cases; four resume cases were added, including the two the review's mutations
+  left unpinned (a typed draft with no hint to mark, and a draft whose hinted chips were
+  unpressed); two comments were reworded to claims the code and the repo back; and this
+  entry separates the pins from the fixes and backs the tests' cycle 120 attributions.
+
+  *Gates:* on `8217e65` before any change, vitest `149 passed (149) / 1269 passed (1269)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 153 passed (153) / Tests
+  1284 passed (1284)`, **369 passed (12.1m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycle 117 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 116.
+
 - 2026-10-15 (cycle 119) — **A sixth hunt, along four lenses no earlier hunt took
   (resource lifecycle, cross-screen consistency, typed input, failure states): seven
   defects confirmed, seven fixed.** Four finders, each needing a repro it ran itself,
@@ -2433,63 +2506,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   vitest was rerun on the result.
   Rotation: the cycle 115 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycles 77–114.
-
-- 2026-10-15 (cycle 117) — **A fourth hunt, along lenses no earlier hunt took
-  (accessibility, server trust boundaries, service worker and caching, flow continuity,
-  search and share metadata): eight defects confirmed, eight fixed.** Five finders, each
-  needing a repro it ran itself, and a skeptic per finding. **14** agents, **9** findings,
-  **8** survived, **1** rejected (`public/icon.svg` shadowing `app/icon.svg`, which only
-  holds under `next start`, not on Vercel). The service-worker lens found nothing: in a node harness
-  only `/offline.html` and the MediaPipe files are ever cached, and the finder read the
-  same in the five earlier `sw.js` versions it checked.
-
-  **Fixed, each with a test that fails on `f00cdc5`:**
-  - **`/api/reengage/subscribe` took a POST from any site.** A page elsewhere could make
-    its visitors' browsers enrol any address with `consent: true` (a `text/plain` form
-    needs no script and no preflight) and clear an earlier opt-out, from a different IP
-    each time, so the per-client limiter did not bound it. It now refuses a cross-site
-    caller before the limiter, as `/api/analyze` and `/api/reason` already did. What
-    re-subscribing means is still the owner's open decision; this only stops other sites
-    driving the route. `tests/reengage-subscribe-origin.test.ts`.
-  - `/report` and `/care` in a fresh tab rendered the saved result but never handed it to
-    the session, so a scan taken after the report's own scan nudge never reached the
-    report, and `/survey` came back with every answer gone. The saved survey (and the
-    saved reading, when this tab has none) now goes into the session, with the marker
-    that its scan hint was already absorbed, and the normal session path runs.
-    `aru_last_result` is rewritten only when its content changed. `tests/fresh-tab-resume.test.ts`.
-  - `/scan` announced nothing after the countdown: analysing, the result headline, and
-    the noface / denied / interrupted / unsupported screens. One always-mounted `sr-only`
-    status region now carries the strings those screens already show.
-    `tests/scan-outcome-announcement.test.ts`.
-  - `/scan`'s 설문으로 이어가기 was a plain `<a>`, a full load that empties the in-memory
-    session fallback in a browser that refuses site storage, so the reading was lost.
-    Now a `<Link>`; the landmarker runs in a worker that unmount closes. Same test file.
-  - `/privacy` delete-all dropped focus to `<body>` at each step. Focus now moves to the
-    confirmation heading, back to the button on 취소, and to the done line.
-    `tests/privacy-delete-focus.test.ts`, `privacy-delete-focus.regression-54`.
-  - `/checkin`'s answer toggles were not tied to their question: in English 트러블 and
-    재구매 are both "Yes". Each row is now a group named by its product and its question.
-    `checkin-answer-groups.regression-53` (both cases fail on the old page).
-  - `/studio`'s emphasis toggle carried `aria-pressed={calm}` beside a label naming the
-    state, so a bold row read "Bold, not pressed". The attribute is gone.
-    `tests/studio-emphasis-toggle.test.ts`.
-  - `og:image:alt` on every route said "ARU today's skin report"; `og.png` shows the
-    wordmark and the home hero line. The alt is now that line, pinned to the same
-    dictionary strings. `tests/seo-metadata.test.ts`.
-
-  No new wording: every announcement, group name and the alt reuse strings the pages
-  already show. A three-lens review found no blocker and two should-fix items, both
-  taken: the fresh-tab resume brought the regression-49 hint re-press back across tabs
-  (fixed with the `hintFor` marker above and a shared `scanSignalConcerns`); the studio
-  fix had no failing test (added). Its six nits were taken too (README rows for the
-  subscribe guard, `sr-only` over an inline style, a fake DOM that now models which
-  elements can take focus, three comments reworded to claims that hold).
-
-  *Gates:* on `f00cdc5` before any change, vitest `131 passed (131) / 1171 passed (1171)`.
-  On the code-final tree: `npm run smoke` gives `Test Files 136 passed (136) / Tests
-  1209 passed (1209)`, **363 passed (9.6m)**, `Ran 158 tests` **OK** and **Smoke test
-  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
-  in 3100–3109 was listening before the run. Only this gate line changed after it, and
-  vitest was rerun on the result.
-  Rotation: the cycles 77–114 entry moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycles 74–76.

@@ -241,3 +241,92 @@ describe("/survey after a fresh-tab resume", () => {
     expect(runtime.sets.some((value) => typeof value === "function")).toBe(false);
   });
 });
+
+describe("/survey looked at before the fresh-tab resume", () => {
+  // What /survey writes on a mere look, before anything is tapped.
+  const GLANCE = { type: null, concerns: [], category: null, budget: null, avoid: [], hintFor: null };
+  const SUBMITTED: Survey = { type: "건성", concerns: ["건조"], budget: 29000, avoid: ["향료"], category: "세럼" };
+
+  function surveyAfter(Page: () => unknown) {
+    mount(Page);
+    runtime.effects.length = 0;
+    runtime.sets.length = 0;
+    SurveyPage();
+    for (const effect of runtime.effects.splice(0)) effect();
+    return runtime.sets;
+  }
+
+  // Found by the cycle 120 bug hunt: the look left an all-empty draft, the resume kept
+  // it, and /survey applied it over the resumed survey, clearing 건조 and 향료 and
+  // pressing the saved scan's hint again.
+  it("keeps the submitted answers when the saved result has a scan", () => {
+    saveResult({ survey: SUBMITTED, scan: OLD_SCAN, reads: OLD_READS, ts: OLD_TS });
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify(GLANCE));
+    const sets = surveyAfter(Report);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toEqual({ hintFor: "유분,붉은기,모공" });
+    expect(sets).toContainEqual(["건조"]);
+    expect(sets).toContainEqual(["향료"]);
+    expect(sets).not.toContainEqual([]);
+    expect(sets.some((value) => typeof value === "function")).toBe(false);
+  });
+
+  it("keeps the submitted answers when the saved result has no scan", () => {
+    saveResult({ survey: SUBMITTED, scan: null, reads: null, ts: OLD_TS });
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify(GLANCE));
+    const sets = surveyAfter(Care);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toBeUndefined();
+    expect(sets).toContainEqual(["건조"]);
+    expect(sets).toContainEqual(["향료"]);
+    expect(sets).not.toContainEqual([]);
+  });
+
+  // From the cycle 120 review: with a calm or set-aside scan in this tab the look writes
+  // hintFor "" rather than null, and with a flagged one it writes the hint's own concerns.
+  it("treats the look's draft as untouched when this tab's scan flags nothing", () => {
+    saveResult({ survey: SUBMITTED, scan: OLD_SCAN, reads: OLD_READS, ts: OLD_TS });
+    scanInThisTab();
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ ...GLANCE, hintFor: "" }));
+    const sets = surveyAfter(Report);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toBeUndefined();
+    expect(sets).toContainEqual(["건조"]);
+    expect(sets).toContainEqual(["향료"]);
+    expect(sets).not.toContainEqual([]);
+  });
+
+  it("treats the look's draft as untouched when this tab's scan pressed its own hint", () => {
+    saveResult({ survey: SUBMITTED, scan: null, reads: null, ts: OLD_TS });
+    session.set(DEVICE_DATA_KEY.scan, JSON.stringify(OLD_SCAN));
+    session.set(DEVICE_DATA_KEY.reads, JSON.stringify(OLD_READS));
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ ...GLANCE, concerns: ["유분", "붉은기", "모공"], hintFor: "유분,붉은기,모공" }));
+    const sets = surveyAfter(Report);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toBeUndefined();
+    expect(sets).toContainEqual(["향료"]);
+    expect(sets).not.toContainEqual([]);
+  });
+
+  it("keeps a draft whose hinted chips the visitor unpressed", () => {
+    saveResult({ survey: SUBMITTED, scan: null, reads: null, ts: OLD_TS });
+    session.set(DEVICE_DATA_KEY.scan, JSON.stringify(OLD_SCAN));
+    session.set(DEVICE_DATA_KEY.reads, JSON.stringify(OLD_READS));
+    const unpressed = { ...GLANCE, hintFor: "유분,붉은기,모공" };
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify(unpressed));
+    mount(Report);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toEqual(unpressed);
+  });
+
+  it("leaves a typed draft alone when there is no hint to mark", () => {
+    saveResult({ survey: SUBMITTED, scan: null, reads: null, ts: OLD_TS });
+    const typed = { ...GLANCE, type: "지성", concerns: ["모공"] };
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify(typed));
+    mount(Care);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toEqual(typed);
+  });
+
+  it("leaves a draft the visitor typed into alone", () => {
+    saveResult({ survey: SUBMITTED, scan: OLD_SCAN, reads: OLD_READS, ts: OLD_TS });
+    const typed = { ...GLANCE, type: "지성", concerns: ["모공"] };
+    session.set(DEVICE_DATA_KEY.surveyDraft, JSON.stringify(typed));
+    mount(Report);
+    expect(sessionJson(DEVICE_DATA_KEY.surveyDraft)).toEqual(typed);
+  });
+});
