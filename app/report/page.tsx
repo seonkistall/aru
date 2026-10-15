@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { commerceOutHref, primaryCommerceLink } from "@/lib/commerce";
 import { CommerceDisclosure } from "@/app/components/commerce-disclosure";
@@ -228,6 +228,22 @@ export default function Report() {
     };
   }, [loaded, initial, router]);
 
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  // The step a "다음" / "이전" press asked for, until the effect below has handled it.
+  const navigatedTo = useRef<number | null>(null);
+
+  useEffect(() => {
+    // "다음" on the middle step and "이전" there each unmount the button just pressed,
+    // so focus fell to <body>; on the other presses the button stayed but the page had
+    // scrolled to the top under it. Either way the new step was never announced. Move
+    // focus to the heading, which names the step. Only for those two buttons (a step tab
+    // keeps focus on itself), and compared with the step the press asked for, so page
+    // load, Strict Mode's second run and the language-switch remount move nothing.
+    if (navigatedTo.current !== stepIndex) return;
+    navigatedTo.current = null;
+    stepHeadingRef.current?.focus();
+  }, [stepIndex]);
+
   if (!loaded) return <ReportSkeleton />;
   if (!initial || !result) return <main style={{ minHeight: "100dvh", background: "var(--paper)" }} />;
 
@@ -242,8 +258,9 @@ export default function Report() {
     picks: t("살펴볼 제품 후보"),
     routine: t("오늘부터 가볍게 시작할 루틴"),
   };
-  const goStep = (next: number) => {
+  const goStep = (next: number, focusHeading = false) => {
     const clamped = Math.max(0, Math.min(steps.length - 1, next));
+    navigatedTo.current = focusHeading ? clamped : null;
     setStepIndex(clamped);
     try {
       sessionSet(DEVICE_DATA_KEY.reportStep, String(clamped));
@@ -286,7 +303,7 @@ export default function Report() {
           <div style={{ minWidth: 0 }}>
             <p style={eyebrow}>{t("오늘의 피부 리포트")}</p>
             <FlowSteps current="report" />
-            <h1 style={headlineStyle}>
+            <h1 ref={stepHeadingRef} tabIndex={-1} style={headlineStyle}>
               {stepIndex === 0 ? (reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })) : stepTitles[step]}
             </h1>
           </div>
@@ -519,14 +536,14 @@ export default function Report() {
 
         <div style={stepNav}>
           {stepIndex > 0 ? (
-            <button type="button" onClick={() => goStep(stepIndex - 1)} style={stepNavBtn(false)}>
+            <button type="button" onClick={() => goStep(stepIndex - 1, true)} style={stepNavBtn(false)}>
               <span className="aru-dir-arrow" aria-hidden>←</span> {t("이전")}
             </button>
           ) : (
             <span />
           )}
           {stepIndex < steps.length - 1 && (
-            <button type="button" onClick={() => goStep(stepIndex + 1)} style={stepNavBtn(true)}>
+            <button type="button" onClick={() => goStep(stepIndex + 1, true)} style={stepNavBtn(true)}>
               {t("다음")}: {stepTitles[steps[stepIndex + 1]]} <span className="aru-dir-arrow" aria-hidden>→</span>
             </button>
           )}

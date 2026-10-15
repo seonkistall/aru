@@ -15552,3 +15552,63 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   changed after it, and vitest was rerun on the result.
   Rotation: cycle 72's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
   after cycle 71.
+
+- 2026-10-14 (cycle 115) — **A second multi-agent hunt over the areas cycle 114 did not
+  cover: ten defects confirmed, seven fixed, three filed.** Same shape as cycle 114: five
+  finders (report and care screens, the scan capture flow, the ML pipeline, platform —
+  service worker, SEO, CSP, rate limiter — and i18n dictionary integrity), each needing a
+  repro it ran itself, and an independent skeptic per finding. **17** agents, **12**
+  findings, **10** survived, **2** rejected (the product card's "use started" label
+  resetting on step change, which never read the store anyway; English and Arabic count
+  strings with no singular form, which is copy). The platform finder confirmed nothing.
+
+  **Fixed, each with a test that fails on `365f071`:**
+  - `/report`'s 추천 기준 sentence listed "T존 유분" for an oil level-1 reading, which
+    `recommend()` ignores (it adds 유분 at level 2) and `/survey` had just called not
+    distinct. `scanSignalText` now uses level 2. `report-basis-and-optin.regression-52`.
+  - `/report`'s trust card shows three chips of the four `buildSignals` returns, so a
+    retake caused by 피부 영역 alone showed three passing chips. `buildReportTrust` now
+    puts held checks first (stable order otherwise). `tests/report-trust.test.ts`.
+  - `/report`'s email opt-in lost its confirmation on 이전 → 다음 (the box renders only
+    on the routine step) and offered an empty form again. A module-level flag keeps it
+    until reload, keyed by the pilot participant and session so the next participant on a
+    shared pilot device still gets the form (the review's case, pinned too; with one
+    tab-wide key that case fails). Nothing about the address is stored. regression-52.
+  - `/scan`'s "noface" screen keeps the stream for 다시 시도 with the `<video>` hidden,
+    but neither the backgrounding guard nor the track watcher included it, so a hidden
+    tab kept the camera capturing. In the hunt's hook harness the hidden tab now stops the
+    track (**1** stop call, readyState `ended`) where before it stayed `live` with **0**.
+    `tests/camera-interrupt-reason.test.ts` pins both guards.
+  - `ml/subgroups.group_key` gave every crop with no participant, session or device id
+    its own `row:<id>` group, so consumer crops counted as distinct people and the
+    group-safe split could put one face in train and validation. They are now one `anon`
+    group, and `stratified_group_folds` gives that group fold −1: training only, never
+    validation. `split_rows` reports `identity_less_rows` and warns. The review caught the
+    first version bin-packing the whole group into fold 0, the default validation fold;
+    with 30 participants and 200 such crops, validation now holds **0** of them (checked
+    with torch stubbed, since the trainer imports it at module scope).
+  - `ml/run_pipeline.py`'s crop-consent warning read one device-wide latest
+    `learning_crop` event, so P001 revoking and P002 granting afterwards hid P001's
+    crops. `summarize_consent` now also counts crops whose own (participantId,
+    sessionId) scope has no grant, the exact-scope rule of `latestConsentGranted`, and
+    `warnings_for` names them.
+  - `ml/prepare_crop_dataset.py` treated an app-measured `toneIta` of 0 as missing and
+    recomputed it from the crop. `ml/ita.recorded_ita` tests presence, not truthiness.
+  The three ML fixes are pinned by **12** new selftests; on the old code **11** fail and
+  the one control passes. `npm run smoke`'s ML step went from **146** to **158** tests.
+
+  **Measured, not assumed:** regression-52 against the old app code gave **2 failed | 1
+  passed**, the pass being the oil-2 control. A three-lens review workflow raised two
+  should-fix items (the fold above, and a missing unscoped-consent case in the selftests)
+  and three nits; all were taken. Not changed: `lib/consent.ts`,
+  what the re-engage email sends or when (the server receives the same request), the
+  manifest, the `key={active}` remount, and no `t()` string.
+
+  *Gates:* on `365f071` before any change, vitest `128 passed (128) / 1153 passed (1153)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 128 passed (128) / Tests
+  1156 passed (1156)`, **360 passed (10.3m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: cycle 73's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
+  after cycle 72.

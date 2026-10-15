@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { t } from "@/lib/i18n/core";
 
 // Bottom sheet with capture tips + consent detail, split out of the scan page
@@ -33,6 +33,20 @@ function PrivacyNotice({ staffMode }: { staffMode: boolean }) {
 }
 
 export function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // The dialog is aria-modal, yet focus stayed on the /scan button that opened it,
+    // behind the sheet, and 닫기 unmounted itself so focus fell to <body> on close. Move
+    // focus into the dialog on open and back to the opener on close. Its own effect with
+    // no deps: /scan hands a new onClose on every render, and the effect below re-runs on
+    // each one. The sheet mounts only when opened, so page load moves nothing, and Strict
+    // Mode's mount, cleanup, mount ends with focus in the dialog and the same opener.
+    const opener = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => opener?.focus();
+  }, []);
+
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -48,6 +62,8 @@ export function InfoSheet({ staffMode, onClose }: { staffMode: boolean; onClose:
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label={t("촬영 팁과 동의 안내")}

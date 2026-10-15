@@ -60,6 +60,7 @@ export default function Scan() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const phaseRef = useRef<Phase>("init");
+  const startingRef = useRef(false);
   const disposedRef = useRef(false);
   const captureRef = useRef<(() => Promise<void>) | null>(null);
   const workerRef = useRef<LandmarkerWorker | null>(null);
@@ -155,58 +156,71 @@ export default function Scan() {
   const canCapture = phase === "ready" && scanCaptureReady(quality, zonesReady);
 
   const startCamera = useCallback(async () => {
-    setErr("");
-    setReads(null);
-    setCropDataUrl(null);
-    setCaptureMeta(null);
-    resetQualityLoop();
-    if (!navigator.mediaDevices?.getUserMedia) {
-      recordFunnelEvent("camera_blocked", { reason: "unsupported" });
-      setPhase("unsupported");
-      return;
-    }
-
-    let opened: Awaited<ReturnType<typeof openCamera>>;
+    // One start at a time. A second tap on 카메라로 살펴보기 / 다시 시도 / 카메라 다시 켜기
+    // while getUserMedia was pending opened a second stream: when both opened, the later
+    // one replaced the first after the page was already "ready", so the watcher (keyed on
+    // phase) never watched it; when the later one failed because ARU's own first stream
+    // held the camera, the page showed the busy screen over a live camera. The later tap
+    // is ignored rather than allowed to win, because its getUserMedia is the call that can
+    // fail on ARU's own camera.
+    if (startingRef.current) return;
+    startingRef.current = true;
     try {
-      opened = await openCamera((constraints) => navigator.mediaDevices.getUserMedia(constraints));
-    } catch (lastError) {
-      const name = (lastError as { name?: string } | null)?.name;
-      const reason = name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission";
-      recordFunnelEvent("camera_blocked", { reason });
-      setDeniedReason(reason);
-      setPhase("denied");
-      return;
-    }
-    const { stream, attempt } = opened;
-    cameraAttemptRef.current = attempt;
-
-    try {
-      if (disposedRef.current) {
-        stopMediaStream(stream);
+      setErr("");
+      setReads(null);
+      setCropDataUrl(null);
+      setCaptureMeta(null);
+      resetQualityLoop();
+      if (!navigator.mediaDevices?.getUserMedia) {
+        recordFunnelEvent("camera_blocked", { reason: "unsupported" });
+        setPhase("unsupported");
         return;
       }
-      stopMediaStream(streamRef.current);
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        // A play() rejection (iOS Low Power Mode / AbortError) does NOT mean the
-        // camera was denied — the stream is live and attached. onLoadedMetadata
-        // retries play; never route a play() reject to the denied dead-end.
-        try {
-          await videoRef.current.play();
-        } catch {
-          /* live stream attached; onLoadedMetadata will start playback */
-        }
+
+      let opened: Awaited<ReturnType<typeof openCamera>>;
+      try {
+        opened = await openCamera((constraints) => navigator.mediaDevices.getUserMedia(constraints));
+      } catch (lastError) {
+        const name = (lastError as { name?: string } | null)?.name;
+        const reason = name === "NotReadableError" ? "busy" : name === "NotFoundError" || name === "OverconstrainedError" ? "notfound" : "permission";
+        recordFunnelEvent("camera_blocked", { reason });
+        setDeniedReason(reason);
+        setPhase("denied");
+        return;
       }
-      setPhase("ready");
-    } catch {
-      // The stream opened and then failed to attach. A different failure from a
-      // refusal, and the user sees the same dead-end, so it is recorded separately —
-      // and told separately: permission was granted here (getUserMedia resolved above),
-      // so the 권한 copy would send the user to check a setting that is already correct.
-      recordFunnelEvent("camera_blocked", { reason: "attach" });
-      setDeniedReason("attach");
-      setPhase("denied");
+      const { stream, attempt } = opened;
+      cameraAttemptRef.current = attempt;
+
+      try {
+        if (disposedRef.current) {
+          stopMediaStream(stream);
+          return;
+        }
+        stopMediaStream(streamRef.current);
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          // A play() rejection (iOS Low Power Mode / AbortError) does NOT mean the
+          // camera was denied — the stream is live and attached. onLoadedMetadata
+          // retries play; never route a play() reject to the denied dead-end.
+          try {
+            await videoRef.current.play();
+          } catch {
+            /* live stream attached; onLoadedMetadata will start playback */
+          }
+        }
+        setPhase("ready");
+      } catch {
+        // The stream opened and then failed to attach. A different failure from a
+        // refusal, and the user sees the same dead-end, so it is recorded separately —
+        // and told separately: permission was granted here (getUserMedia resolved above),
+        // so the 권한 copy would send the user to check a setting that is already correct.
+        recordFunnelEvent("camera_blocked", { reason: "attach" });
+        setDeniedReason("attach");
+        setPhase("denied");
+      }
+    } finally {
+      startingRef.current = false;
     }
   }, [resetQualityLoop]);
 

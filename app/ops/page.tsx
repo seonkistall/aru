@@ -630,8 +630,11 @@ function ratioOf(value: number, denominator: number, unit: string) {
 
 function describeWindow(firstTs: number | null, lastTs: number | null) {
   if (firstTs === null || lastTs === null) return "—";
-  const first = new Date(firstTs).toISOString().slice(0, 10);
-  const last = new Date(lastTs).toISOString().slice(0, 10);
+  // The operator's own calendar day, as "Read at" beside it is: toISOString gave the UTC
+  // date, so rows a Seoul operator wrote before 09:00 read as yesterday. sv-SE is only
+  // the YYYY-MM-DD shape the panel already prints.
+  const first = new Date(firstTs).toLocaleDateString("sv-SE");
+  const last = new Date(lastTs).toLocaleDateString("sv-SE");
   return first === last ? first : `${first} → ${last}`;
 }
 

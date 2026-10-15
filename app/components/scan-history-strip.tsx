@@ -35,7 +35,7 @@ export function ScanHistoryStrip() {
     <section style={wrap}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
         <p style={label}>{t("내 기록")}</p>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("최근 {n}회 스캔", { n: history.length })}</span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("최근 {n}회 스캔", { n: recent.length })}</span>
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", height: 44 }}>
         {recent.map((entry) => {
