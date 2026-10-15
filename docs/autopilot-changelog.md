@@ -15490,3 +15490,65 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   entry moved verbatim to the end of `docs/autopilot-changelog.md`, after cycle 70.
   `comm -23` of `sort -u` over both files at `d5cf57c` against the final tree drops one
   line, the backlog line this cycle extended with its "docstring half is corrected" note.
+
+- 2026-10-14 (cycles 77–114) — **Thirty-seven supervisor-only checks, then a multi-agent
+  hunt that confirmed eight defects and fixed seven.** Cycles 77–113, through the
+  2026-10-14 00:39 UTC fire, spawned no worker: the hunt areas of cycles 71–75 were covered,
+  every open item needed the owner, and `main` stayed at `6d9e532` throughout. Cycle 114
+  ran the hunt as a workflow instead of one worker: five finders, one per area (scan
+  pipeline, device storage, funnel and `/ops`, server routes, page flows), each told that
+  a finding counts only with a repro it ran itself, and every finding re-reproduced by an
+  independent skeptic told to refute it. **17** agents, **12** findings, **9** survived
+  the skeptic (two were the same `/checkin` defect, so **8** distinct), **3** rejected
+  as unreachable from the real app. Seven are fixed here, one is filed under "Supervisor
+  findings not yet actioned" because its fix changes what a published axis means.
+
+  **What was fixed, each with a regression test that fails on `6d9e532`:**
+  - `/privacy` "delete all device data" did nothing where reading `window.sessionStorage`
+    itself throws (Chrome "block all cookies"): the argument was built eagerly, the throw
+    escaped before `clearAllDeviceData` could clear the in-memory session fallback, and
+    the submitted survey stayed readable on `/report`. Now getters; the fallback is
+    cleared and the existing retry message shows. `privacy-delete-storage-blocked.regression-51`.
+  - `/checkin` marked a restarted product's round done using the previous use's answer
+    (rows carry `sku_id` but not the use). A check-in now counts only if recorded at or
+    after the current use started. `checkin-restarted-use.regression-48`.
+  - `/ops` on-device headline printed `steps.commerce_clicked` (including `/care` and
+    survey-only clicks) beside "Of N completed scans" while its % counted only
+    completed-scan sessions. New `FunnelSummary.scanCommerceSessions`, the % numerator.
+    `tests/funnel-scan-commerce-count.test.ts`.
+  - `/api/reason` capped `fallback` at the prompt fields' 200 characters, and the English
+    template runs to 224, so those requests were refused whole. `fallback` alone now caps
+    at 600; it never enters the prompt. Sweep over 5 types × 8 categories × 5 budgets ×
+    14 concern sets × 9 avoid sets × with/without a scan: longest template ko **103**,
+    en **224**, ja **96**, zh **62**, ar **173**; English requests refused **1042** of
+    **50400**. `tests/reason-fallback-length.test.ts`.
+  - `/survey` re-pressed a scan concern the visitor had unpressed and submitted, because
+    submit deleted the draft that records the absorbed hint. Submit now keeps
+    `{ hintFor }` only, and only when a hint carried concerns.
+  - `survey_completed.hasScan` was false for a calm scan `/report` applied. It is now
+    whether a reading exists. Both in `survey-hint-after-submit.regression-49`.
+  - `/unsubscribe` lost its confirmation on the language-switch remount and offered the
+    button again. A module-level set keeps it until reload.
+    `unsubscribe-lang-switch.regression-50`.
+
+  **Measured, not assumed:** the three new e2e specs against the old app code gave
+  **4 failed | 3 passed**, the three passes being the controls; regression-51 failed on
+  the old `/privacy` page with `element(s) not found`. A three-lens review workflow
+  (correctness, guardrails, test validity) found no blocker; its seven nits were taken —
+  two comments corrected, one unbacked count removed, the `/privacy` e2e added because the
+  unit test alone passed on the old page. Not changed: `lib/consent.ts`, the re-engage
+  email, `shareUrl`, `lib/commerce.ts`, `isSurvey`, the `key={active}` remount, the
+  manifest, and no `t()` string.
+
+  **Environment:** this container started with an empty `node_modules`; `npm ci` restored
+  it before any gate ran. **For the owner:** the cycles 74–75 single-worker hunts found 0,
+  and this one found 8 with a skeptic pass. Hunting is not exhausted; a single worker was.
+
+  *Gates:* on `6d9e532` before any change, vitest `126 passed (126) / 1147 passed (1147)`,
+  tsc **13**, eslint `0 errors, 2 warnings`. On the code-final tree: `npm run smoke` gives `Test Files 128 passed (128) / Tests
+  1153 passed (1153)`, **356 passed (10.6m)** and **Smoke test passed.** tsc gives
+  **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py`
+  prints **OK**. No port in 3100–3109 was listening before the run. Only this gate line
+  changed after it, and vitest was rerun on the result.
+  Rotation: cycle 72's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
+  after cycle 71.

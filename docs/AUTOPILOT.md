@@ -2040,6 +2040,14 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-10-15 — focus and naming gaps the cycle 117 accessibility finder saw but did
+  not spend a skeptic on (NOT verified, NOT fixed).** On `/report`, "Next: A simple
+  routine…" and "← Back" remove themselves and focus drops to `<body>`, the same shape as
+  the `/privacy` fix. `InfoSheet`'s `aria-modal` dialog never receives focus. `/studio`'s
+  four emphasis toggles share one name per state with no row in it. The language
+  listbox has no arrow-key or Escape handling. Each needs a repro before a fix; the
+  `/privacy` and `/checkin` fixes are the patterns to reuse.
+
 - [ ] **2026-10-14 — label-only feedback fails for good once crops fill the shared
   localStorage quota (cycle 116 hunt, survived its skeptic, partly fixed).** Labels,
   crops, consent and pilot notes share one quota and only `saveCropSample` makes room (it
@@ -2295,6 +2303,66 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-15 (cycle 117) — **A fourth hunt, along lenses no earlier hunt took
+  (accessibility, server trust boundaries, service worker and caching, flow continuity,
+  search and share metadata): eight defects confirmed, eight fixed.** Five finders, each
+  needing a repro it ran itself, and a skeptic per finding. **14** agents, **9** findings,
+  **8** survived, **1** rejected (`public/icon.svg` shadowing `app/icon.svg`, which only
+  holds under `next start`, not on Vercel). The service-worker lens found nothing: in a node harness
+  only `/offline.html` and the MediaPipe files are ever cached, and the finder read the
+  same in the five earlier `sw.js` versions it checked.
+
+  **Fixed, each with a test that fails on `f00cdc5`:**
+  - **`/api/reengage/subscribe` took a POST from any site.** A page elsewhere could make
+    its visitors' browsers enrol any address with `consent: true` (a `text/plain` form
+    needs no script and no preflight) and clear an earlier opt-out, from a different IP
+    each time, so the per-client limiter did not bound it. It now refuses a cross-site
+    caller before the limiter, as `/api/analyze` and `/api/reason` already did. What
+    re-subscribing means is still the owner's open decision; this only stops other sites
+    driving the route. `tests/reengage-subscribe-origin.test.ts`.
+  - `/report` and `/care` in a fresh tab rendered the saved result but never handed it to
+    the session, so a scan taken after the report's own scan nudge never reached the
+    report, and `/survey` came back with every answer gone. The saved survey (and the
+    saved reading, when this tab has none) now goes into the session, with the marker
+    that its scan hint was already absorbed, and the normal session path runs.
+    `aru_last_result` is rewritten only when its content changed. `tests/fresh-tab-resume.test.ts`.
+  - `/scan` announced nothing after the countdown: analysing, the result headline, and
+    the noface / denied / interrupted / unsupported screens. One always-mounted `sr-only`
+    status region now carries the strings those screens already show.
+    `tests/scan-outcome-announcement.test.ts`.
+  - `/scan`'s 설문으로 이어가기 was a plain `<a>`, a full load that empties the in-memory
+    session fallback in a browser that refuses site storage, so the reading was lost.
+    Now a `<Link>`; the landmarker runs in a worker that unmount closes. Same test file.
+  - `/privacy` delete-all dropped focus to `<body>` at each step. Focus now moves to the
+    confirmation heading, back to the button on 취소, and to the done line.
+    `tests/privacy-delete-focus.test.ts`, `privacy-delete-focus.regression-54`.
+  - `/checkin`'s answer toggles were not tied to their question: in English 트러블 and
+    재구매 are both "Yes". Each row is now a group named by its product and its question.
+    `checkin-answer-groups.regression-53` (both cases fail on the old page).
+  - `/studio`'s emphasis toggle carried `aria-pressed={calm}` beside a label naming the
+    state, so a bold row read "Bold, not pressed". The attribute is gone.
+    `tests/studio-emphasis-toggle.test.ts`.
+  - `og:image:alt` on every route said "ARU today's skin report"; `og.png` shows the
+    wordmark and the home hero line. The alt is now that line, pinned to the same
+    dictionary strings. `tests/seo-metadata.test.ts`.
+
+  No new wording: every announcement, group name and the alt reuse strings the pages
+  already show. A three-lens review found no blocker and two should-fix items, both
+  taken: the fresh-tab resume brought the regression-49 hint re-press back across tabs
+  (fixed with the `hintFor` marker above and a shared `scanSignalConcerns`); the studio
+  fix had no failing test (added). Its six nits were taken too (README rows for the
+  subscribe guard, `sr-only` over an inline style, a fake DOM that now models which
+  elements can take focus, three comments reworded to claims that hold).
+
+  *Gates:* on `f00cdc5` before any change, vitest `131 passed (131) / 1171 passed (1171)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 136 passed (136) / Tests
+  1209 passed (1209)`, **363 passed (9.6m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycles 77–114 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycles 74–76.
+
 - 2026-10-14 (cycle 116) — **A third hunt, over the areas cycles 114 and 115 left: eight
   defects confirmed, six fixed, three filed (one of them half fixed).** Four finders
   (research pages, the labeling and sync client, catalogue and content integrity, funnel
@@ -2408,65 +2476,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   vitest was rerun on the result.
   Rotation: cycle 73's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
   after cycle 72.
-
-- 2026-10-14 (cycles 77–114) — **Thirty-seven supervisor-only checks, then a multi-agent
-  hunt that confirmed eight defects and fixed seven.** Cycles 77–113, through the
-  2026-10-14 00:39 UTC fire, spawned no worker: the hunt areas of cycles 71–75 were covered,
-  every open item needed the owner, and `main` stayed at `6d9e532` throughout. Cycle 114
-  ran the hunt as a workflow instead of one worker: five finders, one per area (scan
-  pipeline, device storage, funnel and `/ops`, server routes, page flows), each told that
-  a finding counts only with a repro it ran itself, and every finding re-reproduced by an
-  independent skeptic told to refute it. **17** agents, **12** findings, **9** survived
-  the skeptic (two were the same `/checkin` defect, so **8** distinct), **3** rejected
-  as unreachable from the real app. Seven are fixed here, one is filed under "Supervisor
-  findings not yet actioned" because its fix changes what a published axis means.
-
-  **What was fixed, each with a regression test that fails on `6d9e532`:**
-  - `/privacy` "delete all device data" did nothing where reading `window.sessionStorage`
-    itself throws (Chrome "block all cookies"): the argument was built eagerly, the throw
-    escaped before `clearAllDeviceData` could clear the in-memory session fallback, and
-    the submitted survey stayed readable on `/report`. Now getters; the fallback is
-    cleared and the existing retry message shows. `privacy-delete-storage-blocked.regression-51`.
-  - `/checkin` marked a restarted product's round done using the previous use's answer
-    (rows carry `sku_id` but not the use). A check-in now counts only if recorded at or
-    after the current use started. `checkin-restarted-use.regression-48`.
-  - `/ops` on-device headline printed `steps.commerce_clicked` (including `/care` and
-    survey-only clicks) beside "Of N completed scans" while its % counted only
-    completed-scan sessions. New `FunnelSummary.scanCommerceSessions`, the % numerator.
-    `tests/funnel-scan-commerce-count.test.ts`.
-  - `/api/reason` capped `fallback` at the prompt fields' 200 characters, and the English
-    template runs to 224, so those requests were refused whole. `fallback` alone now caps
-    at 600; it never enters the prompt. Sweep over 5 types × 8 categories × 5 budgets ×
-    14 concern sets × 9 avoid sets × with/without a scan: longest template ko **103**,
-    en **224**, ja **96**, zh **62**, ar **173**; English requests refused **1042** of
-    **50400**. `tests/reason-fallback-length.test.ts`.
-  - `/survey` re-pressed a scan concern the visitor had unpressed and submitted, because
-    submit deleted the draft that records the absorbed hint. Submit now keeps
-    `{ hintFor }` only, and only when a hint carried concerns.
-  - `survey_completed.hasScan` was false for a calm scan `/report` applied. It is now
-    whether a reading exists. Both in `survey-hint-after-submit.regression-49`.
-  - `/unsubscribe` lost its confirmation on the language-switch remount and offered the
-    button again. A module-level set keeps it until reload.
-    `unsubscribe-lang-switch.regression-50`.
-
-  **Measured, not assumed:** the three new e2e specs against the old app code gave
-  **4 failed | 3 passed**, the three passes being the controls; regression-51 failed on
-  the old `/privacy` page with `element(s) not found`. A three-lens review workflow
-  (correctness, guardrails, test validity) found no blocker; its seven nits were taken —
-  two comments corrected, one unbacked count removed, the `/privacy` e2e added because the
-  unit test alone passed on the old page. Not changed: `lib/consent.ts`, the re-engage
-  email, `shareUrl`, `lib/commerce.ts`, `isSurvey`, the `key={active}` remount, the
-  manifest, and no `t()` string.
-
-  **Environment:** this container started with an empty `node_modules`; `npm ci` restored
-  it before any gate ran. **For the owner:** the cycles 74–75 single-worker hunts found 0,
-  and this one found 8 with a skeptic pass. Hunting is not exhausted; a single worker was.
-
-  *Gates:* on `6d9e532` before any change, vitest `126 passed (126) / 1147 passed (1147)`,
-  tsc **13**, eslint `0 errors, 2 warnings`. On the code-final tree: `npm run smoke` gives `Test Files 128 passed (128) / Tests
-  1153 passed (1153)`, **356 passed (10.6m)** and **Smoke test passed.** tsc gives
-  **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. `python3 ml/selftest.py`
-  prints **OK**. No port in 3100–3109 was listening before the run. Only this gate line
-  changed after it, and vitest was rerun on the result.
-  Rotation: cycle 72's entry moved verbatim to the end of `docs/autopilot-changelog.md`,
-  after cycle 71.

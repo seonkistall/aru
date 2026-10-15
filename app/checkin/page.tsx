@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { getCheckins, getProductUses, recordCheckin, type ProductUse } from "@/lib/store";
 import { SKUS } from "@/lib/skus";
@@ -169,6 +169,7 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
   const [repurchase, setRepurchase] = useState<boolean | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const nameId = useId();
   const ready = sat !== null && trouble !== null && repurchase !== null;
 
   const sku = SKUS.find((s) => s.id === productUse.sku_id);
@@ -236,7 +237,7 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
             <span style={due ? weekBadge : softBadge}>{due ? t("{round}주차", { round }) : t("사용 중")}</span>
           </div>
-          <p style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{t(productUse.name)}</p>
+          <p id={nameId} style={{ fontFamily: "var(--font-ko-serif)", fontSize: 16, color: "var(--ink)" }}>{t(productUse.name)}</p>
         </div>
       </div>
       {!due ? (
@@ -245,9 +246,9 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
         <p role="status" style={{ fontSize: 13, color: "var(--success)", marginTop: 6 }}>{t("남겨주신 피드백을 저장했어요.")}</p>
       ) : (
         <>
-          <Row label="만족도"><Seg options={SAT_OPTIONS} value={sat} onPick={setSat} /></Row>
-          <Row label="트러블"><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
-          <Row label="재구매"><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
+          <Row label="만족도" of={nameId}><Seg options={SAT_OPTIONS} value={sat} onPick={setSat} /></Row>
+          <Row label="트러블" of={nameId}><Toggle value={trouble} onPick={setTrouble} yes="있었어요" no="없었어요" /></Row>
+          <Row label="재구매" of={nameId}><Toggle value={repurchase} onPick={setRepurchase} yes="할래요" no="아니요" /></Row>
           <button onClick={save} disabled={!ready} style={saveBtn(ready)}>{t("기록하기")}</button>
           {saveFailed && (
             <p role="status" style={{ fontSize: 11.5, color: "var(--plum-press)", lineHeight: 1.45, marginTop: 7 }}>
@@ -260,10 +261,15 @@ function CheckinCard({ productUse, done, onDone }: { productUse: ProductUse; don
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+// The answers are bare 있었어요/할래요-style toggles, and in English "Yes" answers both
+// 트러블 and 재구매, so each row is a group named by its own question and the card's
+// product: a screen reader landing on a toggle hears which question, for which product,
+// it answers. Both names are text already on the card.
+function Row({ label, of, children }: { label: string; of: string; children: React.ReactNode }) {
+  const id = useId();
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", gap: 12 }}>
-      <span style={{ fontSize: 14, color: "var(--ink-soft)" }}>{t(label)}</span>
+    <div role="group" aria-labelledby={`${of} ${id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", gap: 12 }}>
+      <span id={id} style={{ fontSize: 14, color: "var(--ink-soft)" }}>{t(label)}</span>
       {children}
     </div>
   );

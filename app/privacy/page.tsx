@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clearConsentEvents, CONSENT_VERSION, consentEventCount, exportConsentEvents } from "@/lib/consent";
 import { clearCropSamples, cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { clearLabels, exportLabels, labelCount } from "@/lib/labels";
@@ -17,6 +17,10 @@ export default function PrivacyPage() {
   const [consentTotal, setConsentTotal] = useState(0);
   const [careTotal, setCareTotal] = useState(0);
   const [deleteState, setDeleteState] = useState<"idle" | "confirm" | "done" | "error">("idle");
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmHeadingRef = useRef<HTMLHeadingElement>(null);
+  const doneStatusRef = useRef<HTMLParagraphElement>(null);
+  const shownDeleteState = useRef(deleteState);
 
   useEffect(() => {
     // localStorage counts are client-only; reading them during the first
@@ -28,6 +32,20 @@ export default function PrivacyPage() {
     setCareTotal(careIntentCount());
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
+
+  useEffect(() => {
+    // Each step of the delete flow unmounts the button that was just pressed, so
+    // focus fell to <body> and a keyboard or screen-reader user was never told the
+    // confirmation (or the outcome) had appeared. Move focus to what replaced it.
+    // Compared with the last state handled rather than skipped on a first-run flag,
+    // so page load (and Strict Mode's second effect run) moves nothing. The error
+    // outcome keeps its role="alert" announcement and is left as it was.
+    if (shownDeleteState.current === deleteState) return;
+    shownDeleteState.current = deleteState;
+    if (deleteState === "confirm") confirmHeadingRef.current?.focus();
+    else if (deleteState === "idle") deleteButtonRef.current?.focus();
+    else if (deleteState === "done") doneStatusRef.current?.focus();
+  }, [deleteState]);
 
   function clearLearningData() {
     clearCropSamples();
@@ -165,13 +183,13 @@ export default function PrivacyPage() {
           <h2 style={sectionTitle}>{t("언제든 관리할 수 있어요")}</h2>
           <p style={bodyText}>{t("이 기기에 저장된 결과와 활동 기록을 한 번에 지울 수 있어요.")}</p>
           {deleteState === "idle" && (
-            <button type="button" onClick={() => setDeleteState("confirm")} style={{ ...dangerBtn, marginTop: 14 }}>
+            <button ref={deleteButtonRef} type="button" onClick={() => setDeleteState("confirm")} style={{ ...dangerBtn, marginTop: 14 }}>
               {t("이 기기의 ARU 데이터 모두 지우기")}
             </button>
           )}
           {deleteState === "confirm" && (
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-              <h3 style={sectionTitle}>{t("이 기기의 데이터를 모두 지울까요?")}</h3>
+              <h3 ref={confirmHeadingRef} tabIndex={-1} style={sectionTitle}>{t("이 기기의 데이터를 모두 지울까요?")}</h3>
               <p style={{ ...bodyText, color: "var(--ink)" }}>{t("스캔 결과, 설문, 체크인과 설정이 삭제돼요. 이메일 알림과 연구 서버 데이터는 포함되지 않아요.")}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                 <button type="button" onClick={() => setDeleteState("idle")} style={outlineBtn}>{t("취소")}</button>
@@ -179,7 +197,7 @@ export default function PrivacyPage() {
               </div>
             </div>
           )}
-          {deleteState === "done" && <p role="status" style={{ ...bodyText, color: "var(--ink)", marginTop: 14 }}>{t("이 기기에 저장된 ARU 데이터를 모두 지웠어요.")}</p>}
+          {deleteState === "done" && <p ref={doneStatusRef} role="status" tabIndex={-1} style={{ ...bodyText, color: "var(--ink)", marginTop: 14 }}>{t("이 기기에 저장된 ARU 데이터를 모두 지웠어요.")}</p>}
           {deleteState === "error" && (
             <div style={{ marginTop: 14 }}>
               <p role="alert" style={{ ...bodyText, color: "var(--plum)" }}>{t("일부 데이터를 삭제하지 못했어요. 브라우저 저장공간 권한을 확인한 뒤 다시 시도해 주세요.")}</p>

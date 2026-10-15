@@ -460,9 +460,12 @@ STATES.push(
     path: "/studio",
     minNodes: 25,
     drive: async (p) => {
-      const presets = p.locator("main button:not([aria-pressed])");
-      for (let i = 0; i < Math.min(await presets.count(), 4); i += 1) await presets.nth(i).click({ timeout: 5000 });
-      const toggles = p.locator("main button[aria-pressed]");
+      // The emphasis toggle is the button right after each row's value input; it has no
+      // aria-pressed since its label names its state (cycle 117). The two presets are the
+      // first other buttons; share and download follow them.
+      const presets = p.locator("main button:not(input + button)");
+      for (let i = 0; i < Math.min(await presets.count(), 2); i += 1) await presets.nth(i).click({ timeout: 5000 });
+      const toggles = p.locator("main input + button");
       for (let i = 0; i < (await toggles.count()); i += 1) await toggles.nth(i).click({ timeout: 5000 });
       await p.waitForTimeout(400);
     },

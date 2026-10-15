@@ -20,6 +20,7 @@ import { buildReportTrust } from "@/lib/report-trust";
 import { getLang, t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
 import { sessionGet, sessionSet } from "@/lib/session-store";
+import { resumeLastResult } from "@/lib/resume-last-result";
 
 function explain(attr: "oil" | "pores" | "redness", value: string): string {
   const messages: Record<string, string> = {
@@ -73,13 +74,16 @@ type InitialView = { survey: Survey; reads: SkinReads | null; result: RecoResult
 
 function loadInitialView(): InitialView | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionGet(DEVICE_DATA_KEY.survey);
+  let raw = sessionGet(DEVICE_DATA_KEY.survey);
   if (!raw) {
     // Fresh tab session: fall back to the last saved result so a returning
     // visitor re-enters their report instead of being bounced to the survey.
-    const saved = loadLastResult();
-    if (!saved) return null;
-    return { survey: saved.survey, reads: saved.reads ?? null, result: recommend(saved.survey, saved.scan ?? null) };
+    // Handed to the session and read back through it, not rendered from directly:
+    // /survey reads its answers only from there, and a scan taken in this tab
+    // has to reach this report (`lib/resume-last-result.ts`).
+    if (!resumeLastResult()) return null;
+    raw = sessionGet(DEVICE_DATA_KEY.survey);
+    if (!raw) return null;
   }
 
   let parsed: unknown;
@@ -121,8 +125,14 @@ function loadInitialView(): InitialView | null {
     }
   } catch {}
 
-  // Mirror the inputs so this report survives the tab session (MAU re-entry).
-  saveLastResult({ survey, scan, reads, ts: Date.now() });
+  // Mirror the inputs so this report survives the tab session (MAU re-entry). Only
+  // when they differ from what is saved: a fresh tab now resumes the saved result
+  // through this same path, and a plain open of it should write nothing to
+  // localStorage, as the fallback it replaced did not.
+  const stored = loadLastResult();
+  if (!stored || JSON.stringify([stored.survey, stored.scan, stored.reads]) !== JSON.stringify([survey, scan, reads])) {
+    saveLastResult({ survey, scan, reads, ts: Date.now() });
+  }
   return { survey, reads, result: recommend(survey, scan) };
 }
 

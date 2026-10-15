@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { FlowSteps } from "@/app/components/flow-steps";
 import { recordFunnelEvent, recordPageView } from "@/lib/funnel";
 import type { Avoid, Category, Concern, SkinType } from "@/lib/skus";
-import { shouldApplyScan, type ScanReads, type Survey as SurveyT } from "@/lib/recommend";
+import { scanSignalConcerns, shouldApplyScan, type ScanReads, type Survey as SurveyT } from "@/lib/recommend";
 import { t } from "@/lib/i18n/core";
 import { DEVICE_DATA_KEY } from "@/lib/device-data";
 import { sessionGet, sessionRemove, sessionSet } from "@/lib/session-store";
@@ -55,10 +55,7 @@ function loadScanHint(): ScanHint {
     if (!shouldApplyScan(scan)) {
       return { concerns: [], text: t("촬영 조건이 충분하지 않아 사진은 참고만 할게요. 설문 답변을 중심으로 정리해요.") };
     }
-    const concerns: Concern[] = [];
-    if (scan.oil >= 2) concerns.push("유분");
-    if (scan.redness >= 1) concerns.push("붉은기");
-    if (scan.pores >= 1) concerns.push("모공");
+    const concerns = scanSignalConcerns(scan);
     return concerns.length
       ? { concerns, text: t("사진에서 확인한 {signals} 항목을 먼저 선택했어요. 내 느낌과 다르면 바꿔주세요.", { signals: concerns.map((c) => t(c)).join("·") }) }
       : { concerns: [], text: t("사진에서 뚜렷하게 보이는 항목이 적어 설문 답변을 중심으로 살펴볼게요.") };
