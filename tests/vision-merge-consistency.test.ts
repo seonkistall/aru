@@ -96,6 +96,32 @@ describe("mergeVisionAnalysis keeps the report agreeing with itself", () => {
     expect(next.headline).toBe(headlineFor(next.oil, next.redness, next.pores));
   });
 
+  // The model's sentence describes the model's labels. When the merge refuses one of
+  // them (confidence under 0.62 and under the on-device bucket's), keeping the sentence
+  // put "볼의 붉은기가 눈에 띄어요" above 붉은기 낮음 in Korean, while every other
+  // language rebuilt the text from the levels and said the opposite. Found by the cycle
+  // 119 bug hunt.
+  it("drops the payload's narrative when a label it describes was refused", () => {
+    const next = mergeVisionAnalysis(calmBase(), {
+      labels: { oil: 0, redness: 2, pores: 0 },
+      confidence: { oil: 0.8, redness: 0.5, pores: 0.8 },
+      narrative: "T존 번들거림은 크지 않고, 볼의 붉은기가 눈에 띄어요. 피부결은 매끈한 편이에요.",
+    });
+    expect(next.redness.level).toBe(0);
+    expect(next.narrative).toBe(narrativeFor(next.oil, next.redness, next.pores));
+    const previous = getLang();
+    try {
+      setCurrentLang("ko");
+      const ko = localizedNarrative(next);
+      setCurrentLang("en");
+      const en = localizedNarrative(next);
+      expect(ko).not.toContain("붉은기가 눈에 띄어요");
+      expect(en).toContain("redness looks low");
+    } finally {
+      setCurrentLang(previous);
+    }
+  });
+
   it("leaves a merge that changed nothing exactly as it was", () => {
     const base = calmBase();
     const next = mergeVisionAnalysis(base, {});

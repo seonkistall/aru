@@ -2329,6 +2329,63 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-15 (cycle 119) — **A sixth hunt, along four lenses no earlier hunt took
+  (resource lifecycle, cross-screen consistency, typed input, failure states): seven
+  defects confirmed, seven fixed.** Four finders, each needing a repro it ran itself,
+  and a skeptic per finding. **14** agents, **10** findings, **7** survived, **3**
+  rejected (the 전반 row's 재촬영 권장 is pinned as intended by
+  `tests/confidence-threshold-agreement.test.ts`; `/studio` ignoring the in-memory
+  reading is unreachable because its only entry is a full load; and one skeptic judged
+  the landmarker double creation micro-perf, while the failure lens's skeptic confirmed
+  the same root cause through a stale failure that closes the live guide, which is the
+  one fixed). The lifecycle lens otherwise found every listener, timer, object URL,
+  stream and worker cleaned up.
+
+  **Fixed, each with a test that fails on `1fc0352`:**
+  - **`/scan`'s face-guide load was not single-flight.** Hiding the tab during the first
+    load and tapping 카메라 다시 켜기 created a second FaceLandmarker that was never
+    closed, and a stale load failing after the second succeeded closed the live one and
+    put 얼굴 가이드를 불러오지 못했어요 over a guide that had loaded. A pending creation is
+    now shared and a generation counter retires superseded ones.
+    `tests/landmarker-single-flight.test.ts`.
+  - `/scan` reported `getUserMedia`'s AbortError (granted, but the device failed to
+    start) as a missing permission; it now shows the busy screen and records `busy`.
+    `tests/camera-abort-error-reason.test.ts`.
+  - `/report`'s heading and the line under it spoke for a reading the report had set
+    aside (a retake-recommended capture): "오늘은 진정 루틴이 먼저예요" over a routine
+    with no calming step. Both now follow `scanApplied`, as the trust card does.
+    `report-heading-scan-applied.regression-56`.
+  - A vision reply whose label the merge refused kept its own sentence, so Korean read
+    "볼의 붉은기가 눈에 띄어요" above 붉은기 낮음 while English said the opposite. The
+    sentence is kept only when every label it describes was kept.
+    `tests/vision-merge-consistency.test.ts`.
+  - `/studio`'s share card keyed rows by their typed label, so renaming a row through
+    another row's name left a stale fifth row in the card and the PNG. Rows are keyed by
+    position. `studio-row-rename.regression-57`.
+  - The reminder opt-in accepted "kim@gmail", which the route refuses, and answered
+    "잠시 후 다시 시도해 주세요" every time. The input carries the route's rule as its
+    `pattern`. `tests/reengage-email-pattern.test.ts`.
+  - The pilot CSV let a note like "=> 재촬영 필요" open as a spreadsheet formula. Such
+    cells get a leading apostrophe. `tests/pilot-csv-formula-cells.test.ts`.
+
+  The two browser specs were also built and run against the old `/report` and share
+  card: both reproductions failed there (their controls passed on both). A three-lens
+  review found no blocker, one should-fix and three nits, all taken: the pilot comment
+  said `#VALUE!` where LibreOffice shows `Err:510`, and now also says some spreadsheets
+  show the apostrophe; the Hangul sweep lost two `headlineFor` branches once the heading
+  followed `scanApplied`, so it gained a usable twin of each set-aside reading; one
+  landmarker test no longer exercised its scenario after the fix and now asserts the
+  single creation it relies on; and this entry backs the tests' cycle 119 attributions.
+
+  *Gates:* on `1fc0352` before any change, vitest `145 passed (145) / 1250 passed (1250)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 149 passed (149) / Tests
+  1269 passed (1269)`, **369 passed (11.3m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycle 116 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 115.
+
 - 2026-10-15 (cycle 118) — **Two filed `/scan` defects and the filed accessibility gaps
   fixed, and a hunt along two new lenses (time and dates, locale formatting): nine
   defects fixed, one filed.** One workflow: two fix agents on files no one else touched,
@@ -2436,57 +2493,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   vitest was rerun on the result.
   Rotation: the cycles 77–114 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycles 74–76.
-
-- 2026-10-14 (cycle 116) — **A third hunt, over the areas cycles 114 and 115 left: eight
-  defects confirmed, six fixed, three filed (one of them half fixed).** Four finders
-  (research pages, the labeling and sync client, catalogue and content integrity, funnel
-  event call sites), each needing a repro it ran itself, and a skeptic per finding.
-  **15** agents, **11** findings, **8** survived, **3** rejected (a /pilot note minting a
-  new session id that nothing joins on; the /pilot status dropdown resetting after save,
-  which is operator UI; budget-relaxed reasons all saying "closest", which is copy).
-
-  **Fixed, each with a test that fails on `e1486e8`:**
-  - **A routine `/ops` re-sync un-deleted crops.** `/ops` never clears the device, so
-    every sync re-sends every crop, and `uploadCropSamples` upserted `deleted_at: null`
-    and `exclude_reason: null` and re-uploaded the image, undoing a deletion or exclusion
-    made by the runbook's section 6. A lookup (in chunks of 100) now skips crops the
-    server has retired, the two columns are no longer sent, and a failed lookup uploads
-    no crop at all. `tests/sync-crop-retired.test.ts` (**5** cases, all failing on the old
-    route).
-  - `/ops` built the P001–P030 board from localStorage in the render body, so the server
-    HTML and the hydration render disagreed once a pilot note existed. The roster is now
-    part of the snapshot read after mount. `tests/ops-roster-hydration.test.ts`.
-  - A label refused by a full localStorage quota is retried once after the crop save.
-    That recovers it when the eviction freed more than the new crop needed, which a test
-    against the real stores and a quota-enforcing storage pins; with equal-size crops it
-    does not, and the rest is filed. `tests/feedback-storage.test.ts`.
-  - The routine's am-hydrate step said "within your budget" over an over-budget pick when
-    the budget was relaxed; it now uses the existing pm-hydrate sentence. No new copy.
-    `tests/recommend.test.ts`.
-  - One unload of `/scan` with a live camera recorded `camera_interrupted` twice
-    (pagehide, then visibilitychange, before React re-rendered). `interruptCamera` claims
-    the phase first. In the hunt's hook harness one unload now records **1** event where
-    it recorded **2**. `tests/camera-interrupt-reason.test.ts`.
-  - The guide pages' "ARU holds no affiliate id and takes no commission today" was a
-    fixed literal. It now drops when `NEXT_PUBLIC_COMMERCE_AFFILIATE=on`, as the buy-link
-    disclosure does; with the flag off, as in every deploy today, the page is unchanged.
-    Nothing is added. `tests/guides-affiliate-switch.test.ts`. **For the owner:** this was
-    the one place the affiliate switch-on would have left a false statement live.
-
-  A three-lens review workflow found no blocker. It raised three should-fix items, all
-  taken: the label retry's comment promised space the crop save does not always free
-  (reworded, real-store test added, remainder filed); the sync test's mock returned
-  every column whatever was selected (it now projects like PostgREST, and a lookup that
-  selects `id` alone fails it); the hydration test could not see the board's post-mount
-  content (a contract added). Two nits taken (no unreproducible counts in comments), one
-  left: with the budget relaxed, am-hydrate and pm-hydrate now read the same sentence over
-  the same product, which is true and needs no new copy.
-
-  *Gates:* on `e1486e8` before any change, vitest `128 passed (128) / 1156 passed (1156)`.
-  On the code-final tree: `npm run smoke` gives `Test Files 131 passed (131) / Tests
-  1171 passed (1171)`, **360 passed (14.1m)**, `Ran 158 tests` **OK** and **Smoke test
-  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
-  in 3100–3109 was listening before the run. Only this gate line changed after it, and
-  vitest was rerun on the result.
-  Rotation: the cycles 74–76 entry moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycle 73.

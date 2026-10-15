@@ -38,8 +38,10 @@ export const ShareCard = forwardRef<HTMLDivElement, { headline: string; reads: C
         <h2 style={cardHeadline}>{t(headline)}</h2>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>{t("오늘의 피부 특징을 간단히 정리했어요.")}</p>
         <div style={{ borderTop: "1px solid var(--line)" }}>
-          {reads.map((read) => (
-            <div key={read.label} style={rowStyle}>
+          {/* Keyed by position: a row's label is free text from /studio, two rows can share
+              it mid-edit, and a duplicate key left a stale row in the card and the PNG. */}
+          {reads.map((read, i) => (
+            <div key={i} style={rowStyle}>
               <span style={{ fontSize: 14, color: "var(--ink)" }}>{t(read.label)}</span>
               <span style={{ fontFamily: "var(--font-ko-serif)", fontSize: 15, color: read.calm ? "var(--text-muted)" : "var(--plum)" }}>{t(read.value)}</span>
             </div>

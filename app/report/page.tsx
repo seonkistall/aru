@@ -304,7 +304,9 @@ export default function Report() {
             <p style={eyebrow}>{t("오늘의 피부 리포트")}</p>
             <FlowSteps current="report" />
             <h1 ref={stepHeadingRef} tabIndex={-1} style={headlineStyle}>
-              {stepIndex === 0 ? (reads ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })) : stepTitles[step]}
+              {/* The reading's headline only when the picks used it: a set-aside reading's
+                  "오늘은 진정 루틴이 먼저예요" sat over a routine with no calming step. */}
+              {stepIndex === 0 ? (reads && result.scanApplied ? t(reads.headline) : t("{type} 피부를 위한 리포트", { type: t(survey.type) })) : stepTitles[step]}
             </h1>
           </div>
           <div style={{ flexShrink: 0 }}>
@@ -320,7 +322,7 @@ export default function Report() {
         </div>
         {stepIndex === 0 && (
           <p style={subStyle}>
-            {reads
+            {reads && result.scanApplied
               ? t("카메라에서 확인한 피부 특징을 설문 답변과 함께 정리했어요.")
               : t("설문 답변을 바탕으로 나에게 맞는 스킨케어를 정리했어요.")}
           </p>
