@@ -359,15 +359,21 @@ function routineFor(survey: Survey, concerns: Concern[], picks: Recommendation[]
         : hasRedness
           ? t("이중 세안이 필요 없는 날은 순한 세안 한 번으로 충분해요.")
           : t("선크림이나 메이크업을 썼다면 저녁에 씻어내고 자는 흐름을 권해요."),
+      // The title and body take the thorough branch on the skin type alone (hasOil). The
+      // why used to follow it only for scanOil / saidOil, so a 지성 or 복합성 visitor with
+      // redness read "cleanse more thoroughly" beside "the evening cleanse stays gentle",
+      // which explains a body that is not shown.
       why: scanOil
         ? t("오늘 카메라에서 유분이 뚜렷하게 보여 저녁 세안을 조금 더 꼼꼼하게 잡았어요.")
         : saidOil
           ? t("유분 고민 답변에 맞춰 저녁 세안에 비중을 뒀어요.")
-          : scanRedness
-            ? t("붉은기 신호가 있어서 저녁에도 부드러운 세안을 권해요.")
-            : saidRedness
-              ? t("민감 고민 답변에 맞춰 저녁 세안도 순하게 잡았어요.")
-              : t("하루 마무리 세안은 피부 타입과 상관없이 기본이 되는 단계예요."),
+          : hasOil
+            ? t("하루 마무리 세안은 피부 타입과 상관없이 기본이 되는 단계예요.")
+            : scanRedness
+              ? t("붉은기 신호가 있어서 저녁에도 부드러운 세안을 권해요.")
+              : saidRedness
+                ? t("민감 고민 답변에 맞춰 저녁 세안도 순하게 잡았어요.")
+                : t("하루 마무리 세안은 피부 타입과 상관없이 기본이 되는 단계예요."),
     },
     ...(hasPores
       ? [

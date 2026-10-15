@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { describeCommerceOverrideIssue, type CommerceOverrideIssue } from "@/lib/commerce";
 import { CONSENT_VERSION, consentEventCount, exportConsentEvents, latestConsent } from "@/lib/consent";
-import { cropSampleCount, exportCropSamples } from "@/lib/crops";
+import { exportCropSamples, getCropSamples, type CropSample } from "@/lib/crops";
 import { exportFunnelEvents, funnelDropoff, summarizeFunnel, type FunnelStage, type FunnelSummary } from "@/lib/funnel";
 import type { FunnelAggregate, FunnelSourceAggregate } from "@/lib/funnel-aggregate";
 import { exportLabels, labelCount } from "@/lib/labels";
 import { getMlReadiness } from "@/lib/ml-readiness";
-import { exportPilotNotes, getPilotNotes, normalizeParticipantId, PILOT_PARTICIPANT_IDS, summarizePilotNotes } from "@/lib/pilot";
+import { exportPilotNotes, getPilotNotes, isPilotParticipantId, normalizeParticipantId, PILOT_PARTICIPANT_IDS, summarizePilotNotes } from "@/lib/pilot";
 import { buildSyncRequestBody, syncRequestByteSize } from "@/lib/sync-size";
 import { buildLocalSyncPayload, type SyncResult, type SyncSource } from "@/lib/sync-payload";
 
@@ -18,6 +18,10 @@ type PilotSummary = ReturnType<typeof summarizePilotNotes>;
 type OpsSnapshot = {
   labels: number;
   crops: number;
+  // Distinct P001-P030 ids on the stored crops: what getMlReadiness's participant gate
+  // means by "linked". Not pilot.participants, which is the roster — any id with a note,
+  // "planned" (the /pilot default), "excluded" and crop-declined rows included.
+  cropParticipants: number;
   consentEvents: number;
   aiGranted: boolean | null;
   cropGranted: boolean | null;
@@ -93,6 +97,7 @@ const emptyFunnel: FunnelSummary = {
 const emptySnapshot: OpsSnapshot = {
   labels: 0,
   crops: 0,
+  cropParticipants: 0,
   consentEvents: 0,
   aiGranted: null,
   cropGranted: null,
@@ -117,8 +122,8 @@ export default function OpsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const readiness = useMemo(
-    () => getMlReadiness({ labels: snapshot.labels, crops: snapshot.crops, participants: snapshot.pilot.participants }),
-    [snapshot.crops, snapshot.labels, snapshot.pilot.participants]
+    () => getMlReadiness({ labels: snapshot.labels, crops: snapshot.crops, participants: snapshot.cropParticipants }),
+    [snapshot.crops, snapshot.labels, snapshot.cropParticipants]
   );
 
   function refresh() {
@@ -420,9 +425,11 @@ export default function OpsPage() {
 }
 
 function readSnapshot(): OpsSnapshot {
+  const crops = getCropSamples();
   return {
     labels: labelCount(),
-    crops: cropSampleCount(),
+    crops: crops.length,
+    cropParticipants: countCropParticipants(crops),
     consentEvents: consentEventCount(),
     aiGranted: latestConsent("ai_analysis")?.granted ?? null,
     cropGranted: latestConsent("learning_crop")?.granted ?? null,
@@ -431,6 +438,17 @@ function readSnapshot(): OpsSnapshot {
     funnelStages: funnelDropoff(),
     roster: buildRoster(),
   };
+}
+
+function countCropParticipants(crops: CropSample[]) {
+  // Stored rows are parsed as written, so a hand-edited one may have no meta or a
+  // non-string id; normalized first so "P003" and "p3" count once.
+  const ids = crops
+    .map((sample) => sample?.meta?.participantId)
+    .filter((id): id is string => typeof id === "string")
+    .map(normalizeParticipantId)
+    .filter(isPilotParticipantId);
+  return new Set(ids).size;
 }
 
 function buildRoster() {

@@ -29,7 +29,7 @@
 import { DEVICE_DATA_KEY } from "./device-data";
 import { isScanReads, isSkinReads, loadLastResult } from "./last-result";
 import { scanSignalConcerns } from "./recommend";
-import { sessionGet, sessionSet } from "./session-store";
+import { sessionGet, sessionRemove, sessionSet } from "./session-store";
 
 function sessionHoldsReading(): boolean {
   try {
@@ -43,18 +43,54 @@ function sessionHoldsReading(): boolean {
   return false;
 }
 
+// A draft /survey wrote on a mere look, before anything was tapped. /survey writes one on
+// every mount and applies a draft over the submitted survey as "the newer of the two", so
+// a look at /survey in this tab before /report resumed would wipe the resumed concerns and
+// avoid list (an empty list is a real answer) and let a scan hint press its concerns
+// again. A look leaves every answer field empty, with hintFor null, or "" when the scan in
+// this tab flags nothing; or, when it flags something, with concerns equal to exactly the
+// hint's list, which the page pressed by itself. A draft that holds any other answer is
+// left alone. One the visitor emptied again by hand looks the same as a look and is
+// treated as one, which drops nothing it held.
+function sessionDraftIsUntouched(): boolean {
+  try {
+    const raw = sessionGet(DEVICE_DATA_KEY.surveyDraft);
+    if (raw === null) return false;
+    const draft = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!draft || typeof draft !== "object") return false;
+    const empty = (value: unknown) =>
+      value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+    if (!["type", "category", "budget", "avoid"].every((key) => empty(draft[key]))) return false;
+    if (empty(draft.hintFor)) return empty(draft.concerns);
+    const hinted = typeof draft.hintFor === "string" ? draft.hintFor.split(",") : null;
+    const concerns = draft.concerns;
+    return (
+      hinted !== null &&
+      Array.isArray(concerns) &&
+      concerns.length === hinted.length &&
+      hinted.every((concern) => concerns.includes(concern))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** False when there is no saved result to resume; the session is then left as it was. */
 export function resumeLastResult(): boolean {
   const saved = loadLastResult();
   if (!saved) return false;
   sessionSet(DEVICE_DATA_KEY.survey, JSON.stringify(saved.survey));
+  const untouched = sessionDraftIsUntouched();
+  let hintFor = "";
   if (!sessionHoldsReading()) {
     if (saved.scan) sessionSet(DEVICE_DATA_KEY.scan, JSON.stringify(saved.scan));
     if (saved.reads) sessionSet(DEVICE_DATA_KEY.reads, JSON.stringify(saved.reads));
-    const hintFor = scanSignalConcerns(saved.scan ?? null).join(",");
-    if (hintFor && sessionGet(DEVICE_DATA_KEY.surveyDraft) === null) {
-      sessionSet(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ hintFor }));
-    }
+    hintFor = scanSignalConcerns(saved.scan ?? null).join(",");
+  }
+  if (hintFor && (untouched || sessionGet(DEVICE_DATA_KEY.surveyDraft) === null)) {
+    sessionSet(DEVICE_DATA_KEY.surveyDraft, JSON.stringify({ hintFor }));
+  } else if (untouched) {
+    sessionRemove(DEVICE_DATA_KEY.surveyDraft);
   }
   return true;
 }
