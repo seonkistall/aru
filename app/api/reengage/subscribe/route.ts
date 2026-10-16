@@ -5,9 +5,12 @@ import { createRateLimiter, isForeignOriginRequest, readBoundedJson, requestClie
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// User opt-in for the 2/4-week routine reminder. Stores the minimum PII (email
-// + optional product context) only with explicit consent. Nothing is sent from
-// here — /api/reengage/run does the (owner-key-gated) sending on a schedule.
+// User opt-in for the 2/4-week routine reminder. Stores, only with explicit consent,
+// the email, the consent flag with its copy version and time, and the locale the mail
+// is written in, and resets the revocation, retention and sent markers to null. No
+// survey answer: `context` is written null.
+// Nothing is sent from here — /api/reengage/run does the (owner-key-gated) sending on
+// a schedule.
 
 const CONSENT_VERSION = "2026-07-15.v1";
 const subscribeLimit = createRateLimiter({ max: 5, windowMs: 60_000, maxKeys: 10_000 });
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, reason: "rate limited" }, { status: 429 });
   }
 
-  let body: { email: string; consent: true; context: string; locale: "ko" | "en" | "ja" | "zh" | "ar" };
+  let body: { email: string; consent: true; locale: "ko" | "en" | "ja" | "zh" | "ar" };
   try {
     const parsed = parseSubscribeInput(await readBoundedJson(request, 2048));
     if (!parsed.ok) return Response.json({ ok: false, reason: parsed.reason }, { status: 400 });
@@ -43,7 +46,13 @@ export async function POST(request: Request) {
     .from("reengage_contacts")
     .upsert({
       email: body.email,
-      context: body.context,
+      // Always null, whatever the body carried. The parser still accepts a `context`
+      // so an older cached /report that sends one is not refused, but a skin type or
+      // category is not stored next to the email: the opt-in's checkbox asks only to
+      // store the email, and nothing reads the column. Writing null rather than leaving
+      // the key out also clears a value an earlier opt-in stored, on re-subscribe; rows
+      // stored before this change keep theirs until then (docs/reengage-setup.md).
+      context: null,
       consent: true,
       consent_version: CONSENT_VERSION,
       consented_at: consentedAt,

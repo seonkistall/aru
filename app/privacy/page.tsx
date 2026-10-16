@@ -5,10 +5,25 @@ import { useEffect, useRef, useState } from "react";
 import { clearConsentEvents, CONSENT_VERSION, consentEventCount, exportConsentEvents } from "@/lib/consent";
 import { clearCropSamples, cropSampleCount, exportCropSamples } from "@/lib/crops";
 import { clearLabels, exportLabels, labelCount } from "@/lib/labels";
-import { careIntentCount, clearCareIntents } from "@/lib/store";
+import { clearCareIntents, getCareIntents } from "@/lib/store";
+import { clearCommerceClickEvents, commerceClickCounts } from "@/lib/funnel";
 import { t, useLanguage } from "@/lib/i18n";
 import { clearAllDeviceData } from "@/lib/device-data";
 import { funnelFlushActive } from "@/lib/funnel-flush";
+
+// Every product and consultation link record on this device, never one click twice: /care
+// writes a care intent (and, for a purchase link, a commerce_clicked row too); /report's
+// merchant links write only the commerce_clicked row. A /care row with no purchase
+// intent left beside it still counts, so the count is 0 only when nothing is stored and
+// the delete button can always reach a record. (If the funnel's ring has evicted an old
+// /care row while a newer one lost its intent to a refused write, one of the two clicks
+// goes uncounted.)
+function linkRecordCount() {
+  const intents = getCareIntents();
+  const purchases = intents.filter((intent) => intent?.kind === "purchase").length;
+  const clicks = commerceClickCounts();
+  return intents.length + clicks.other + Math.max(0, clicks.care - purchases);
+}
 
 export default function PrivacyPage() {
   useLanguage();
@@ -29,7 +44,7 @@ export default function PrivacyPage() {
     setLabelTotal(labelCount());
     setCropTotal(cropSampleCount());
     setConsentTotal(consentEventCount());
-    setCareTotal(careIntentCount());
+    setCareTotal(linkRecordCount());
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -61,7 +76,8 @@ export default function PrivacyPage() {
 
   function clearCommerceLog() {
     clearCareIntents();
-    setCareTotal(careIntentCount());
+    clearCommerceClickEvents();
+    setCareTotal(linkRecordCount());
   }
 
   function clearDeviceData() {
