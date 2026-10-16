@@ -2382,5 +2382,286 @@ class RecordedIta(unittest.TestCase):
         self.assertNotIn('features.get("toneIta", "") or ""', source)
 
 
+class DocumentedGlobsReadEveryExport(unittest.TestCase):
+    """docs/pilot-ml-loop.md runs `calibrate.py gyeol-labels-*.jsonl` and
+    `run_pipeline.py --labels gyeol-labels-*.jsonl ...`, and the participant kit exports
+    every evening, so the glob matches several cumulative files. calibrate read only the
+    first one, silently, and run_pipeline refused more than one. Found by the cycle 121
+    bug hunt.
+    """
+
+    PILOT_HEADER = ["id", "participant", "participantId", "sessionId", "status", "scanCompleted", "consentAi", "consentCrop", "ts"]
+    CONSENT_HEADER = ["id", "kind", "granted", "version", "ts", "participantId", "sessionId"]
+
+    def _write(self, folder: Path, name: str, rows: list[dict]) -> Path:
+        path = folder / name
+        path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+        return path
+
+    def _write_csv(self, folder: Path, name: str, header: list[str], rows: list[dict]) -> Path:
+        import csv
+
+        path = folder / name
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=header)
+            writer.writeheader()
+            writer.writerows(rows)
+        return path
+
+    def _label(self, row_id: str) -> dict:
+        return {"id": row_id, "features": {"shine": 0.1, "relRedness": 0.02, "cov": 0.1}, "labels": {"oil": 1, "redness": 1, "pores": 1}}
+
+    def _crop(self, row_id: str, participant: str = "") -> dict:
+        return {**self._label(row_id), "image": "data:image/jpeg;base64,AA==", "meta": {"participantId": participant}}
+
+    def _consent(self, row_id: str, granted: bool, ts: int, participant: str = "") -> dict:
+        return {"id": row_id, "kind": "learning_crop", "granted": "true" if granted else "false", "version": "v", "ts": str(ts),
+                "participantId": participant, "sessionId": ""}
+
+    def _run(self, script: str, args: list[str]):
+        import subprocess
+
+        # -B: the file header turns bytecode off so a same-second edit is never masked by
+        # a stale .pyc, and a child interpreter does not inherit that.
+        return subprocess.run(
+            [sys.executable, "-B", str(Path(__file__).resolve().parent / script), *args],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+    def test_calibrate_reads_every_file_and_counts_a_repeated_row_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            day1 = self._write(folder, "gyeol-labels-20261014.jsonl", [self._label("a"), self._label("b")])
+            day2 = self._write(folder, "gyeol-labels-20261015.jsonl", [self._label("a"), self._label("b"), self._label("c")])
+            other_device = self._write(folder, "gyeol-labels-android.jsonl", [self._label("d")])
+            rows = calibrate.load_many([day1, day2, other_device])
+            self.assertEqual([row["id"] for row in rows], ["a", "b", "c", "d"])
+
+    def test_calibrate_on_the_command_line_reads_every_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            day1 = self._write(folder, "gyeol-labels-20261014.jsonl", [self._label("a"), self._label("b")])
+            day2 = self._write(folder, "gyeol-labels-20261015.jsonl", [self._label("a"), self._label("b"), self._label("c")])
+            other_device = self._write(folder, "gyeol-labels-android.jsonl", [self._label("d")])
+            result = self._run("calibrate.py", [str(day1), str(day2), str(other_device)])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("loaded 4 labeled samples from 3 files", result.stdout)
+
+    def test_calibrate_expands_a_glob_no_shell_expanded(self):
+        # What PowerShell and cmd hand over: the pattern itself.
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            self._write(folder, "gyeol-labels-20261014.jsonl", [self._label("a")])
+            self._write(folder, "gyeol-labels-20261015.jsonl", [self._label("a"), self._label("b")])
+            result = self._run("calibrate.py", [str(folder / "gyeol-labels-*.jsonl")])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("loaded 2 labeled samples from 2 files", result.stdout)
+
+    def test_the_pipeline_reads_every_file_and_reports_what_it_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            day1 = self._write(folder, "gyeol-labels-20261014.jsonl", [self._label("a")])
+            day2 = self._write(folder, "gyeol-labels-20261015.jsonl", [self._label("b"), self._label("a")])
+            rows, dropped = run_pipeline.read_jsonl_many([day1, day2])
+            # First sighting wins, so a repeated row keeps its place from the first file.
+            self.assertEqual([row["id"] for row in rows], ["a", "b"])
+            self.assertEqual(dropped, 1)
+            pilot1 = self._write_csv(folder, "p1.csv", self.PILOT_HEADER, [{"id": "n1", "participantId": "P001"}])
+            pilot2 = self._write_csv(folder, "p2.csv", self.PILOT_HEADER, [{"id": "n1", "participantId": "P001"}, {"id": "n2", "participantId": "P001"}])
+            rows, dropped = run_pipeline.read_csv_many([pilot1, pilot2])
+            self.assertEqual([row["id"] for row in rows], ["n1", "n2"])
+            self.assertEqual(dropped, 1)
+
+    def test_the_pipeline_accepts_the_documented_glob_on_the_command_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            day1 = self._write(folder, "gyeol-labels-20261014.jsonl", [self._label("a")])
+            day2 = self._write(folder, "gyeol-labels-20261015.jsonl", [self._label("a"), self._label("b")])
+            crops1 = self._write(folder, "gyeol-crop-samples-1.jsonl", [self._crop("c1", "P001")])
+            crops2 = self._write(folder, "gyeol-crop-samples-2.jsonl", [self._crop("c1", "P001"), self._crop("c2", "P001")])
+            planned = {"id": "n1", "participant": "P001", "participantId": "P001", "status": "planned", "scanCompleted": "false", "ts": "1000"}
+            scanned = {"id": "n2", "participant": "P001", "participantId": "P001", "status": "scanned", "scanCompleted": "true", "ts": "2000"}
+            pilot1 = self._write_csv(folder, "gyeol-pilot-notes-1.csv", self.PILOT_HEADER, [planned])
+            pilot2 = self._write_csv(folder, "gyeol-pilot-notes-2.csv", self.PILOT_HEADER, [planned, scanned])
+            consent1 = self._write_csv(folder, "gyeol-consent-events-1.csv", self.CONSENT_HEADER, [self._consent("e1", True, 1000, "P001")])
+            consent2 = self._write_csv(folder, "gyeol-consent-events-2.csv", self.CONSENT_HEADER,
+                                       [self._consent("e1", True, 1000, "P001"), self._consent("e2", True, 2000, "P001")])
+            out = folder / "out"
+            result = self._run("run_pipeline.py", [
+                "--labels", str(day1), str(day2),
+                "--crops", str(crops1), str(crops2),
+                "--pilot", str(pilot1), str(pilot2),
+                "--consent", str(consent1), str(consent2),
+                "--out", str(out),
+            ])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+            counts = summary["counts"]
+            self.assertEqual((counts["raw_labels"], counts["raw_crops"], counts["pilot_notes"], counts["consent_events"]), (2, 2, 2, 2))
+            self.assertEqual(counts["duplicate_ids_dropped"], {"labels": 1, "crops": 1, "pilot_notes": 1, "consent_events": 1})
+            self.assertEqual((summary["pilot"]["participants"], summary["pilot"]["completion_rate"]), (1, 1.0))
+            for name in ("labels", "crops", "pilot", "consent"):
+                self.assertEqual(len(summary["inputs"][name]), 2)
+                self.assertEqual(len({entry["sha256"] for entry in summary["input_files"][name]}), 2)
+
+    def test_the_pipeline_expands_a_glob_no_shell_expanded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            self._write(folder, "gyeol-labels-20261014.jsonl", [self._label("a")])
+            self._write(folder, "gyeol-labels-20261015.jsonl", [self._label("a"), self._label("b")])
+            out = folder / "out"
+            result = self._run("run_pipeline.py", ["--labels", str(folder / "gyeol-labels-*.jsonl"), "--out", str(out)])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual((summary["counts"]["raw_labels"], len(summary["inputs"]["labels"])), (2, 2))
+
+    def test_a_newer_revoke_in_a_file_that_sorts_first_still_wins(self):
+        # /ops names exports by row count, so device A's "-30" sorts before device B's
+        # "-8" although A's revoke is the newest event of all.
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            device_a = self._write_csv(folder, "gyeol-consent-events-30.csv", self.CONSENT_HEADER,
+                                       [self._consent("a1", True, 1000, "P001"), self._consent("a2", False, 3000, "P001")])
+            device_b = self._write_csv(folder, "gyeol-consent-events-8.csv", self.CONSENT_HEADER, [self._consent("b1", True, 2000, "P001")])
+            rows, _ = run_pipeline.read_consent_many([device_a, device_b])
+            self.assertEqual([row["id"] for row in rows], ["a1", "b1", "a2"])
+            consent = run_pipeline.summarize_consent(rows, [self._crop("c1", "P001")])
+            self.assertEqual(consent["latest"]["learning_crop"]["ts"], "3000")
+            self.assertFalse(consent["latest"]["learning_crop"]["granted"])
+            self.assertEqual(consent["unconsented_crop_ids"], ["c1"])
+
+    def test_merged_consent_breaks_time_ties_by_file_and_puts_a_missing_ts_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            first = self._write_csv(folder, "gyeol-consent-events-1.csv", self.CONSENT_HEADER,
+                                    [self._consent("tie-a", True, 1000, "P001"), {**self._consent("no-ts", False, 0, "P002"), "ts": ""}])
+            second = self._write_csv(folder, "gyeol-consent-events-2.csv", self.CONSENT_HEADER,
+                                     [self._consent("tie-b", False, 1000, "P001"), self._consent("p2", True, 500, "P002")])
+            rows, _ = run_pipeline.read_consent_many([first, second])
+            self.assertEqual([row["id"] for row in rows], ["no-ts", "p2", "tie-a", "tie-b"])
+
+    def test_patterns_expand_sorted_once_and_leave_an_existing_bracket_name_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            names = [f"gyeol-labels-{day:02d}.jsonl" for day in range(12, 0, -1)]
+            for name in names:
+                self._write(folder, name, [self._label(name)])
+            pattern = str(folder / "gyeol-labels-*.jsonl")
+            first = str(folder / names[-1])
+            expected = [str(folder / name) for name in sorted(names)]
+            self.assertEqual([str(path) for path in run_pipeline.expand_patterns([Path(pattern), Path(first)])], expected)
+            self.assertEqual(calibrate.expand_patterns([pattern, first]), expected)
+            self.assertIsNone(run_pipeline.expand_patterns(None))
+            # `[a]` is a glob class matching the file named "a"; a file literally named
+            # with brackets is read as it is.
+            self._write(folder, "gyeol-labels-a.jsonl", [self._label("plain")])
+            bracket = self._write(folder, "gyeol-labels-[a].jsonl", [self._label("bracket")])
+            self.assertEqual(run_pipeline.expand_patterns([bracket]), [bracket])
+            self.assertEqual(calibrate.expand_patterns([str(bracket)]), [str(bracket)])
+
+    def test_one_consent_file_keeps_its_own_order(self):
+        # The app reads the last recorded event, whatever its clock said.
+        with tempfile.TemporaryDirectory() as tmp:
+            only = self._write_csv(Path(tmp), "gyeol-consent-events-2.csv", self.CONSENT_HEADER,
+                                   [self._consent("e1", True, 2000), self._consent("e2", False, 1000)])
+            rows, _ = run_pipeline.read_consent_many([only])
+            self.assertEqual([row["id"] for row in rows], ["e1", "e2"])
+
+    def test_unscoped_crops_checked_against_several_consent_files_are_flagged(self):
+        def warnings(consent_files: int, unscoped_crops: int) -> list[str]:
+            return run_pipeline.warnings_for({
+                "counts": {"labels": 30, "crops": 0},
+                "labels": {"distribution": {}},
+                "inputs": {"consent": [f"c{i}.csv" for i in range(consent_files)]},
+                "consent": {"unscoped_crops": unscoped_crops},
+            })
+
+        flagged = [line for line in warnings(2, 3) if "one device's exports at a time" in line]
+        self.assertEqual(len(flagged), 1)
+        self.assertTrue(flagged[0].startswith("3 crop(s)"))
+        self.assertFalse(any("one device's exports at a time" in line for line in warnings(1, 3)))
+        self.assertFalse(any("one device's exports at a time" in line for line in warnings(2, 0)))
+        session_only = {**self._crop("c4"), "meta": {"sessionId": "S1"}}
+        crops = [self._crop("c1"), self._crop("c2"), self._crop("c3"), self._crop("c5", "P001"), session_only]
+        self.assertEqual(run_pipeline.summarize_consent([], crops)["unscoped_crops"], 3)
+
+
+class PilotRatesArePerParticipant(unittest.TestCase):
+    """/pilot is append-only and a participant is linked by saving a note BEFORE /scan,
+    so a participant's first note is a pre-scan one (scanCompleted false, unless the form
+    still holds the previous participant's ticks) and completion takes a later note.
+    Rates over rows counted every pre-scan note as a scan that did not complete, and the
+    "fix capture UX" warning fired for a pilot in which everyone scanned. Found by the
+    cycle 121 bug hunt.
+    """
+
+    def _note(self, pid: str, completed: bool, crop: bool, status: str, ai: bool = False) -> dict:
+        return {"id": f"{pid}-{status}", "participantId": pid, "participant": pid, "status": status,
+                "scanCompleted": "true" if completed else "false", "consentCrop": "true" if crop else "false",
+                "consentAi": "true" if ai else "false", "browser": "ios-safari", "lighting": "window", "makeup": "none"}
+
+    def _summary_for(self, pilot: dict) -> dict:
+        return {"pilot": pilot, "labels": {"distribution": {}}, "consent": {}, "counts": {"labels": 30, "crops": 0}}
+
+    def test_everyone_scanned_reads_as_complete(self):
+        rows = []
+        for pid in ["P001", "P002", "P003", "P004"]:
+            rows.append(self._note(pid, False, False, "planned"))
+        for pid in ["P001", "P002", "P003", "P004"]:
+            rows.append(self._note(pid, True, pid != "P004", "scanned", ai=pid == "P001"))
+        summary = run_pipeline.summarize_pilot(rows)
+        self.assertEqual(summary["total"], 8)
+        self.assertEqual(summary["participants"], 4)
+        self.assertEqual(summary["completion_rate"], 1.0)
+        self.assertEqual(summary["crop_consent_rate"], 0.75)
+        self.assertEqual(summary["ai_consent_rate"], 0.25)
+        warnings = run_pipeline.warnings_for(self._summary_for(summary))
+        self.assertFalse(any("completion rate" in line for line in warnings))
+        unscanned = run_pipeline.summarize_pilot(rows[:4])
+        warnings = run_pipeline.warnings_for(self._summary_for(unscanned))
+        self.assertTrue(any("completion rate" in line for line in warnings))
+
+    def test_a_participant_who_never_scanned_still_counts_against_completion(self):
+        rows = [self._note("P001", False, False, "planned"), self._note("P001", True, True, "scanned"), self._note("P002", False, False, "planned")]
+        self.assertEqual(run_pipeline.summarize_pilot(rows)["completion_rate"], 0.5)
+
+    def test_an_older_note_without_participant_id_joins_by_the_typed_participant(self):
+        # A legacy or hand-edited row with an empty participantId (today's /pilot always
+        # stores one): /ops reads "1" and "P001" as one participant (normalizeParticipantId)
+        # and so does this.
+        planned = {**self._note("P001", False, False, "planned"), "participantId": "", "participant": "1"}
+        scanned = self._note("P001", True, True, "scanned")
+        summary = run_pipeline.summarize_pilot([planned, scanned])
+        self.assertEqual(summary["participants"], 1)
+        self.assertEqual(summary["completion_rate"], 1.0)
+
+    def test_participants_group_as_ops_groups_them(self):
+        typed = {**self._note("P001", False, False, "planned"), "participantId": "", "participant": "p1"}
+        nobody = [{**self._note("X", False, False, f"loose{i}"), "participantId": "", "participant": ""} for i in range(2)]
+        summary = run_pipeline.summarize_pilot([typed, self._note("P001", True, False, "scanned"), *nobody])
+        self.assertEqual(summary["participants"], 3)
+
+    def test_a_note_with_no_time_is_the_oldest(self):
+        undated = {**self._note("P001", True, True, "scanned"), "ts": ""}
+        dated = {**self._note("P001", True, False, "followup"), "ts": "500"}
+        self.assertEqual(run_pipeline.summarize_pilot([dated, undated])["crop_consent_rate"], 0.0)
+
+    def test_consent_is_the_latest_note_by_time_not_by_file_order(self):
+        # A second device's export can come first in the glob.
+        later = {**self._note("P001", True, True, "scanned"), "ts": "2000"}
+        earlier = {**self._note("P001", False, False, "planned"), "id": "P001-device-b", "ts": "1000"}
+        self.assertEqual(run_pipeline.summarize_pilot([later, earlier])["crop_consent_rate"], 1.0)
+
+    def test_a_later_withdrawal_is_the_consent_that_counts(self):
+        ticked = {**self._note("P001", True, True, "scanned", ai=True), "ts": "1000"}
+        unticked = {**self._note("P001", False, False, "followup"), "ts": "2000"}
+        summary = run_pipeline.summarize_pilot([ticked, unticked])
+        self.assertEqual((summary["crop_consent_rate"], summary["ai_consent_rate"]), (0.0, 0.0))
+        # A scan that completed stays completed whatever a later note says.
+        self.assertEqual(summary["completion_rate"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

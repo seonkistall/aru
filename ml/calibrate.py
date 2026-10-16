@@ -22,7 +22,9 @@ own imports are stdlib-only too, so importing it does not change that.)
 Usage:
     python ml/calibrate.py gyeol-labels-42.jsonl
 """
+import glob
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -112,6 +114,44 @@ def load(path):
                 row = json.loads(line)
                 if is_usable(row):
                     rows.append(row)
+    return rows
+
+
+def expand_patterns(paths):
+    """bash expands `gyeol-labels-*.jsonl` before Python sees it; PowerShell and cmd pass
+    it through as written. A path that does not exist and holds a wildcard is expanded
+    here, sorted by name; one that matches nothing is left for open() to refuse. A file
+    named twice (a pattern and one of its matches) is kept once, at its first place.
+    """
+    out, seen = [], set()
+    for path in paths:
+        matches = sorted(glob.glob(path)) if not Path(path).exists() and any(ch in path for ch in "*?[") else []
+        for candidate in matches or [path]:
+            key = os.path.normcase(os.path.abspath(candidate))
+            if key not in seen:
+                seen.add(key)
+                out.append(candidate)
+    return out
+
+
+def load_many(paths):
+    """Every file given, rows repeated across them read once (by `id`, first wins).
+
+    The documented `python ml/calibrate.py gyeol-labels-*.jsonl` passes one file per
+    day or per device; only the first in glob order was read, with no warning, so
+    thresholds were fit on one export (the oldest day for date-named files, one device
+    for per-device ones). Exports are cumulative, hence the dedupe; a legacy label with
+    no id is kept once per file it is in.
+    """
+    rows, seen = [], set()
+    for path in paths:
+        for row in load(path):
+            row_id = row.get("id")
+            if isinstance(row_id, str) and row_id:
+                if row_id in seen:
+                    continue
+                seen.add(row_id)
+            rows.append(row)
     return rows
 
 
@@ -278,10 +318,12 @@ def main():
     except Exception:
         pass
     if len(sys.argv) < 2:
-        print("usage: python ml/calibrate.py <labels.jsonl>")
+        print("usage: python ml/calibrate.py <labels.jsonl> [more-labels.jsonl ...]")
         sys.exit(1)
-    rows = load(sys.argv[1])
-    print(f"loaded {len(rows)} labeled samples\n")
+    paths = expand_patterns(sys.argv[1:])
+    rows = load_many(paths)
+    files = f" from {len(paths)} files" if len(paths) > 1 else ""
+    print(f"loaded {len(rows)} labeled samples{files}\n")
     if len(rows) < 12:
         print("! very few samples - collect more scans+feedback before trusting these.\n")
 
