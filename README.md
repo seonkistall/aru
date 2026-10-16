@@ -366,7 +366,7 @@ background/resume behaviour.
 
 | Data | Default location | Purpose | Retention / deletion | Transmission condition |
 |---|---|---|---|---|
-| Current scan/survey state | Browser session/local | Restore the recommendation flow | User can delete everything | No transmission by default |
+| Current scan/survey state | Browser session/local | Restore the recommendation flow | User can delete everything | Every `/report` view sends skin type, chosen product category, matching survey concerns, budget band, the avoid list (for a pick that satisfies all of it) and the on-screen reason text (which can name concerns the camera read) to `/api/reason`, with no consent step; while `OPENAI_API_KEY` is set, all but the reason text go on to OpenAI. ARU does not store them. Nothing else is transmitted by default |
 | Recent results, usage starts, check-ins | `localStorage` | Return visits and routine tracking | Removed via the registered device-data deletion path | No transmission by default |
 | Anonymous funnel events | `localStorage` | Product funnel diagnostics | Max 1,000 entries, included in full deletion | No transmission by default. When synced or flushed, readable on `/ops` as per-source aggregate counts only — the read never selects `visitor_id` |
 | Training skin crops | Local and private Storage | Consented pilot calibration | 180-day default; deleted/excluded on expiry or withdrawal | `learning_crop` consent + exact pilot scope |
@@ -418,7 +418,7 @@ retention period and deletion path are decided.
 | `POST /api/reengage/subscribe` | Explicit email opt-in | Same-origin guard (`Sec-Fetch-Site` / `Origin`) run before the limiter, email/schema/body validation, 5/60s per IP, private DB | 403 for a cross-site caller; feature disabled or safe error when unconfigured |
 | `POST /api/reengage/unsubscribe` | Signed unsubscribe | Token signature, expiry and state validation | Rejects tampered/expired tokens |
 | `GET /api/reengage/run` | 2-/4-week sends and retention cleanup | Cron secret compared in constant time, batch of 50, 45s max, withdrawal exclusion | Rejects failed auth; re-runnable within limits |
-| `GET /api/out` | Allow-listed retailer redirect and click logging | SKU/merchant/placement allowlist, UTM composition | Rejects invalid input |
+| `GET /api/out` | Allow-listed retailer redirect with UTM tagging | SKU and merchant must resolve in the catalogue; the target must be an https URL on the host allowlist; `placement` is free text, percent-encoded into `utm_content` | 404 for an unknown SKU/merchant, 400 for a blocked target |
 
 Operational setup and real verification steps follow the
 [Supabase sync runbook](docs/supabase-sync-runbook.md) and

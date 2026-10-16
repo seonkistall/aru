@@ -21,7 +21,7 @@ function optInScope(): string {
   return session ? `${session.participantId}/${session.sessionId}` : "";
 }
 
-export function ReengageOptIn({ context }: { context?: string }) {
+export function ReengageOptIn() {
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">(() => (optedInScopes.has(optInScope()) ? "done" : "idle"));
@@ -33,7 +33,9 @@ export function ReengageOptIn({ context }: { context?: string }) {
       const res = await fetch("/api/reengage/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), consent: true, context, locale: getLang() }),
+        // No `context`: the opt-in sends no survey answer. The checkbox asks only to store
+        // the email, and nothing reads reengage_contacts.context.
+        body: JSON.stringify({ email: email.trim(), consent: true, locale: getLang() }),
       });
       if (res.ok) optedInScopes.add(optInScope());
       setState(res.ok ? "done" : "error");

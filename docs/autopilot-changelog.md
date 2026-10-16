@@ -15774,3 +15774,60 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   vitest was rerun on the result.
   Rotation: the cycle 115 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycles 77–114.
+
+- 2026-10-15 (cycle 119) — **A sixth hunt, along four lenses no earlier hunt took
+  (resource lifecycle, cross-screen consistency, typed input, failure states): seven
+  defects confirmed, seven fixed.** Four finders, each needing a repro it ran itself,
+  and a skeptic per finding. **14** agents, **10** findings, **7** survived, **3**
+  rejected (the 전반 row's 재촬영 권장 is pinned as intended by
+  `tests/confidence-threshold-agreement.test.ts`; `/studio` ignoring the in-memory
+  reading is unreachable because its only entry is a full load; and one skeptic judged
+  the landmarker double creation micro-perf, while the failure lens's skeptic confirmed
+  the same root cause through a stale failure that closes the live guide, which is the
+  one fixed). The lifecycle lens otherwise found every listener, timer, object URL,
+  stream and worker cleaned up.
+
+  **Fixed, each with a test that fails on `1fc0352`:**
+  - **`/scan`'s face-guide load was not single-flight.** Hiding the tab during the first
+    load and tapping 카메라 다시 켜기 created a second FaceLandmarker that was never
+    closed, and a stale load failing after the second succeeded closed the live one and
+    put 얼굴 가이드를 불러오지 못했어요 over a guide that had loaded. A pending creation is
+    now shared and a generation counter retires superseded ones.
+    `tests/landmarker-single-flight.test.ts`.
+  - `/scan` reported `getUserMedia`'s AbortError (granted, but the device failed to
+    start) as a missing permission; it now shows the busy screen and records `busy`.
+    `tests/camera-abort-error-reason.test.ts`.
+  - `/report`'s heading and the line under it spoke for a reading the report had set
+    aside (a retake-recommended capture): "오늘은 진정 루틴이 먼저예요" over a routine
+    with no calming step. Both now follow `scanApplied`, as the trust card does.
+    `report-heading-scan-applied.regression-56`.
+  - A vision reply whose label the merge refused kept its own sentence, so Korean read
+    "볼의 붉은기가 눈에 띄어요" above 붉은기 낮음 while English said the opposite. The
+    sentence is kept only when every label it describes was kept.
+    `tests/vision-merge-consistency.test.ts`.
+  - `/studio`'s share card keyed rows by their typed label, so renaming a row through
+    another row's name left a stale fifth row in the card and the PNG. Rows are keyed by
+    position. `studio-row-rename.regression-57`.
+  - The reminder opt-in accepted "kim@gmail", which the route refuses, and answered
+    "잠시 후 다시 시도해 주세요" every time. The input carries the route's rule as its
+    `pattern`. `tests/reengage-email-pattern.test.ts`.
+  - The pilot CSV let a note like "=> 재촬영 필요" open as a spreadsheet formula. Such
+    cells get a leading apostrophe. `tests/pilot-csv-formula-cells.test.ts`.
+
+  The two browser specs were also built and run against the old `/report` and share
+  card: both reproductions failed there (their controls passed on both). A three-lens
+  review found no blocker, one should-fix and three nits, all taken: the pilot comment
+  said `#VALUE!` where LibreOffice shows `Err:510`, and now also says some spreadsheets
+  show the apostrophe; the Hangul sweep lost two `headlineFor` branches once the heading
+  followed `scanApplied`, so it gained a usable twin of each set-aside reading; one
+  landmarker test no longer exercised its scenario after the fix and now asserts the
+  single creation it relies on; and this entry backs the tests' cycle 119 attributions.
+
+  *Gates:* on `1fc0352` before any change, vitest `145 passed (145) / 1250 passed (1250)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 149 passed (149) / Tests
+  1269 passed (1269)`, **369 passed (11.3m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycle 116 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 115.

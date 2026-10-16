@@ -174,7 +174,7 @@ ARU는 단순히 “얼굴이 보이는가”보다 “분석할 피부 영역�
 
 | 데이터 | 기본 위치 | 목적 | 보존·삭제 | 전송 조건 |
 |---|---|---|---|---|
-| 현재 스캔·설문 상태 | 브라우저 세션/로컬 | 추천 흐름 복원 | 사용자가 전체 삭제 가능 | 기본 전송 없음 |
+| 현재 스캔·설문 상태 | 브라우저 세션/로컬 | 추천 흐름 복원 | 사용자가 전체 삭제 가능 | `/report`를 열 때마다 피부 타입, 선택한 제품 카테고리, 겹치는 설문 고민, 예산 구간, 제외 성분(그 제품이 모두 충족할 때)과 화면의 추천 이유 문구(카메라가 읽은 고민 이름이 들어갈 수 있음)를 동의 단계 없이 `/api/reason`으로 전송하고, `OPENAI_API_KEY`가 설정된 동안 추천 이유 문구를 뺀 나머지는 OpenAI로 전달. ARU는 저장하지 않음. 그 밖에는 기본 전송 없음 |
 | 최근 결과·사용 시작·체크인 | `localStorage` | 재방문과 루틴 추적 | 등록된 기기 데이터 삭제 경로로 제거 | 기본 전송 없음 |
 | 익명 퍼널 이벤트 | `localStorage` | 제품 퍼널 진단 | 최대 1,000개, 전체 삭제 포함 | 기본 전송 없음 |
 | 학습용 피부 crop | 로컬 및 비공개 Storage | 동의한 파일럿 캘리브레이션 | 기본 180일, 만료·철회 시 삭제/제외 | `learning_crop` 동의 + 정확한 파일럿 scope |
@@ -209,7 +209,7 @@ ARU는 단순히 “얼굴이 보이는가”보다 “분석할 피부 영역�
 | `POST /api/reengage/subscribe` | 명시적 이메일 opt-in | limiter보다 먼저 same-origin guard(`Sec-Fetch-Site` / `Origin`), email/schema/body 검증, IP당 5회/60초, private DB | cross-site 호출은 403; 미구성 시 기능 비활성 또는 안전한 오류 |
 | `POST /api/reengage/unsubscribe` | 서명된 해지 | token 서명·만료·상태 검증 | 변조·만료 token 거부 |
 | `GET /api/reengage/run` | 2·4주 발송과 retention cleanup | cron secret, batch 50, 최대 45초, 철회 제외 | 인증 실패 거부, 제한 내 재실행 가능 |
-| `GET /api/out` | 허용된 판매처 redirect와 클릭 기록 | SKU/merchant/placement allowlist, UTM 구성 | 잘못된 입력 거부 |
+| `GET /api/out` | 허용된 판매처 redirect와 UTM 태깅 | SKU와 merchant가 카탈로그에 있어야 함; 대상은 호스트 allowlist에 있는 https URL; `placement`는 자유 텍스트로 퍼센트 인코딩되어 `utm_content`에 들어감 | 알 수 없는 SKU/merchant는 404, 차단된 대상은 400 |
 
 운영 설정과 실제 검증 방법은 [Supabase sync runbook](docs/supabase-sync-runbook.md)과 [Re-engagement setup](docs/reengage-setup.md)을 따릅니다.
 

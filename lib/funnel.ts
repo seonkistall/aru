@@ -462,3 +462,45 @@ export function clearFunnelEvents() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(KEY);
 }
+
+// /care's openCareLink writes a care intent (lib/store.ts) AND a commerce_clicked row
+// for each purchase link, with placement `care_<lang>` (or "care" when the link has
+// none). /report's merchant links (ProductCard "report_product", the summary link
+// "report_summary") write only the commerce_clicked row.
+function isCarePlacement(placement: unknown): boolean {
+  return placement === "care" || (typeof placement === "string" && placement.startsWith("care_"));
+}
+
+/**
+ * The commerce_clicked rows on this device, split by whether /care wrote them. /privacy's
+ * "product and consultation link records" count used to read the care intents alone and
+ * showed 0 after any number of /report clicks; it now adds `other` and the `care` rows
+ * that have no purchase care intent left beside them (an earlier "delete link history"
+ * removed only the intents, and a refused intent write keeps the row).
+ */
+export function commerceClickCounts(): { care: number; other: number } {
+  const clicks = getFunnelEvents().filter((event) => event?.kind === "commerce_clicked");
+  const care = clicks.filter((event) => isCarePlacement(event.props?.placement)).length;
+  return { care, other: clicks.length - care };
+}
+
+/**
+ * Remove every commerce_clicked row (/report's and /care's) and keep the rest of the
+ * log, for /privacy's "delete link history" button, which used to clear only the care
+ * intents and left every click row in this store.
+ *
+ * The flush cursor (`markFunnelEventsFlushed` in lib/funnel-flush.ts) is left alone: it
+ * is a set of ids, `pendingFunnelEvents` only filters the log against it, so dropping
+ * rows can never make a sent row pending again or hide an unsent one. Guarded like
+ * `recordFunnelEvent`, so a refused write cannot break the page.
+ */
+export function clearCommerceClickEvents() {
+  if (typeof window === "undefined") return;
+  try {
+    const all = getFunnelEvents();
+    const kept = all.filter((event) => event?.kind !== "commerce_clicked");
+    if (kept.length !== all.length) localStorage.setItem(KEY, JSON.stringify(kept));
+  } catch {
+    // Nothing removed; the count re-read after this call still shows the rows.
+  }
+}

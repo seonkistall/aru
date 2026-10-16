@@ -74,10 +74,12 @@ describe("the care-intent store holding something that is not a list of intents"
       expect(careIntentCount(), `careIntentCount() on ${name}`).toBe(0);
     });
 
-    // /privacy's effect calls careIntentCount() with no try/catch, so a throw here is
-    // a throw inside a React effect and app/error.tsx takes the page.
+    // /privacy's effect reads this store through getCareIntents() (its link-record
+    // count) with no try/catch, so a throw here is a throw inside a React effect and
+    // app/error.tsx takes the page.
     it(`does not throw in /privacy's effect when the store holds ${name}`, () => {
       installStorage({ [CARE]: raw });
+      expect(() => getCareIntents(), `getCareIntents() on ${name}`).not.toThrow();
       expect(() => careIntentCount(), `careIntentCount() on ${name}`).not.toThrow();
     });
 

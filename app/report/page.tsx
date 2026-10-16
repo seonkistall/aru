@@ -409,8 +409,8 @@ export default function Report() {
              {t("추천 제품의 판매처를 확인하거나, 피부 고민이 계속되면 상담 정보를 찾아볼 수 있어요.")}
            </p>
            <Link href="/care" style={careBtn}>{t("제품과 상담 정보 보기")}</Link>
-          {/* context is persisted (Supabase reengage_contacts) — keep Korean canonical, no t() */}
-          <ReengageOptIn context={`${survey.type}·${survey.category}`} />
+          {/* No survey answer goes with the opt-in; see app/api/reengage/subscribe/route.ts for what the reminder row holds. */}
+          <ReengageOptIn />
         </section>
         )}
 

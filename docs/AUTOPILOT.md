@@ -2040,6 +2040,54 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-10-16 — `/report` sends survey answers to ARU's server and on to OpenAI with
+  no consent step, and `/privacy` names OpenAI only for face crops (cycle 122 hunt,
+  survived two skeptics; the docs and the Play worksheet are corrected, the product
+  decision is NOT made: it is new wording or a consent change, both owner-locked).** Every
+  `/report` view POSTs skin type, the chosen category, the matching concerns, the budget
+  band, the avoid list (for a pick that satisfies all of it) and the template reason text
+  to `/api/reason`; while `OPENAI_API_KEY` is set the route sends all but the reason text
+  to OpenAI and shows the reply. Nothing is stored. Whether the production key is set
+  cannot be read from the repo: `docs/buildweek/SUBMISSION.md` records it set on
+  2026-07-21, `docs/llm-route-cost-exposure.md` (2026-09-25) says no key is set. Three
+  decisions for the owner: (1) say it on `/privacy` (new wording), put it behind a choice,
+  or stop sending the survey fields and phrase the reason from the product alone; (2)
+  confirm the production key against `/api/reason`'s `source`; (3) pick the Play data type
+  the worksheet proposes (App activity → Other user-generated content, or Health info)
+  before submitting the Data safety form.
+
+- [ ] **2026-10-16 — reminder rows stored before cycle 122 still hold the visitor's skin
+  type and category (cycle 122 review; owner action, a production data change).** The
+  opt-in no longer sends `context` and the route writes null, so new and re-subscribing
+  rows hold none, but a row written earlier keeps its value until the same address
+  re-subscribes or the row is deleted. To clear them: `update reengage_contacts set
+  context = null where context is not null;` in the Supabase SQL editor (also in
+  `docs/reengage-setup.md`). Whether any such row exists is not visible from the repo.
+
+- [ ] **2026-10-16 — with the affiliate flag on, `/care`'s one disclosure covers the
+  "Global search" rows, which are Google searches that earn nothing (cycle 122 hunt,
+  survived its skeptic; latent while the flag is off, decide before switching it on).**
+  `lib/commerce.ts` marks those links `partnerReady:false`, but `/care` shows one
+  disclosure above all rows, and with the flag on it says ARU earns a commission. A fix
+  was written and reverted in this cycle: putting the existing no-commission sentence
+  beside each Global search row puts both sentences on one page, which
+  `tests/e2e/commerce-switch-on.spec.ts` calls the state the disclosure exists to prevent,
+  and that sentence calls a Google search "the retailer". The right wording is new copy,
+  so it is the owner's: a short row note for search links, or hiding Global search while
+  the flag is on.
+
+- [ ] **2026-10-16 — the 180-day server retention of research crops is stated but not
+  implemented (cycle 122 hunt, rejected as unreachable today; must land before
+  2026-12-27).** `/privacy` and `docs/play-store/privacy-policy-review.md` say research
+  data is kept 180 days by default. `/api/sync` writes `retention_until` on each crop row
+  and nothing reads it: no job deletes expired rows or storage objects, and `/api/sync`
+  uploads a crop already past its retention. The crop feature's schema version is dated
+  2026-06-30, so no crop can pass 180 days before 2026-12-27. Before then: skip expired
+  crops in `/api/sync`, and run the deletion steps `docs/supabase-sync-runbook.md` §6
+  lists (remove the Storage object, set `deleted_at` and `exclude_reason`) for every crop
+  past `retention_until` on a schedule; that is a server-side deletion job and so the
+  owner's to approve.
+
 - [ ] **2026-10-16 — the re-engagement mails carry no `List-Unsubscribe` header, and the
   unsubscribe API refuses an RFC 8058 one-click POST (cycle 121 hunt, survived its
   skeptic, NOT fixed: it changes what the mail sends, which is owner-locked).**
@@ -2372,6 +2420,93 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-16 (cycle 122) — **A ninth hunt, on what the app and its store pack SAY against
+  what the code DOES: the privacy page and the Play Data safety worksheet against every
+  byte that leaves the device, the merchant-link disclosure on every surface, and the Play
+  release pack. Seven distinct defects confirmed: two fixed in code, four corrected in the
+  docs and the store pack (the four listing screenshots recaptured), one filed for the
+  owner, who also holds the product decision behind one of the doc corrections.** Three
+  finders, each needing a repro it ran itself, and a skeptic per finding. **12** agents,
+  **9** findings, **8** survived (two finders reported the same survey-to-OpenAI path),
+  **1** rejected (the 180-day server retention of research crops has no expiry job, but
+  the crop schema dates from 2026-06-30, so no crop can be 180 days old before 2026-12-27;
+  filed below with that date). The hunt was cut off by a container restart and resumed
+  from its journal. What held: the real "delete all device data" path, run after filling
+  all **22** registered storage keys through their real writers, left nothing behind, and
+  no write in `app/` or `lib/` uses an unregistered key, IndexedDB or a cookie; the
+  service worker caches only `/offline.html` and the MediaPipe files; with the AI-analysis
+  box unticked no crop is built and `/api/analyze` is never called; the merchant
+  disclosure matched the affiliate state on every surface in all five locales with the
+  flag off and on, with no Hangul in the en/ja/zh/ar markup; all **484** `/api/out` hrefs
+  the surfaces can render answered 302 to the four allow-listed hosts; and every icon,
+  store graphic and version number in the Android wrapper and the Play pack agreed.
+
+  **Fixed in code, each with a test that fails on `94ee7a5`:**
+  - The reminder opt-in on `/report` sent the survey's skin type and category as
+    `context`, and `/api/reengage/subscribe` stored it next to the email in Supabase,
+    where nothing reads it; the opt-in's checkbox asks only to store the email, and
+    `/privacy` lists only the email, consent version and send times. The opt-in now sends
+    no context and the route writes `context: null` whatever the body carries, so an older
+    cached page stores nothing either and a re-subscribe clears an earlier value. Rows
+    stored before this change keep theirs (owner item below).
+    `tests/reengage-no-context.regression-58.test.ts`.
+  - `/privacy`'s "product and consultation link records" count read only the care intents
+    `/care` writes, so it said 0 after any number of `/report` merchant clicks (those
+    write only a `commerce_clicked` row), and its delete button left every
+    `commerce_clicked` row on the device. The count now includes `/report` clicks and a
+    `/care` row whose care intent is gone, never counts a click twice, and reads 0 only
+    when nothing is stored; the button removes every `commerce_clicked` row as well, and
+    other funnel rows and the flush cursor are untouched.
+    `tests/privacy-link-history.regression-59.test.ts`.
+
+  **Corrected in the docs and the store pack:**
+  - `docs/play-store/data-safety.md`, `README.md`, `README.ko.md` and `docs/PRD.md` said
+    the survey never leaves the device. Every `/report` view sends skin type, the chosen
+    category, the matching concerns, the budget band, the avoid list (for a pick that
+    satisfies all of it) and the on-screen reason text to `/api/reason`, and the route
+    forwards all but the reason text to OpenAI while `OPENAI_API_KEY` is set. They now say
+    so, and the worksheet carries a proposed declaration marked for the owner to confirm.
+    The worksheet's AI toggle label, which no component renders, is now the real one.
+  - The README's `/api/out` row claimed click logging and a placement allowlist; it now
+    says what the route does.
+  - `docs/play-store/reviewer-instructions.md` named Korean labels, but a fresh install
+    opens in English, and its AI step named a label no component renders. Every bold label
+    is now the English text a reviewer sees with the Korean in parentheses.
+    `tests/play-store-pack.test.ts` now checks every bold label (either Markdown bold
+    syntax) is rendered, and pins the worksheet's `/api/reason` declaration.
+  - All four Play listing screenshots showed a retired UI (headlines, buttons and step
+    labels the app no longer renders). They were recaptured from a production build of
+    this tree at 360×720 CSS pixels and 3× scale (1080×2160), in Korean, with no camera
+    frame and no personal data: Home, the `/scan` intro, the `/report` picks step and the
+    `/report` routine step.
+
+  A two-round review. The first (three lenses) found no blocker, **4** should-fix items
+  and **5** nits, all taken: rows stored before the change keep their `context` (filed as
+  an owner action, and the doc and the route comment now say so); the opt-in's new comment
+  and `docs/reengage-setup.md` said the survey stays in the browser, which `/api/reason`
+  contradicts, and now speak only for the opt-in; the README, README.ko and PRD rows left
+  out the chosen category and sent the avoid list unconditionally; a `/care` click row
+  whose care intent was gone (the old button removed the intents alone, and a refused
+  write never stores one) read as 0 and disabled the delete button, so the count now adds
+  `/care` rows beyond the purchase intents, with a test case that fails under the earlier
+  formula; and the pack test missed `__` bold and did not pin the worksheet. A fourth code
+  fix from the hunt was written and reverted before the review (the `/care` Global search
+  rows, filed below). The second round (two lenses) found **7** nits, all taken: the count
+  comment now says when a click can go uncounted, a bold label wrapped across lines is
+  read, the worksheet no longer says health records are not collected while it proposes
+  Health info as one option, it carries a revision date, the reminder doc names the deploy
+  rather than a calendar date as the cutoff, a docblock sat above the wrong test, and an
+  existing test's comment named a function `/privacy` no longer calls.
+
+  *Gates:* on `94ee7a5` before any change, vitest `153 passed (153) / 1284 passed
+  (1284)`. On the code-final tree: `npm run smoke` gives `Test Files 155 passed (155) /
+  Tests 1295 passed (1295)`, **369 passed (13.0m)**, `Ran 176 tests` **OK** and **Smoke
+  test passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No
+  port in 3100–3109 was listening before the run. Only this gate line changed after it,
+  and vitest was rerun on the result.
+  Rotation: the cycle 119 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 118.
+
 - 2026-10-16 (cycle 121) — **An eighth hunt, on the two paths no hunt had driven end to
   end with real inputs: the re-engagement mail from cron to unsubscribe, and the ML
   scripts reading what the app actually exports. Four findings confirmed: the two ML ones
@@ -2500,60 +2635,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   vitest was rerun on the result.
   Rotation: the cycle 117 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycle 116.
-
-- 2026-10-15 (cycle 119) — **A sixth hunt, along four lenses no earlier hunt took
-  (resource lifecycle, cross-screen consistency, typed input, failure states): seven
-  defects confirmed, seven fixed.** Four finders, each needing a repro it ran itself,
-  and a skeptic per finding. **14** agents, **10** findings, **7** survived, **3**
-  rejected (the 전반 row's 재촬영 권장 is pinned as intended by
-  `tests/confidence-threshold-agreement.test.ts`; `/studio` ignoring the in-memory
-  reading is unreachable because its only entry is a full load; and one skeptic judged
-  the landmarker double creation micro-perf, while the failure lens's skeptic confirmed
-  the same root cause through a stale failure that closes the live guide, which is the
-  one fixed). The lifecycle lens otherwise found every listener, timer, object URL,
-  stream and worker cleaned up.
-
-  **Fixed, each with a test that fails on `1fc0352`:**
-  - **`/scan`'s face-guide load was not single-flight.** Hiding the tab during the first
-    load and tapping 카메라 다시 켜기 created a second FaceLandmarker that was never
-    closed, and a stale load failing after the second succeeded closed the live one and
-    put 얼굴 가이드를 불러오지 못했어요 over a guide that had loaded. A pending creation is
-    now shared and a generation counter retires superseded ones.
-    `tests/landmarker-single-flight.test.ts`.
-  - `/scan` reported `getUserMedia`'s AbortError (granted, but the device failed to
-    start) as a missing permission; it now shows the busy screen and records `busy`.
-    `tests/camera-abort-error-reason.test.ts`.
-  - `/report`'s heading and the line under it spoke for a reading the report had set
-    aside (a retake-recommended capture): "오늘은 진정 루틴이 먼저예요" over a routine
-    with no calming step. Both now follow `scanApplied`, as the trust card does.
-    `report-heading-scan-applied.regression-56`.
-  - A vision reply whose label the merge refused kept its own sentence, so Korean read
-    "볼의 붉은기가 눈에 띄어요" above 붉은기 낮음 while English said the opposite. The
-    sentence is kept only when every label it describes was kept.
-    `tests/vision-merge-consistency.test.ts`.
-  - `/studio`'s share card keyed rows by their typed label, so renaming a row through
-    another row's name left a stale fifth row in the card and the PNG. Rows are keyed by
-    position. `studio-row-rename.regression-57`.
-  - The reminder opt-in accepted "kim@gmail", which the route refuses, and answered
-    "잠시 후 다시 시도해 주세요" every time. The input carries the route's rule as its
-    `pattern`. `tests/reengage-email-pattern.test.ts`.
-  - The pilot CSV let a note like "=> 재촬영 필요" open as a spreadsheet formula. Such
-    cells get a leading apostrophe. `tests/pilot-csv-formula-cells.test.ts`.
-
-  The two browser specs were also built and run against the old `/report` and share
-  card: both reproductions failed there (their controls passed on both). A three-lens
-  review found no blocker, one should-fix and three nits, all taken: the pilot comment
-  said `#VALUE!` where LibreOffice shows `Err:510`, and now also says some spreadsheets
-  show the apostrophe; the Hangul sweep lost two `headlineFor` branches once the heading
-  followed `scanApplied`, so it gained a usable twin of each set-aside reading; one
-  landmarker test no longer exercised its scenario after the fix and now asserts the
-  single creation it relies on; and this entry backs the tests' cycle 119 attributions.
-
-  *Gates:* on `1fc0352` before any change, vitest `145 passed (145) / 1250 passed (1250)`.
-  On the code-final tree: `npm run smoke` gives `Test Files 149 passed (149) / Tests
-  1269 passed (1269)`, **369 passed (11.3m)**, `Ran 158 tests` **OK** and **Smoke test
-  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
-  in 3100–3109 was listening before the run. Only this gate line changed after it, and
-  vitest was rerun on the result.
-  Rotation: the cycle 116 entry moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycle 115.
