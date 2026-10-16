@@ -17,10 +17,13 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import glob
 import hashlib
 import json
 import math
+import os
 import platform
+import re
 import subprocess
 import statistics
 import sys
@@ -66,6 +69,79 @@ def read_csv(path: Path | None) -> list[dict[str, str]]:
         return []
     with path.open(encoding="utf-8-sig", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def expand_patterns(paths: list[Path] | None) -> list[Path] | None:
+    """bash expands `gyeol-labels-*.jsonl` before Python sees it; PowerShell and cmd pass
+    it through as written. A path that does not exist and holds a wildcard is expanded
+    here, sorted by name; one that matches nothing is left for open() to refuse. A file
+    named twice (a pattern and one of its matches) is kept once, at its first place.
+    """
+    if not paths:
+        return paths
+    out: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        matches = sorted(glob.glob(str(path))) if not path.exists() and any(ch in str(path) for ch in "*?[") else []
+        for candidate in [Path(match) for match in matches] or [path]:
+            key = os.path.normcase(os.path.abspath(candidate))
+            if key not in seen:
+                seen.add(key)
+                out.append(candidate)
+    return out
+
+
+def _dedupe_by_id(batches: list[list[dict[str, Any]]]) -> tuple[list[dict[str, Any]], int]:
+    """Concatenate exports in the order given, keeping the first row seen for each id.
+
+    /ops exports are cumulative up to each store's cap (each day's file repeats the
+    earlier rows still on that device) and a pilot that compares devices has one file
+    per device, so the documented `gyeol-labels-*.jsonl` glob matches overlapping files.
+    Crops, pilot notes and consent events always carry a string `id`, normally a UUID; a
+    label saved before saveLabel assigned one may not (lib/sync-payload.ts names those
+    `legacy-label-...`). A row without an id is kept as it is, once per file it is in.
+    """
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    dropped = 0
+    for batch in batches:
+        for row in batch:
+            row_id = row.get("id") if isinstance(row, dict) else None
+            if isinstance(row_id, str) and row_id:
+                if row_id in seen:
+                    dropped += 1
+                    continue
+                seen.add(row_id)
+            rows.append(row)
+    return rows, dropped
+
+
+def read_jsonl_many(paths: list[Path] | None) -> tuple[list[dict[str, Any]], int]:
+    return _dedupe_by_id([read_jsonl(path) for path in paths or []])
+
+
+def read_csv_many(paths: list[Path] | None) -> tuple[list[dict[str, str]], int]:
+    return _dedupe_by_id([read_csv(path) for path in paths or []])
+
+
+def read_consent_many(paths: list[Path] | None) -> tuple[list[dict[str, str]], int]:
+    """Consent events from every file, in the order "latest" is read from.
+
+    The consent checks below take the last event as the latest. One device's export is
+    already in the order its events were recorded, which is the order the app reads.
+    Several files arrive in glob order, which follows neither time nor device (/ops names
+    them by row count), so an older grant could follow a newer revoke; merged files are
+    put in `ts` order, file order breaking ties.
+    """
+    rows, dropped = read_csv_many(paths)
+    if len(paths or []) > 1:
+        rows = [row for _, _, row in sorted(
+            ((ts if ts is not None else -math.inf, index, row)
+             for index, row in enumerate(rows)
+             for ts in [shipped_heuristic.as_feature_float(row.get("ts"))]),
+            key=lambda entry: (entry[0], entry[1]),
+        )]
+    return rows, dropped
 
 
 def is_truthy(value: Any) -> bool:
@@ -233,20 +309,48 @@ def heuristic_baseline(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+def normalize_participant_id(value: str) -> str:
+    """lib/pilot.ts normalizeParticipantId: "1", "p1" and "P001" are one participant."""
+    clean = re.sub(r"[^A-Z0-9]", "", value.strip().upper())
+    if re.fullmatch(r"\d{1,2}", clean):
+        return f"P{clean.zfill(3)}"
+    if re.fullmatch(r"P\d{1,2}", clean):
+        return f"P{clean[1:].zfill(3)}"
+    return clean
+
+
 def summarize_pilot(rows: list[dict[str, str]]) -> dict[str, Any]:
+    """Pilot completion and consent, per participant.
+
+    /pilot is append-only and its Save is what links a participant before /scan, so a
+    participant's first note is written before the scan and, unless the form still holds
+    the previous participant's ticks, says scanCompleted false; completion takes a second
+    note. Counting rows counted each of those pre-scan notes as a scan that did not
+    complete, so a pilot in which everyone scanned could read below 80% and fire the "fix
+    capture UX" warning. A participant is complete when any of their notes says so, and
+    their consent is their latest note's (by `ts`, then export order, since files from
+    two devices arrive in glob order). `total` stays the record count.
+    """
     if not rows:
         return {"total": 0}
-    total = len(rows)
-    completed = sum(parse_bool(row.get("scanCompleted")) for row in rows)
+    by_participant: dict[str, list[tuple[float, int, dict[str, str]]]] = {}
+    for index, row in enumerate(rows):
+        key = normalize_participant_id(str(row.get("participantId") or row.get("participant") or "")) or f"row:{row.get('id') or index}"
+        ts = shipped_heuristic.as_feature_float(row.get("ts"))
+        by_participant.setdefault(key, []).append((ts if ts is not None else -math.inf, index, row))
+    participants = len(by_participant)
+    completed = sum(any(parse_bool(note.get("scanCompleted")) for _, _, note in notes) for notes in by_participant.values())
+    latest = [max(notes, key=lambda entry: (entry[0], entry[1]))[2] for notes in by_participant.values()]
     return {
-        "total": total,
+        "total": len(rows),
+        "participants": participants,
         "completed": completed,
-        "completion_rate": round(completed / total, 4),
+        "completion_rate": round(completed / participants, 4),
         "by_browser": dict(Counter(row.get("browser", "unknown") for row in rows)),
         "by_lighting": dict(Counter(row.get("lighting", "unknown") for row in rows)),
         "by_makeup": dict(Counter(row.get("makeup", "unknown") for row in rows)),
-        "crop_consent_rate": round(sum(parse_bool(row.get("consentCrop")) for row in rows) / total, 4),
-        "ai_consent_rate": round(sum(parse_bool(row.get("consentAi")) for row in rows) / total, 4),
+        "crop_consent_rate": round(sum(parse_bool(note.get("consentCrop")) for note in latest) / participants, 4),
+        "ai_consent_rate": round(sum(parse_bool(note.get("consentAi")) for note in latest) / participants, 4),
     }
 
 
@@ -262,7 +366,8 @@ def crops_without_scoped_consent(crops: list[dict[str, Any]], rows: list[dict[st
     event for the whole export, so P001 revoking and P002 granting afterwards left
     P001's crops looking consented. This uses the exact-scope rule of
     latestConsentGranted (lib/sync-payload.ts): an unscoped event covers only an
-    unscoped crop, and the last event in export order wins.
+    unscoped crop, and the last event wins (export order, or `ts` order when several
+    files are merged: read_consent_many).
     """
     latest: dict[tuple[str, str], bool] = {}
     for row in rows:
@@ -297,6 +402,10 @@ def summarize_consent(rows: list[dict[str, str]], crops: list[dict[str, Any]] | 
         missing = crops_without_scoped_consent(crops, rows)
         summary["crops_without_scoped_consent"] = len(missing)
         summary["unconsented_crop_ids"] = missing[:20]
+        summary["unscoped_crops"] = sum(
+            _consent_scope((crop.get("meta") or {}).get("participantId"), (crop.get("meta") or {}).get("sessionId")) == ("", "")
+            for crop in crops
+        )
     return summary
 
 
@@ -492,6 +601,15 @@ def warnings_for(summary: dict[str, Any]) -> list[str]:
             f"{unscoped} crop(s) have no granted learning_crop consent in their own participant/session scope; "
             "see consent.unconsented_crop_ids before training on them."
         )
+    # An unscoped consent event names no device, so with several consent files one
+    # device's grant can stand for another device's unscoped crops.
+    consent_files = len((summary.get("inputs") or {}).get("consent") or [])
+    if consent_files > 1 and consent.get("unscoped_crops", 0):
+        warnings.append(
+            f"{consent['unscoped_crops']} crop(s) have no participant/session scope and were checked against "
+            f"{consent_files} consent files; an unscoped event does not say which device it came from, "
+            "so check these with one device's exports at a time."
+        )
     return warnings
 
 
@@ -679,10 +797,13 @@ def run_training_if_requested(args: argparse.Namespace, crops: list[dict[str, An
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--labels", type=Path, required=True)
-    parser.add_argument("--crops", type=Path)
-    parser.add_argument("--pilot", type=Path)
-    parser.add_argument("--consent", type=Path)
+    # One or more files each: the documented `gyeol-labels-*.jsonl` glob matches every
+    # day's export and every device's, and rows repeated across them are read once when
+    # they carry an id.
+    parser.add_argument("--labels", type=Path, nargs="+", required=True)
+    parser.add_argument("--crops", type=Path, nargs="+")
+    parser.add_argument("--pilot", type=Path, nargs="+")
+    parser.add_argument("--consent", type=Path, nargs="+")
     parser.add_argument("--name", type=str)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--decode-crops", action="store_true")
@@ -692,12 +813,14 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
 
-    raw_labels = read_jsonl(args.labels)
-    raw_crops = read_jsonl(args.crops)
+    for name in ("labels", "crops", "pilot", "consent"):
+        setattr(args, name, expand_patterns(getattr(args, name)))
+    raw_labels, dup_labels = read_jsonl_many(args.labels)
+    raw_crops, dup_crops = read_jsonl_many(args.crops)
     labels = usable_samples(raw_labels)
     crops = usable_samples(raw_crops)
-    pilot = read_csv(args.pilot)
-    consent = read_csv(args.consent)
+    pilot, dup_pilot = read_csv_many(args.pilot)
+    consent, dup_consent = read_consent_many(args.consent)
     out_dir = args.out or named_out_dir(args.name)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -718,12 +841,13 @@ def main() -> None:
             "seed": args.seed,
         },
         "inputs": {
-            "labels": str(args.labels),
-            "crops": str(args.crops) if args.crops else None,
-            "pilot": str(args.pilot) if args.pilot else None,
-            "consent": str(args.consent) if args.consent else None,
+            name: [str(path) for path in paths] if paths else None
+            for name, paths in {"labels": args.labels, "crops": args.crops, "pilot": args.pilot, "consent": args.consent}.items()
         },
-        "input_files": file_metadata({"labels": args.labels, "crops": args.crops, "pilot": args.pilot, "consent": args.consent}),
+        "input_files": {
+            name: [file_metadata({name: path})[name] for path in paths] if paths else None
+            for name, paths in {"labels": args.labels, "crops": args.crops, "pilot": args.pilot, "consent": args.consent}.items()
+        },
         "counts": {
             "raw_labels": len(raw_labels),
             "raw_crops": len(raw_crops),
@@ -733,6 +857,7 @@ def main() -> None:
             "excluded_crops": len(raw_crops) - len(crops),
             "pilot_notes": len(pilot),
             "consent_events": len(consent),
+            "duplicate_ids_dropped": {"labels": dup_labels, "crops": dup_crops, "pilot_notes": dup_pilot, "consent_events": dup_consent},
         },
         "readiness": readiness(int(decode.get("valid", len(crops)) or 0)),
         "labels": {

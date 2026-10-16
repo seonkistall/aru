@@ -15726,3 +15726,51 @@ pre-existing warnings, `tsc --noEmit` 13 errors, `npm run smoke` green.
   vitest was rerun on the result.
   Rotation: the cycles 77–114 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycles 74–76.
+
+- 2026-10-15 (cycle 118) — **Two filed `/scan` defects and the filed accessibility gaps
+  fixed, and a hunt along two new lenses (time and dates, locale formatting): nine
+  defects fixed, one filed.** One workflow: two fix agents on files no one else touched,
+  and two finders with a skeptic per finding. **9** agents, **5** findings, **5**
+  survived, **0** rejected.
+
+  **Fixed, each with a test that fails on `933d120`:**
+  - **A cancelled capture held the capture lock until its `/api/analyze` request timed
+    out** (filed by cycle 115). `cancelCapture` now aborts the run's request and releases
+    the lock; a run's `finally` releases it only while that run is still current.
+    `tests/capture-cancel-releases-lock.test.ts`.
+  - **`startCamera` was not single-flight** (filed by cycle 115). A start that arrives
+    while one is pending is ignored, so a double tap no longer opens a second stream or
+    shows the busy screen over ARU's own live camera. The later tap is the one ignored
+    because its `getUserMedia` is the call that fails on ARU's own camera.
+    `tests/camera-start-single-flight.test.ts`.
+  - The three cycle 117 accessibility gaps that reproduced: `/report`'s 다음 / 이전 now
+    move focus to the step heading; `InfoSheet` takes focus on open and returns it to
+    its opener on close; `/studio`'s four emphasis toggles, all named "차분", are each
+    named by their own text and their row. `tests/report-step-focus.test.ts`,
+    `tests/info-sheet-focus.test.ts`, `tests/studio-toggle-name.test.ts`,
+    `step-focus-and-toggle-names.regression-55`. The language listbox stays filed.
+  - The mask-pack volume "1매" reached en / ja / zh / ar in Korean; every dictionary
+    already had it. `tests/catalogue-volume-locale.test.ts`.
+  - The `/scan` receipt read the clock in its render body, so a share tap after midnight
+    re-dated it and its ARU·SKIN id. `tests/result-card-timestamp.test.ts`.
+  - `/report`'s history strip said "최근 10회 스캔" over 6 bars; it counts the bars.
+    `tests/scan-history-strip-count.test.ts`.
+  - `/ops`'s funnel_events window printed UTC dates beside a local "Read at".
+    `tests/ops-window-local-day.test.ts`.
+
+  A three-lens review found no blocker and no should-fix, and three nits. Two were taken:
+  the `/ops` test now removes `TZ` instead of leaving the string "undefined" behind, and
+  the cycle 115 and 117 entries below are ticked. One is left as a stated trade-off: a
+  start whose `getUserMedia` or `play()` never settles keeps the start button inert until
+  reload, where a second tap used to open a second request. Releasing the guard once the
+  stream is attached would reopen exactly the window in which the second request fails
+  on ARU's own camera.
+
+  *Gates:* on `933d120` before any change, vitest `136 passed (136) / 1209 passed (1209)`.
+  On the code-final tree: `npm run smoke` gives `Test Files 145 passed (145) / Tests
+  1250 passed (1250)`, **366 passed (10.7m)**, `Ran 158 tests` **OK** and **Smoke test
+  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
+  in 3100–3109 was listening before the run. Only this gate line changed after it, and
+  vitest was rerun on the result.
+  Rotation: the cycle 115 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycles 77–114.

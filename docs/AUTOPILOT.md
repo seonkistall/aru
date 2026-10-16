@@ -2040,6 +2040,34 @@ Two things follow for anyone editing the Routine:
 Verified by the supervisor during a cycle, recorded here so the next one can pick them
 up rather than rediscover them.
 
+- [ ] **2026-10-16 — the re-engagement mails carry no `List-Unsubscribe` header, and the
+  unsubscribe API refuses an RFC 8058 one-click POST (cycle 121 hunt, survived its
+  skeptic, NOT fixed: it changes what the mail sends, which is owner-locked).**
+  `sendReengageEmail` (`lib/reengage.ts`) posts `{from, to, subject, html}` to Resend and
+  nothing else, so Gmail, Yahoo and Apple Mail show no unsubscribe control of their own;
+  the only way out is the footer link, which opens `/unsubscribe` and needs a second
+  press. A provider's one-click POST (form-encoded `List-Unsubscribe=One-Click`, token in
+  the URL) to `/api/reengage/unsubscribe` gets `400 {"ok":false,"reason":"invalid json"}`.
+  `docs/reengage-setup.md` says every mail carries a signed one-click link. The skeptic's
+  caveat: the rule that makes one-click mandatory is aimed at bulk senders, far beyond a
+  pilot, so the cost today is recipients reaching for "report spam" instead. Fix sketch:
+  add both headers to the Resend body when an unsubscribe link is set, pointing at
+  `/api/reengage/unsubscribe?token=…`, and let that route take the token from the query
+  string for exactly that form body, through the same verify-then-revoke path. No wording
+  or timing changes; the decision is the owner's because the mail's headers change.
+
+- [ ] **2026-10-16 — pressing the unsubscribe link again rewrites `revoked_at` and pushes
+  the 30-day deletion back (cycle 121 hunt, survived its skeptic, NOT fixed: it is the
+  withdrawal record, so the owner's call).** `app/api/reengage/unsubscribe/route.ts`
+  writes `consent:false, revoked_at:now, retention_until:now+30d` with no check that the
+  row is already withdrawn. `/unsubscribe` keeps its done state only until the tab
+  reloads, so reopening the mail later shows the button again. The finder's run: an
+  unsubscribe on day 0 and a second press on day 25 both return 200, and the row's
+  deletion falls due **55** days after the first one, with `revoked_at` now naming day 25.
+  Fix sketch: `.is("revoked_at", null)` on the update, still answering 200 when it matches
+  nothing, so the first withdrawal time and its deadline stand (a row withdrawn before
+  `revoked_at` existed, or re-subscribed since, still gets stamped).
+
 - [ ] **2026-10-15 — a calm face reads 분석 신뢰도 보통 where a less clear-cut face reads
   높음 (cycle 120 hunt, survived its skeptic, NOT fixed).** `distanceConfidence`
   (`lib/skin.ts`) rises at 0.45 per span inside a band but 0.225 per span outside it, so a
@@ -2344,6 +2372,77 @@ The last three cycles in full, which is what stops a cycle redoing last night's 
 Everything older is in [`docs/autopilot-changelog.md`](autopilot-changelog.md),
 unchanged and complete — a cycle does not need to read it to do a cycle.
 
+- 2026-10-16 (cycle 121) — **An eighth hunt, on the two paths no hunt had driven end to
+  end with real inputs: the re-engagement mail from cron to unsubscribe, and the ML
+  scripts reading what the app actually exports. Four findings confirmed: the two ML ones
+  fixed, the two mail ones filed.** Two finders, each needing a repro it ran itself, and a
+  skeptic per finding. **6** findings, **4** survived, **2** rejected (the mail links
+  dropping the mail's locale, which is the documented English-default language policy and
+  an open owner decision; and `prepare_crop_dataset.py` having no consent input, a missing
+  feature in an offline research tool rather than a misread). What held: `GET
+  /api/reengage/run` over **20** contacts (five locales by four awkward addresses, Resend
+  stubbed) sent **20** and failed **0**, no user-controlled text reached the HTML or the
+  subject, and every one of the 20 unsubscribe links, taken out of its HTML and POSTed
+  back, returned 200 and cleared consent for exactly its own address. On the ML side,
+  exports made by the real TS exporters (a four-participant `/pilot` flow, two devices,
+  daily exports) were read correctly by every script for quoting, booleans, consent scope,
+  tone bands, label scales and thresholds.
+
+  **Fixed:**
+  - The documented commands in `docs/pilot-ml-loop.md`, `python ml/calibrate.py
+    gyeol-labels-*.jsonl` and `python ml/run_pipeline.py --labels gyeol-labels-*.jsonl
+    ...`, did not do what they say. `calibrate.py` read only the first file the glob
+    matched, with no warning, so thresholds were fit on one export (the oldest day, for
+    the kit's date-named files; the finder's two daily exports: `loaded 10 labeled
+    samples` where the second file alone holds 20); `run_pipeline.py` exited 2
+    (`unrecognized arguments`). Both now read every file given. Exports are cumulative, so
+    a row repeated across files is read once, by its `id` (a legacy label with none is read
+    once per file), first file wins; `summary.json`
+    now lists every input file under `inputs` and `input_files` and records
+    `counts.duplicate_ids_dropped` per input. A pattern that reaches Python unexpanded
+    (PowerShell and cmd do not expand it) is expanded by both scripts. Several consent
+    files are merged in `ts` order, because glob order follows the row count in the file
+    name, not time, and an older grant could otherwise outrank a newer revoke; one file
+    keeps its own order, the order the app reads. An unscoped consent event names no
+    device, so crops with no participant/session checked against several consent files now
+    get a warning to check them one device at a time. `ml/selftest.py`
+    `DocumentedGlobsReadEveryExport`.
+  - `run_pipeline.py`'s pilot completion and consent rates counted note rows. `/pilot` is
+    append-only and its Save is what links a participant before `/scan`, so a
+    participant's first note is written before the scan, with `scanCompleted` false unless
+    the form still holds the previous participant's ticks; in the finder's run a pilot in
+    which all four participants scanned read `completion_rate 0.5` and printed "fix
+    capture UX before collecting more data". The rates are now per participant (grouped
+    the way `/ops` groups them, `normalizeParticipantId`): complete if any of their notes
+    says so, consent from their latest note by `ts`. `total` is still the record count,
+    and `participants` is new. `ml/selftest.py` `PilotRatesArePerParticipant`.
+
+  A two-round review. The first (three lenses) found no blocker, **8** should-fix items
+  and **6** nits, all taken: merged consent files were read in glob order and an unscoped
+  event from one device could stand for another device's unscoped crops (two lenses found
+  the first; both are new with multi-file input and handled above); calibrate's command
+  line, the CSV inputs, the AI consent rate and a later withdrawal had no test that failed
+  when reverted, and two tests checked less than they could (a never-scanned case that
+  held before the fix too, and per-file provenance); the subprocess tests wrote the
+  bytecode the file header turns off (now `-B`, with a timeout); a glob reaching Python
+  unexpanded failed on PowerShell and cmd; and four comments claimed more than the code
+  and the app back (every first pilot note unticked, every row carrying a UUID, the first
+  file being the oldest, a note writer `/pilot` does not have). The second round (two
+  lenses) found **3** nits, all taken: a file named twice is read once, the id comment
+  names legacy labels that have none, and ten mutations of the new code that still passed
+  got direct tests. Of **31** mutations of the change, run on a scratch copy, all **31**
+  fail `ml/selftest.py`, and all **18** new tests fail on `7c448b3`'s scripts.
+
+  *Gates:* on `7c448b3` before any change, vitest `153 passed (153) / 1284 passed
+  (1284)`. On the code-final tree: `npm run smoke` gives `Test Files 153 passed (153) /
+  Tests 1284 passed (1284)`, **369 passed (9.9m)**, `Ran 176 tests` **OK** and **Smoke
+  test passed.** (a first smoke run was cut off by a container restart and rerun from the
+  start). tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port in
+  3100–3109 was listening before the run. Only this gate line changed after it, and vitest
+  was rerun on the result.
+  Rotation: the cycle 118 entry moved verbatim to the end of
+  `docs/autopilot-changelog.md`, after cycle 117.
+
 - 2026-10-15 (cycle 120) — **A seventh hunt, by method rather than by area (metrics
   checked against reference implementations, property fuzzing of `recommend()` and of
   the reading pipeline, and mutation of production guards): six findings confirmed: three
@@ -2458,51 +2557,3 @@ unchanged and complete — a cycle does not need to read it to do a cycle.
   vitest was rerun on the result.
   Rotation: the cycle 116 entry moved verbatim to the end of
   `docs/autopilot-changelog.md`, after cycle 115.
-
-- 2026-10-15 (cycle 118) — **Two filed `/scan` defects and the filed accessibility gaps
-  fixed, and a hunt along two new lenses (time and dates, locale formatting): nine
-  defects fixed, one filed.** One workflow: two fix agents on files no one else touched,
-  and two finders with a skeptic per finding. **9** agents, **5** findings, **5**
-  survived, **0** rejected.
-
-  **Fixed, each with a test that fails on `933d120`:**
-  - **A cancelled capture held the capture lock until its `/api/analyze` request timed
-    out** (filed by cycle 115). `cancelCapture` now aborts the run's request and releases
-    the lock; a run's `finally` releases it only while that run is still current.
-    `tests/capture-cancel-releases-lock.test.ts`.
-  - **`startCamera` was not single-flight** (filed by cycle 115). A start that arrives
-    while one is pending is ignored, so a double tap no longer opens a second stream or
-    shows the busy screen over ARU's own live camera. The later tap is the one ignored
-    because its `getUserMedia` is the call that fails on ARU's own camera.
-    `tests/camera-start-single-flight.test.ts`.
-  - The three cycle 117 accessibility gaps that reproduced: `/report`'s 다음 / 이전 now
-    move focus to the step heading; `InfoSheet` takes focus on open and returns it to
-    its opener on close; `/studio`'s four emphasis toggles, all named "차분", are each
-    named by their own text and their row. `tests/report-step-focus.test.ts`,
-    `tests/info-sheet-focus.test.ts`, `tests/studio-toggle-name.test.ts`,
-    `step-focus-and-toggle-names.regression-55`. The language listbox stays filed.
-  - The mask-pack volume "1매" reached en / ja / zh / ar in Korean; every dictionary
-    already had it. `tests/catalogue-volume-locale.test.ts`.
-  - The `/scan` receipt read the clock in its render body, so a share tap after midnight
-    re-dated it and its ARU·SKIN id. `tests/result-card-timestamp.test.ts`.
-  - `/report`'s history strip said "최근 10회 스캔" over 6 bars; it counts the bars.
-    `tests/scan-history-strip-count.test.ts`.
-  - `/ops`'s funnel_events window printed UTC dates beside a local "Read at".
-    `tests/ops-window-local-day.test.ts`.
-
-  A three-lens review found no blocker and no should-fix, and three nits. Two were taken:
-  the `/ops` test now removes `TZ` instead of leaving the string "undefined" behind, and
-  the cycle 115 and 117 entries below are ticked. One is left as a stated trade-off: a
-  start whose `getUserMedia` or `play()` never settles keeps the start button inert until
-  reload, where a second tap used to open a second request. Releasing the guard once the
-  stream is attached would reopen exactly the window in which the second request fails
-  on ARU's own camera.
-
-  *Gates:* on `933d120` before any change, vitest `136 passed (136) / 1209 passed (1209)`.
-  On the code-final tree: `npm run smoke` gives `Test Files 145 passed (145) / Tests
-  1250 passed (1250)`, **366 passed (10.7m)**, `Ran 158 tests` **OK** and **Smoke test
-  passed.** tsc gives **13**. eslint gives `✖ 2 problems (0 errors, 2 warnings)`. No port
-  in 3100–3109 was listening before the run. Only this gate line changed after it, and
-  vitest was rerun on the result.
-  Rotation: the cycle 115 entry moved verbatim to the end of
-  `docs/autopilot-changelog.md`, after cycles 77–114.
